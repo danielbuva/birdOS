@@ -33,8 +33,8 @@ The long-term centerpiece would be a tiny custom launcher—ideally a small stat
 - [x] Define the fixed RG34XX-SP/English/offline-at-boot experience.
 - [x] Build a freestanding static launcher with direct framebuffer rendering.
 - [x] Start at the earliest proven point using direct evdev input before udev.
-- [ ] Prove the embedded game catalogue and asynchronous ROM readiness (staged next).
-- [ ] Add emulator/PortMaster launch handoff and reliable return.
+- [x] Prove the embedded game catalogue and asynchronous ROM readiness.
+- [ ] Add fixed emulator/Port launch handoff and reliable return (staged next).
 - [ ] Replace the stock frontend permanently.
 - [ ] Complete the final visual, animation and audio identity.
 - [ ] Remove superseded muOS components and produce a reproducible firmware image.

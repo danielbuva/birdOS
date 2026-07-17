@@ -46,6 +46,11 @@ contains four known-working titles across SNES, PSP, and Ports. It is browsable
 before ROM storage mounts; storage readiness and individual ROM availability
 are presented separately.
 
+Ready proof titles use fixed launch mappings: Snes9x for SNES, standalone PPSSPP
+for PSP, and the external-script launcher for Ports. The custom launcher releases
+display and input ownership while content runs, then returns directly when the
+content process exits. No automatic core discovery is part of this device.
+
 ## Decisions reserved for the visual phase
 
 - Final color palette and wallpaper.

@@ -50,7 +50,7 @@ LAUNCHER_OBJECT="$LAUNCHER_ROOT/dani-launcher.o"
 LAUNCHER_TARGET="/opt/muos/bin/dani-launcher"
 LAUNCHER_PROOF_STATE="$LAUNCHER_ROOT/proof-v4-remaining.state"
 LAUNCHER_PROOF_LOG="$LAUNCHER_ROOT/proof-v4-remaining.log"
-EARLY_LAUNCHER_STATE="$LAUNCHER_ROOT/early-launcher-v3-catalog.state"
+EARLY_LAUNCHER_STATE="$LAUNCHER_ROOT/early-launcher-v4-game-handoff.state"
 EARLY_INIT_SOURCE="$LAUNCHER_ROOT/S03danilauncher"
 EARLY_INIT_TARGET="/opt/muos/script/init/S03danilauncher"
 EARLY_OLD_INIT_TARGET="/opt/muos/script/init/S11danilauncher"
@@ -537,7 +537,7 @@ if [ -s "$LAUNCHER_OBJECT" ] && [ -s "$EARLY_INIT_SOURCE" ] && [ ! -f "$EARLY_LA
 	STARTUP_READY=0
 
 	if /usr/bin/ld -static --build-id=none -z noexecstack -s -e _start \
-		-o "$LAUNCHER_NEW" "$LAUNCHER_OBJECT" >"$LAUNCHER_ROOT/link-early-v3-catalog.log" 2>&1; then
+		-o "$LAUNCHER_NEW" "$LAUNCHER_OBJECT" >"$LAUNCHER_ROOT/link-early-v4-game-handoff.log" 2>&1; then
 		chmod 755 "$LAUNCHER_NEW"
 		if grep -q "$EARLY_STARTUP_MARKER" "$EARLY_STARTUP_TARGET"; then
 			STARTUP_READY=1
@@ -569,7 +569,7 @@ if [ -s "$LAUNCHER_OBJECT" ] && [ -s "$EARLY_INIT_SOURCE" ] && [ ! -f "$EARLY_LA
 			chmod 755 "$EARLY_INIT_TARGET"
 			rm -f "$EARLY_OLD_INIT_TARGET"
 			printf '%s\n' "installed" >"$EARLY_LAUNCHER_STATE"
-			printf '%s embedded-catalog launcher installed before udev; active next boot\n' \
+			printf '%s fixed game-handoff launcher installed before udev; active next boot\n' \
 				"$(date -Iseconds 2>/dev/null || date)" >>"$BESPOKE_ROOT/install.log"
 		else
 			rm -f "$PATCHED" "$LAUNCHER_NEW"

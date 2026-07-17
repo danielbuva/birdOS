@@ -16,7 +16,10 @@ typedef signed long s64;
 
 #define AT_FDCWD (-100)
 #define O_RDONLY 0
+#define O_WRONLY 1
 #define O_RDWR 2
+#define O_CREAT 0100
+#define O_TRUNC 01000
 #define O_NONBLOCK 04000
 #define PROT_READ 1
 #define PROT_WRITE 2
@@ -40,11 +43,15 @@ typedef signed long s64;
 #define DEVICE_WAIT_MS 5000UL
 #define INPUT_PATH "/dev/input/event1"
 #define ROM_ROOT "/mnt/mmc/ROMS"
+#define LAUNCH_REQUEST "/run/muos/dani-launch-request"
 
 #define VIEW_MAIN 0U
 #define VIEW_SYSTEMS 1U
 #define VIEW_GAMES 2U
 #define GAME_ROWS 8U
+#define ACTION_NONE 0
+#define ACTION_STOCK 1
+#define ACTION_LAUNCH 10
 
 struct fb_bitfield {
     u32 offset;
@@ -180,6 +187,10 @@ static long syscall6(long number, long a0, long a1, long a2, long a3, long a4, l
 
 static long sys_open(const char *path, int flags) {
     return syscall6(56, AT_FDCWD, (long)path, flags, 0, 0, 0);
+}
+
+static long sys_create(const char *path, int flags, int mode) {
+    return syscall6(56, AT_FDCWD, (long)path, flags, mode, 0, 0);
 }
 
 static long sys_close(int fd) {
@@ -408,13 +419,50 @@ static void draw_screen(void) {
     if (view == VIEW_MAIN)
         draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE   A SELECT   B STOCK", 2, primary);
     else if (view == VIEW_GAMES)
-        draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE   L1 R1 PAGE   A TEST   B BACK", 2, primary);
+        draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE   L1 R1 PAGE   A LAUNCH   B BACK", 2, primary);
     else
         draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE   A OPEN   B BACK", 2, primary);
     __asm__ volatile("dmb ishst" ::: "memory");
 }
 
-static void select_current(void) {
+static int write_launch_request(const struct catalog_system *system,
+                                const struct catalog_entry *entry) {
+    char kind[2];
+    long fd = sys_create(LAUNCH_REQUEST, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (fd < 0) {
+        selected_status = "LAUNCH REQUEST FAILED";
+        log_text("launch_request result=open-failed\n");
+        return ACTION_NONE;
+    }
+
+    kind[0] = (char)('0' + system->launch_kind);
+    kind[1] = '\n';
+    if (sys_write((int)fd, kind, sizeof(kind)) != (long)sizeof(kind) ||
+        sys_write((int)fd, entry->name, string_length(entry->name)) !=
+            (long)string_length(entry->name) ||
+        sys_write((int)fd, "\n", 1) != 1 ||
+        sys_write((int)fd, entry->path, string_length(entry->path)) !=
+            (long)string_length(entry->path) ||
+        sys_write((int)fd, "\n", 1) != 1) {
+        sys_close((int)fd);
+        selected_status = "LAUNCH REQUEST WRITE FAILED";
+        log_text("launch_request result=write-failed\n");
+        return ACTION_NONE;
+    }
+    sys_close((int)fd);
+    selected_status = "STARTING GAME";
+    log_text("launch_request boot_ms=");
+    log_number(boot_ms());
+    log_text(" kind=");
+    log_number(system->launch_kind);
+    log_text(" path=");
+    log_text(entry->path);
+    log_text(" result=ready\n");
+    return ACTION_LAUNCH;
+}
+
+static int select_current(void) {
+    int action = ACTION_NONE;
     if (view == VIEW_MAIN) {
         if (selection == 0U) {
             view = VIEW_SYSTEMS;
@@ -442,14 +490,15 @@ static void select_current(void) {
         log_text(entry->path);
         if (fd >= 0) {
             sys_close((int)fd);
-            selected_status = "ROM READY // LAUNCH BRIDGE NEXT";
             log_text(" result=ready\n");
+            action = write_launch_request(system, entry);
         } else {
             selected_status = "WAITING FOR ROM STORAGE";
             log_text(" result=not-ready\n");
         }
     }
     draw_screen();
+    return action;
 }
 
 static void move_selection(int direction, u32 steps) {
@@ -483,7 +532,7 @@ static int handle_back(void) {
         draw_screen();
         return 0;
     }
-    return 1;
+    return ACTION_STOCK;
 }
 
 static int handle_event(const struct input_event *event) {
@@ -502,8 +551,7 @@ static int handle_event(const struct input_event *event) {
 
     if (event->type == EV_KEY && event->value == 1) {
         if (event->code == BTN_SOUTH) {
-            select_current();
-            return 0;
+            return select_current();
         }
         if (event->code == BTN_EAST) return handle_back();
         if (view == VIEW_GAMES && event->code == BTN_TL) {
@@ -577,7 +625,7 @@ static int open_fixed_input(void) {
 static int application(void) {
     u64 started = boot_ms();
     u64 deadline;
-    int exit_by_button = 0;
+    int exit_action = ACTION_NONE;
     log_text("direct launcher start boot_ms=");
     log_number(started);
     log_text("\n");
@@ -641,12 +689,12 @@ static int application(void) {
     log_text("\n");
 
     deadline = boot_ms() + STOCK_FALLBACK_TIMEOUT_MS;
-    while (boot_ms() < deadline && !exit_by_button) {
+    while (boot_ms() < deadline && exit_action == ACTION_NONE) {
         struct input_event event;
         long count;
         while ((count = sys_read(input_fd, &event, sizeof(event))) == (long)sizeof(event)) {
-            if (handle_event(&event)) {
-                exit_by_button = 1;
+            exit_action = handle_event(&event);
+            if (exit_action != ACTION_NONE) {
                 break;
             }
         }
@@ -654,7 +702,12 @@ static int application(void) {
         sys_nanosleep(4000000L);
     }
 
-    log_text(exit_by_button ? "exit reason=b-button boot_ms=" : "exit reason=stock-fallback-timeout boot_ms=");
+    if (exit_action == ACTION_LAUNCH)
+        log_text("exit reason=launch-request boot_ms=");
+    else if (exit_action == ACTION_STOCK)
+        log_text("exit reason=b-button boot_ms=");
+    else
+        log_text("exit reason=stock-fallback-timeout boot_ms=");
     log_number(boot_ms());
     log_text(" captured_events=");
     log_number(captured_events);
@@ -662,7 +715,7 @@ static int application(void) {
     sys_close(input_fd);
     sys_munmap((void *)fb, fb_fix.smem_len);
     sys_close(fb_fd);
-    return 0;
+    return exit_action == ACTION_LAUNCH ? ACTION_LAUNCH : 0;
 }
 
 __attribute__((noreturn, visibility("default"))) void _start(void) {

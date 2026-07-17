@@ -8,6 +8,75 @@ STOPPING="$RUN_DIR/dani-launcher-stopping"
 SUPERVISOR_PID="$RUN_DIR/dani-launcher-supervisor.pid"
 EARLY_LOG="/tmp/dani-launcher-early.log"
 PERSISTENT_LOG="/mnt/mmc/MUOS/bespoke-launcher/early-launcher-latest.log"
+LAUNCH_REQUEST="$RUN_DIR/dani-launch-request"
+
+SNAPSHOT_LOG() {
+	[ -d /mnt/mmc/MUOS ] || return 0
+	mkdir -p "${PERSISTENT_LOG%/*}"
+	cp -f "$EARLY_LOG" "$PERSISTENT_LOG"
+}
+
+RUN_GAME() {
+	[ -s "$LAUNCH_REQUEST" ] || {
+		printf '%s\n' 'launch bridge error: request missing'
+		return 1
+	}
+
+	{
+		IFS= read -r LAUNCH_KIND
+		IFS= read -r GAME_NAME
+		IFS= read -r GAME_PATH
+	} <"$LAUNCH_REQUEST"
+	rm -f "$LAUNCH_REQUEST"
+
+	[ -f "$GAME_PATH" ] || {
+		printf 'launch bridge error: ROM missing: %s\n' "$GAME_PATH"
+		return 1
+	}
+
+	WAIT_COUNT=0
+	while [ ! -e "$READY" ] || [ ! -S /run/pipewire-0 ] || \
+		[ ! -e /usr/lib/gamecontrollerdb.txt ]; do
+		[ -e "$STOPPING" ] && return 1
+		WAIT_COUNT=$((WAIT_COUNT + 1))
+		[ "$WAIT_COUNT" -ge 500 ] && {
+			printf '%s\n' 'launch bridge error: game prerequisites timed out'
+			return 1
+		}
+		sleep 0.01
+	done
+	printf 'game prerequisites ready uptime: '
+	cut -d ' ' -f 1 /proc/uptime
+
+	. /opt/muos/script/var/func.sh
+	GOVERNOR_FILE=$(GET_VAR "device" "cpu/governor")
+	PREVIOUS_GOVERNOR=$(cat "$GOVERNOR_FILE" 2>/dev/null)
+	[ "$LAUNCH_KIND" = "2" ] && printf '%s\n' performance >"$GOVERNOR_FILE"
+
+	printf 'game launch start uptime: '
+	cut -d ' ' -f 1 /proc/uptime
+	printf 'game launch kind=%s name=%s path=%s\n' "$LAUNCH_KIND" "$GAME_NAME" "$GAME_PATH"
+	SNAPSHOT_LOG
+
+	case "$LAUNCH_KIND" in
+		1) /opt/muos/script/launch/lr-general.sh "$GAME_NAME" "snes9x_libretro.so" "$GAME_PATH" ;;
+		2) /opt/muos/script/launch/ext-ppsspp.sh "$GAME_NAME" "ext-ppsspp" "$GAME_PATH" ;;
+		3) /opt/muos/script/launch/ext-general.sh "$GAME_NAME" "external" "$GAME_PATH" ;;
+		*)
+			printf 'launch bridge error: unsupported kind %s\n' "$LAUNCH_KIND"
+			return 1
+			;;
+	esac
+	GAME_RESULT=$?
+
+	[ -n "$PREVIOUS_GOVERNOR" ] && printf '%s\n' "$PREVIOUS_GOVERNOR" >"$GOVERNOR_FILE"
+	SET_VAR "system" "foreground_process" "dani-launcher"
+	printf 'game launch result: %s\n' "$GAME_RESULT"
+	printf 'game launch end uptime: '
+	cut -d ' ' -f 1 /proc/uptime
+	SNAPSHOT_LOG
+	return "$GAME_RESULT"
+}
 
 case "$1" in
 	start)
@@ -20,11 +89,16 @@ case "$1" in
 			{
 				printf 'direct supervisor start uptime: '
 				cut -d ' ' -f 1 /proc/uptime
-				"$TARGET"
-				LAUNCHER_RESULT=$?
-				printf 'direct launcher result: %s\n' "$LAUNCHER_RESULT"
-				printf 'direct launcher exit uptime: '
-				cut -d ' ' -f 1 /proc/uptime
+				while :; do
+					"$TARGET"
+					LAUNCHER_RESULT=$?
+					printf 'direct launcher result: %s\n' "$LAUNCHER_RESULT"
+					printf 'direct launcher exit uptime: '
+					cut -d ' ' -f 1 /proc/uptime
+
+					[ "$LAUNCHER_RESULT" -eq 10 ] || break
+					RUN_GAME
+				done
 
 				[ -e "$STOPPING" ] && exit 0
 				while [ ! -e "$READY" ]; do sleep 0.05; done

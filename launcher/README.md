@@ -51,3 +51,23 @@ library. Regenerate the same header from the final curated manifest later with:
 ```sh
 ./generate-launcher-catalog.sh /Volumes/dani-sp/ROMS path/to/manifest.txt
 ```
+
+The catalogue proof measured process entry at 2.305 seconds, first interactive
+frame at 2.327 seconds, and ROM storage readiness at 4.117 seconds. All four
+cached paths tested ready without any runtime directory scan.
+
+## Fixed game handoff
+
+Selecting a ready title writes a three-line request containing only launch kind,
+display name, and exact ROM path, then exits cleanly to release framebuffer and
+evdev ownership. `S03danilauncher` waits for the already-dispatched startup,
+PipeWire socket, and fixed controller map before using these confirmed mappings:
+
+- SNES: `snes9x_libretro.so` through `lr-general.sh`
+- PSP: standalone PPSSPP through `ext-ppsspp.sh`
+- Ports: executable script through `ext-general.sh`
+
+The supervisor waits for the game process, records its result, and starts the
+custom launcher again without starting the stock frontend or calling `mufbset`.
+This keeps the proof narrow while retaining muOS's emulator configuration,
+controls, audio setup, saves, and emulator exit behavior.
