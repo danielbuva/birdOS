@@ -43,6 +43,8 @@ WIFI_DIAG_ROOT="/mnt/mmc/MUOS/boot-timing/wifi-module-diagnostic"
 WIFI_DIAG_STATE="$WIFI_DIAG_ROOT/state"
 WIFI_MODULE_TARGET="/opt/muos/script/device/module.sh"
 WIFI_MODULE_MARKER="BOOT_TIMING_WIFI_MODULE_ON_DEMAND_V1"
+DEPMOD_CACHE_MARKER="BOOT_TIMING_CACHE_DEPMOD_V1"
+DEPMOD_STATUS="/tmp/muos/depmod-status"
 
 if [ -r /proc/sys/kernel/random/boot_id ]; then
 	IFS= read -r BOOT_ID </proc/sys/kernel/random/boot_id
@@ -425,6 +427,44 @@ if [ -f "$WIFI_MODULE_TARGET" ] && ! grep -q "$WIFI_MODULE_MARKER" "$WIFI_MODULE
 		printf '%s ERROR: general Wi-Fi modprobe line not found; module loading unchanged\n' \
 			"$(date -Iseconds 2>/dev/null || date)" >>"$BESPOKE_ROOT/install.log"
 	fi
+fi
+
+# The kernel/module set is fixed and ships with modules.dep. Rebuilding the
+# complete dependency database on every boot only adds I/O. Retain a fallback
+# rebuild so the system still recovers if the index is ever missing.
+if [ -f "$WIFI_MODULE_TARGET" ] && ! grep -q "$DEPMOD_CACHE_MARKER" "$WIFI_MODULE_TARGET"; then
+	[ -f "$BESPOKE_ROOT/backup/device-module.sh.pre-depmod-cache" ] || \
+		cp -p "$WIFI_MODULE_TARGET" "$BESPOKE_ROOT/backup/device-module.sh.pre-depmod-cache"
+
+	PATCHED="/tmp/device-module-depmod-cache.$$.sh"
+	while IFS= read -r LINE; do
+		if [ "$LINE" = 'depmod -a 2>/dev/null' ]; then
+			printf '# %s\n' "$DEPMOD_CACHE_MARKER"
+			printf '%s\n' 'if [ -s /lib/modules/4.9.170/modules.dep ]; then'
+			printf '\t%s\n' 'printf "%s\n" "cached" >"/tmp/muos/depmod-status"'
+			printf '%s\n' 'else'
+			printf '\t%s\n' 'depmod -a 2>/dev/null'
+			printf '\t%s\n' 'printf "%s\n" "rebuilt" >"/tmp/muos/depmod-status"'
+			printf '%s\n' 'fi'
+		else
+			printf '%s\n' "$LINE"
+		fi
+	done <"$WIFI_MODULE_TARGET" >"$PATCHED"
+
+	if grep -q "$DEPMOD_CACHE_MARKER" "$PATCHED"; then
+		chmod 755 "$PATCHED"
+		mv -f "$PATCHED" "$WIFI_MODULE_TARGET"
+		printf '%s cached depmod guard installed; active next boot\n' \
+			"$(date -Iseconds 2>/dev/null || date)" >>"$BESPOKE_ROOT/install.log"
+	else
+		rm -f "$PATCHED"
+		printf '%s ERROR: depmod line not found; module database behavior unchanged\n' \
+			"$(date -Iseconds 2>/dev/null || date)" >>"$BESPOKE_ROOT/install.log"
+	fi
+fi
+
+if [ -f "$DEPMOD_STATUS" ] && [ ! -f "$BESPOKE_ROOT/depmod-status" ]; then
+	cp -f "$DEPMOD_STATUS" "$BESPOKE_ROOT/depmod-status"
 fi
 
 # The frontend links all five large non-English font DSOs even when English is
