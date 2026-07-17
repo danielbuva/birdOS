@@ -133,4 +133,17 @@ The v8 proof leaves the menu immediately usable but holds decorative motion
 until the device-start brightness case emits an exact readiness marker. It then
 redraws once at the final brightness and runs a shorter 1.6-second accent. The
 sound wrapper prefers `pw-play`, then `aplay`, with the proven `mpv` path only as
-a fallback; logs record the selected player and total lifetime.
+a fallback; logs record the selected player and total lifetime. Hardware logs
+showed that `pw-play` saw the PipeWire socket before a target sink existed,
+failed after roughly 2.2 seconds, and only then invoked `mpv`. That explained
+why the chime arrived after the animation.
+
+The v9 build removes brightness handling from the boot experience rather than
+choosing a card-side percentage. `device/start.sh` no longer performs its late
+saved-brightness restore, so the firmware-established brightness remains stable
+until the user changes it manually. The 1.6-second animation starts with the
+first interactive frame again. Input still intentionally completes and removes
+the decorative animation immediately; this is an explicit interaction policy,
+not an accidental repaint side effect. The sound wrapper invokes the proven
+`mpv` path directly, eliminating the known failing-player delay while keeping
+game-launch cancellation.

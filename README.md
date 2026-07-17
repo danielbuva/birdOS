@@ -12,7 +12,7 @@ profile and convert muOS 2601.1 into a fixed-purpose RG34XX-SP system.
 - Optimized-stock internal input-ready average: 8.43 seconds.
 - Current direct-launcher process entry: 2.256 seconds of kernel uptime.
 - Current first interactive frame: 2.276 seconds, 20 ms after process entry.
-- Current LED-on stopwatch result: consistently below four seconds.
+- Current LED-on stopwatch result: approximately four seconds.
 
 Diagnostics remain enabled. The long-term target is a small custom launcher
 with fixed RG34XX-SP hardware, English text, embedded assets, a cached game
@@ -39,8 +39,9 @@ index, on-demand networking, and a reproducible firmware image.
 - PortMaster and shutdown run directly without entering the stock frontend.
 - Persistent Favorites and most-recent path tracking are hardware-verified.
 - The boot-effects proof animates only after the usable frame and starts a tiny
-  preconverted PCM chime only after the normal audio route is ready. The staged
-  refinement synchronises motion with the final backlight restore.
+  preconverted PCM chime only after the normal audio route is ready. The next
+  staged build removes the later muOS brightness restore entirely, leaving the
+  firmware-established level unchanged until a manual adjustment.
 - Sounds, low-power monitoring, USB setup, device-control refresh, and SDL-map
   refresh deferred until after frontend startup.
 - Early entropy retained: deferring haveged delayed kernel CRNG readiness and

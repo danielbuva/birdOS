@@ -34,11 +34,12 @@ FONT_LANGUAGE_FILE="/opt/muos/config/settings/general/language"
 BESPOKE_ROOT="/mnt/mmc/MUOS/boot-timing/bespoke-services"
 BESPOKE_STARTUP="$BESPOKE_ROOT/backup/startup.sh.pre-bespoke-services"
 BESPOKE_DEVICE="$BESPOKE_ROOT/backup/device-start.sh.pre-bespoke-services"
-BESPOKE_BRIGHTNESS_DEVICE="$BESPOKE_ROOT/backup/device-start.sh.pre-brightness-ready"
+BESPOKE_BRIGHTNESS_DEVICE="$BESPOKE_ROOT/backup/device-start.sh.pre-no-brightness-restore"
 BESPOKE_SYSINIT="$BESPOKE_ROOT/backup/sysinit.pre-bespoke-services"
 BESPOKE_STARTUP_MARKER="BOOT_TIMING_BESPOKE_BACKGROUND_V1"
 BESPOKE_DEVICE_MARKER="BOOT_TIMING_WIFI_ON_DEMAND_V1"
-BESPOKE_BRIGHTNESS_MARKER="DANI_BRIGHTNESS_READY_V1"
+BESPOKE_OLD_BRIGHTNESS_MARKER="DANI_BRIGHTNESS_READY_V1"
+BESPOKE_BRIGHTNESS_MARKER="DANI_DISABLE_ASYNC_BRIGHTNESS_RESTORE_V1"
 BESPOKE_SYSINIT_MARKER="BOOT_TIMING_DEFER_CHRONY_ENTROPY_V1"
 BESPOKE_ENTROPY_FIX_MARKER="BOOT_TIMING_RESTORE_EARLY_ENTROPY_V2"
 WIFI_DIAG_ROOT="/mnt/mmc/MUOS/boot-timing/wifi-module-diagnostic"
@@ -53,7 +54,7 @@ LAUNCHER_SOUND="$LAUNCHER_ROOT/boot.wav"
 LAUNCHER_TARGET="/opt/muos/bin/dani-launcher"
 LAUNCHER_PROOF_STATE="$LAUNCHER_ROOT/proof-v4-remaining.state"
 LAUNCHER_PROOF_LOG="$LAUNCHER_ROOT/proof-v4-remaining.log"
-EARLY_LAUNCHER_STATE="$LAUNCHER_ROOT/early-launcher-v8-brightness-sync.state"
+EARLY_LAUNCHER_STATE="$LAUNCHER_ROOT/early-launcher-v9-no-brightness-restore.state"
 EARLY_INIT_SOURCE="$LAUNCHER_ROOT/S03danilauncher"
 EARLY_INIT_TARGET="/opt/muos/script/init/S03danilauncher"
 EARLY_OLD_INIT_TARGET="/opt/muos/script/init/S11danilauncher"
@@ -262,40 +263,53 @@ if [ -f "$QUIET_DEVICE" ] && ! grep -q "$BESPOKE_DEVICE_MARKER" "$QUIET_DEVICE";
 	fi
 fi
 
-# Signal the custom launcher only after the stock device path has restored the
-# user's final backlight value. The menu remains usable before this marker, but
-# the decorative animation waits so a mid-animation brightness transition
-# cannot split its colours or framebuffer pages.
+# Preserve the brightness established by the boot firmware. Remove the later
+# stock restore from device/start.sh so it cannot overwrite that value
+# asynchronously in the middle of the launcher or its boot animation.
+BESPOKE_BRIGHTNESS_POLICY_READY=0
 if [ -f "$QUIET_DEVICE" ] && ! grep -q "$BESPOKE_BRIGHTNESS_MARKER" "$QUIET_DEVICE"; then
 	mkdir -p "$BESPOKE_ROOT/backup"
 	[ -f "$BESPOKE_BRIGHTNESS_DEVICE" ] || cp -p "$QUIET_DEVICE" "$BESPOKE_BRIGHTNESS_DEVICE"
 
-	PATCHED="/tmp/device-start-brightness.$$.sh"
-	IN_BRIGHTNESS_CASE=0
-	BRIGHTNESS_CASE_FOUND=0
+	PATCHED="/tmp/device-start-no-brightness-restore.$$.sh"
+	SKIP_BRIGHTNESS_BLOCK=0
+	BRIGHTNESS_BLOCK_FOUND=0
+	BRIGHTNESS_BLOCK_ENDED=0
 	while IFS= read -r LINE; do
-		printf '%s\n' "$LINE"
-		if [ "$LINE" = "$(printf '\t%s' 'case "$(GET_VAR "config" "settings/advanced/brightness")" in')" ]; then
-			IN_BRIGHTNESS_CASE=1
-		elif [ "$IN_BRIGHTNESS_CASE" -eq 1 ] && [ "$LINE" = "$(printf '\tesac')" ]; then
+		if [ "$SKIP_BRIGHTNESS_BLOCK" -eq 0 ] &&
+			[ "$LINE" = "$(printf '\t%s' '/opt/muos/script/device/bright.sh R')" ]; then
 			printf '\t# %s\n' "$BESPOKE_BRIGHTNESS_MARKER"
-			printf '\t%s\n' 'mkdir -p "/run/muos"'
-			printf '\t%s\n' ': >"/run/muos/dani-brightness-ready"'
-			IN_BRIGHTNESS_CASE=0
-			BRIGHTNESS_CASE_FOUND=1
+			printf '\t%s\n' ': # Keep firmware-established boot brightness; manual controls remain available.'
+			SKIP_BRIGHTNESS_BLOCK=1
+			BRIGHTNESS_BLOCK_FOUND=1
+		elif [ "$SKIP_BRIGHTNESS_BLOCK" -eq 1 ]; then
+			case "$LINE" in
+				*'GET_VAR "config" "settings/colour/temperature"'*)
+					SKIP_BRIGHTNESS_BLOCK=0
+					BRIGHTNESS_BLOCK_ENDED=1
+					printf '%s\n' "$LINE"
+					;;
+			esac
+		else
+			printf '%s\n' "$LINE"
 		fi
 	done <"$QUIET_DEVICE" >"$PATCHED"
 
-	if grep -q "$BESPOKE_BRIGHTNESS_MARKER" "$PATCHED" && [ "$BRIGHTNESS_CASE_FOUND" -eq 1 ]; then
+	if grep -q "$BESPOKE_BRIGHTNESS_MARKER" "$PATCHED" &&
+		! grep -q "$BESPOKE_OLD_BRIGHTNESS_MARKER" "$PATCHED" &&
+		[ "$BRIGHTNESS_BLOCK_FOUND" -eq 1 ] && [ "$BRIGHTNESS_BLOCK_ENDED" -eq 1 ]; then
 		chmod 755 "$PATCHED"
 		mv -f "$PATCHED" "$QUIET_DEVICE"
-		printf '%s launcher animation now waits for final backlight restore\n' \
+		printf '%s removed asynchronous brightness restore; preserved firmware-established boot value\n' \
 			"$(date -Iseconds 2>/dev/null || date)" >>"$BESPOKE_ROOT/install.log"
 	else
 		rm -f "$PATCHED"
-		printf '%s ERROR: brightness case not found; animation handshake not installed\n' \
+		printf '%s ERROR: stock brightness block not found; asynchronous restore retained\n' \
 			"$(date -Iseconds 2>/dev/null || date)" >>"$BESPOKE_ROOT/install.log"
 	fi
+fi
+if grep -q "$BESPOKE_BRIGHTNESS_MARKER" "$QUIET_DEVICE" 2>/dev/null; then
+	BESPOKE_BRIGHTNESS_POLICY_READY=1
 fi
 
 # Chrony is only useful with a network connection, and network.sh explicitly
@@ -570,14 +584,15 @@ fi
 # and lets normal muOS startup continue behind the custom screen. The binary
 # waits only for /dev/fb0 and /dev/input/event1 and reads evdev directly. B (or
 # the safety timeout) hands off after normal startup reports that it is ready.
-if [ -s "$LAUNCHER_OBJECT" ] && [ -s "$EARLY_INIT_SOURCE" ] && [ -s "$LAUNCHER_SOUND" ] &&
+if [ "$BESPOKE_BRIGHTNESS_POLICY_READY" -eq 1 ] &&
+	[ -s "$LAUNCHER_OBJECT" ] && [ -s "$EARLY_INIT_SOURCE" ] && [ -s "$LAUNCHER_SOUND" ] &&
 	[ ! -f "$EARLY_LAUNCHER_STATE" ]; then
 	LAUNCHER_NEW="/tmp/dani-launcher-direct.$$"
 	PATCHED="/tmp/startup-early-launcher.$$.sh"
 	STARTUP_READY=0
 
 	if /usr/bin/ld -static --build-id=none -z noexecstack -s -e _start \
-		-o "$LAUNCHER_NEW" "$LAUNCHER_OBJECT" >"$LAUNCHER_ROOT/link-early-v8-brightness-sync.log" 2>&1; then
+		-o "$LAUNCHER_NEW" "$LAUNCHER_OBJECT" >"$LAUNCHER_ROOT/link-early-v9-no-brightness-restore.log" 2>&1; then
 		chmod 755 "$LAUNCHER_NEW"
 		if grep -q "$EARLY_STARTUP_MARKER" "$EARLY_STARTUP_TARGET"; then
 			STARTUP_READY=1
@@ -609,7 +624,7 @@ if [ -s "$LAUNCHER_OBJECT" ] && [ -s "$EARLY_INIT_SOURCE" ] && [ -s "$LAUNCHER_S
 			chmod 755 "$EARLY_INIT_TARGET"
 			rm -f "$EARLY_OLD_INIT_TARGET"
 			printf '%s\n' "installed" >"$EARLY_LAUNCHER_STATE"
-			printf '%s brightness-synchronised animation and lightweight sound-player selection installed; active next boot\n' \
+			printf '%s no asynchronous brightness restore, immediate animation, and direct proven sound path installed; active next boot\n' \
 				"$(date -Iseconds 2>/dev/null || date)" >>"$BESPOKE_ROOT/install.log"
 		else
 			rm -f "$PATCHED" "$LAUNCHER_NEW"
