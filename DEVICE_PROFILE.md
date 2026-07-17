@@ -16,7 +16,7 @@ product decisions, not runtime options.
 ## Fixed behavior
 
 - Language: English only.
-- Startup destination: the games menu.
+- Startup destination: the custom launcher's four-item main menu.
 - Network: completely off at boot; loaded only for an explicit network task
   such as PortMaster or scraping.
 - Game discovery: a generated cache, never a boot-time directory scan.
@@ -42,10 +42,15 @@ English bitmap glyphs, draws directly to the Linux framebuffer, reads evdev
 directly, and exits back to stock on B from the main screen or after its safety
 timeout.
 
-Games opens an embedded, generated catalogue. The proof catalogue deliberately
-contains four known-working titles across SNES, PSP, and Ports. It is browsable
+Games opens an embedded, generated catalogue. The current proof catalogue
+contains five titles across SNES, PSP, and Ports, including the newly installed
+ROTA Port. It is browsable
 before ROM storage mounts; storage readiness and individual ROM availability
 are presented separately.
+
+Favorites is an exact-path cache, not a scan. Y adds or removes the selected
+title, an atomic text file persists the selection across boots and catalogue
+reordering, and the cache is loaded only after ROM storage becomes ready.
 
 Ready proof titles use fixed launch mappings: Snes9x for SNES, standalone PPSSPP
 for PSP, and the external-script launcher for Ports. The custom launcher releases
@@ -55,6 +60,7 @@ content process exits. No automatic core discovery is part of this device.
 PortMaster is the explicit network boundary: selecting it loads Wi-Fi, connects,
 runs the tool, then disconnects services and unloads the driver before returning.
 Shutdown uses the normal muOS poweroff machinery directly from the custom menu.
+Both paths are hardware-verified and do not enter the stock frontend.
 
 ## Decisions reserved for the visual phase
 

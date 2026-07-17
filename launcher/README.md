@@ -86,3 +86,19 @@ the stock frontend. PortMaster waits for the normal audio/controller runtime,
 loads and connects the RG34XX-SP network only when selected, runs PortMaster,
 then disconnects services, unloads the Wi-Fi device, restores launcher ownership
 and redraws the custom menu. Network setup therefore adds no work to boot.
+
+Both hardware tests passed: PortMaster connected on demand and installed ROTA,
+existing games still launched, and Shutdown powered the device off directly.
+The following boot entered the launcher at 2.307 seconds and finished its first
+interactive frame at 2.326 seconds.
+
+## Persistent library state
+
+The next proof adds ROTA to the five-title embedded catalog and turns Favorites
+into a real view. Y toggles the selected title. Favorites are stored as exact ROM
+paths in an atomically replaced text cache, so rebuilding or reordering the
+compiled catalog cannot silently point a favorite at the wrong game. The cache
+loads asynchronously only after storage is ready and never delays first frame.
+Each launch also atomically records the exact most-recent path for the later
+History/Resume decision. Per-boot launcher logs are archived by kernel boot ID
+so a later shutdown no longer overwrites evidence from a PortMaster or game run.

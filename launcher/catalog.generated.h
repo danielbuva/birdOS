@@ -6,7 +6,7 @@
 #define CATALOG_LAUNCH_PPSSPP 2
 #define CATALOG_LAUNCH_PORTMASTER 3
 #define CATALOG_SYSTEM_COUNT 3U
-#define CATALOG_ENTRY_COUNT 4U
+#define CATALOG_ENTRY_COUNT 5U
 
 struct catalog_system {
     const char *name;
@@ -24,7 +24,7 @@ struct catalog_entry {
 static const struct catalog_system catalog_systems[CATALOG_SYSTEM_COUNT] = {
     {"SNES", 0U, 2U, CATALOG_LAUNCH_RETROARCH},
     {"PSP", 2U, 1U, CATALOG_LAUNCH_PPSSPP},
-    {"PORTS", 3U, 1U, CATALOG_LAUNCH_PORTMASTER},
+    {"PORTS", 3U, 2U, CATALOG_LAUNCH_PORTMASTER},
 };
 
 static const struct catalog_entry catalog_entries[CATALOG_ENTRY_COUNT] = {
@@ -32,6 +32,7 @@ static const struct catalog_entry catalog_entries[CATALOG_ENTRY_COUNT] = {
     {"GOOF TROOP (USA)", "/mnt/mmc/ROMS/SNES/Goof Troop (USA).zip", 0U},
     {"GOD OF WAR - CHAINS OF OLYMPUS (USA)", "/mnt/mmc/ROMS/PSP/God of War - Chains of Olympus (USA).cso", 1U},
     {"MAX PAYNE", "/mnt/mmc/ROMS/Ports/Max Payne.sh", 2U},
+    {"ROTA", "/mnt/mmc/ROMS/Ports/ROTA.sh", 2U},
 };
 
 #endif

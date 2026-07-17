@@ -10,8 +10,9 @@ profile and convert muOS 2601.1 into a fixed-purpose RG34XX-SP system.
 - Pre-font internal input-ready average: 9.84 seconds.
 - English-only-font internal input-ready average: 9.60 seconds.
 - Optimized-stock internal input-ready average: 8.43 seconds.
-- Direct-launcher v3 first frame: 8.758 seconds from power-on and 19 ms from
-  launcher process start (still launched late by user-init for this proof).
+- Current direct-launcher process entry: 2.307 seconds of kernel uptime.
+- Current first interactive frame: 2.326 seconds, 19 ms after process entry.
+- Current LED-on stopwatch result: consistently below four seconds.
 
 Diagnostics remain enabled. The long-term target is a small custom launcher
 with fixed RG34XX-SP hardware, English text, embedded assets, a cached game
@@ -30,15 +31,21 @@ index, on-demand networking, and a reproducible firmware image.
   path loads the Wi-Fi module when requested.
 - Kernel module metadata is rebuilt only if the fixed kernel's cached
   `modules.dep` database is missing.
-- PortMaster requests a network connection when launched.
+- The custom launcher supervisor loads the network only around PortMaster.
+- The fixed launcher starts before udev, renders directly to both framebuffer
+  pages, and reads the built-in evdev device without SDL or joystick services.
+- Its embedded catalog remains browsable while ROM storage mounts concurrently.
+- SNES, PSP, and native Port launch/return paths work with audio and volume.
+- PortMaster and shutdown run directly without entering the stock frontend.
+- Persistent Favorites and most-recent path tracking are the current staged proof.
 - Sounds, low-power monitoring, USB setup, device-control refresh, and SDL-map
   refresh deferred until after frontend startup.
 - Early entropy retained: deferring haveged delayed kernel CRNG readiness and
   caused PipeWire/SDL audio to block the frontend until 12-14 seconds.
 
 The cached-module test reported `cached`, and the complete post-change
-functionality test passed. This is the frozen optimized-stock checkpoint before
-the project moves to the custom launcher architecture.
+functionality test passed. The optimized-stock checkpoint remains in Git; the
+active card now boots the custom launcher as its normal frontend.
 
 ## Font payload
 
@@ -49,7 +56,8 @@ GNU linker, then installs the resulting shared libraries.
 ## Important files
 
 - `99-frontend-native-log.sh`: persistent installer and diagnostic collector.
-- `PortMaster.sh`: PortMaster launcher with on-demand Wi-Fi.
+- `PortMaster.sh`: captured PortMaster reference; the on-demand network boundary
+  lives in `launcher/S03danilauncher`.
 - `font-stubs/`: source and AArch64 object payloads for unused language fonts.
 - `ROADMAP.md`: target architecture and project sequence.
 - `DEVICE_PROFILE.md`: fixed hardware and experience contract.

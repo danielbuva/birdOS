@@ -33,6 +33,7 @@ typedef signed long s64;
 #define EV_ABS 0x03
 #define BTN_SOUTH 304
 #define BTN_EAST 305
+#define BUTTON_Y 306
 #define BTN_TL 308
 #define BTN_TR 309
 #define ABS_HAT0X 16
@@ -44,10 +45,15 @@ typedef signed long s64;
 #define INPUT_PATH "/dev/input/event1"
 #define ROM_ROOT "/mnt/mmc/ROMS"
 #define LAUNCH_REQUEST "/run/muos/dani-launch-request"
+#define FAVORITES_PATH "/mnt/mmc/MUOS/bespoke-launcher/favorites.txt"
+#define FAVORITES_TEMP "/mnt/mmc/MUOS/bespoke-launcher/favorites.tmp"
+#define RECENT_PATH "/mnt/mmc/MUOS/bespoke-launcher/recent.txt"
+#define RECENT_TEMP "/mnt/mmc/MUOS/bespoke-launcher/recent.tmp"
 
 #define VIEW_MAIN 0U
 #define VIEW_SYSTEMS 1U
 #define VIEW_GAMES 2U
+#define VIEW_FAVORITES 3U
 #define GAME_ROWS 8U
 #define ACTION_NONE 0
 #define ACTION_STOCK 1
@@ -140,6 +146,9 @@ static u32 active_system;
 static int axis_x;
 static int axis_y;
 static int storage_ready;
+static int favorites_loaded;
+static u32 favorite_count;
+static u8 favorites[(CATALOG_ENTRY_COUNT + 7U) / 8U];
 static u64 next_storage_probe;
 static u32 captured_events;
 static const char *selected_status = "DIRECT FRAMEBUFFER READY";
@@ -151,6 +160,7 @@ static const struct glyph font[] = {
     {' ', {0, 0, 0, 0, 0, 0, 0}},       {'!', {4, 4, 4, 4, 4, 0, 4}},
     {'\'', {4, 4, 0, 0, 0, 0, 0}},      {'(', {2, 4, 8, 8, 8, 4, 2}},
     {')', {8, 4, 2, 2, 2, 4, 8}},       {'&', {12, 18, 20, 8, 21, 18, 13}},
+    {'*', {0, 21, 14, 31, 14, 21, 0}},
     {',', {0, 0, 0, 0, 0, 4, 8}},       {'-', {0, 0, 0, 31, 0, 0, 0}},
     {'.', {0, 0, 0, 0, 0, 0, 4}},       {'/', {1, 2, 4, 8, 16, 0, 0}},
     {':', {0, 4, 0, 0, 4, 0, 0}},       {'?', {14, 17, 1, 2, 4, 0, 4}},
@@ -205,6 +215,18 @@ static long sys_read(int fd, void *buffer, u64 length) {
 
 static long sys_write(int fd, const void *buffer, u64 length) {
     return syscall6(64, fd, (long)buffer, (long)length, 0, 0, 0);
+}
+
+static long sys_fsync(int fd) {
+    return syscall6(82, fd, 0, 0, 0, 0, 0);
+}
+
+static long sys_unlink(const char *path) {
+    return syscall6(35, AT_FDCWD, (long)path, 0, 0, 0, 0);
+}
+
+static long sys_rename(const char *old_path, const char *new_path) {
+    return syscall6(38, AT_FDCWD, (long)old_path, AT_FDCWD, (long)new_path, 0, 0);
 }
 
 static long sys_ioctl(int fd, u64 request, void *arg) {
@@ -270,6 +292,157 @@ static u64 boot_ms(void) {
     struct timespec now;
     if (sys_clock_gettime(&now) < 0) return 0;
     return (u64)now.sec * 1000UL + (u64)(now.nsec / 1000000L);
+}
+
+static int write_exact(int fd, const char *buffer, u64 length) {
+    while (length) {
+        long written = sys_write(fd, buffer, length);
+        if (written <= 0) return -1;
+        buffer += written;
+        length -= (u64)written;
+    }
+    return 0;
+}
+
+static int path_matches(const char *line, u32 length, const char *path) {
+    u32 i;
+    for (i = 0; i < length; i++)
+        if (!path[i] || path[i] != line[i]) return 0;
+    return path[length] == 0;
+}
+
+static int is_favorite(u32 catalog_index) {
+    return (favorites[catalog_index >> 3] & (u8)(1U << (catalog_index & 7U))) != 0;
+}
+
+static void set_favorite(u32 catalog_index, int enabled) {
+    u8 mask = (u8)(1U << (catalog_index & 7U));
+    if (enabled)
+        favorites[catalog_index >> 3] |= mask;
+    else
+        favorites[catalog_index >> 3] &= (u8)~mask;
+}
+
+static u32 favorite_catalog_index(u32 ordinal) {
+    u32 catalog_index;
+    for (catalog_index = 0; catalog_index < CATALOG_ENTRY_COUNT; catalog_index++) {
+        if (!is_favorite(catalog_index)) continue;
+        if (!ordinal) return catalog_index;
+        ordinal--;
+    }
+    return CATALOG_ENTRY_COUNT;
+}
+
+static void match_favorite_path(const char *line, u32 length) {
+    u32 catalog_index;
+    if (!length) return;
+    for (catalog_index = 0; catalog_index < CATALOG_ENTRY_COUNT; catalog_index++) {
+        if (!path_matches(line, length, catalog_entries[catalog_index].path)) continue;
+        if (!is_favorite(catalog_index)) {
+            set_favorite(catalog_index, 1);
+            favorite_count++;
+        }
+        return;
+    }
+}
+
+static void load_favorites(void) {
+    char chunk[512];
+    char line[512];
+    u32 line_length = 0;
+    int overflow = 0;
+    u32 i;
+    long fd;
+    long count;
+
+    if (favorites_loaded) return;
+    for (i = 0; i < sizeof(favorites); i++) favorites[i] = 0;
+    favorite_count = 0;
+    favorites_loaded = 1;
+
+    fd = sys_open(FAVORITES_PATH, O_RDONLY);
+    if (fd < 0) {
+        log_text("favorites_load boot_ms=");
+        log_number(boot_ms());
+        log_text(" result=new count=0\n");
+        return;
+    }
+
+    while ((count = sys_read((int)fd, chunk, sizeof(chunk))) > 0) {
+        long offset;
+        for (offset = 0; offset < count; offset++) {
+            char c = chunk[offset];
+            if (c == '\n') {
+                if (!overflow) match_favorite_path(line, line_length);
+                line_length = 0;
+                overflow = 0;
+            } else if (c != '\r') {
+                if (line_length < sizeof(line))
+                    line[line_length++] = c;
+                else
+                    overflow = 1;
+            }
+        }
+    }
+    if (line_length && !overflow) match_favorite_path(line, line_length);
+    sys_close((int)fd);
+    log_text("favorites_load boot_ms=");
+    log_number(boot_ms());
+    log_text(" result=ready count=");
+    log_number(favorite_count);
+    log_text("\n");
+}
+
+static int save_favorites(void) {
+    u32 catalog_index;
+    long fd = sys_create(FAVORITES_TEMP, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (fd < 0) return -1;
+
+    for (catalog_index = 0; catalog_index < CATALOG_ENTRY_COUNT; catalog_index++) {
+        const char *path;
+        if (!is_favorite(catalog_index)) continue;
+        path = catalog_entries[catalog_index].path;
+        if (write_exact((int)fd, path, string_length(path)) < 0 ||
+            write_exact((int)fd, "\n", 1) < 0) {
+            sys_close((int)fd);
+            sys_unlink(FAVORITES_TEMP);
+            return -1;
+        }
+    }
+    if (sys_fsync((int)fd) < 0) {
+        sys_close((int)fd);
+        sys_unlink(FAVORITES_TEMP);
+        return -1;
+    }
+    sys_close((int)fd);
+    if (sys_rename(FAVORITES_TEMP, FAVORITES_PATH) < 0) {
+        sys_unlink(FAVORITES_TEMP);
+        return -1;
+    }
+    return 0;
+}
+
+static void save_recent(const struct catalog_entry *entry) {
+    long fd = sys_create(RECENT_TEMP, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    int result = -1;
+    if (fd >= 0) {
+        if (write_exact((int)fd, entry->path, string_length(entry->path)) == 0 &&
+            write_exact((int)fd, "\n", 1) == 0)
+            result = 0;
+        sys_close((int)fd);
+    }
+    if (!result && sys_rename(RECENT_TEMP, RECENT_PATH) == 0) {
+        log_text("recent_save boot_ms=");
+        log_number(boot_ms());
+        log_text(" result=ready path=");
+        log_text(entry->path);
+        log_text("\n");
+        return;
+    }
+    sys_unlink(RECENT_TEMP);
+    log_text("recent_save boot_ms=");
+    log_number(boot_ms());
+    log_text(" result=failed\n");
 }
 
 static u32 scale_component(u8 value, struct fb_bitfield field) {
@@ -358,7 +531,19 @@ static void draw_text_limited(int x, int y, const char *text, int scale, u32 val
 static u32 current_count(void) {
     if (view == VIEW_MAIN) return 4U;
     if (view == VIEW_SYSTEMS) return CATALOG_SYSTEM_COUNT;
-    return catalog_systems[active_system].count;
+    if (view == VIEW_GAMES) return catalog_systems[active_system].count;
+    if (view == VIEW_FAVORITES) return favorite_count;
+    return 0U;
+}
+
+static u32 current_catalog_index(void) {
+    if (view == VIEW_GAMES) {
+        const struct catalog_system *system = &catalog_systems[active_system];
+        if (selection < system->count) return system->first + selection;
+    }
+    if (view == VIEW_FAVORITES && selection < favorite_count)
+        return favorite_catalog_index(selection);
+    return CATALOG_ENTRY_COUNT;
 }
 
 static void draw_screen(void) {
@@ -400,12 +585,23 @@ static void draw_screen(void) {
             }
         }
     } else {
-        const struct catalog_system *system = &catalog_systems[active_system];
+        u32 count = current_count();
         u32 first = selection < GAME_ROWS ? 0U : selection - GAME_ROWS + 1U;
-        draw_text(32, 22, system->name, 4, primary);
-        draw_text(34, 62, "CACHED GAMES // STORAGE ASYNC", 2, muted);
-        for (i = 0; i < GAME_ROWS && first + i < system->count; i++) {
-            const struct catalog_entry *entry = &catalog_entries[system->first + first + i];
+        if (view == VIEW_GAMES) {
+            const struct catalog_system *system = &catalog_systems[active_system];
+            draw_text(32, 22, system->name, 4, primary);
+            draw_text(34, 62, "CACHED GAMES // STORAGE ASYNC", 2, muted);
+        } else {
+            draw_text(32, 22, "FAVORITES", 4, primary);
+            draw_text(34, 62, "EXACT PATH CACHE // NO SCAN", 2, muted);
+        }
+        if (view == VIEW_FAVORITES && !count)
+            draw_text(72, 160, favorites_loaded ? "NO FAVORITES YET" : "LOADING FAVORITES", 3, primary);
+        for (i = 0; i < GAME_ROWS && first + i < count; i++) {
+            u32 catalog_index = view == VIEW_GAMES
+                                    ? catalog_systems[active_system].first + first + i
+                                    : favorite_catalog_index(first + i);
+            const struct catalog_entry *entry = &catalog_entries[catalog_index];
             int y = 102 + (int)i * 38;
             if (first + i == selection) {
                 rectangle(32, y - 7, 656, 31, selected);
@@ -414,6 +610,8 @@ static void draw_screen(void) {
             } else {
                 draw_text_limited(72, y, entry->name, 2, primary, 50U);
             }
+            if (view == VIEW_GAMES && is_favorite(catalog_index))
+                draw_text(654, y, "*", 2, first + i == selection ? background : selected);
         }
     }
 
@@ -421,7 +619,9 @@ static void draw_screen(void) {
     if (view == VIEW_MAIN)
         draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE   A SELECT   B STOCK", 2, primary);
     else if (view == VIEW_GAMES)
-        draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE   L1 R1 PAGE   A LAUNCH   B BACK", 2, primary);
+        draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE  L1 R1 PAGE  A LAUNCH  Y FAV  B BACK", 2, primary);
+    else if (view == VIEW_FAVORITES)
+        draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE  L1 R1 PAGE  A LAUNCH  Y REMOVE  B BACK", 2, primary);
     else
         draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE   A OPEN   B BACK", 2, primary);
     __asm__ volatile("dmb ishst" ::: "memory");
@@ -452,6 +652,7 @@ static int write_launch_request(const struct catalog_system *system,
         return ACTION_NONE;
     }
     sys_close((int)fd);
+    save_recent(entry);
     selected_status = "STARTING GAME";
     log_text("launch_request boot_ms=");
     log_number(boot_ms());
@@ -463,6 +664,69 @@ static int write_launch_request(const struct catalog_system *system,
     return ACTION_LAUNCH;
 }
 
+static int launch_catalog_entry(u32 catalog_index) {
+    const struct catalog_entry *entry;
+    const struct catalog_system *system;
+    long fd;
+    if (catalog_index >= CATALOG_ENTRY_COUNT) return ACTION_NONE;
+    entry = &catalog_entries[catalog_index];
+    system = &catalog_systems[entry->system];
+    fd = sys_open(entry->path, O_RDONLY | O_NONBLOCK);
+    log_text("rom_test boot_ms=");
+    log_number(boot_ms());
+    log_text(" path=");
+    log_text(entry->path);
+    if (fd >= 0) {
+        sys_close((int)fd);
+        log_text(" result=ready\n");
+        return write_launch_request(system, entry);
+    }
+    selected_status = "WAITING FOR ROM STORAGE";
+    log_text(" result=not-ready\n");
+    return ACTION_NONE;
+}
+
+static void toggle_current_favorite(void) {
+    u32 catalog_index = current_catalog_index();
+    int was_favorite;
+    if (catalog_index >= CATALOG_ENTRY_COUNT) {
+        selected_status = "NO FAVORITE SELECTED";
+        draw_screen();
+        return;
+    }
+    if (!storage_ready || !favorites_loaded) {
+        selected_status = "WAITING FOR FAVORITES STORAGE";
+        draw_screen();
+        return;
+    }
+
+    was_favorite = is_favorite(catalog_index);
+    set_favorite(catalog_index, !was_favorite);
+    if (was_favorite)
+        favorite_count--;
+    else
+        favorite_count++;
+
+    if (save_favorites() < 0) {
+        set_favorite(catalog_index, was_favorite);
+        if (was_favorite)
+            favorite_count++;
+        else
+            favorite_count--;
+        selected_status = "FAVORITES SAVE FAILED";
+        log_text("favorite_toggle result=save-failed path=");
+    } else {
+        selected_status = was_favorite ? "FAVORITE REMOVED" : "FAVORITE ADDED";
+        log_text(was_favorite ? "favorite_toggle result=removed path="
+                              : "favorite_toggle result=added path=");
+        if (view == VIEW_FAVORITES && selection >= favorite_count)
+            selection = favorite_count ? favorite_count - 1U : 0U;
+    }
+    log_text(catalog_entries[catalog_index].path);
+    log_text("\n");
+    draw_screen();
+}
+
 static int select_current(void) {
     int action = ACTION_NONE;
     if (view == VIEW_MAIN) {
@@ -471,7 +735,9 @@ static int select_current(void) {
             selection = 0U;
             selected_status = "CATALOG READY FROM FIRMWARE";
         } else if (selection == 1U) {
-            selected_status = "FAVORITES CACHE COMING NEXT";
+            view = VIEW_FAVORITES;
+            selection = 0U;
+            selected_status = favorites_loaded ? "FAVORITES READY" : "FAVORITES LOAD WITH STORAGE";
         } else if (selection == 2U) {
             selected_status = "CONNECTING PORTMASTER";
             action = ACTION_PORTMASTER;
@@ -484,22 +750,12 @@ static int select_current(void) {
         view = VIEW_GAMES;
         selection = 0U;
         selected_status = storage_ready ? "ROM STORAGE READY" : "CATALOG READY // ROMS MOUNTING";
-    } else {
-        const struct catalog_system *system = &catalog_systems[active_system];
-        const struct catalog_entry *entry = &catalog_entries[system->first + selection];
-        long fd = sys_open(entry->path, O_RDONLY | O_NONBLOCK);
-        log_text("rom_test boot_ms=");
-        log_number(boot_ms());
-        log_text(" path=");
-        log_text(entry->path);
-        if (fd >= 0) {
-            sys_close((int)fd);
-            log_text(" result=ready\n");
-            action = write_launch_request(system, entry);
-        } else {
-            selected_status = "WAITING FOR ROM STORAGE";
-            log_text(" result=not-ready\n");
-        }
+    } else if (view == VIEW_GAMES || view == VIEW_FAVORITES) {
+        u32 catalog_index = current_catalog_index();
+        if (catalog_index < CATALOG_ENTRY_COUNT)
+            action = launch_catalog_entry(catalog_index);
+        else
+            selected_status = "NO GAME SELECTED";
     }
     draw_screen();
     return action;
@@ -522,6 +778,13 @@ static int handle_direction(int direction) {
 }
 
 static int handle_back(void) {
+    if (view == VIEW_FAVORITES) {
+        view = VIEW_MAIN;
+        selection = 1U;
+        selected_status = "DIRECT FRAMEBUFFER READY";
+        draw_screen();
+        return 0;
+    }
     if (view == VIEW_GAMES) {
         view = VIEW_SYSTEMS;
         selection = active_system;
@@ -558,11 +821,15 @@ static int handle_event(const struct input_event *event) {
             return select_current();
         }
         if (event->code == BTN_EAST) return handle_back();
-        if (view == VIEW_GAMES && event->code == BTN_TL) {
+        if ((view == VIEW_GAMES || view == VIEW_FAVORITES) && event->code == BUTTON_Y) {
+            toggle_current_favorite();
+            return 0;
+        }
+        if ((view == VIEW_GAMES || view == VIEW_FAVORITES) && event->code == BTN_TL) {
             move_selection(-1, GAME_ROWS);
             return 0;
         }
-        if (view == VIEW_GAMES && event->code == BTN_TR) {
+        if ((view == VIEW_GAMES || view == VIEW_FAVORITES) && event->code == BTN_TR) {
             move_selection(1, GAME_ROWS);
             return 0;
         }
@@ -594,7 +861,8 @@ static void probe_storage(void) {
     if (fd < 0) return;
     sys_close((int)fd);
     storage_ready = 1;
-    selected_status = "ROM STORAGE READY";
+    load_favorites();
+    selected_status = view == VIEW_FAVORITES ? "FAVORITES READY" : "ROM STORAGE READY";
     log_text("storage_ready boot_ms=");
     log_number(now);
     log_text(" path=" ROM_ROOT "\n");

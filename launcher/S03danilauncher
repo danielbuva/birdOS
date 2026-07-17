@@ -8,12 +8,16 @@ STOPPING="$RUN_DIR/dani-launcher-stopping"
 SUPERVISOR_PID="$RUN_DIR/dani-launcher-supervisor.pid"
 EARLY_LOG="/tmp/dani-launcher-early.log"
 PERSISTENT_LOG="/mnt/mmc/MUOS/bespoke-launcher/early-launcher-latest.log"
+BOOT_ID=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null)
+[ -n "$BOOT_ID" ] || BOOT_ID="unknown"
+ARCHIVE_LOG="/mnt/mmc/MUOS/bespoke-launcher/early-launcher-$BOOT_ID.log"
 LAUNCH_REQUEST="$RUN_DIR/dani-launch-request"
 
 SNAPSHOT_LOG() {
 	[ -d /mnt/mmc/MUOS ] || return 0
 	mkdir -p "${PERSISTENT_LOG%/*}"
 	cp -f "$EARLY_LOG" "$PERSISTENT_LOG"
+	cp -f "$EARLY_LOG" "$ARCHIVE_LOG"
 }
 
 WAIT_RUNTIME() {
@@ -160,8 +164,7 @@ case "$1" in
 				while [ ! -e "$READY" ]; do sleep 0.05; done
 				[ -e "$STOPPING" ] && exit 0
 
-				mkdir -p "${PERSISTENT_LOG%/*}"
-				cp -f "$EARLY_LOG" "$PERSISTENT_LOG"
+				SNAPSHOT_LOG
 				rm -f "$ACTIVE"
 				. /opt/muos/script/var/func.sh
 				FRONTEND start
