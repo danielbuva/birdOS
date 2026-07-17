@@ -6,10 +6,10 @@ profile and convert muOS 2601.1 into a fixed-purpose RG34XX-SP system.
 ## Measured state
 
 - Fresh-card stopwatch baseline: approximately 19.1 seconds.
-- Current stopwatch result after Wi-Fi module deferral: approximately 10.44 seconds.
+- Optimized-stock stopwatch checkpoint: 10.25 seconds (10.35, 10.30, 10.10).
 - Pre-font internal input-ready average: 9.84 seconds.
 - English-only-font internal input-ready average: 9.60 seconds.
-- Current internal input-ready average: 8.92 seconds.
+- Optimized-stock internal input-ready average: 8.43 seconds.
 
 Diagnostics remain enabled. The long-term target is a small custom launcher
 with fixed RG34XX-SP hardware, English text, embedded assets, a cached game
@@ -34,6 +34,10 @@ index, on-demand networking, and a reproducible firmware image.
 - Early entropy retained: deferring haveged delayed kernel CRNG readiness and
   caused PipeWire/SDL audio to block the frontend until 12-14 seconds.
 
+The cached-module test reported `cached`, and the complete post-change
+functionality test passed. This is the frozen optimized-stock checkpoint before
+the project moves to the custom launcher architecture.
+
 ## Font payload
 
 Run `./build-font-stubs.sh` on macOS to compile the five AArch64 relocatable
@@ -46,5 +50,7 @@ GNU linker, then installs the resulting shared libraries.
 - `PortMaster.sh`: PortMaster launcher with on-demand Wi-Fi.
 - `font-stubs/`: source and AArch64 object payloads for unused language fonts.
 - `ROADMAP.md`: target architecture and project sequence.
+- `DEVICE_PROFILE.md`: fixed hardware and experience contract.
+- `launcher/`: dependency-free direct-framebuffer launcher proof.
 
 The untouched recovery card remains the authoritative known-good system.

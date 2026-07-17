@@ -45,6 +45,11 @@ WIFI_MODULE_TARGET="/opt/muos/script/device/module.sh"
 WIFI_MODULE_MARKER="BOOT_TIMING_WIFI_MODULE_ON_DEMAND_V1"
 DEPMOD_CACHE_MARKER="BOOT_TIMING_CACHE_DEPMOD_V1"
 DEPMOD_STATUS="/tmp/muos/depmod-status"
+LAUNCHER_ROOT="/mnt/mmc/MUOS/bespoke-launcher"
+LAUNCHER_OBJECT="$LAUNCHER_ROOT/dani-launcher.o"
+LAUNCHER_TARGET="/opt/muos/bin/dani-launcher"
+LAUNCHER_PROOF_STATE="$LAUNCHER_ROOT/proof-v1.state"
+LAUNCHER_PROOF_LOG="$LAUNCHER_ROOT/proof-v1.log"
 
 if [ -r /proc/sys/kernel/random/boot_id ]; then
 	IFS= read -r BOOT_ID </proc/sys/kernel/random/boot_id
@@ -465,6 +470,42 @@ fi
 
 if [ -f "$DEPMOD_STATUS" ] && [ ! -f "$BESPOKE_ROOT/depmod-status" ]; then
 	cp -f "$DEPMOD_STATUS" "$BESPOKE_ROOT/depmod-status"
+fi
+
+# Build and run the first custom-launcher hardware proof exactly once. The
+# host supplies one freestanding AArch64 object; the target's own linker turns
+# it into a static executable with no runtime library dependencies. Because
+# user-init runs after the stock frontend has started, this proof stops stock,
+# owns the framebuffer/input devices for at most 15 seconds, then restores
+# stock. The next phase will move the proven binary earlier in the boot path.
+if [ -s "$LAUNCHER_OBJECT" ] && [ ! -f "$LAUNCHER_PROOF_STATE" ]; then
+	mkdir -p "$LAUNCHER_ROOT"
+	LAUNCHER_NEW="/tmp/dani-launcher.$$"
+	if /usr/bin/ld -static --build-id=none -z noexecstack -s -e _start \
+		-o "$LAUNCHER_NEW" "$LAUNCHER_OBJECT" >"$LAUNCHER_ROOT/link-v1.log" 2>&1; then
+		chmod 755 "$LAUNCHER_NEW"
+		mv -f "$LAUNCHER_NEW" "$LAUNCHER_TARGET"
+		(
+			sleep 3
+			. /opt/muos/script/var/func.sh
+			{
+				printf 'proof supervisor start boot uptime: '
+				cut -d ' ' -f 1 /proc/uptime
+				FRONTEND stop
+				"$LAUNCHER_TARGET"
+				LAUNCHER_RESULT=$?
+				FRONTEND start
+				printf 'proof executable result: %s\n' "$LAUNCHER_RESULT"
+				printf 'stock frontend restart requested at uptime: '
+				cut -d ' ' -f 1 /proc/uptime
+			} >"$LAUNCHER_PROOF_LOG" 2>&1
+			printf '%s\n' "complete" >"$LAUNCHER_PROOF_STATE"
+		) &
+	else
+		rm -f "$LAUNCHER_NEW"
+		printf '%s launcher proof link failed; user-init will retry next boot\n' \
+			"$(date -Iseconds 2>/dev/null || date)" >>"$BESPOKE_ROOT/install.log"
+	fi
 fi
 
 # The frontend links all five large non-English font DSOs even when English is
