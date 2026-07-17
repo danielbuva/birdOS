@@ -27,7 +27,7 @@ product decisions, not runtime options.
 - Stock muOS frontend: retained only as a fallback until the custom launcher
   can launch games, return from them, suspend and shut down reliably.
 
-## Launcher proof menu
+## Launcher menu
 
 The first hardware proof deliberately contains only:
 
@@ -36,10 +36,15 @@ The first hardware proof deliberately contains only:
 3. PortMaster
 4. Shutdown
 
-This is a functional skeleton, not the final visual design. It embeds only the
-uppercase English glyphs used by this screen, draws directly to the Linux
-framebuffer, reads evdev directly, and exits back to stock on B or after its
-safety timeout.
+This is a functional skeleton, not the final visual design. It embeds only its
+English bitmap glyphs, draws directly to the Linux framebuffer, reads evdev
+directly, and exits back to stock on B from the main screen or after its safety
+timeout.
+
+Games opens an embedded, generated catalogue. The proof catalogue deliberately
+contains four known-working titles across SNES, PSP, and Ports. It is browsable
+before ROM storage mounts; storage readiness and individual ROM availability
+are presented separately.
 
 ## Decisions reserved for the visual phase
 

@@ -27,6 +27,23 @@ Power button
 
 The long-term centerpiece would be a tiny custom launcher—ideally a small statically linked program—that replaces the heavier general-purpose frontend while retaining muOS underneath for hardware support, emulator launching, PortMaster, power controls and other useful infrastructure.
 
+## Current implementation status
+
+- [x] Preserve the working system, Git history, diagnostics and stopwatch baseline.
+- [x] Define the fixed RG34XX-SP/English/offline-at-boot experience.
+- [x] Build a freestanding static launcher with direct framebuffer rendering.
+- [x] Start at the earliest proven point using direct evdev input before udev.
+- [ ] Prove the embedded game catalogue and asynchronous ROM readiness (staged next).
+- [ ] Add emulator/PortMaster launch handoff and reliable return.
+- [ ] Replace the stock frontend permanently.
+- [ ] Complete the final visual, animation and audio identity.
+- [ ] Remove superseded muOS components and produce a reproducible firmware image.
+- [ ] Optimize kernel and U-Boot last.
+
+Verified interactive milestone: process entry at 2.269 seconds of kernel uptime,
+input already ready, first frame at 2.289 seconds, and approximately four seconds
+from LED-on by stopwatch.
+
 ## Priority list
 
 ### 1. Preserve the working system and measurements

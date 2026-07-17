@@ -30,3 +30,24 @@ fixed `/dev/fb0` and `/dev/input/event1` nodes. It reads the RG34XX-SP controls
 straight from evdev while stock initialization continues behind it. B hands
 off to stock after the system-ready marker; a two-minute timeout provides the
 same fallback. D-pad navigation wraps so every direction press visibly moves.
+
+The verified direct build starts at 2.269 seconds of kernel uptime with input
+already usable and completes its first frame at 2.289 seconds. The corresponding
+LED-on stopwatch time is approximately four seconds.
+
+## Embedded catalogue proof
+
+`generate-launcher-catalog.py` converts a host-side ROM manifest into a C header
+that is compiled directly into the launcher. The launcher never scans storage
+at boot and can browse the cached names before `/mnt/mmc` is mounted. A narrow
+50 ms readiness probe reports when `/mnt/mmc/ROMS` appears; selecting a cached
+title tests only that title's exact path.
+
+The first proof manifest contains four already-tested games across SNES, PSP,
+and Ports. It validates nested browsing, paging, back navigation, and storage
+readiness without treating the card's temporary 1,952-game SNES set as the final
+library. Regenerate the same header from the final curated manifest later with:
+
+```sh
+./generate-launcher-catalog.sh /Volumes/dani-sp/ROMS path/to/manifest.txt
+```

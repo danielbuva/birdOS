@@ -1,0 +1,5 @@
+# Small cross-system catalogue used to prove browsing and storage readiness.
+SNES/'96 Zenkoku Koukou Soccer Senshuken (Japan).zip
+SNES/Goof Troop (USA).zip
+PSP/God of War - Chains of Olympus (USA).cso
+Ports/Max Payne.sh

@@ -12,6 +12,8 @@ typedef unsigned long u64;
 typedef signed int s32;
 typedef signed long s64;
 
+#include "catalog.generated.h"
+
 #define AT_FDCWD (-100)
 #define O_RDONLY 0
 #define O_RDWR 2
@@ -28,6 +30,8 @@ typedef signed long s64;
 #define EV_ABS 0x03
 #define BTN_SOUTH 304
 #define BTN_EAST 305
+#define BTN_TL 308
+#define BTN_TR 309
 #define ABS_HAT0X 16
 #define ABS_HAT0Y 17
 
@@ -35,6 +39,12 @@ typedef signed long s64;
 #define STOCK_FALLBACK_TIMEOUT_MS 120000UL
 #define DEVICE_WAIT_MS 5000UL
 #define INPUT_PATH "/dev/input/event1"
+#define ROM_ROOT "/mnt/mmc/ROMS"
+
+#define VIEW_MAIN 0U
+#define VIEW_SYSTEMS 1U
+#define VIEW_GAMES 2U
+#define GAME_ROWS 8U
 
 struct fb_bitfield {
     u32 offset;
@@ -115,9 +125,13 @@ static struct fb_fix_screeninfo fb_fix;
 static volatile u8 *fb;
 static int fb_fd = -1;
 static int input_fd = -1;
-static int selection;
+static u32 view;
+static u32 selection;
+static u32 active_system;
 static int axis_x;
 static int axis_y;
+static int storage_ready;
+static u64 next_storage_probe;
 static u32 captured_events;
 static const char *selected_status = "DIRECT FRAMEBUFFER READY";
 
@@ -125,8 +139,12 @@ static const char *menu_item[4] = {"GAMES", "FAVORITES", "PORTMASTER", "SHUTDOWN
 
 /* Five-wide uppercase bitmap alphabet plus the exact punctuation this UI uses. */
 static const struct glyph font[] = {
-    {' ', {0, 0, 0, 0, 0, 0, 0}},       {'-', {0, 0, 0, 31, 0, 0, 0}},
-    {'/', {1, 2, 4, 8, 16, 0, 0}},       {':', {0, 4, 0, 0, 4, 0, 0}},
+    {' ', {0, 0, 0, 0, 0, 0, 0}},       {'!', {4, 4, 4, 4, 4, 0, 4}},
+    {'\'', {4, 4, 0, 0, 0, 0, 0}},      {'(', {2, 4, 8, 8, 8, 4, 2}},
+    {')', {8, 4, 2, 2, 2, 4, 8}},       {'&', {12, 18, 20, 8, 21, 18, 13}},
+    {',', {0, 0, 0, 0, 0, 4, 8}},       {'-', {0, 0, 0, 31, 0, 0, 0}},
+    {'.', {0, 0, 0, 0, 0, 0, 4}},       {'/', {1, 2, 4, 8, 16, 0, 0}},
+    {':', {0, 4, 0, 0, 4, 0, 0}},       {'?', {14, 17, 1, 2, 4, 0, 4}},
     {'>', {16, 8, 4, 2, 4, 8, 16}},      {'0', {14, 17, 19, 21, 25, 17, 14}},
     {'1', {4, 12, 4, 4, 4, 4, 14}},      {'2', {14, 17, 1, 2, 4, 8, 31}},
     {'3', {30, 1, 1, 14, 1, 1, 30}},     {'4', {2, 6, 10, 18, 31, 2, 2}},
@@ -316,51 +334,156 @@ static void draw_text(int x, int y, const char *text, int scale, u32 value) {
     }
 }
 
+static void draw_text_limited(int x, int y, const char *text, int scale, u32 value, u32 limit) {
+    while (*text && limit) {
+        draw_character(x, y, *text++, scale, value);
+        x += 6 * scale;
+        limit--;
+    }
+}
+
+static u32 current_count(void) {
+    if (view == VIEW_MAIN) return 4U;
+    if (view == VIEW_SYSTEMS) return CATALOG_SYSTEM_COUNT;
+    return catalog_systems[active_system].count;
+}
+
 static void draw_screen(void) {
     u32 background = color(10, 14, 20);
     u32 panel = color(19, 26, 36);
     u32 selected = color(232, 166, 48);
     u32 primary = color(244, 246, 248);
     u32 muted = color(139, 151, 166);
-    int i;
+    u32 i;
 
     rectangle(0, 0, (int)fb_var.xres, (int)fb_var.yres, background);
     rectangle(0, 0, (int)fb_var.xres, 92, panel);
     rectangle(0, (int)fb_var.yres - 66, (int)fb_var.xres, 66, panel);
 
-    draw_text(32, 22, "DANI // RG34-SP", 4, primary);
-    draw_text(34, 62, "BESPOKE LAUNCHER PROOF", 2, muted);
-
-    for (i = 0; i < 4; i++) {
-        int y = 122 + i * 64;
-        if (i == selection) {
-            rectangle(92, y - 10, 492, 52, selected);
-            draw_text(108, y + 4, ">", 3, background);
-            draw_text(148, y, menu_item[i], 4, background);
-        } else {
-            draw_text(148, y, menu_item[i], 4, primary);
+    if (view == VIEW_MAIN) {
+        draw_text(32, 22, "DANI // RG34-SP", 4, primary);
+        draw_text(34, 62, "BESPOKE CONSOLE", 2, muted);
+        for (i = 0; i < 4U; i++) {
+            int y = 122 + (int)i * 64;
+            if (i == selection) {
+                rectangle(92, y - 10, 492, 52, selected);
+                draw_text(108, y + 4, ">", 3, background);
+                draw_text(148, y, menu_item[i], 4, background);
+            } else {
+                draw_text(148, y, menu_item[i], 4, primary);
+            }
+        }
+    } else if (view == VIEW_SYSTEMS) {
+        draw_text(32, 22, "GAMES", 4, primary);
+        draw_text(34, 62, "EMBEDDED CATALOG // NO SCAN", 2, muted);
+        for (i = 0; i < CATALOG_SYSTEM_COUNT; i++) {
+            int y = 122 + (int)i * 64;
+            if (i == selection) {
+                rectangle(92, y - 10, 492, 52, selected);
+                draw_text(108, y + 4, ">", 3, background);
+                draw_text(148, y, catalog_systems[i].name, 4, background);
+            } else {
+                draw_text(148, y, catalog_systems[i].name, 4, primary);
+            }
+        }
+    } else {
+        const struct catalog_system *system = &catalog_systems[active_system];
+        u32 first = selection < GAME_ROWS ? 0U : selection - GAME_ROWS + 1U;
+        draw_text(32, 22, system->name, 4, primary);
+        draw_text(34, 62, "CACHED GAMES // STORAGE ASYNC", 2, muted);
+        for (i = 0; i < GAME_ROWS && first + i < system->count; i++) {
+            const struct catalog_entry *entry = &catalog_entries[system->first + first + i];
+            int y = 102 + (int)i * 38;
+            if (first + i == selection) {
+                rectangle(32, y - 7, 656, 31, selected);
+                draw_text(44, y, ">", 2, background);
+                draw_text_limited(72, y, entry->name, 2, background, 50U);
+            } else {
+                draw_text_limited(72, y, entry->name, 2, primary, 50U);
+            }
         }
     }
 
     draw_text(32, (int)fb_var.yres - 54, selected_status, 2, muted);
-    draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE   A SELECT   B STOCK", 2, primary);
+    if (view == VIEW_MAIN)
+        draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE   A SELECT   B STOCK", 2, primary);
+    else if (view == VIEW_GAMES)
+        draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE   L1 R1 PAGE   A TEST   B BACK", 2, primary);
+    else
+        draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE   A OPEN   B BACK", 2, primary);
     __asm__ volatile("dmb ishst" ::: "memory");
 }
 
 static void select_current(void) {
-    if (selection == 0) selected_status = "SELECTED: GAMES";
-    if (selection == 1) selected_status = "SELECTED: FAVORITES";
-    if (selection == 2) selected_status = "SELECTED: PORTMASTER";
-    if (selection == 3) selected_status = "SELECTED: SHUTDOWN";
+    if (view == VIEW_MAIN) {
+        if (selection == 0U) {
+            view = VIEW_SYSTEMS;
+            selection = 0U;
+            selected_status = "CATALOG READY FROM FIRMWARE";
+        } else if (selection == 1U) {
+            selected_status = "FAVORITES CACHE COMING NEXT";
+        } else if (selection == 2U) {
+            selected_status = "PORTMASTER HANDOFF COMING NEXT";
+        } else {
+            selected_status = "SHUTDOWN HANDOFF COMING NEXT";
+        }
+    } else if (view == VIEW_SYSTEMS) {
+        active_system = selection;
+        view = VIEW_GAMES;
+        selection = 0U;
+        selected_status = storage_ready ? "ROM STORAGE READY" : "CATALOG READY // ROMS MOUNTING";
+    } else {
+        const struct catalog_system *system = &catalog_systems[active_system];
+        const struct catalog_entry *entry = &catalog_entries[system->first + selection];
+        long fd = sys_open(entry->path, O_RDONLY | O_NONBLOCK);
+        log_text("rom_test boot_ms=");
+        log_number(boot_ms());
+        log_text(" path=");
+        log_text(entry->path);
+        if (fd >= 0) {
+            sys_close((int)fd);
+            selected_status = "ROM READY // LAUNCH BRIDGE NEXT";
+            log_text(" result=ready\n");
+        } else {
+            selected_status = "WAITING FOR ROM STORAGE";
+            log_text(" result=not-ready\n");
+        }
+    }
+    draw_screen();
+}
+
+static void move_selection(int direction, u32 steps) {
+    u32 count = current_count();
+    if (!count) return;
+    while (steps--) {
+        if (direction < 0) selection = selection > 0U ? selection - 1U : count - 1U;
+        if (direction > 0) selection = selection + 1U < count ? selection + 1U : 0U;
+    }
+    selected_status = "DIRECT EVDEV INPUT READY";
     draw_screen();
 }
 
 static int handle_direction(int direction) {
-    if (direction < 0) selection = selection > 0 ? selection - 1 : 3;
-    if (direction > 0) selection = selection < 3 ? selection + 1 : 0;
-    selected_status = "DIRECT EVDEV INPUT READY";
-    draw_screen();
+    move_selection(direction, 1U);
     return 0;
+}
+
+static int handle_back(void) {
+    if (view == VIEW_GAMES) {
+        view = VIEW_SYSTEMS;
+        selection = active_system;
+        selected_status = "CATALOG READY FROM FIRMWARE";
+        draw_screen();
+        return 0;
+    }
+    if (view == VIEW_SYSTEMS) {
+        view = VIEW_MAIN;
+        selection = 0U;
+        selected_status = "DIRECT FRAMEBUFFER READY";
+        draw_screen();
+        return 0;
+    }
+    return 1;
 }
 
 static int handle_event(const struct input_event *event) {
@@ -382,7 +505,15 @@ static int handle_event(const struct input_event *event) {
             select_current();
             return 0;
         }
-        if (event->code == BTN_EAST) return 1;
+        if (event->code == BTN_EAST) return handle_back();
+        if (view == VIEW_GAMES && event->code == BTN_TL) {
+            move_selection(-1, GAME_ROWS);
+            return 0;
+        }
+        if (view == VIEW_GAMES && event->code == BTN_TR) {
+            move_selection(1, GAME_ROWS);
+            return 0;
+        }
     }
 
     if (event->type == EV_ABS) {
@@ -398,6 +529,24 @@ static int handle_event(const struct input_event *event) {
         }
     }
     return 0;
+}
+
+static void probe_storage(void) {
+    long fd;
+    u64 now;
+    if (storage_ready) return;
+    now = boot_ms();
+    if (now < next_storage_probe) return;
+    next_storage_probe = now + 50UL;
+    fd = sys_open(ROM_ROOT, O_RDONLY | O_NONBLOCK);
+    if (fd < 0) return;
+    sys_close((int)fd);
+    storage_ready = 1;
+    selected_status = "ROM STORAGE READY";
+    log_text("storage_ready boot_ms=");
+    log_number(now);
+    log_text(" path=" ROM_ROOT "\n");
+    draw_screen();
 }
 
 static int open_fixed_input(void) {
@@ -487,7 +636,8 @@ static int application(void) {
     draw_screen();
     log_text("first_frame boot_ms=");
     log_number(boot_ms());
-    log_text(" input_ready=1");
+    log_text(" input_ready=1 catalog_entries=");
+    log_number(CATALOG_ENTRY_COUNT);
     log_text("\n");
 
     deadline = boot_ms() + STOCK_FALLBACK_TIMEOUT_MS;
@@ -500,6 +650,7 @@ static int application(void) {
                 break;
             }
         }
+        probe_storage();
         sys_nanosleep(4000000L);
     }
 
