@@ -48,8 +48,8 @@ DEPMOD_STATUS="/tmp/muos/depmod-status"
 LAUNCHER_ROOT="/mnt/mmc/MUOS/bespoke-launcher"
 LAUNCHER_OBJECT="$LAUNCHER_ROOT/dani-launcher.o"
 LAUNCHER_TARGET="/opt/muos/bin/dani-launcher"
-LAUNCHER_PROOF_STATE="$LAUNCHER_ROOT/proof-v2-input.state"
-LAUNCHER_PROOF_LOG="$LAUNCHER_ROOT/proof-v2-input.log"
+LAUNCHER_PROOF_STATE="$LAUNCHER_ROOT/proof-v3-joystick.state"
+LAUNCHER_PROOF_LOG="$LAUNCHER_ROOT/proof-v3-joystick.log"
 
 if [ -r /proc/sys/kernel/random/boot_id ]; then
 	IFS= read -r BOOT_ID </proc/sys/kernel/random/boot_id
@@ -482,16 +482,27 @@ if [ -s "$LAUNCHER_OBJECT" ] && [ ! -f "$LAUNCHER_PROOF_STATE" ]; then
 	mkdir -p "$LAUNCHER_ROOT"
 	LAUNCHER_NEW="/tmp/dani-launcher.$$"
 	if /usr/bin/ld -static --build-id=none -z noexecstack -s -e _start \
-		-o "$LAUNCHER_NEW" "$LAUNCHER_OBJECT" >"$LAUNCHER_ROOT/link-v2-input.log" 2>&1; then
+		-o "$LAUNCHER_NEW" "$LAUNCHER_OBJECT" >"$LAUNCHER_ROOT/link-v3-joystick.log" 2>&1; then
 		chmod 755 "$LAUNCHER_NEW"
 		mv -f "$LAUNCHER_NEW" "$LAUNCHER_TARGET"
 		(
 			sleep 3
 			. /opt/muos/script/var/func.sh
 			{
+				printf '%s\n' '--- /dev/input ---'
+				ls -l /dev/input
+				printf '%s\n' '--- /proc/bus/input/devices ---'
+				cat /proc/bus/input/devices
+			} >"$LAUNCHER_ROOT/input-inventory-v3.txt" 2>&1
+			{
 				printf 'proof supervisor start boot uptime: '
 				cut -d ' ' -f 1 /proc/uptime
 				FRONTEND stop
+				if /opt/muos/frontend/mufbset -w 720 -h 480 -d 32; then
+					printf '%s\n' 'fixed 720x480x32 framebuffer mode applied'
+				else
+					printf '%s\n' 'framebuffer mode reset failed; launcher will use current mode'
+				fi
 				"$LAUNCHER_TARGET"
 				LAUNCHER_RESULT=$?
 				FRONTEND start

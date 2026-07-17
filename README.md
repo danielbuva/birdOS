@@ -51,6 +51,7 @@ GNU linker, then installs the resulting shared libraries.
 - `font-stubs/`: source and AArch64 object payloads for unused language fonts.
 - `ROADMAP.md`: target architecture and project sequence.
 - `DEVICE_PROFILE.md`: fixed hardware and experience contract.
+- `INPUT_MAP.md`: confirmed logical control bitmasks and muOS calibration notes.
 - `launcher/`: dependency-free direct-framebuffer launcher proof.
 
 The untouched recovery card remains the authoritative known-good system.
