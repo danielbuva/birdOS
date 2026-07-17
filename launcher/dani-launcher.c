@@ -51,7 +51,7 @@ typedef signed long s64;
 #define ABS_HAT0Y 17
 
 #define CLOCK_BOOTTIME 7
-#define PROOF_TIMEOUT_MS 20000UL
+#define PROOF_TIMEOUT_MS 50000UL
 #define MAX_INPUTS 8
 #define MAX_JOYSTICKS 4
 #define INPUT_CAPTURE_PROOF 1
@@ -382,7 +382,7 @@ static void draw_screen(void) {
     }
 
     draw_text(32, (int)fb_var.yres - 54, selected_status, 2, muted);
-    draw_text(32, (int)fb_var.yres - 28, "PRESS UP DOWN LEFT RIGHT A B", 2, primary);
+    draw_text(32, (int)fb_var.yres - 28, "CAPTURE REMAINING CONTROLS", 2, primary);
     __asm__ volatile("dmb ishst" ::: "memory");
 }
 

@@ -10,6 +10,8 @@ profile and convert muOS 2601.1 into a fixed-purpose RG34XX-SP system.
 - Pre-font internal input-ready average: 9.84 seconds.
 - English-only-font internal input-ready average: 9.60 seconds.
 - Optimized-stock internal input-ready average: 8.43 seconds.
+- Direct-launcher v3 first frame: 8.758 seconds from power-on and 19 ms from
+  launcher process start (still launched late by user-init for this proof).
 
 Diagnostics remain enabled. The long-term target is a small custom launcher
 with fixed RG34XX-SP hardware, English text, embedded assets, a cached game

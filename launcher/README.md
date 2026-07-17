@@ -10,12 +10,13 @@ The first staged run is deliberately late and temporary:
 1. Stock muOS reaches its normal screen.
 2. The proof stops stock after three seconds.
 3. The proof draws its own 720x480 menu and opens evdev devices directly.
-4. The third proof captures both Linux evdev events and `/dev/input/js*`
-   joystick button/axis events. B deliberately does not exit during calibration.
-5. A 20-second timeout ends the capture automatically.
+4. The fourth proof captures both Linux evdev events and `/dev/input/js*`
+   joystick button/axis events for every remaining built-in control. B
+   deliberately does not exit during calibration.
+5. A 50-second timeout ends the capture automatically.
 6. Stock muOS restarts automatically.
 
 Input-calibration results are written to
-`/mnt/mmc/MUOS/bespoke-launcher/proof-v3-joystick.log`. A
+`/mnt/mmc/MUOS/bespoke-launcher/proof-v4-remaining.log`. A
 successful run gives the exact framebuffer format, stride, input device names,
 first-frame uptime and exit reason needed for the early-boot version.

@@ -48,8 +48,8 @@ DEPMOD_STATUS="/tmp/muos/depmod-status"
 LAUNCHER_ROOT="/mnt/mmc/MUOS/bespoke-launcher"
 LAUNCHER_OBJECT="$LAUNCHER_ROOT/dani-launcher.o"
 LAUNCHER_TARGET="/opt/muos/bin/dani-launcher"
-LAUNCHER_PROOF_STATE="$LAUNCHER_ROOT/proof-v3-joystick.state"
-LAUNCHER_PROOF_LOG="$LAUNCHER_ROOT/proof-v3-joystick.log"
+LAUNCHER_PROOF_STATE="$LAUNCHER_ROOT/proof-v4-remaining.state"
+LAUNCHER_PROOF_LOG="$LAUNCHER_ROOT/proof-v4-remaining.log"
 
 if [ -r /proc/sys/kernel/random/boot_id ]; then
 	IFS= read -r BOOT_ID </proc/sys/kernel/random/boot_id
@@ -482,7 +482,7 @@ if [ -s "$LAUNCHER_OBJECT" ] && [ ! -f "$LAUNCHER_PROOF_STATE" ]; then
 	mkdir -p "$LAUNCHER_ROOT"
 	LAUNCHER_NEW="/tmp/dani-launcher.$$"
 	if /usr/bin/ld -static --build-id=none -z noexecstack -s -e _start \
-		-o "$LAUNCHER_NEW" "$LAUNCHER_OBJECT" >"$LAUNCHER_ROOT/link-v3-joystick.log" 2>&1; then
+		-o "$LAUNCHER_NEW" "$LAUNCHER_OBJECT" >"$LAUNCHER_ROOT/link-v4-remaining.log" 2>&1; then
 		chmod 755 "$LAUNCHER_NEW"
 		mv -f "$LAUNCHER_NEW" "$LAUNCHER_TARGET"
 		(

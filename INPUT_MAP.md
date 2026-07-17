@@ -50,3 +50,23 @@ Because these stick values overlap button bits, they must be separate fields
 in that OS's input-test structure rather than one global mask. The muOS
 calibration will map the actual `/dev/input/js*` axis and button numbers to the
 same named controls.
+
+## Confirmed muOS kernel mapping
+
+The v3 launcher capture identified `/dev/input/event1` and `/dev/input/js0` as
+the same `muOS-Keys` device. These values are now safe to compile directly into
+the launcher:
+
+| Control | evdev event | Linux joystick event |
+| --- | --- | --- |
+| Up | `EV_ABS`, code `17`, value `-1` | axis `5`, value `-32767` |
+| Down | `EV_ABS`, code `17`, value `1` | axis `5`, value `32767` |
+| Left | `EV_ABS`, code `16`, value `-1` | axis `4`, value `-32767` |
+| Right | `EV_ABS`, code `16`, value `1` | axis `4`, value `32767` |
+| A | `EV_KEY`, code `304` | button `0` |
+| B | `EV_KEY`, code `305` | button `1` |
+| X | `EV_KEY`, code `307` | button `3` |
+| Y | `EV_KEY`, code `306` | button `2` |
+
+The fixed launcher will use evdev directly. The joystick mapping remains useful
+for validating emulator and SDL compatibility.
