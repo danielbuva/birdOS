@@ -50,9 +50,10 @@ LAUNCHER_OBJECT="$LAUNCHER_ROOT/dani-launcher.o"
 LAUNCHER_TARGET="/opt/muos/bin/dani-launcher"
 LAUNCHER_PROOF_STATE="$LAUNCHER_ROOT/proof-v4-remaining.state"
 LAUNCHER_PROOF_LOG="$LAUNCHER_ROOT/proof-v4-remaining.log"
-EARLY_LAUNCHER_STATE="$LAUNCHER_ROOT/early-launcher-v1.state"
-EARLY_INIT_SOURCE="$LAUNCHER_ROOT/S11danilauncher"
-EARLY_INIT_TARGET="/opt/muos/script/init/S11danilauncher"
+EARLY_LAUNCHER_STATE="$LAUNCHER_ROOT/early-launcher-v2-direct.state"
+EARLY_INIT_SOURCE="$LAUNCHER_ROOT/S03danilauncher"
+EARLY_INIT_TARGET="/opt/muos/script/init/S03danilauncher"
+EARLY_OLD_INIT_TARGET="/opt/muos/script/init/S11danilauncher"
 EARLY_STARTUP_TARGET="/opt/muos/script/system/startup.sh"
 EARLY_STARTUP_BACKUP="$LAUNCHER_ROOT/startup.pre-early-launcher"
 EARLY_STARTUP_MARKER="DANI_EARLY_LAUNCHER_V1"
@@ -525,41 +526,50 @@ if [ -s "$LAUNCHER_OBJECT" ] && [ ! -f "$LAUNCHER_PROOF_STATE" ]; then
 	fi
 fi
 
-# Promote the proven framebuffer/input program to an early interactive shell.
-# S11 runs immediately after udev and returns at once while its supervisor keeps
-# the launcher alive. Normal muOS startup continues in parallel, but skips the
-# stock frontend while the custom launcher owns the display. B (or the safety
-# timeout) hands off to stock only after startup reports that it is ready.
+# Promote the fixed-device framebuffer/input program to the earliest normal
+# init slot. S03 starts before the 1.6-second udev phase, returns immediately,
+# and lets normal muOS startup continue behind the custom screen. The binary
+# waits only for /dev/fb0 and /dev/input/event1 and reads evdev directly. B (or
+# the safety timeout) hands off after normal startup reports that it is ready.
 if [ -s "$LAUNCHER_OBJECT" ] && [ -s "$EARLY_INIT_SOURCE" ] && [ ! -f "$EARLY_LAUNCHER_STATE" ]; then
-	LAUNCHER_NEW="/tmp/dani-launcher-early.$$"
+	LAUNCHER_NEW="/tmp/dani-launcher-direct.$$"
 	PATCHED="/tmp/startup-early-launcher.$$.sh"
+	STARTUP_READY=0
 
 	if /usr/bin/ld -static --build-id=none -z noexecstack -s -e _start \
-		-o "$LAUNCHER_NEW" "$LAUNCHER_OBJECT" >"$LAUNCHER_ROOT/link-early-v1.log" 2>&1; then
+		-o "$LAUNCHER_NEW" "$LAUNCHER_OBJECT" >"$LAUNCHER_ROOT/link-early-v2-direct.log" 2>&1; then
 		chmod 755 "$LAUNCHER_NEW"
-		[ -f "$EARLY_STARTUP_BACKUP" ] || cp -p "$EARLY_STARTUP_TARGET" "$EARLY_STARTUP_BACKUP"
+		if grep -q "$EARLY_STARTUP_MARKER" "$EARLY_STARTUP_TARGET"; then
+			STARTUP_READY=1
+		else
+			[ -f "$EARLY_STARTUP_BACKUP" ] || cp -p "$EARLY_STARTUP_TARGET" "$EARLY_STARTUP_BACKUP"
+			while IFS= read -r LINE; do
+				if [ "$LINE" = 'FRONTEND start' ]; then
+					printf '# %s\n' "$EARLY_STARTUP_MARKER"
+					printf '%s\n' 'mkdir -p "/run/muos"'
+					printf '%s\n' ': >"/run/muos/dani-system-ready"'
+					printf '%s\n' 'if [ ! -e "/run/muos/dani-launcher-active" ]; then'
+					printf '\t%s\n' 'FRONTEND start'
+					printf '%s\n' 'fi'
+				else
+					printf '%s\n' "$LINE"
+				fi
+			done <"$EARLY_STARTUP_TARGET" >"$PATCHED"
 
-		while IFS= read -r LINE; do
-			if [ "$LINE" = 'FRONTEND start' ]; then
-				printf '# %s\n' "$EARLY_STARTUP_MARKER"
-				printf '%s\n' 'mkdir -p "/run/muos"'
-				printf '%s\n' ': >"/run/muos/dani-system-ready"'
-				printf '%s\n' 'if [ ! -e "/run/muos/dani-launcher-active" ]; then'
-				printf '\t%s\n' 'FRONTEND start'
-				printf '%s\n' 'fi'
-			else
-				printf '%s\n' "$LINE"
+			if grep -q "$EARLY_STARTUP_MARKER" "$PATCHED"; then
+				chmod 755 "$PATCHED"
+				mv -f "$PATCHED" "$EARLY_STARTUP_TARGET"
+				STARTUP_READY=1
 			fi
-		done <"$EARLY_STARTUP_TARGET" >"$PATCHED"
+		fi
 
-		if grep -q "$EARLY_STARTUP_MARKER" "$PATCHED"; then
-			chmod 755 "$PATCHED"
-			mv -f "$PATCHED" "$EARLY_STARTUP_TARGET"
+		if [ "$STARTUP_READY" -eq 1 ]; then
 			mv -f "$LAUNCHER_NEW" "$LAUNCHER_TARGET"
 			cp -f "$EARLY_INIT_SOURCE" "$EARLY_INIT_TARGET"
 			chmod 755 "$EARLY_INIT_TARGET"
+			rm -f "$EARLY_OLD_INIT_TARGET"
 			printf '%s\n' "installed" >"$EARLY_LAUNCHER_STATE"
-			printf '%s early launcher installed after udev; active next boot\n' \
+			printf '%s direct-event launcher installed before udev; active next boot\n' \
 				"$(date -Iseconds 2>/dev/null || date)" >>"$BESPOKE_ROOT/install.log"
 		else
 			rm -f "$PATCHED" "$LAUNCHER_NEW"

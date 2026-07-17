@@ -17,20 +17,13 @@ case "$1" in
 		: >"$ACTIVE"
 
 		(
-			. /opt/muos/script/var/func.sh
 			{
-				printf 'early supervisor start uptime: '
+				printf 'direct supervisor start uptime: '
 				cut -d ' ' -f 1 /proc/uptime
-				if /opt/muos/frontend/mufbset -w 720 -h 480 -d 32; then
-					printf '%s\n' 'fixed 720x480x32 framebuffer mode applied'
-				else
-					printf '%s\n' 'framebuffer mode reset failed'
-				fi
-
 				"$TARGET"
 				LAUNCHER_RESULT=$?
-				printf 'early launcher result: %s\n' "$LAUNCHER_RESULT"
-				printf 'early launcher exit uptime: '
+				printf 'direct launcher result: %s\n' "$LAUNCHER_RESULT"
+				printf 'direct launcher exit uptime: '
 				cut -d ' ' -f 1 /proc/uptime
 
 				[ -e "$STOPPING" ] && exit 0
@@ -40,6 +33,7 @@ case "$1" in
 				mkdir -p "${PERSISTENT_LOG%/*}"
 				cp -f "$EARLY_LOG" "$PERSISTENT_LOG"
 				rm -f "$ACTIVE"
+				. /opt/muos/script/var/func.sh
 				FRONTEND start
 				printf 'stock frontend handoff requested at uptime: '
 				cut -d ' ' -f 1 /proc/uptime

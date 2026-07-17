@@ -1,5 +1,5 @@
 /*
- * Dani's RG34XX-SP launcher hardware proof.
+ * Dani's fixed-device RG34XX-SP launcher.
  *
  * Freestanding AArch64 Linux: no libc, dynamic loader, SDL, font engine,
  * image decoder, locale database, configuration parser or storage scan.
@@ -9,7 +9,6 @@ typedef unsigned char u8;
 typedef unsigned short u16;
 typedef unsigned int u32;
 typedef unsigned long u64;
-typedef signed short s16;
 typedef signed int s32;
 typedef signed long s64;
 
@@ -27,34 +26,15 @@ typedef signed long s64;
 
 #define EV_KEY 0x01
 #define EV_ABS 0x03
-#define JS_EVENT_BUTTON 0x01
-#define JS_EVENT_AXIS 0x02
-#define JS_EVENT_INIT 0x80
-#define JSIOCGNAME_128 0x80806a13
-#define KEY_ESC 1
-#define KEY_BACKSPACE 14
-#define KEY_ENTER 28
-#define KEY_SPACE 57
-#define KEY_UP 103
-#define KEY_LEFT 105
-#define KEY_RIGHT 106
-#define KEY_DOWN 108
 #define BTN_SOUTH 304
 #define BTN_EAST 305
-#define BTN_DPAD_UP 544
-#define BTN_DPAD_DOWN 545
-#define BTN_DPAD_LEFT 546
-#define BTN_DPAD_RIGHT 547
-#define ABS_X 0
-#define ABS_Y 1
 #define ABS_HAT0X 16
 #define ABS_HAT0Y 17
 
 #define CLOCK_BOOTTIME 7
-#define PROOF_TIMEOUT_MS 120000UL
-#define MAX_INPUTS 8
-#define MAX_JOYSTICKS 4
-#define INPUT_CAPTURE_PROOF 0
+#define STOCK_FALLBACK_TIMEOUT_MS 120000UL
+#define DEVICE_WAIT_MS 5000UL
+#define INPUT_PATH "/dev/input/event1"
 
 struct fb_bitfield {
     u32 offset;
@@ -120,13 +100,6 @@ struct input_event {
     s32 value;
 };
 
-struct js_event {
-    u32 time;
-    s16 value;
-    u8 type;
-    u8 number;
-};
-
 struct timespec {
     s64 sec;
     s64 nsec;
@@ -141,24 +114,12 @@ static struct fb_var_screeninfo fb_var;
 static struct fb_fix_screeninfo fb_fix;
 static volatile u8 *fb;
 static int fb_fd = -1;
-static int input_fd[MAX_INPUTS];
-static int input_count;
-static int joystick_fd[MAX_JOYSTICKS];
-static int joystick_count;
+static int input_fd = -1;
 static int selection;
 static int axis_x;
 static int axis_y;
 static u32 captured_events;
 static const char *selected_status = "DIRECT FRAMEBUFFER READY";
-
-static const char *event_path[MAX_INPUTS] = {
-    "/dev/input/event0", "/dev/input/event1", "/dev/input/event2", "/dev/input/event3",
-    "/dev/input/event4", "/dev/input/event5", "/dev/input/event6", "/dev/input/event7",
-};
-
-static const char *joystick_path[MAX_JOYSTICKS] = {
-    "/dev/input/js0", "/dev/input/js1", "/dev/input/js2", "/dev/input/js3",
-};
 
 static const char *menu_item[4] = {"GAMES", "FAVORITES", "PORTMASTER", "SHUTDOWN"};
 
@@ -395,22 +356,17 @@ static void select_current(void) {
 }
 
 static int handle_direction(int direction) {
-    int old = selection;
-    if (direction < 0 && selection > 0) selection--;
-    if (direction > 0 && selection < 3) selection++;
-    if (old != selection) {
-        selected_status = "DIRECT EVDEV INPUT READY";
-        draw_screen();
-    }
+    if (direction < 0) selection = selection > 0 ? selection - 1 : 3;
+    if (direction > 0) selection = selection < 3 ? selection + 1 : 0;
+    selected_status = "DIRECT EVDEV INPUT READY";
+    draw_screen();
     return 0;
 }
 
-static int handle_event(const struct input_event *event, int device_index) {
+static int handle_event(const struct input_event *event) {
     if ((event->type == EV_KEY || event->type == EV_ABS) && captured_events < 300) {
         log_text("event boot_ms=");
         log_number(boot_ms());
-        log_text(" device=");
-        log_number((u64)device_index);
         log_text(" type=");
         log_number(event->type);
         log_text(" code=");
@@ -419,37 +375,24 @@ static int handle_event(const struct input_event *event, int device_index) {
         log_signed(event->value);
         log_text("\n");
         captured_events++;
-
-        if (INPUT_CAPTURE_PROOF &&
-            ((event->type == EV_KEY && event->value == 1) ||
-             (event->type == EV_ABS && event->value != 0))) {
-            selected_status = "RAW INPUT EVENT CAPTURED";
-            draw_screen();
-        }
     }
 
     if (event->type == EV_KEY && event->value == 1) {
-        if (event->code == KEY_UP || event->code == BTN_DPAD_UP) return handle_direction(-1);
-        if (event->code == KEY_DOWN || event->code == BTN_DPAD_DOWN) return handle_direction(1);
-        if (event->code == KEY_LEFT || event->code == BTN_DPAD_LEFT) return handle_direction(-1);
-        if (event->code == KEY_RIGHT || event->code == BTN_DPAD_RIGHT) return handle_direction(1);
-        if (event->code == BTN_SOUTH || event->code == KEY_ENTER || event->code == KEY_SPACE) {
+        if (event->code == BTN_SOUTH) {
             select_current();
             return 0;
         }
-        if (!INPUT_CAPTURE_PROOF &&
-            (event->code == BTN_EAST || event->code == KEY_BACKSPACE || event->code == KEY_ESC))
-            return 1;
+        if (event->code == BTN_EAST) return 1;
     }
 
     if (event->type == EV_ABS) {
-        if (event->code == ABS_HAT0X || event->code == ABS_X) {
-            int next = event->value < -1000 ? -1 : (event->value > 1000 ? 1 : 0);
+        if (event->code == ABS_HAT0X) {
+            int next = event->value < 0 ? -1 : (event->value > 0 ? 1 : 0);
             if (next && !axis_x) handle_direction(next);
             axis_x = next;
         }
-        if (event->code == ABS_HAT0Y || event->code == ABS_Y) {
-            int next = event->value < -1000 ? -1 : (event->value > 1000 ? 1 : 0);
+        if (event->code == ABS_HAT0Y) {
+            int next = event->value < 0 ? -1 : (event->value > 0 ? 1 : 0);
             if (next && !axis_y) handle_direction(next);
             axis_y = next;
         }
@@ -457,97 +400,47 @@ static int handle_event(const struct input_event *event, int device_index) {
     return 0;
 }
 
-static void handle_joystick_event(const struct js_event *event, int device_index) {
-    u8 type = event->type & (u8)~JS_EVENT_INIT;
-    if (captured_events < 300) {
-        log_text("joystick boot_ms=");
-        log_number(boot_ms());
-        log_text(" device=");
-        log_number((u64)device_index);
-        log_text(" type=");
-        log_number(type);
-        log_text(" number=");
-        log_number(event->number);
-        log_text(" value=");
-        log_signed(event->value);
-        log_text(" init=");
-        log_number((event->type & JS_EVENT_INIT) ? 1 : 0);
-        log_text("\n");
-        captured_events++;
-    }
-
-    if (INPUT_CAPTURE_PROOF && !(event->type & JS_EVENT_INIT) &&
-        ((type == JS_EVENT_BUTTON && event->value) || (type == JS_EVENT_AXIS && event->value))) {
-        selected_status = "JOYSTICK INPUT CAPTURED";
-        draw_screen();
-    }
-}
-
-static void open_inputs(void) {
-    int i;
+static int open_fixed_input(void) {
     char name[128];
-    for (i = 0; i < MAX_INPUTS; i++) {
-        long fd = sys_open(event_path[i], O_RDONLY | O_NONBLOCK);
-        input_fd[i] = (int)fd;
-        if (fd < 0) continue;
-        input_count++;
-        name[0] = 0;
-        sys_ioctl((int)fd, EVIOCGNAME_128, name);
-        name[127] = 0;
-        log_text("input ");
-        log_text(event_path[i]);
-        log_text(" name=");
-        log_text(name[0] ? name : "unknown");
-        log_text("\n");
+    u64 deadline = boot_ms() + DEVICE_WAIT_MS;
+
+    while (boot_ms() < deadline) {
+        input_fd = (int)sys_open(INPUT_PATH, O_RDONLY | O_NONBLOCK);
+        if (input_fd >= 0) break;
+        sys_nanosleep(1000000L);
     }
-}
-
-static void close_inputs(void) {
-    int i;
-    for (i = 0; i < MAX_INPUTS; i++)
-        if (input_fd[i] >= 0) sys_close(input_fd[i]);
-}
-
-static void open_joysticks(void) {
-    int i;
-    char name[128];
-    for (i = 0; i < MAX_JOYSTICKS; i++) {
-        long fd = sys_open(joystick_path[i], O_RDONLY | O_NONBLOCK);
-        joystick_fd[i] = (int)fd;
-        if (fd < 0) continue;
-        joystick_count++;
-        name[0] = 0;
-        sys_ioctl((int)fd, JSIOCGNAME_128, name);
-        name[127] = 0;
-        log_text("joystick ");
-        log_text(joystick_path[i]);
-        log_text(" name=");
-        log_text(name[0] ? name : "unknown");
-        log_text("\n");
+    if (input_fd < 0) {
+        log_text("error wait " INPUT_PATH "\n");
+        return -1;
     }
-}
 
-static void close_joysticks(void) {
-    int i;
-    for (i = 0; i < MAX_JOYSTICKS; i++)
-        if (joystick_fd[i] >= 0) sys_close(joystick_fd[i]);
+    name[0] = 0;
+    sys_ioctl(input_fd, EVIOCGNAME_128, name);
+    name[127] = 0;
+    log_text("input " INPUT_PATH " name=");
+    log_text(name[0] ? name : "unknown");
+    log_text(" ready_boot_ms=");
+    log_number(boot_ms());
+    log_text("\n");
+    return 0;
 }
 
 static int application(void) {
     u64 started = boot_ms();
     u64 deadline;
     int exit_by_button = 0;
-    int i;
-
-    for (i = 0; i < MAX_INPUTS; i++) input_fd[i] = -1;
-    for (i = 0; i < MAX_JOYSTICKS; i++) joystick_fd[i] = -1;
-    log_text("dani-launcher proof start boot_ms=");
+    log_text("direct launcher start boot_ms=");
     log_number(started);
     log_text("\n");
 
-    fb_fd = (int)sys_open("/dev/fb0", O_RDWR);
+    deadline = boot_ms() + DEVICE_WAIT_MS;
+    while (boot_ms() < deadline) {
+        fb_fd = (int)sys_open("/dev/fb0", O_RDWR);
+        if (fb_fd >= 0) break;
+        sys_nanosleep(1000000L);
+    }
     if (fb_fd < 0) {
-        log_text("error open /dev/fb0\n");
+        log_text("error wait /dev/fb0\n");
         return 2;
     }
     if (sys_ioctl(fb_fd, FBIOGET_VSCREENINFO, &fb_var) < 0 ||
@@ -586,39 +479,28 @@ static int application(void) {
         return 5;
     }
 
-    open_inputs();
-    open_joysticks();
+    if (open_fixed_input() < 0) {
+        sys_munmap((void *)fb, fb_fix.smem_len);
+        sys_close(fb_fd);
+        return 6;
+    }
     draw_screen();
     log_text("first_frame boot_ms=");
     log_number(boot_ms());
-    log_text(" inputs=");
-    log_number((u64)input_count);
-    log_text(" joysticks=");
-    log_number((u64)joystick_count);
+    log_text(" input_ready=1");
     log_text("\n");
 
-    deadline = boot_ms() + PROOF_TIMEOUT_MS;
+    deadline = boot_ms() + STOCK_FALLBACK_TIMEOUT_MS;
     while (boot_ms() < deadline && !exit_by_button) {
         struct input_event event;
-        for (i = 0; i < MAX_INPUTS; i++) {
-            long count;
-            if (input_fd[i] < 0) continue;
-            while ((count = sys_read(input_fd[i], &event, sizeof(event))) == (long)sizeof(event)) {
-                if (handle_event(&event, i)) {
-                    exit_by_button = 1;
-                    break;
-                }
+        long count;
+        while ((count = sys_read(input_fd, &event, sizeof(event))) == (long)sizeof(event)) {
+            if (handle_event(&event)) {
+                exit_by_button = 1;
+                break;
             }
-            if (exit_by_button) break;
         }
-        for (i = 0; i < MAX_JOYSTICKS; i++) {
-            struct js_event event;
-            long count;
-            if (joystick_fd[i] < 0) continue;
-            while ((count = sys_read(joystick_fd[i], &event, sizeof(event))) == (long)sizeof(event))
-                handle_joystick_event(&event, i);
-        }
-        sys_nanosleep(16000000L);
+        sys_nanosleep(4000000L);
     }
 
     log_text(exit_by_button ? "exit reason=b-button boot_ms=" : "exit reason=stock-fallback-timeout boot_ms=");
@@ -626,8 +508,7 @@ static int application(void) {
     log_text(" captured_events=");
     log_number(captured_events);
     log_text("\n");
-    close_inputs();
-    close_joysticks();
+    sys_close(input_fd);
     sys_munmap((void *)fb, fb_fix.smem_len);
     sys_close(fb_fd);
     return 0;
