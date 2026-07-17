@@ -6,9 +6,10 @@ profile and convert muOS 2601.1 into a fixed-purpose RG34XX-SP system.
 ## Measured state
 
 - Fresh-card stopwatch baseline: approximately 19.1 seconds.
-- Current stopwatch result before service deferral: approximately 11.2 seconds.
+- Current stopwatch result after safe service deferral: approximately 10.9 seconds.
 - Pre-font internal input-ready average: 9.84 seconds.
 - English-only-font internal input-ready average: 9.60 seconds.
+- Current internal input-ready average: 9.11 seconds.
 
 Diagnostics remain enabled. The long-term target is a small custom launcher
 with fixed RG34XX-SP hardware, English text, embedded assets, a cached game
@@ -23,6 +24,8 @@ index, on-demand networking, and a reproducible firmware image.
 - Emulator verification deferred and cached by OS build.
 - Five unused multilingual font DSOs replaced by tiny AArch64 stubs.
 - Boot Wi-Fi and Chrony disabled; Wi-Fi remains available on demand.
+- General device initialization no longer loads rtl8821cs; the explicit network
+  path loads the Wi-Fi module when requested.
 - PortMaster requests a network connection when launched.
 - Sounds, low-power monitoring, USB setup, device-control refresh, and SDL-map
   refresh deferred until after frontend startup.

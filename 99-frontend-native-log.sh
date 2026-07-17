@@ -41,6 +41,8 @@ BESPOKE_SYSINIT_MARKER="BOOT_TIMING_DEFER_CHRONY_ENTROPY_V1"
 BESPOKE_ENTROPY_FIX_MARKER="BOOT_TIMING_RESTORE_EARLY_ENTROPY_V2"
 WIFI_DIAG_ROOT="/mnt/mmc/MUOS/boot-timing/wifi-module-diagnostic"
 WIFI_DIAG_STATE="$WIFI_DIAG_ROOT/state"
+WIFI_MODULE_TARGET="/opt/muos/script/device/module.sh"
+WIFI_MODULE_MARKER="BOOT_TIMING_WIFI_MODULE_ON_DEMAND_V1"
 
 if [ -r /proc/sys/kernel/random/boot_id ]; then
 	IFS= read -r BOOT_ID </proc/sys/kernel/random/boot_id
@@ -390,6 +392,36 @@ if { grep -q 'S01entropy.*deferred-20s' "$SYSINIT_TARGET" 2>/dev/null || \
 	else
 		rm -f "$PATCHED"
 		printf '%s ERROR: could not remove deferred entropy startup block\n' \
+			"$(date -Iseconds 2>/dev/null || date)" >>"$BESPOKE_ROOT/install.log"
+	fi
+fi
+
+# General device-module setup claims to exclude networking, but module.sh
+# still unconditionally modprobes 8821cs. The explicit network path uses
+# device/network.sh and loads the same driver itself, so remove it from boot.
+if [ -f "$WIFI_MODULE_TARGET" ] && ! grep -q "$WIFI_MODULE_MARKER" "$WIFI_MODULE_TARGET"; then
+	mkdir -p "$BESPOKE_ROOT/backup"
+	[ -f "$BESPOKE_ROOT/backup/device-module.sh.pre-wifi-on-demand" ] || \
+		cp -p "$WIFI_MODULE_TARGET" "$BESPOKE_ROOT/backup/device-module.sh.pre-wifi-on-demand"
+
+	PATCHED="/tmp/device-module-wifi-on-demand.$$.sh"
+	while IFS= read -r LINE; do
+		if [ "$LINE" = "$(printf '\t\t[ \"\$HAS_NETWORK\" -eq 1 ] && modprobe -q \"\$NET_NAME\"')" ]; then
+			printf '\t\t# %s\n' "$WIFI_MODULE_MARKER"
+			printf '\t\t%s\n' ': # Wi-Fi module is loaded only by device/network.sh on explicit request.'
+		else
+			printf '%s\n' "$LINE"
+		fi
+	done <"$WIFI_MODULE_TARGET" >"$PATCHED"
+
+	if grep -q "$WIFI_MODULE_MARKER" "$PATCHED"; then
+		chmod 755 "$PATCHED"
+		mv -f "$PATCHED" "$WIFI_MODULE_TARGET"
+		printf '%s removed rtl8821cs from general module loading; explicit network remains available\n' \
+			"$(date -Iseconds 2>/dev/null || date)" >>"$BESPOKE_ROOT/install.log"
+	else
+		rm -f "$PATCHED"
+		printf '%s ERROR: general Wi-Fi modprobe line not found; module loading unchanged\n' \
 			"$(date -Iseconds 2>/dev/null || date)" >>"$BESPOKE_ROOT/install.log"
 	fi
 fi
