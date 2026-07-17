@@ -25,7 +25,8 @@ product decisions, not runtime options.
 - Diagnostics: retained during development, then reduced to precise milestone
   markers in the reproducible firmware.
 - Stock muOS frontend: retained only as a fallback until the custom launcher
-  can launch games, return from them, suspend and shut down reliably.
+  can launch games, return from them, suspend and shut down reliably. B on the
+  main menu remains the explicit recovery path during development.
 
 ## Launcher menu
 
@@ -50,6 +51,10 @@ Ready proof titles use fixed launch mappings: Snes9x for SNES, standalone PPSSPP
 for PSP, and the external-script launcher for Ports. The custom launcher releases
 display and input ownership while content runs, then returns directly when the
 content process exits. No automatic core discovery is part of this device.
+
+PortMaster is the explicit network boundary: selecting it loads Wi-Fi, connects,
+runs the tool, then disconnects services and unloads the driver before returning.
+Shutdown uses the normal muOS poweroff machinery directly from the custom menu.
 
 ## Decisions reserved for the visual phase
 

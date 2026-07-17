@@ -71,3 +71,18 @@ The supervisor waits for the game process, records its result, and starts the
 custom launcher again without starting the stock frontend or calling `mufbset`.
 This keeps the proof narrow while retaining muOS's emulator configuration,
 controls, audio setup, saves, and emulator exit behavior.
+
+The hardware proof passed for all three launch paths: SNES through RetroArch,
+PSP through standalone PPSSPP, and a native Port. Games were fully playable
+with audio and the device volume controls, and each exited directly back to the
+custom launcher. The measured interval from game-process end to the next first
+launcher frame was 27--29 ms.
+
+## Native system actions
+
+The launcher uses the same narrow exit-code handoff for its remaining system
+actions. Shutdown calls muOS's proven poweroff path directly, without entering
+the stock frontend. PortMaster waits for the normal audio/controller runtime,
+loads and connects the RG34XX-SP network only when selected, runs PortMaster,
+then disconnects services, unloads the Wi-Fi device, restores launcher ownership
+and redraws the custom menu. Network setup therefore adds no work to boot.

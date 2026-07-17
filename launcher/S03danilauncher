@@ -16,6 +16,23 @@ SNAPSHOT_LOG() {
 	cp -f "$EARLY_LOG" "$PERSISTENT_LOG"
 }
 
+WAIT_RUNTIME() {
+	WAIT_COUNT=0
+	while [ ! -e "$READY" ] || [ ! -S /run/pipewire-0 ] || \
+		[ ! -e /usr/lib/gamecontrollerdb.txt ]; do
+		[ -e "$STOPPING" ] && return 1
+		WAIT_COUNT=$((WAIT_COUNT + 1))
+		[ "$WAIT_COUNT" -ge 500 ] && {
+			printf '%s runtime prerequisites timed out uptime: ' "$1"
+			cut -d ' ' -f 1 /proc/uptime
+			return 1
+		}
+		sleep 0.01
+	done
+	printf '%s runtime ready uptime: ' "$1"
+	cut -d ' ' -f 1 /proc/uptime
+}
+
 RUN_GAME() {
 	[ -s "$LAUNCH_REQUEST" ] || {
 		printf '%s\n' 'launch bridge error: request missing'
@@ -34,19 +51,7 @@ RUN_GAME() {
 		return 1
 	}
 
-	WAIT_COUNT=0
-	while [ ! -e "$READY" ] || [ ! -S /run/pipewire-0 ] || \
-		[ ! -e /usr/lib/gamecontrollerdb.txt ]; do
-		[ -e "$STOPPING" ] && return 1
-		WAIT_COUNT=$((WAIT_COUNT + 1))
-		[ "$WAIT_COUNT" -ge 500 ] && {
-			printf '%s\n' 'launch bridge error: game prerequisites timed out'
-			return 1
-		}
-		sleep 0.01
-	done
-	printf 'game prerequisites ready uptime: '
-	cut -d ' ' -f 1 /proc/uptime
+	WAIT_RUNTIME game || return 1
 
 	. /opt/muos/script/var/func.sh
 	GOVERNOR_FILE=$(GET_VAR "device" "cpu/governor")
@@ -78,6 +83,53 @@ RUN_GAME() {
 	return "$GAME_RESULT"
 }
 
+RUN_PORTMASTER() {
+	WAIT_RUNTIME portmaster || return 1
+	printf 'portmaster network connect start uptime: '
+	cut -d ' ' -f 1 /proc/uptime
+	SNAPSHOT_LOG
+	/opt/muos/script/system/network.sh connect
+	NETWORK_RESULT=$?
+	printf 'portmaster network connect result: %s\n' "$NETWORK_RESULT"
+	printf 'portmaster network connect end uptime: '
+	cut -d ' ' -f 1 /proc/uptime
+	SNAPSHOT_LOG
+
+	if [ "$NETWORK_RESULT" -eq 0 ]; then
+		printf 'portmaster start uptime: '
+		cut -d ' ' -f 1 /proc/uptime
+		/mnt/mmc/MUOS/PortMaster/PortMaster.sh
+		PORTMASTER_RESULT=$?
+		printf 'portmaster result: %s\n' "$PORTMASTER_RESULT"
+		printf 'portmaster end uptime: '
+		cut -d ' ' -f 1 /proc/uptime
+	else
+		PORTMASTER_RESULT=$NETWORK_RESULT
+	fi
+
+	/opt/muos/script/system/network.sh disconnect
+	. /opt/muos/script/var/func.sh
+	SET_VAR "system" "foreground_process" "dani-launcher"
+	printf 'portmaster network disconnected uptime: '
+	cut -d ' ' -f 1 /proc/uptime
+	SNAPSHOT_LOG
+	return "$PORTMASTER_RESULT"
+}
+
+RUN_SHUTDOWN() {
+	WAIT_COUNT=0
+	while [ ! -e "$READY" ]; do
+		[ -e "$STOPPING" ] && return 1
+		WAIT_COUNT=$((WAIT_COUNT + 1))
+		[ "$WAIT_COUNT" -ge 500 ] && return 1
+		sleep 0.01
+	done
+	printf 'native shutdown request uptime: '
+	cut -d ' ' -f 1 /proc/uptime
+	SNAPSHOT_LOG
+	/opt/muos/script/mux/quit.sh poweroff frontend
+}
+
 case "$1" in
 	start)
 		[ -x "$TARGET" ] || exit 0
@@ -96,8 +148,12 @@ case "$1" in
 					printf 'direct launcher exit uptime: '
 					cut -d ' ' -f 1 /proc/uptime
 
-					[ "$LAUNCHER_RESULT" -eq 10 ] || break
-					RUN_GAME
+					case "$LAUNCHER_RESULT" in
+						10) RUN_GAME ;;
+						11) RUN_SHUTDOWN || : ;;
+						12) RUN_PORTMASTER ;;
+						*) break ;;
+					esac
 				done
 
 				[ -e "$STOPPING" ] && exit 0

@@ -52,6 +52,8 @@ typedef signed long s64;
 #define ACTION_NONE 0
 #define ACTION_STOCK 1
 #define ACTION_LAUNCH 10
+#define ACTION_SHUTDOWN 11
+#define ACTION_PORTMASTER 12
 
 struct fb_bitfield {
     u32 offset;
@@ -471,9 +473,11 @@ static int select_current(void) {
         } else if (selection == 1U) {
             selected_status = "FAVORITES CACHE COMING NEXT";
         } else if (selection == 2U) {
-            selected_status = "PORTMASTER HANDOFF COMING NEXT";
+            selected_status = "CONNECTING PORTMASTER";
+            action = ACTION_PORTMASTER;
         } else {
-            selected_status = "SHUTDOWN HANDOFF COMING NEXT";
+            selected_status = "SHUTTING DOWN";
+            action = ACTION_SHUTDOWN;
         }
     } else if (view == VIEW_SYSTEMS) {
         active_system = selection;
@@ -704,6 +708,10 @@ static int application(void) {
 
     if (exit_action == ACTION_LAUNCH)
         log_text("exit reason=launch-request boot_ms=");
+    else if (exit_action == ACTION_SHUTDOWN)
+        log_text("exit reason=shutdown-request boot_ms=");
+    else if (exit_action == ACTION_PORTMASTER)
+        log_text("exit reason=portmaster-request boot_ms=");
     else if (exit_action == ACTION_STOCK)
         log_text("exit reason=b-button boot_ms=");
     else
@@ -715,7 +723,10 @@ static int application(void) {
     sys_close(input_fd);
     sys_munmap((void *)fb, fb_fix.smem_len);
     sys_close(fb_fd);
-    return exit_action == ACTION_LAUNCH ? ACTION_LAUNCH : 0;
+    if (exit_action == ACTION_LAUNCH || exit_action == ACTION_SHUTDOWN ||
+        exit_action == ACTION_PORTMASTER)
+        return exit_action;
+    return 0;
 }
 
 __attribute__((noreturn, visibility("default"))) void _start(void) {

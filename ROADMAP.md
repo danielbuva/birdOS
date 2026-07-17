@@ -34,15 +34,17 @@ The long-term centerpiece would be a tiny custom launcher—ideally a small stat
 - [x] Build a freestanding static launcher with direct framebuffer rendering.
 - [x] Start at the earliest proven point using direct evdev input before udev.
 - [x] Prove the embedded game catalogue and asynchronous ROM readiness.
-- [ ] Add fixed emulator/Port launch handoff and reliable return (staged next).
-- [ ] Replace the stock frontend permanently.
+- [x] Add fixed SNES/PSP/Port launch handoff and reliable direct return.
+- [ ] Finish replacing daily stock-frontend paths (system actions staged next).
 - [ ] Complete the final visual, animation and audio identity.
 - [ ] Remove superseded muOS components and produce a reproducible firmware image.
 - [ ] Optimize kernel and U-Boot last.
 
-Verified interactive milestone: process entry at 2.269 seconds of kernel uptime,
-input already ready, first frame at 2.289 seconds, and approximately four seconds
-from LED-on by stopwatch.
+Verified interactive milestone: the catalog build entered at 2.404 seconds of
+kernel uptime with input ready and drew its first frame at 2.424 seconds. LED-on
+to an immediately usable menu remains approximately four seconds by stopwatch.
+All three emulator/Port paths are playable with audio and return to a redrawn
+launcher in 27--29 ms.
 
 ## Priority list
 
@@ -386,13 +388,13 @@ These changes are higher risk and will likely save less time than replacing the 
 Your next concrete milestones should be:
 
 ```text
-1. Draw wallpaper and text from a tiny executable
-2. Read the RG34XXSP controls
-3. Launch it automatically at the earliest safe point
-4. Load a cached game list
-5. Mount storage in parallel
-6. Launch one game and return to the menu
-7. Replace muxfrontend permanently
+1. [done] Draw wallpaper and text from a tiny executable
+2. [done] Read the RG34XXSP controls
+3. [done] Launch it automatically at the earliest safe point
+4. [done] Load a cached game list
+5. [done] Mount storage in parallel
+6. [done] Launch games and return directly to the menu
+7. [in progress] Replace muxfrontend's remaining daily-use paths
 8. Add optimized animation and audio
 9. Strip services and dependencies
 10. Package the complete custom image
