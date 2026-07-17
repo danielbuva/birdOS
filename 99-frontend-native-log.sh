@@ -405,8 +405,9 @@ if [ -f "$WIFI_MODULE_TARGET" ] && ! grep -q "$WIFI_MODULE_MARKER" "$WIFI_MODULE
 		cp -p "$WIFI_MODULE_TARGET" "$BESPOKE_ROOT/backup/device-module.sh.pre-wifi-on-demand"
 
 	PATCHED="/tmp/device-module-wifi-on-demand.$$.sh"
+	WIFI_MODULE_LOAD_LINE=$(printf '\t\t%s' '[ "$HAS_NETWORK" -eq 1 ] && modprobe -q "$NET_NAME"')
 	while IFS= read -r LINE; do
-		if [ "$LINE" = "$(printf '\t\t[ \"\$HAS_NETWORK\" -eq 1 ] && modprobe -q \"\$NET_NAME\"')" ]; then
+		if [ "$LINE" = "$WIFI_MODULE_LOAD_LINE" ]; then
 			printf '\t\t# %s\n' "$WIFI_MODULE_MARKER"
 			printf '\t\t%s\n' ': # Wi-Fi module is loaded only by device/network.sh on explicit request.'
 		else
