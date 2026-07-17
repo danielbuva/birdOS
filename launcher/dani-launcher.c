@@ -46,8 +46,9 @@ typedef signed long s64;
 #define ABS_HAT0Y 17
 
 #define CLOCK_BOOTTIME 7
-#define PROOF_TIMEOUT_MS 15000UL
+#define PROOF_TIMEOUT_MS 20000UL
 #define MAX_INPUTS 8
+#define INPUT_CAPTURE_PROOF 1
 
 struct fb_bitfield {
     u32 offset;
@@ -132,6 +133,7 @@ static int input_count;
 static int selection;
 static int axis_x;
 static int axis_y;
+static u32 captured_events;
 static const char *selected_status = "DIRECT FRAMEBUFFER READY";
 
 static const char *event_path[MAX_INPUTS] = {
@@ -244,6 +246,15 @@ static void log_number(u64 value) {
     sys_write(1, &buffer[position + 1], (u64)(22 - position));
 }
 
+static void log_signed(s64 value) {
+    if (value < 0) {
+        log_text("-");
+        log_number((u64)-value);
+    } else {
+        log_number((u64)value);
+    }
+}
+
 static u64 boot_ms(void) {
     struct timespec now;
     if (sys_clock_gettime(&now) < 0) return 0;
@@ -342,7 +353,7 @@ static void draw_screen(void) {
     }
 
     draw_text(32, (int)fb_var.yres - 54, selected_status, 2, muted);
-    draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE   A SELECT   B EXIT", 2, primary);
+    draw_text(32, (int)fb_var.yres - 28, "PRESS UP DOWN LEFT RIGHT A B", 2, primary);
     __asm__ volatile("dmb ishst" ::: "memory");
 }
 
@@ -365,7 +376,28 @@ static int handle_direction(int direction) {
     return 0;
 }
 
-static int handle_event(const struct input_event *event) {
+static int handle_event(const struct input_event *event, int device_index) {
+    if ((event->type == EV_KEY || event->type == EV_ABS) && captured_events < 300) {
+        log_text("event boot_ms=");
+        log_number(boot_ms());
+        log_text(" device=");
+        log_number((u64)device_index);
+        log_text(" type=");
+        log_number(event->type);
+        log_text(" code=");
+        log_number(event->code);
+        log_text(" value=");
+        log_signed(event->value);
+        log_text("\n");
+        captured_events++;
+
+        if ((event->type == EV_KEY && event->value == 1) ||
+            (event->type == EV_ABS && event->value != 0)) {
+            selected_status = "RAW INPUT EVENT CAPTURED";
+            draw_screen();
+        }
+    }
+
     if (event->type == EV_KEY && event->value == 1) {
         if (event->code == KEY_UP || event->code == BTN_DPAD_UP) return handle_direction(-1);
         if (event->code == KEY_DOWN || event->code == BTN_DPAD_DOWN) return handle_direction(1);
@@ -375,7 +407,9 @@ static int handle_event(const struct input_event *event) {
             select_current();
             return 0;
         }
-        if (event->code == BTN_EAST || event->code == KEY_BACKSPACE || event->code == KEY_ESC) return 1;
+        if (!INPUT_CAPTURE_PROOF &&
+            (event->code == BTN_EAST || event->code == KEY_BACKSPACE || event->code == KEY_ESC))
+            return 1;
     }
 
     if (event->type == EV_ABS) {
@@ -485,7 +519,7 @@ static int application(void) {
             long count;
             if (input_fd[i] < 0) continue;
             while ((count = sys_read(input_fd[i], &event, sizeof(event))) == (long)sizeof(event)) {
-                if (handle_event(&event)) {
+                if (handle_event(&event, i)) {
                     exit_by_button = 1;
                     break;
                 }
@@ -495,8 +529,10 @@ static int application(void) {
         sys_nanosleep(16000000L);
     }
 
-    log_text(exit_by_button ? "exit reason=b-button boot_ms=" : "exit reason=safety-timeout boot_ms=");
+    log_text(exit_by_button ? "exit reason=b-button boot_ms=" : "exit reason=capture-complete boot_ms=");
     log_number(boot_ms());
+    log_text(" captured_events=");
+    log_number(captured_events);
     log_text("\n");
     close_inputs();
     sys_munmap((void *)fb, fb_fix.smem_len);

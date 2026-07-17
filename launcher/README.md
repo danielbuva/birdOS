@@ -10,10 +10,12 @@ The first staged run is deliberately late and temporary:
 1. Stock muOS reaches its normal screen.
 2. The proof stops stock after three seconds.
 3. The proof draws its own 720x480 menu and opens evdev devices directly.
-4. D-pad changes the selection, A displays the selected label and B exits.
-5. A 15-second timeout exits even if the input mapping needs adjustment.
+4. The second proof captures the raw event code and value for each pressed
+   control. B deliberately does not exit during calibration.
+5. A 20-second timeout ends the capture automatically.
 6. Stock muOS restarts automatically.
 
-Results are written to `/mnt/mmc/MUOS/bespoke-launcher/proof-v1.log`. A
+Input-calibration results are written to
+`/mnt/mmc/MUOS/bespoke-launcher/proof-v2-input.log`. A
 successful run gives the exact framebuffer format, stride, input device names,
 first-frame uptime and exit reason needed for the early-boot version.
