@@ -43,7 +43,7 @@ typedef signed long s64;
 #define CLOCK_BOOTTIME 7
 #define STOCK_FALLBACK_TIMEOUT_MS 120000UL
 #define DEVICE_WAIT_MS 5000UL
-#define BOOT_ANIMATION_MS 3200UL
+#define BOOT_ANIMATION_MS 1600UL
 #define INPUT_PATH "/dev/input/event1"
 #define ROM_ROOT "/mnt/mmc/ROMS"
 #define LAUNCH_REQUEST "/run/muos/dani-launch-request"
@@ -53,6 +53,7 @@ typedef signed long s64;
 #define RECENT_TEMP "/mnt/mmc/MUOS/bespoke-launcher/recent.tmp"
 #define BOOT_EFFECT_MARKER "/run/muos/dani-boot-effects-started"
 #define BOOT_SOUND_CANCEL "/run/muos/dani-boot-sound-cancel"
+#define BRIGHTNESS_READY_MARKER "/run/muos/dani-brightness-ready"
 
 #define VIEW_MAIN 0U
 #define VIEW_SYSTEMS 1U
@@ -151,12 +152,14 @@ static int axis_x;
 static int axis_y;
 static int storage_ready;
 static int favorites_loaded;
+static int boot_animation_pending;
 static int boot_animation_active;
 static int boot_animation_complete;
 static u32 favorite_count;
 static u8 favorites[(CATALOG_ENTRY_COUNT + 7U) / 8U];
 static u64 boot_animation_started;
 static u64 next_animation_frame;
+static u64 next_brightness_probe;
 static u64 next_storage_probe;
 static u32 captured_events;
 static const char *selected_status = "DIRECT FRAMEBUFFER READY";
@@ -662,6 +665,40 @@ static void finish_boot_animation(const char *reason) {
     log_text("\n");
 }
 
+static void begin_boot_animation_if_ready(void) {
+    long fd;
+    u64 now;
+    if (!boot_animation_pending) return;
+    now = boot_ms();
+    if (now < next_brightness_probe) return;
+    next_brightness_probe = now + 50UL;
+    fd = sys_open(BRIGHTNESS_READY_MARKER, O_RDONLY);
+    if (fd < 0) return;
+    sys_close((int)fd);
+
+    boot_animation_pending = 0;
+    boot_animation_active = 1;
+    boot_animation_started = now;
+    next_animation_frame = now;
+    draw_screen();
+    log_text("boot_animation start_boot_ms=");
+    log_number(now);
+    log_text(" duration_ms=");
+    log_number(BOOT_ANIMATION_MS);
+    log_text(" brightness_ready=1\n");
+}
+
+static void skip_pending_boot_animation(void) {
+    if (!boot_animation_pending) return;
+    boot_animation_pending = 0;
+    boot_animation_complete = 1;
+    rectangle(32, 86, 656, 3, color(232, 166, 48));
+    __asm__ volatile("dmb ishst" ::: "memory");
+    log_text("boot_animation end_boot_ms=");
+    log_number(boot_ms());
+    log_text(" reason=input-before-brightness\n");
+}
+
 static void animate_boot(void) {
     u64 now;
     u64 elapsed;
@@ -872,10 +909,11 @@ static int handle_event(const struct input_event *event) {
         captured_events++;
     }
 
-    if (boot_animation_active &&
-        ((event->type == EV_KEY && event->value == 1) ||
-         (event->type == EV_ABS && event->value != 0)))
+    if ((event->type == EV_KEY && event->value == 1) ||
+        (event->type == EV_ABS && event->value != 0)) {
+        skip_pending_boot_animation();
         finish_boot_animation("input");
+    }
 
     if (event->type == EV_KEY && event->value == 1) {
         if (event->code == BTN_SOUTH) {
@@ -1015,14 +1053,11 @@ static int application(void) {
         return 6;
     }
     if (claim_boot_effects()) {
-        boot_animation_active = 1;
-        boot_animation_started = boot_ms();
-        next_animation_frame = boot_animation_started;
-        log_text("boot_animation start_boot_ms=");
-        log_number(boot_animation_started);
-        log_text(" duration_ms=");
-        log_number(BOOT_ANIMATION_MS);
-        log_text("\n");
+        boot_animation_pending = 1;
+        next_brightness_probe = boot_ms();
+        log_text("boot_animation pending_boot_ms=");
+        log_number(next_brightness_probe);
+        log_text(" wait=brightness-ready\n");
     } else {
         boot_animation_complete = 1;
     }
@@ -1044,6 +1079,7 @@ static int application(void) {
             }
         }
         probe_storage();
+        begin_boot_animation_if_ready();
         animate_boot();
         sys_nanosleep(4000000L);
     }

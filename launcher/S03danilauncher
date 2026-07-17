@@ -55,24 +55,44 @@ RUN_BOOT_SOUND() {
 		sleep 0.1
 	done
 	if [ -e "$STOPPING" ] || [ -e "$BOOT_SOUND_CANCEL" ]; then exit 0; fi
-	[ -x /usr/bin/mpv ] || {
-		printf '%s\n' 'boot sound error: /usr/bin/mpv missing'
+	if [ -x /usr/bin/pw-play ]; then
+		SOUND_PLAYER="pw-play"
+	elif [ -x /usr/bin/aplay ]; then
+		SOUND_PLAYER="aplay"
+	elif [ -x /usr/bin/mpv ]; then
+		SOUND_PLAYER="mpv"
+	else
+		printf '%s\n' 'boot sound error: no supported player'
 		exit 1
-	}
-	printf 'boot sound start uptime: '
+	fi
+	printf 'boot sound start player=%s uptime: ' "$SOUND_PLAYER"
 	cut -d ' ' -f 1 /proc/uptime
-	MPV_PID=""
+	PLAYER_PID=""
 	STOP_BOOT_SOUND() {
-		[ -n "$MPV_PID" ] && kill "$MPV_PID" 2>/dev/null || :
+		[ -n "$PLAYER_PID" ] && kill "$PLAYER_PID" 2>/dev/null || :
 		exit 0
 	}
 	trap STOP_BOOT_SOUND TERM INT
-	/usr/bin/mpv --really-quiet --no-terminal --audio-display=no --no-video "$BOOT_SOUND" &
-	MPV_PID=$!
-	wait "$MPV_PID"
+	case "$SOUND_PLAYER" in
+		pw-play) /usr/bin/pw-play "$BOOT_SOUND" & ;;
+		aplay) /usr/bin/aplay -q "$BOOT_SOUND" & ;;
+		mpv) /usr/bin/mpv --really-quiet --no-terminal --audio-display=no --no-video "$BOOT_SOUND" & ;;
+	esac
+	PLAYER_PID=$!
+	wait "$PLAYER_PID"
 	SOUND_RESULT=$?
+	if [ "$SOUND_RESULT" -ne 0 ] && [ "$SOUND_PLAYER" != "mpv" ] &&
+		[ -x /usr/bin/mpv ] && [ ! -e "$BOOT_SOUND_CANCEL" ]; then
+		printf 'boot sound fallback from %s to mpv uptime: ' "$SOUND_PLAYER"
+		cut -d ' ' -f 1 /proc/uptime
+		SOUND_PLAYER="mpv"
+		/usr/bin/mpv --really-quiet --no-terminal --audio-display=no --no-video "$BOOT_SOUND" &
+		PLAYER_PID=$!
+		wait "$PLAYER_PID"
+		SOUND_RESULT=$?
+	fi
 	trap - TERM INT
-	printf 'boot sound result: %s uptime: ' "$SOUND_RESULT"
+	printf 'boot sound result: %s player=%s uptime: ' "$SOUND_RESULT" "$SOUND_PLAYER"
 	cut -d ' ' -f 1 /proc/uptime
 	exit "$SOUND_RESULT"
 }

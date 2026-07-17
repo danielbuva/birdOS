@@ -34,9 +34,11 @@ FONT_LANGUAGE_FILE="/opt/muos/config/settings/general/language"
 BESPOKE_ROOT="/mnt/mmc/MUOS/boot-timing/bespoke-services"
 BESPOKE_STARTUP="$BESPOKE_ROOT/backup/startup.sh.pre-bespoke-services"
 BESPOKE_DEVICE="$BESPOKE_ROOT/backup/device-start.sh.pre-bespoke-services"
+BESPOKE_BRIGHTNESS_DEVICE="$BESPOKE_ROOT/backup/device-start.sh.pre-brightness-ready"
 BESPOKE_SYSINIT="$BESPOKE_ROOT/backup/sysinit.pre-bespoke-services"
 BESPOKE_STARTUP_MARKER="BOOT_TIMING_BESPOKE_BACKGROUND_V1"
 BESPOKE_DEVICE_MARKER="BOOT_TIMING_WIFI_ON_DEMAND_V1"
+BESPOKE_BRIGHTNESS_MARKER="DANI_BRIGHTNESS_READY_V1"
 BESPOKE_SYSINIT_MARKER="BOOT_TIMING_DEFER_CHRONY_ENTROPY_V1"
 BESPOKE_ENTROPY_FIX_MARKER="BOOT_TIMING_RESTORE_EARLY_ENTROPY_V2"
 WIFI_DIAG_ROOT="/mnt/mmc/MUOS/boot-timing/wifi-module-diagnostic"
@@ -51,7 +53,7 @@ LAUNCHER_SOUND="$LAUNCHER_ROOT/boot.wav"
 LAUNCHER_TARGET="/opt/muos/bin/dani-launcher"
 LAUNCHER_PROOF_STATE="$LAUNCHER_ROOT/proof-v4-remaining.state"
 LAUNCHER_PROOF_LOG="$LAUNCHER_ROOT/proof-v4-remaining.log"
-EARLY_LAUNCHER_STATE="$LAUNCHER_ROOT/early-launcher-v7-boot-effects.state"
+EARLY_LAUNCHER_STATE="$LAUNCHER_ROOT/early-launcher-v8-brightness-sync.state"
 EARLY_INIT_SOURCE="$LAUNCHER_ROOT/S03danilauncher"
 EARLY_INIT_TARGET="/opt/muos/script/init/S03danilauncher"
 EARLY_OLD_INIT_TARGET="/opt/muos/script/init/S11danilauncher"
@@ -256,6 +258,42 @@ if [ -f "$QUIET_DEVICE" ] && ! grep -q "$BESPOKE_DEVICE_MARKER" "$QUIET_DEVICE";
 	else
 		rm -f "$PATCHED"
 		printf '%s ERROR: startup rfkill line not found; device startup unchanged\n' \
+			"$(date -Iseconds 2>/dev/null || date)" >>"$BESPOKE_ROOT/install.log"
+	fi
+fi
+
+# Signal the custom launcher only after the stock device path has restored the
+# user's final backlight value. The menu remains usable before this marker, but
+# the decorative animation waits so a mid-animation brightness transition
+# cannot split its colours or framebuffer pages.
+if [ -f "$QUIET_DEVICE" ] && ! grep -q "$BESPOKE_BRIGHTNESS_MARKER" "$QUIET_DEVICE"; then
+	mkdir -p "$BESPOKE_ROOT/backup"
+	[ -f "$BESPOKE_BRIGHTNESS_DEVICE" ] || cp -p "$QUIET_DEVICE" "$BESPOKE_BRIGHTNESS_DEVICE"
+
+	PATCHED="/tmp/device-start-brightness.$$.sh"
+	IN_BRIGHTNESS_CASE=0
+	BRIGHTNESS_CASE_FOUND=0
+	while IFS= read -r LINE; do
+		printf '%s\n' "$LINE"
+		if [ "$LINE" = "$(printf '\t%s' 'case "$(GET_VAR "config" "settings/advanced/brightness")" in')" ]; then
+			IN_BRIGHTNESS_CASE=1
+		elif [ "$IN_BRIGHTNESS_CASE" -eq 1 ] && [ "$LINE" = "$(printf '\tesac')" ]; then
+			printf '\t# %s\n' "$BESPOKE_BRIGHTNESS_MARKER"
+			printf '\t%s\n' 'mkdir -p "/run/muos"'
+			printf '\t%s\n' ': >"/run/muos/dani-brightness-ready"'
+			IN_BRIGHTNESS_CASE=0
+			BRIGHTNESS_CASE_FOUND=1
+		fi
+	done <"$QUIET_DEVICE" >"$PATCHED"
+
+	if grep -q "$BESPOKE_BRIGHTNESS_MARKER" "$PATCHED" && [ "$BRIGHTNESS_CASE_FOUND" -eq 1 ]; then
+		chmod 755 "$PATCHED"
+		mv -f "$PATCHED" "$QUIET_DEVICE"
+		printf '%s launcher animation now waits for final backlight restore\n' \
+			"$(date -Iseconds 2>/dev/null || date)" >>"$BESPOKE_ROOT/install.log"
+	else
+		rm -f "$PATCHED"
+		printf '%s ERROR: brightness case not found; animation handshake not installed\n' \
 			"$(date -Iseconds 2>/dev/null || date)" >>"$BESPOKE_ROOT/install.log"
 	fi
 fi
@@ -539,7 +577,7 @@ if [ -s "$LAUNCHER_OBJECT" ] && [ -s "$EARLY_INIT_SOURCE" ] && [ -s "$LAUNCHER_S
 	STARTUP_READY=0
 
 	if /usr/bin/ld -static --build-id=none -z noexecstack -s -e _start \
-		-o "$LAUNCHER_NEW" "$LAUNCHER_OBJECT" >"$LAUNCHER_ROOT/link-early-v7-boot-effects.log" 2>&1; then
+		-o "$LAUNCHER_NEW" "$LAUNCHER_OBJECT" >"$LAUNCHER_ROOT/link-early-v8-brightness-sync.log" 2>&1; then
 		chmod 755 "$LAUNCHER_NEW"
 		if grep -q "$EARLY_STARTUP_MARKER" "$EARLY_STARTUP_TARGET"; then
 			STARTUP_READY=1
@@ -571,7 +609,7 @@ if [ -s "$LAUNCHER_OBJECT" ] && [ -s "$EARLY_INIT_SOURCE" ] && [ -s "$LAUNCHER_S
 			chmod 755 "$EARLY_INIT_TARGET"
 			rm -f "$EARLY_OLD_INIT_TARGET"
 			printf '%s\n' "installed" >"$EARLY_LAUNCHER_STATE"
-			printf '%s nonblocking procedural animation and PCM boot chime installed; active next boot\n' \
+			printf '%s brightness-synchronised animation and lightweight sound-player selection installed; active next boot\n' \
 				"$(date -Iseconds 2>/dev/null || date)" >>"$BESPOKE_ROOT/install.log"
 		else
 			rm -f "$PATCHED" "$LAUNCHER_NEW"

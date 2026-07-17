@@ -112,10 +112,9 @@ only 40 ms after the ROM root became visible.
 ## Nonblocking boot-effects proof
 
 The first boot process draws the complete interactive menu before beginning a
-3.2-second procedural accent line timed to finish near measured final audio readiness.
-Input ends the animation immediately, and
-game returns do not replay it. No images, decoder, timer service, compositor or
-new library is involved.
+procedural accent line. Input ends the animation immediately, and game returns
+do not replay it. No images, decoder, timer service, compositor or new launcher
+library is involved.
 
 `generate-boot-sound.py` deterministically produces a 320 ms, 48 kHz, 16-bit
 mono WAV. The supervisor waits in parallel for the normal system-ready marker,
@@ -123,3 +122,15 @@ PipeWire socket and exact asset path, then uses muOS's existing audio player. It
 cancels the pending sound on game, PortMaster, stock or shutdown handoff. This
 first audio proof deliberately preserves the known-good PipeWire setup; a later
 profile will decide whether replacing the player is worth its dependency cost.
+
+The v7 hardware run kept first frame at 2.275--2.356 seconds, proved input skip,
+played the chime normally, and cancelled it when a game was opened. It also
+exposed two useful refinements: the later saved-brightness restore visually
+split the line, and `mpv` remained alive for roughly 4.7 seconds to play a
+320 ms file.
+
+The v8 proof leaves the menu immediately usable but holds decorative motion
+until the device-start brightness case emits an exact readiness marker. It then
+redraws once at the final brightness and runs a shorter 1.6-second accent. The
+sound wrapper prefers `pw-play`, then `aplay`, with the proven `mpv` path only as
+a fallback; logs record the selected player and total lifetime.

@@ -62,13 +62,14 @@ runs the tool, then disconnects services and unloads the driver before returning
 Shutdown uses the normal muOS poweroff machinery directly from the custom menu.
 Both paths are hardware-verified and do not enter the stock frontend.
 
-The boot-effects proof keeps the complete menu as frame zero. A 3.2-second
-procedural accent animates afterward and immediately completes on the first
-input, so it cannot delay or capture interaction. A 320 ms mono PCM chime waits
-asynchronously for the existing PipeWire route and is cancelled if the launcher
-hands off before playback. The motion is timed to finish near measured final audio
-readiness. The line and tone are development assets, not
-the final visual or sonic identity.
+The boot-effects proof keeps the complete menu as frame zero. The refined
+1.6-second procedural accent waits for muOS to signal that the saved backlight
+value has been restored, then starts from a clean redraw. It immediately
+completes on the first input, so it cannot delay or capture interaction. A
+320 ms mono PCM chime waits asynchronously for the existing PipeWire route and
+is cancelled if the launcher hands off before playback. The supervisor prefers
+muOS's lightweight PCM players before falling back to `mpv`. The line and tone
+are development assets, not the final visual or sonic identity.
 
 ## Decisions reserved for the visual phase
 

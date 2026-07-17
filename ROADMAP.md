@@ -37,8 +37,10 @@ The long-term centerpiece would be a tiny custom launcher—ideally a small stat
 - [x] Add fixed SNES/PSP/Port launch handoff and reliable direct return.
 - [x] Replace daily PortMaster/network and shutdown stock-frontend paths.
 - [x] Prove persistent Favorites and recent-game state.
-- [ ] Prove nonblocking procedural animation and readiness-gated boot audio
-  (staged next).
+- [x] Prove nonblocking procedural animation, input skip and handoff-cancelled
+  boot audio.
+- [ ] Synchronise animation with the saved backlight restore and profile the
+  lightweight sound-player path (staged next).
 - [ ] Complete the final visual, animation and audio identity.
 - [ ] Remove superseded muOS components and produce a reproducible firmware image.
 - [ ] Optimize kernel and U-Boot last.

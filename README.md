@@ -38,8 +38,9 @@ index, on-demand networking, and a reproducible firmware image.
 - SNES, PSP, and native Port launch/return paths work with audio and volume.
 - PortMaster and shutdown run directly without entering the stock frontend.
 - Persistent Favorites and most-recent path tracking are hardware-verified.
-- The next staged proof animates only after the usable frame and starts a tiny
-  preconverted PCM chime only after the normal audio route is ready.
+- The boot-effects proof animates only after the usable frame and starts a tiny
+  preconverted PCM chime only after the normal audio route is ready. The staged
+  refinement synchronises motion with the final backlight restore.
 - Sounds, low-power monitoring, USB setup, device-control refresh, and SDL-map
   refresh deferred until after frontend startup.
 - Early entropy retained: deferring haveged delayed kernel CRNG readiness and
