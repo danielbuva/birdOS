@@ -39,6 +39,8 @@ BESPOKE_STARTUP_MARKER="BOOT_TIMING_BESPOKE_BACKGROUND_V1"
 BESPOKE_DEVICE_MARKER="BOOT_TIMING_WIFI_ON_DEMAND_V1"
 BESPOKE_SYSINIT_MARKER="BOOT_TIMING_DEFER_CHRONY_ENTROPY_V1"
 BESPOKE_ENTROPY_FIX_MARKER="BOOT_TIMING_RESTORE_EARLY_ENTROPY_V2"
+WIFI_DIAG_ROOT="/mnt/mmc/MUOS/boot-timing/wifi-module-diagnostic"
+WIFI_DIAG_STATE="$WIFI_DIAG_ROOT/state"
 
 if [ -r /proc/sys/kernel/random/boot_id ]; then
 	IFS= read -r BOOT_ID </proc/sys/kernel/random/boot_id
@@ -524,5 +526,31 @@ esac
 			"$(date -Iseconds 2>/dev/null || date)" "$BOOT_ID" >>"$TRACE_ROOT/collection.log"
 	fi
 ) &
+
+# One-shot late collection to identify what still auto-loads rtl8821cs after
+# boot autoconnect and the unconditional rfkill call have both been removed.
+if [ ! -f "$WIFI_DIAG_STATE" ]; then
+	(
+		sleep 25
+		mkdir -p "$WIFI_DIAG_ROOT"
+		[ -f /opt/muos/script/device/module.sh ] && \
+			cp -f /opt/muos/script/device/module.sh "$WIFI_DIAG_ROOT/device-module.sh"
+		[ -f /opt/muos/script/device/network.sh ] && \
+			cp -f /opt/muos/script/device/network.sh "$WIFI_DIAG_ROOT/device-network.sh"
+		[ -f /opt/muos/script/system/network.sh ] && \
+			cp -f /opt/muos/script/system/network.sh "$WIFI_DIAG_ROOT/system-network.sh"
+		find /opt/muos/device /etc/udev /lib/udev -maxdepth 5 -type f 2>/dev/null \
+			>"$WIFI_DIAG_ROOT/candidate-files.txt"
+		grep -R -n -i -E 'rtl8821|8821cs|sunxi-wlan|network\.sh|rfkill|wlan' \
+			/opt/muos/device /opt/muos/script/device /etc/udev /lib/udev 2>/dev/null \
+			>"$WIFI_DIAG_ROOT/references.txt"
+		cat /proc/modules >"$WIFI_DIAG_ROOT/modules.txt"
+		ps >"$WIFI_DIAG_ROOT/processes.txt"
+		dmesg >"$WIFI_DIAG_ROOT/dmesg.txt"
+		readlink -f /sys/class/net/wlan0/device/driver \
+			>"$WIFI_DIAG_ROOT/wlan0-driver.txt" 2>/dev/null
+		printf '%s\n' "complete" >"$WIFI_DIAG_STATE"
+	) &
+fi
 
 exit 0
