@@ -24,8 +24,10 @@ index, on-demand networking, and a reproducible firmware image.
 - Five unused multilingual font DSOs replaced by tiny AArch64 stubs.
 - Boot Wi-Fi and Chrony disabled; Wi-Fi remains available on demand.
 - PortMaster requests a network connection when launched.
-- Entropy generation, sounds, low-power monitoring, USB setup, device-control
-  refresh, and SDL-map refresh deferred until after frontend startup.
+- Sounds, low-power monitoring, USB setup, device-control refresh, and SDL-map
+  refresh deferred until after frontend startup.
+- Early entropy retained: deferring haveged delayed kernel CRNG readiness and
+  caused PipeWire/SDL audio to block the frontend until 12-14 seconds.
 
 ## Font payload
 

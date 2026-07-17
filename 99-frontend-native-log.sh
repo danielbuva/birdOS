@@ -38,6 +38,7 @@ BESPOKE_SYSINIT="$BESPOKE_ROOT/backup/sysinit.pre-bespoke-services"
 BESPOKE_STARTUP_MARKER="BOOT_TIMING_BESPOKE_BACKGROUND_V1"
 BESPOKE_DEVICE_MARKER="BOOT_TIMING_WIFI_ON_DEMAND_V1"
 BESPOKE_SYSINIT_MARKER="BOOT_TIMING_DEFER_CHRONY_ENTROPY_V1"
+BESPOKE_ENTROPY_FIX_MARKER="BOOT_TIMING_RESTORE_EARLY_ENTROPY_V2"
 
 if [ -r /proc/sys/kernel/random/boot_id ]; then
 	IFS= read -r BOOT_ID </proc/sys/kernel/random/boot_id
@@ -241,8 +242,8 @@ if [ -f "$QUIET_DEVICE" ] && ! grep -q "$BESPOKE_DEVICE_MARKER" "$QUIET_DEVICE";
 fi
 
 # Chrony is only useful with a network connection, and network.sh explicitly
-# restarts it after connecting. haveged is retained but starts after the menu,
-# avoiding entropy generation competing with udev, storage, and the frontend.
+# restarts it after connecting. Entropy must remain early: PipeWire and SDL can
+# block in getrandom until the kernel CRNG is initialised.
 SYSINIT_TARGET="/opt/muos/script/init/sysinit"
 if [ -f "$SYSINIT_TARGET" ] && ! grep -q "$BESPOKE_SYSINIT_MARKER" "$SYSINIT_TARGET"; then
 	mkdir -p "$BESPOKE_ROOT/backup"
@@ -255,7 +256,6 @@ if [ -f "$SYSINIT_TARGET" ] && ! grep -q "$BESPOKE_SYSINIT_MARKER" "$SYSINIT_TAR
 			printf '\t\t# %s\n' "$BESPOKE_SYSINIT_MARKER"
 			printf '\t\t%s\n' 'case "${SCRIPT##*/}" in'
 			printf '\t\t\t%s\n' 'S00chrony) TIMING_EVENT "skip" "sync" "S00chrony" "deferred-to-network"; continue ;;'
-			printf '\t\t\t%s\n' 'S01entropy) TIMING_EVENT "skip" "sync" "S01entropy" "deferred-20s"; continue ;;'
 			printf '\t\t%s\n' 'esac'
 			printf '%s\n' "$LINE"
 		else
@@ -266,7 +266,7 @@ if [ -f "$SYSINIT_TARGET" ] && ! grep -q "$BESPOKE_SYSINIT_MARKER" "$SYSINIT_TAR
 	if grep -q "$BESPOKE_SYSINIT_MARKER" "$PATCHED"; then
 		chmod 755 "$PATCHED"
 		mv -f "$PATCHED" "$SYSINIT_TARGET"
-		printf '%s chrony removed from boot and entropy generation deferred\n' \
+		printf '%s chrony removed from boot; early entropy retained for audio/CRNG readiness\n' \
 			"$(date -Iseconds 2>/dev/null || date)" >>"$BESPOKE_ROOT/install.log"
 	else
 		rm -f "$PATCHED"
@@ -288,7 +288,6 @@ if [ -f "$QUIET_STARTUP" ] && ! grep -q "$BESPOKE_STARTUP_MARKER" "$QUIET_STARTU
 	while IFS= read -r LINE; do
 		if [ "$LINE" = 'LOG_INFO "$0" 0 "BOOTING" "Starting Pipewire"' ]; then
 			printf '# %s\n' "$BESPOKE_STARTUP_MARKER"
-			printf '%s\n' '(' '    sleep 20' '    /opt/muos/script/init/S01entropy start' ') &'
 			printf '%s\n' "$LINE"
 		elif [ "$LINE" = 'LOG_INFO "$0" 0 "BOOTING" "Connecting Network on Boot if requested and possible"' ]; then
 			IFS= read -r NET_1 || NET_1=""
@@ -334,11 +333,61 @@ if [ -f "$QUIET_STARTUP" ] && ! grep -q "$BESPOKE_STARTUP_MARKER" "$QUIET_STARTU
 		chmod 755 "$PATCHED"
 		mv -f "$PATCHED" "$QUIET_STARTUP"
 		printf '%s\n' "0" >"/opt/muos/config/settings/network/boot"
-		printf '%s boot Wi-Fi disabled; sounds, entropy, low-power, USB, controls, and SDL setup deferred\n' \
+		printf '%s boot Wi-Fi disabled; sounds, low-power, USB, controls, and SDL setup deferred\n' \
 			"$(date -Iseconds 2>/dev/null || date)" >>"$BESPOKE_ROOT/install.log"
 	else
 		rm -f "$PATCHED"
 		printf '%s ERROR: startup network block not found; background-service patch not installed\n' \
+			"$(date -Iseconds 2>/dev/null || date)" >>"$BESPOKE_ROOT/install.log"
+	fi
+fi
+
+# Repair V1 installations that deferred S01entropy. Measurements showed that
+# this delayed kernel CRNG readiness to 11-13 seconds and made SDL audio block
+# the frontend for another 4-6 seconds. Keep every other V1 service deferral.
+if { grep -q 'S01entropy.*deferred-20s' "$SYSINIT_TARGET" 2>/dev/null || \
+	grep -q '/opt/muos/script/init/S01entropy start' "$QUIET_STARTUP" 2>/dev/null; }; then
+	PATCHED="/tmp/sysinit-entropy-fix.$$.sh"
+	while IFS= read -r LINE; do
+		case "$LINE" in
+			*S01entropy*deferred-20s*) printf '\t\t\t# %s\n' "$BESPOKE_ENTROPY_FIX_MARKER" ;;
+			*) printf '%s\n' "$LINE" ;;
+		esac
+	done <"$SYSINIT_TARGET" >"$PATCHED"
+
+	if grep -q "$BESPOKE_ENTROPY_FIX_MARKER" "$PATCHED"; then
+		chmod 755 "$PATCHED"
+		mv -f "$PATCHED" "$SYSINIT_TARGET"
+	else
+		rm -f "$PATCHED"
+	fi
+
+	PATCHED="/tmp/startup-entropy-fix.$$.sh"
+	while IFS= read -r LINE; do
+		if [ "$LINE" = "# $BESPOKE_STARTUP_MARKER" ]; then
+			IFS= read -r ENTROPY_1 || ENTROPY_1=""
+			IFS= read -r ENTROPY_2 || ENTROPY_2=""
+			IFS= read -r ENTROPY_3 || ENTROPY_3=""
+			IFS= read -r ENTROPY_4 || ENTROPY_4=""
+			printf '%s\n' "$LINE" "# $BESPOKE_ENTROPY_FIX_MARKER"
+			if [ "$ENTROPY_1" != '(' ] || [ "$ENTROPY_2" != '    sleep 20' ] || \
+				[ "$ENTROPY_3" != '    /opt/muos/script/init/S01entropy start' ] || \
+				[ "$ENTROPY_4" != ') &' ]; then
+				printf '%s\n' "$ENTROPY_1" "$ENTROPY_2" "$ENTROPY_3" "$ENTROPY_4"
+			fi
+		else
+			printf '%s\n' "$LINE"
+		fi
+	done <"$QUIET_STARTUP" >"$PATCHED"
+
+	if grep -q "$BESPOKE_ENTROPY_FIX_MARKER" "$PATCHED"; then
+		chmod 755 "$PATCHED"
+		mv -f "$PATCHED" "$QUIET_STARTUP"
+		printf '%s restored early entropy after CRNG/audio regression; other service deferrals retained\n' \
+			"$(date -Iseconds 2>/dev/null || date)" >>"$BESPOKE_ROOT/install.log"
+	else
+		rm -f "$PATCHED"
+		printf '%s ERROR: could not remove deferred entropy startup block\n' \
 			"$(date -Iseconds 2>/dev/null || date)" >>"$BESPOKE_ROOT/install.log"
 	fi
 fi
