@@ -70,3 +70,30 @@ the launcher:
 
 The fixed launcher will use evdev directly. The joystick mapping remains useful
 for validating emulator and SDL compatibility.
+
+The v4 capture completed the fixed-device map:
+
+| Control | evdev event | Linux joystick event |
+| --- | --- | --- |
+| Start | `EV_KEY`, code `311` | button `7` |
+| Select | `EV_KEY`, code `310` | button `6` |
+| L1 | `EV_KEY`, code `308` | button `4` |
+| L2 | `EV_KEY`, code `314` | button `10` |
+| L3 | `EV_KEY`, code `313` | button `9` |
+| R1 | `EV_KEY`, code `309` | button `5` |
+| R2 | `EV_KEY`, code `315` | button `11` |
+| R3 | `EV_KEY`, code `316` | button `12` |
+| Left-stick up/down | `EV_ABS`, code `3`, negative/positive | axis `1`, negative/positive |
+| Left-stick left/right | `EV_ABS`, code `2`, negative/positive | axis `0`, negative/positive |
+| Right-stick up/down | `EV_ABS`, code `5`, negative/positive | axis `3`, negative/positive |
+| Right-stick left/right | `EV_ABS`, code `4`, negative/positive | axis `2`, negative/positive |
+| Menu press | `EV_KEY`, code `312` | button `8` |
+| Menu release action | `EV_KEY`, code `354` (`KEY_GOTO`) | button `13` |
+| Volume up | `EV_KEY`, code `115` | none |
+| Volume down | `EV_KEY`, code `114` | none |
+
+The analog evdev range observed was approximately `-4096..4096`; the joystick
+compatibility layer scales the same motion to `-32767..32767`. The launcher
+should apply a dead zone before treating stick motion as navigation. The Menu
+button produces a normal press/release on code `312`, followed by a distinct
+short-release action on code `354`; both are real device behavior.

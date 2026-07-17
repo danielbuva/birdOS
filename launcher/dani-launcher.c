@@ -51,10 +51,10 @@ typedef signed long s64;
 #define ABS_HAT0Y 17
 
 #define CLOCK_BOOTTIME 7
-#define PROOF_TIMEOUT_MS 50000UL
+#define PROOF_TIMEOUT_MS 120000UL
 #define MAX_INPUTS 8
 #define MAX_JOYSTICKS 4
-#define INPUT_CAPTURE_PROOF 1
+#define INPUT_CAPTURE_PROOF 0
 
 struct fb_bitfield {
     u32 offset;
@@ -382,7 +382,7 @@ static void draw_screen(void) {
     }
 
     draw_text(32, (int)fb_var.yres - 54, selected_status, 2, muted);
-    draw_text(32, (int)fb_var.yres - 28, "CAPTURE REMAINING CONTROLS", 2, primary);
+    draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE   A SELECT   B STOCK", 2, primary);
     __asm__ volatile("dmb ishst" ::: "memory");
 }
 
@@ -420,8 +420,9 @@ static int handle_event(const struct input_event *event, int device_index) {
         log_text("\n");
         captured_events++;
 
-        if ((event->type == EV_KEY && event->value == 1) ||
-            (event->type == EV_ABS && event->value != 0)) {
+        if (INPUT_CAPTURE_PROOF &&
+            ((event->type == EV_KEY && event->value == 1) ||
+             (event->type == EV_ABS && event->value != 0))) {
             selected_status = "RAW INPUT EVENT CAPTURED";
             draw_screen();
         }
@@ -475,7 +476,7 @@ static void handle_joystick_event(const struct js_event *event, int device_index
         captured_events++;
     }
 
-    if (!(event->type & JS_EVENT_INIT) &&
+    if (INPUT_CAPTURE_PROOF && !(event->type & JS_EVENT_INIT) &&
         ((type == JS_EVENT_BUTTON && event->value) || (type == JS_EVENT_AXIS && event->value))) {
         selected_status = "JOYSTICK INPUT CAPTURED";
         draw_screen();
@@ -620,7 +621,7 @@ static int application(void) {
         sys_nanosleep(16000000L);
     }
 
-    log_text(exit_by_button ? "exit reason=b-button boot_ms=" : "exit reason=capture-complete boot_ms=");
+    log_text(exit_by_button ? "exit reason=b-button boot_ms=" : "exit reason=stock-fallback-timeout boot_ms=");
     log_number(boot_ms());
     log_text(" captured_events=");
     log_number(captured_events);

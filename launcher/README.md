@@ -20,3 +20,8 @@ Input-calibration results are written to
 `/mnt/mmc/MUOS/bespoke-launcher/proof-v4-remaining.log`. A
 successful run gives the exact framebuffer format, stride, input device names,
 first-frame uptime and exit reason needed for the early-boot version.
+
+After calibration, `S11danilauncher` starts the static launcher immediately
+after udev creates the fixed framebuffer and controls. Stock muOS initializes
+behind it without launching the stock frontend. B hands off to stock after the
+system-ready marker; a two-minute timeout provides the same fallback.
