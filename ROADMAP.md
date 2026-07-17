@@ -36,13 +36,15 @@ The long-term centerpiece would be a tiny custom launcher—ideally a small stat
 - [x] Prove the embedded game catalogue and asynchronous ROM readiness.
 - [x] Add fixed SNES/PSP/Port launch handoff and reliable direct return.
 - [x] Replace daily PortMaster/network and shutdown stock-frontend paths.
-- [ ] Prove persistent Favorites and recent-game state (staged next).
+- [x] Prove persistent Favorites and recent-game state.
+- [ ] Prove nonblocking procedural animation and readiness-gated boot audio
+  (staged next).
 - [ ] Complete the final visual, animation and audio identity.
 - [ ] Remove superseded muOS components and produce a reproducible firmware image.
 - [ ] Optimize kernel and U-Boot last.
 
-Verified interactive milestone: the current build entered at 2.307 seconds of
-kernel uptime with input ready and drew its first frame at 2.326 seconds. LED-on
+Verified interactive milestone: the current build entered at 2.256 seconds of
+kernel uptime with input ready and drew its first frame at 2.276 seconds. LED-on
 to an immediately usable menu is now consistently below four seconds by stopwatch.
 All three emulator/Port paths are playable with audio and return to a redrawn
 launcher in 27--29 ms.

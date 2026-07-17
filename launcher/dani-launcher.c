@@ -19,6 +19,7 @@ typedef signed long s64;
 #define O_WRONLY 1
 #define O_RDWR 2
 #define O_CREAT 0100
+#define O_EXCL 0200
 #define O_TRUNC 01000
 #define O_NONBLOCK 04000
 #define PROT_READ 1
@@ -42,6 +43,7 @@ typedef signed long s64;
 #define CLOCK_BOOTTIME 7
 #define STOCK_FALLBACK_TIMEOUT_MS 120000UL
 #define DEVICE_WAIT_MS 5000UL
+#define BOOT_ANIMATION_MS 3200UL
 #define INPUT_PATH "/dev/input/event1"
 #define ROM_ROOT "/mnt/mmc/ROMS"
 #define LAUNCH_REQUEST "/run/muos/dani-launch-request"
@@ -49,6 +51,8 @@ typedef signed long s64;
 #define FAVORITES_TEMP "/mnt/mmc/MUOS/bespoke-launcher/favorites.tmp"
 #define RECENT_PATH "/mnt/mmc/MUOS/bespoke-launcher/recent.txt"
 #define RECENT_TEMP "/mnt/mmc/MUOS/bespoke-launcher/recent.tmp"
+#define BOOT_EFFECT_MARKER "/run/muos/dani-boot-effects-started"
+#define BOOT_SOUND_CANCEL "/run/muos/dani-boot-sound-cancel"
 
 #define VIEW_MAIN 0U
 #define VIEW_SYSTEMS 1U
@@ -147,8 +151,12 @@ static int axis_x;
 static int axis_y;
 static int storage_ready;
 static int favorites_loaded;
+static int boot_animation_active;
+static int boot_animation_complete;
 static u32 favorite_count;
 static u8 favorites[(CATALOG_ENTRY_COUNT + 7U) / 8U];
+static u64 boot_animation_started;
+static u64 next_animation_frame;
 static u64 next_storage_probe;
 static u32 captured_events;
 static const char *selected_status = "DIRECT FRAMEBUFFER READY";
@@ -292,6 +300,18 @@ static u64 boot_ms(void) {
     struct timespec now;
     if (sys_clock_gettime(&now) < 0) return 0;
     return (u64)now.sec * 1000UL + (u64)(now.nsec / 1000000L);
+}
+
+static int claim_boot_effects(void) {
+    long fd = sys_create(BOOT_EFFECT_MARKER, O_WRONLY | O_CREAT | O_EXCL, 0600);
+    if (fd < 0) return 0;
+    sys_close((int)fd);
+    return 1;
+}
+
+static void cancel_boot_sound(void) {
+    long fd = sys_create(BOOT_SOUND_CANCEL, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (fd >= 0) sys_close((int)fd);
 }
 
 static int write_exact(int fd, const char *buffer, u64 length) {
@@ -557,6 +577,8 @@ static void draw_screen(void) {
     rectangle(0, 0, (int)fb_var.xres, (int)fb_var.yres, background);
     rectangle(0, 0, (int)fb_var.xres, 92, panel);
     rectangle(0, (int)fb_var.yres - 66, (int)fb_var.xres, 66, panel);
+    rectangle(32, 86, 656, 3,
+              boot_animation_complete ? selected : color(48, 58, 70));
 
     if (view == VIEW_MAIN) {
         draw_text(32, 22, "DANI // RG34-SP", 4, primary);
@@ -625,6 +647,40 @@ static void draw_screen(void) {
     else
         draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE   A OPEN   B BACK", 2, primary);
     __asm__ volatile("dmb ishst" ::: "memory");
+}
+
+static void finish_boot_animation(const char *reason) {
+    if (!boot_animation_active) return;
+    boot_animation_active = 0;
+    boot_animation_complete = 1;
+    rectangle(32, 86, 656, 3, color(232, 166, 48));
+    __asm__ volatile("dmb ishst" ::: "memory");
+    log_text("boot_animation end_boot_ms=");
+    log_number(boot_ms());
+    log_text(" reason=");
+    log_text(reason);
+    log_text("\n");
+}
+
+static void animate_boot(void) {
+    u64 now;
+    u64 elapsed;
+    u32 width;
+    if (!boot_animation_active) return;
+    now = boot_ms();
+    if (now < next_animation_frame) return;
+    elapsed = now - boot_animation_started;
+    if (elapsed >= BOOT_ANIMATION_MS) {
+        finish_boot_animation("complete");
+        return;
+    }
+    width = (u32)((elapsed * 656UL) / BOOT_ANIMATION_MS);
+    rectangle(32, 86, 656, 3, color(48, 58, 70));
+    if (width) rectangle(32, 86, (int)width, 3, color(232, 166, 48));
+    if (width > 2U)
+        rectangle(32 + (int)width - 2, 84, 4, 7, color(244, 246, 248));
+    __asm__ volatile("dmb ishst" ::: "memory");
+    next_animation_frame = now + 32UL;
 }
 
 static int write_launch_request(const struct catalog_system *system,
@@ -816,6 +872,11 @@ static int handle_event(const struct input_event *event) {
         captured_events++;
     }
 
+    if (boot_animation_active &&
+        ((event->type == EV_KEY && event->value == 1) ||
+         (event->type == EV_ABS && event->value != 0)))
+        finish_boot_animation("input");
+
     if (event->type == EV_KEY && event->value == 1) {
         if (event->code == BTN_SOUTH) {
             return select_current();
@@ -953,6 +1014,18 @@ static int application(void) {
         sys_close(fb_fd);
         return 6;
     }
+    if (claim_boot_effects()) {
+        boot_animation_active = 1;
+        boot_animation_started = boot_ms();
+        next_animation_frame = boot_animation_started;
+        log_text("boot_animation start_boot_ms=");
+        log_number(boot_animation_started);
+        log_text(" duration_ms=");
+        log_number(BOOT_ANIMATION_MS);
+        log_text("\n");
+    } else {
+        boot_animation_complete = 1;
+    }
     draw_screen();
     log_text("first_frame boot_ms=");
     log_number(boot_ms());
@@ -971,8 +1044,11 @@ static int application(void) {
             }
         }
         probe_storage();
+        animate_boot();
         sys_nanosleep(4000000L);
     }
+
+    cancel_boot_sound();
 
     if (exit_action == ACTION_LAUNCH)
         log_text("exit reason=launch-request boot_ms=");

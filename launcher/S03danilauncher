@@ -12,6 +12,9 @@ BOOT_ID=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null)
 [ -n "$BOOT_ID" ] || BOOT_ID="unknown"
 ARCHIVE_LOG="/mnt/mmc/MUOS/bespoke-launcher/early-launcher-$BOOT_ID.log"
 LAUNCH_REQUEST="$RUN_DIR/dani-launch-request"
+BOOT_SOUND="/mnt/mmc/MUOS/bespoke-launcher/boot.wav"
+BOOT_SOUND_CANCEL="$RUN_DIR/dani-boot-sound-cancel"
+BOOT_SOUND_PID="$RUN_DIR/dani-boot-sound.pid"
 
 SNAPSHOT_LOG() {
 	[ -d /mnt/mmc/MUOS ] || return 0
@@ -35,6 +38,43 @@ WAIT_RUNTIME() {
 	done
 	printf '%s runtime ready uptime: ' "$1"
 	cut -d ' ' -f 1 /proc/uptime
+}
+
+RUN_BOOT_SOUND() {
+	CLEAN_BOOT_SOUND() { rm -f "$BOOT_SOUND_PID"; }
+	trap CLEAN_BOOT_SOUND 0
+	WAIT_COUNT=0
+	while [ ! -e "$READY" ] || [ ! -S /run/pipewire-0 ] || [ ! -s "$BOOT_SOUND" ]; do
+		if [ -e "$STOPPING" ] || [ -e "$BOOT_SOUND_CANCEL" ]; then exit 0; fi
+		WAIT_COUNT=$((WAIT_COUNT + 1))
+		[ "$WAIT_COUNT" -ge 100 ] && {
+			printf 'boot sound prerequisites timed out uptime: '
+			cut -d ' ' -f 1 /proc/uptime
+			exit 1
+		}
+		sleep 0.1
+	done
+	if [ -e "$STOPPING" ] || [ -e "$BOOT_SOUND_CANCEL" ]; then exit 0; fi
+	[ -x /usr/bin/mpv ] || {
+		printf '%s\n' 'boot sound error: /usr/bin/mpv missing'
+		exit 1
+	}
+	printf 'boot sound start uptime: '
+	cut -d ' ' -f 1 /proc/uptime
+	MPV_PID=""
+	STOP_BOOT_SOUND() {
+		[ -n "$MPV_PID" ] && kill "$MPV_PID" 2>/dev/null || :
+		exit 0
+	}
+	trap STOP_BOOT_SOUND TERM INT
+	/usr/bin/mpv --really-quiet --no-terminal --audio-display=no --no-video "$BOOT_SOUND" &
+	MPV_PID=$!
+	wait "$MPV_PID"
+	SOUND_RESULT=$?
+	trap - TERM INT
+	printf 'boot sound result: %s uptime: ' "$SOUND_RESULT"
+	cut -d ' ' -f 1 /proc/uptime
+	exit "$SOUND_RESULT"
 }
 
 RUN_GAME() {
@@ -139,18 +179,26 @@ case "$1" in
 		[ -x "$TARGET" ] || exit 0
 		mkdir -p "$RUN_DIR"
 		rm -f "$STOPPING"
+		rm -f "$BOOT_SOUND_CANCEL" "$BOOT_SOUND_PID"
 		: >"$ACTIVE"
 
 		(
 			{
 				printf 'direct supervisor start uptime: '
 				cut -d ' ' -f 1 /proc/uptime
+				RUN_BOOT_SOUND &
+				printf '%s\n' "$!" >"$BOOT_SOUND_PID"
 				while :; do
 					"$TARGET"
 					LAUNCHER_RESULT=$?
 					printf 'direct launcher result: %s\n' "$LAUNCHER_RESULT"
 					printf 'direct launcher exit uptime: '
 					cut -d ' ' -f 1 /proc/uptime
+					: >"$BOOT_SOUND_CANCEL"
+					if [ -s "$BOOT_SOUND_PID" ]; then
+						kill "$(cat "$BOOT_SOUND_PID")" 2>/dev/null || :
+						rm -f "$BOOT_SOUND_PID"
+					fi
 
 					case "$LAUNCHER_RESULT" in
 						10) RUN_GAME ;;
@@ -180,8 +228,11 @@ case "$1" in
 		if [ -s "$SUPERVISOR_PID" ]; then
 			kill "$(cat "$SUPERVISOR_PID")" 2>/dev/null || :
 		fi
+		if [ -s "$BOOT_SOUND_PID" ]; then
+			kill "$(cat "$BOOT_SOUND_PID")" 2>/dev/null || :
+		fi
 		killall -TERM dani-launcher 2>/dev/null || :
-		rm -f "$ACTIVE" "$SUPERVISOR_PID"
+		rm -f "$ACTIVE" "$SUPERVISOR_PID" "$BOOT_SOUND_PID"
 		;;
 	*)
 		printf 'Usage: %s {start|stop}\n' "$0" >&2

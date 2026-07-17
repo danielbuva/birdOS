@@ -94,7 +94,7 @@ interactive frame at 2.326 seconds.
 
 ## Persistent library state
 
-The next proof adds ROTA to the five-title embedded catalog and turns Favorites
+The v6 proof added ROTA to the five-title embedded catalog and turned Favorites
 into a real view. Y toggles the selected title. Favorites are stored as exact ROM
 paths in an atomically replaced text cache, so rebuilding or reordering the
 compiled catalog cannot silently point a favorite at the wrong game. The cache
@@ -102,3 +102,24 @@ loads asynchronously only after storage is ready and never delays first frame.
 Each launch also atomically records the exact most-recent path for the later
 History/Resume decision. Per-boot launcher logs are archived by kernel boot ID
 so a later shutdown no longer overwrites evidence from a PortMaster or game run.
+
+The hardware proof persisted ROTA across a reboot, launched it from Favorites,
+removed other favorites correctly, and recorded Goof Troop as the latest path.
+The larger build still entered at 2.256 seconds and drew its first interactive
+frame at 2.276 seconds. Favorites loaded at 3.677 seconds, after first frame and
+only 40 ms after the ROM root became visible.
+
+## Nonblocking boot-effects proof
+
+The first boot process draws the complete interactive menu before beginning a
+3.2-second procedural accent line timed to finish near measured final audio readiness.
+Input ends the animation immediately, and
+game returns do not replay it. No images, decoder, timer service, compositor or
+new library is involved.
+
+`generate-boot-sound.py` deterministically produces a 320 ms, 48 kHz, 16-bit
+mono WAV. The supervisor waits in parallel for the normal system-ready marker,
+PipeWire socket and exact asset path, then uses muOS's existing audio player. It
+cancels the pending sound on game, PortMaster, stock or shutdown handoff. This
+first audio proof deliberately preserves the known-good PipeWire setup; a later
+profile will decide whether replacing the player is worth its dependency cost.

@@ -47,10 +47,11 @@ DEPMOD_CACHE_MARKER="BOOT_TIMING_CACHE_DEPMOD_V1"
 DEPMOD_STATUS="/tmp/muos/depmod-status"
 LAUNCHER_ROOT="/mnt/mmc/MUOS/bespoke-launcher"
 LAUNCHER_OBJECT="$LAUNCHER_ROOT/dani-launcher.o"
+LAUNCHER_SOUND="$LAUNCHER_ROOT/boot.wav"
 LAUNCHER_TARGET="/opt/muos/bin/dani-launcher"
 LAUNCHER_PROOF_STATE="$LAUNCHER_ROOT/proof-v4-remaining.state"
 LAUNCHER_PROOF_LOG="$LAUNCHER_ROOT/proof-v4-remaining.log"
-EARLY_LAUNCHER_STATE="$LAUNCHER_ROOT/early-launcher-v6-library-state.state"
+EARLY_LAUNCHER_STATE="$LAUNCHER_ROOT/early-launcher-v7-boot-effects.state"
 EARLY_INIT_SOURCE="$LAUNCHER_ROOT/S03danilauncher"
 EARLY_INIT_TARGET="/opt/muos/script/init/S03danilauncher"
 EARLY_OLD_INIT_TARGET="/opt/muos/script/init/S11danilauncher"
@@ -531,13 +532,14 @@ fi
 # and lets normal muOS startup continue behind the custom screen. The binary
 # waits only for /dev/fb0 and /dev/input/event1 and reads evdev directly. B (or
 # the safety timeout) hands off after normal startup reports that it is ready.
-if [ -s "$LAUNCHER_OBJECT" ] && [ -s "$EARLY_INIT_SOURCE" ] && [ ! -f "$EARLY_LAUNCHER_STATE" ]; then
+if [ -s "$LAUNCHER_OBJECT" ] && [ -s "$EARLY_INIT_SOURCE" ] && [ -s "$LAUNCHER_SOUND" ] &&
+	[ ! -f "$EARLY_LAUNCHER_STATE" ]; then
 	LAUNCHER_NEW="/tmp/dani-launcher-direct.$$"
 	PATCHED="/tmp/startup-early-launcher.$$.sh"
 	STARTUP_READY=0
 
 	if /usr/bin/ld -static --build-id=none -z noexecstack -s -e _start \
-		-o "$LAUNCHER_NEW" "$LAUNCHER_OBJECT" >"$LAUNCHER_ROOT/link-early-v6-library-state.log" 2>&1; then
+		-o "$LAUNCHER_NEW" "$LAUNCHER_OBJECT" >"$LAUNCHER_ROOT/link-early-v7-boot-effects.log" 2>&1; then
 		chmod 755 "$LAUNCHER_NEW"
 		if grep -q "$EARLY_STARTUP_MARKER" "$EARLY_STARTUP_TARGET"; then
 			STARTUP_READY=1
@@ -569,7 +571,7 @@ if [ -s "$LAUNCHER_OBJECT" ] && [ -s "$EARLY_INIT_SOURCE" ] && [ ! -f "$EARLY_LA
 			chmod 755 "$EARLY_INIT_TARGET"
 			rm -f "$EARLY_OLD_INIT_TARGET"
 			printf '%s\n' "installed" >"$EARLY_LAUNCHER_STATE"
-			printf '%s persistent favorites and recent-game state installed; active next boot\n' \
+			printf '%s nonblocking procedural animation and PCM boot chime installed; active next boot\n' \
 				"$(date -Iseconds 2>/dev/null || date)" >>"$BESPOKE_ROOT/install.log"
 		else
 			rm -f "$PATCHED" "$LAUNCHER_NEW"
