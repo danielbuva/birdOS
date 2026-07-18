@@ -46,6 +46,8 @@ typedef signed long s64;
 #define INPUT_PATH "/dev/input/event1"
 #define ROM_ROOT "/mnt/mmc/ROMS"
 #define LAUNCH_REQUEST "/run/muos/dani-launch-request"
+#define UI_RESUME_PATH "/run/muos/dani-launcher-ui-resume"
+#define UI_RESUME_MAGIC 0x44414e49U
 #define FAVORITES_PATH "/mnt/mmc/MUOS/bespoke-launcher/favorites.txt"
 #define FAVORITES_TEMP "/mnt/mmc/MUOS/bespoke-launcher/favorites.tmp"
 #define RECENT_PATH "/mnt/mmc/MUOS/bespoke-launcher/recent.txt"
@@ -137,6 +139,13 @@ struct timespec {
 struct glyph {
     char c;
     u8 row[7];
+};
+
+struct ui_resume_state {
+    u32 magic;
+    u32 view;
+    u32 active_system;
+    u32 selection;
 };
 
 static struct fb_var_screeninfo fb_var;
@@ -411,6 +420,73 @@ static void load_favorites(void) {
     log_text(" result=ready count=");
     log_number(favorite_count);
     log_text("\n");
+}
+
+static int save_ui_resume(void) {
+    struct ui_resume_state state;
+    long fd;
+    state.magic = UI_RESUME_MAGIC;
+    state.view = view;
+    state.active_system = active_system;
+    state.selection = selection;
+
+    fd = sys_create(UI_RESUME_PATH, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (fd < 0) return -1;
+    if (write_exact((int)fd, (const char *)&state, sizeof(state)) < 0) {
+        sys_close((int)fd);
+        sys_unlink(UI_RESUME_PATH);
+        return -1;
+    }
+    sys_close((int)fd);
+    log_text("ui_resume_save boot_ms=");
+    log_number(boot_ms());
+    log_text(" view=");
+    log_number(view);
+    log_text(" system=");
+    log_number(active_system);
+    log_text(" selection=");
+    log_number(selection);
+    log_text(" result=ready\n");
+    return 0;
+}
+
+static int load_ui_resume(void) {
+    struct ui_resume_state state;
+    long fd = sys_open(UI_RESUME_PATH, O_RDONLY);
+    long count;
+    if (fd < 0) return 0;
+    count = sys_read((int)fd, &state, sizeof(state));
+    sys_close((int)fd);
+    sys_unlink(UI_RESUME_PATH);
+
+    if (count != (long)sizeof(state) || state.magic != UI_RESUME_MAGIC)
+        return 0;
+    if (state.view == VIEW_GAMES) {
+        if (state.active_system >= CATALOG_SYSTEM_COUNT ||
+            state.selection >= catalog_systems[state.active_system].count)
+            return 0;
+    } else if (state.view == VIEW_FAVORITES) {
+        load_favorites();
+        if (!favorite_count) state.selection = 0;
+        else if (state.selection >= favorite_count) state.selection = favorite_count - 1U;
+    } else {
+        return 0;
+    }
+
+    view = state.view;
+    active_system = state.active_system;
+    selection = state.selection;
+    selected_status = "RETURNED TO PREVIOUS SCREEN";
+    log_text("ui_resume_load boot_ms=");
+    log_number(boot_ms());
+    log_text(" view=");
+    log_number(view);
+    log_text(" system=");
+    log_number(active_system);
+    log_text(" selection=");
+    log_number(selection);
+    log_text(" result=ready\n");
+    return 1;
 }
 
 static int save_favorites(void) {
@@ -717,6 +793,12 @@ static int write_launch_request(const struct catalog_system *system,
         return ACTION_NONE;
     }
     sys_close((int)fd);
+    if (save_ui_resume() < 0) {
+        sys_unlink(LAUNCH_REQUEST);
+        selected_status = "RETURN STATE SAVE FAILED";
+        log_text("launch_request result=resume-save-failed\n");
+        return ACTION_NONE;
+    }
     save_recent(entry);
     selected_status = "STARTING GAME";
     log_text("launch_request boot_ms=");
@@ -1026,6 +1108,7 @@ static int application(void) {
         sys_close(fb_fd);
         return 6;
     }
+    load_ui_resume();
     if (claim_boot_effects()) {
         boot_animation_active = 1;
         boot_animation_started = boot_ms();

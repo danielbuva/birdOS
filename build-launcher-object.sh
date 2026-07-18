@@ -24,7 +24,11 @@ ROOT=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
 file "$ROOT/launcher/dani-launcher.o"
 OBJECT_HASH=$(shasum -a 256 "$ROOT/launcher/dani-launcher.o" | cut -d ' ' -f 1)
 INIT_HASH=$(shasum -a 256 "$ROOT/launcher/S03danilauncher" | cut -d ' ' -f 1)
-printf '%s\n%s\n' "$OBJECT_HASH" "$INIT_HASH" | shasum -a 256 | cut -d ' ' -f 1 \
-    >"$ROOT/launcher/catalog.revision"
+{
+    printf '%s\n%s\n' "$OBJECT_HASH" "$INIT_HASH"
+    for CORE in gw_libretro.so bluemsx_libretro.so fake08_libretro.so; do
+        shasum -a 256 "$ROOT/launcher/optional-cores/$CORE" | cut -d ' ' -f 1
+    done
+} | shasum -a 256 | cut -d ' ' -f 1 >"$ROOT/launcher/catalog.revision"
 printf 'catalog revision: '
 cat "$ROOT/launcher/catalog.revision"

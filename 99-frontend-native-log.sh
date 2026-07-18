@@ -52,9 +52,13 @@ LAUNCHER_ROOT="/mnt/mmc/MUOS/bespoke-launcher"
 LAUNCHER_OBJECT="$LAUNCHER_ROOT/dani-launcher.o"
 LAUNCHER_SOUND="$LAUNCHER_ROOT/boot.wav"
 LAUNCHER_TARGET="/opt/muos/bin/dani-launcher"
+OPTIONAL_CORE_SOURCE_DIR="$LAUNCHER_ROOT/optional-cores"
+OPTIONAL_CORE_TARGET_DIR="/opt/muos/share/core"
+OPTIONAL_CORE_NAMES="gw_libretro.so bluemsx_libretro.so fake08_libretro.so"
 LAUNCHER_PROOF_STATE="$LAUNCHER_ROOT/proof-v4-remaining.state"
 LAUNCHER_PROOF_LOG="$LAUNCHER_ROOT/proof-v4-remaining.log"
-EARLY_LAUNCHER_STATE="$LAUNCHER_ROOT/early-launcher-v11-real-catalog.revision"
+EARLY_LAUNCHER_STATE="$LAUNCHER_ROOT/early-launcher-current.revision"
+EARLY_OLD_LAUNCHER_STATE="$LAUNCHER_ROOT/early-launcher-v11-real-catalog.revision"
 EARLY_LAUNCHER_REVISION_SOURCE="$LAUNCHER_ROOT/catalog.revision"
 EARLY_INIT_SOURCE="$LAUNCHER_ROOT/S03danilauncher"
 EARLY_INIT_TARGET="/opt/muos/script/init/S03danilauncher"
@@ -598,9 +602,33 @@ if [ "$BESPOKE_BRIGHTNESS_POLICY_READY" -eq 1 ] &&
 	LAUNCHER_NEW="/tmp/dani-launcher-direct.$$"
 	PATCHED="/tmp/startup-early-launcher.$$.sh"
 	STARTUP_READY=0
+	OPTIONAL_CORES_READY=1
 
-	if /usr/bin/ld -static --build-id=none -z noexecstack -s -e _start \
-		-o "$LAUNCHER_NEW" "$LAUNCHER_OBJECT" >"$LAUNCHER_ROOT/link-early-v11-real-catalog.log" 2>&1; then
+	# These are the three requested libretro cores omitted by the base image.
+	# Copy them only when the content-addressed launcher revision changes, never
+	# during the early boot path itself.
+	for CORE_NAME in $OPTIONAL_CORE_NAMES; do
+		CORE_SOURCE="$OPTIONAL_CORE_SOURCE_DIR/$CORE_NAME"
+		CORE_NEW="$OPTIONAL_CORE_TARGET_DIR/.$CORE_NAME.dani-new"
+		CORE_TARGET="$OPTIONAL_CORE_TARGET_DIR/$CORE_NAME"
+		if [ ! -s "$CORE_SOURCE" ] ||
+			! cp -f "$CORE_SOURCE" "$CORE_NEW" ||
+			! chmod 755 "$CORE_NEW" ||
+			! mv -f "$CORE_NEW" "$CORE_TARGET"; then
+			rm -f "$CORE_NEW"
+			OPTIONAL_CORES_READY=0
+			printf '%s ERROR: could not install optional core %s\n' \
+				"$(date -Iseconds 2>/dev/null || date)" "$CORE_NAME" >>"$BESPOKE_ROOT/install.log"
+		else
+			printf '%s installed requested core %s (%s bytes)\n' \
+				"$(date -Iseconds 2>/dev/null || date)" "$CORE_NAME" \
+				"$(wc -c <"$CORE_TARGET")" >>"$BESPOKE_ROOT/install.log"
+		fi
+	done
+
+	if [ "$OPTIONAL_CORES_READY" -eq 1 ] &&
+		/usr/bin/ld -static --build-id=none -z noexecstack -s -e _start \
+		-o "$LAUNCHER_NEW" "$LAUNCHER_OBJECT" >"$LAUNCHER_ROOT/link-early-v12-exact-return.log" 2>&1; then
 		chmod 755 "$LAUNCHER_NEW"
 		if grep -q "$EARLY_STARTUP_MARKER" "$EARLY_STARTUP_TARGET"; then
 			STARTUP_READY=1
@@ -632,7 +660,8 @@ if [ "$BESPOKE_BRIGHTNESS_POLICY_READY" -eq 1 ] &&
 			chmod 755 "$EARLY_INIT_TARGET"
 			rm -f "$EARLY_OLD_INIT_TARGET"
 			printf '%s\n' "$EARLY_LAUNCHER_WANTED_REVISION" >"$EARLY_LAUNCHER_STATE"
-			printf '%s real cached library revision %s installed; active next boot\n' \
+			rm -f "$EARLY_OLD_LAUNCHER_STATE"
+			printf '%s exact-return library revision %s installed; active next boot\n' \
 				"$(date -Iseconds 2>/dev/null || date)" "$EARLY_LAUNCHER_WANTED_REVISION" >>"$BESPOKE_ROOT/install.log"
 		else
 			rm -f "$PATCHED" "$LAUNCHER_NEW"
@@ -641,7 +670,7 @@ if [ "$BESPOKE_BRIGHTNESS_POLICY_READY" -eq 1 ] &&
 		fi
 	else
 		rm -f "$LAUNCHER_NEW"
-		printf '%s ERROR: early launcher link failed; installation will retry\n' \
+		printf '%s ERROR: early launcher/core installation failed; installation will retry\n' \
 			"$(date -Iseconds 2>/dev/null || date)" >>"$BESPOKE_ROOT/install.log"
 	fi
 fi

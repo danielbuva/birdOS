@@ -45,7 +45,7 @@ SYSTEMS = (
     System("NDS", "NINTENDO DS", (".nds", ".zip"), "DRASTIC", "ext-drastic"),
     System("OPENBOR", "OPENBOR", (".pak",), "OPENBOR", "ext-openbor7530"),
     System("PCE", "PC ENGINE", (".zip", ".pce"), "RETROARCH", "mednafen_pce_fast_libretro.so"),
-    System("PICO", "SEGA PICO", (".zip", ".md", ".bin"), "RETROARCH", "picodrive_libretro.so"),
+    System("PICO", "PICO-8", (".zip", ".p8", ".png"), "RETROARCH", "fake08_libretro.so"),
     System("PSP", "PSP", (".cso", ".iso", ".pbp"), "PPSSPP", "ext-ppsspp"),
     System("Ports", "PORTS", (".sh",), "PORTMASTER", "external"),
     System("SNES", "SNES", (".zip", ".sfc", ".smc", ".fig", ".bs"), "RETROARCH", "snes9x_libretro.so"),

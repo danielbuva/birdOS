@@ -48,7 +48,7 @@ static const struct catalog_system catalog_systems[CATALOG_SYSTEM_COUNT] = {
     {"NINTENDO DS", "ext-drastic", 3506U, 20U, CATALOG_LAUNCH_DRASTIC},
     {"OPENBOR", "ext-openbor7530", 3526U, 4U, CATALOG_LAUNCH_OPENBOR},
     {"PC ENGINE", "mednafen_pce_fast_libretro.so", 3530U, 312U, CATALOG_LAUNCH_RETROARCH},
-    {"SEGA PICO", "picodrive_libretro.so", 3842U, 39U, CATALOG_LAUNCH_RETROARCH},
+    {"PICO-8", "fake08_libretro.so", 3842U, 39U, CATALOG_LAUNCH_RETROARCH},
     {"PSP", "ext-ppsspp", 3881U, 57U, CATALOG_LAUNCH_PPSSPP},
     {"PORTS", "external", 3938U, 63U, CATALOG_LAUNCH_PORTMASTER},
     {"SNES", "snes9x_libretro.so", 4001U, 1952U, CATALOG_LAUNCH_RETROARCH},

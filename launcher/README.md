@@ -174,7 +174,35 @@ cannot overwrite the foreground or interrupt unrelated visual effects.
 
 The v11 build replaces the five-title proof with the real 5,953-title card
 inventory and carries a core assignment beside each system. A content-addressed
-revision file covers both the launcher object and supervisor. User-init links a
-new payload only when that revision changes, which makes repeated Mac-side
-cache rebuilds safe and avoids relinking unchanged catalogs. The first boot
-after a rebuild installs the revision; the following boot uses it from S03.
+revision file covers the launcher object, supervisor and deliberately added
+cores. User-init links a new payload only when that revision changes, which
+makes repeated Mac-side cache rebuilds safe and avoids relinking unchanged
+catalogs. Hardware testing kept first frame at 2.334 seconds and stopwatch boot
+at approximately four seconds even with the full embedded inventory. The first
+boot after a rebuild installs the revision; the following boot uses it from S03.
+
+## Exact game return and requested cores
+
+The v12 launcher writes a 16-byte volatile UI record before a game handoff. It
+contains only the current view, system and highlighted row. The next launcher
+process consumes and deletes that record before its first draw, restoring the
+exact Games or Favorites screen rather than returning to Home. Because the
+record lives under `/run`, a real reboot always starts cleanly at Home.
+
+The six completely failing test systems had three distinct causes. Game &
+Watch and MSX were assigned to cores omitted by the base image. The PICO folder
+contains PICO-8 carts, but v11 had incorrectly treated it as Sega Pico content.
+v12 embeds the correct PICO-8 assignment and stages the official AArch64
+`gw_libretro.so`, `bluemsx_libretro.so` and `fake08_libretro.so` cores. Game &
+Watch and PICO-8 should therefore be complete. The Mac rebuild script also
+copies the user's existing `$HOME/Games/bios/Machines` and `Databases` trees,
+which completes blueMSX without putting BIOS data in this project or on the
+boot path.
+
+The other failures are not catalog problems: Nintendo DS lacks the optional
+DraStic payload, OpenBOR lacks its optional emulator and launch wrapper, and
+NAOMI's Flycast core reported a missing `naomi.zip` BIOS. The rebuild script now
+copies the user's verified `$HOME/Games/bios/dc/naomi.zip` into the card's
+Flycast system directory. Nintendo DS and OpenBOR remain separate optional
+payload tasks rather than reasons to add boot-time scanning or fallback logic
+to the launcher.
