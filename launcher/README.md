@@ -206,3 +206,20 @@ copies the user's verified `$HOME/Games/bios/dc/naomi.zip` into the card's
 Flycast system directory. Nintendo DS and OpenBOR remain separate optional
 payload tasks rather than reasons to add boot-time scanning or fallback logic
 to the launcher.
+
+## Fixed-device optional systems and Stardew runtime
+
+The v13 payload completes the two remaining catalog systems without installing
+the generic package contents. Nintendo DS receives only DraStic, RG libraries,
+the 720x480 layout and its runtime data; legacy DraStic, unused libretro cores,
+TrimUI libraries, non-English translations and other screen layouts are
+omitted. OpenBOR receives only build 7530 and its two muOS scripts. Its mutable
+userdata points to `/mnt/mmc/MUOS/save/openbor` rather than living in rootfs.
+
+The successful Port tests also exposed a game-specific Stardew Valley failure:
+the official PortMaster script tried to mount a missing 250 MB Mono runtime,
+then failed because `mono` did not exist. The Mac rebuild script verifies and
+stages the official runtime from `$HOME/Games/runtimes`, and installs a fixed
+muOS/RG34XX-SP-only Stardew wrapper with explicit runtime failure handling and
+no irrelevant `systemctl` cleanup call. Neither optional emulators nor the Mono
+runtime are inspected during normal boot.

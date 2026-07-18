@@ -6,6 +6,9 @@ ROOT=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
 CARD=${1:-/Volumes/dani-sp}
 PAYLOAD="$CARD/MUOS/bespoke-launcher"
 HOST_BIOS_ROOT=${DANI_BIOS_ROOT:-"$HOME/Games/bios"}
+HOST_RUNTIME_ROOT=${DANI_RUNTIME_ROOT:-"$HOME/Games/runtimes"}
+MONO_RUNTIME="mono-6.12.0.122-aarch64.squashfs"
+MONO_MD5="dc7145731bf17610c13c07d6e69de550"
 
 if [ ! -d "$CARD/ROMS" ] || [ ! -d "$CARD/MUOS" ]; then
 	printf 'Dani SP card not found at %s\n' "$CARD" >&2
@@ -16,9 +19,11 @@ fi
 printf 'Scanning %s/ROMS and %s/MEDIA...\n' "$CARD" "$CARD"
 MEDIA_ROOT="$CARD/MEDIA" "$ROOT/generate-launcher-catalog.sh" "$CARD/ROMS"
 "$ROOT/build-launcher-object.sh"
+"$ROOT/build-optional-emulator-revision.sh"
 
 mkdir -p "$PAYLOAD"
 mkdir -p "$PAYLOAD/optional-cores"
+mkdir -p "$PAYLOAD/optional-emulators"
 
 stage_file() {
 	source_file=$1
@@ -32,6 +37,8 @@ stage_file() {
 		exit 1
 	fi
 	mv -f "$temporary_file" "$destination_file"
+	metadata_file="${destination_file%/*}/._${destination_file##*/}"
+	[ ! -f "$metadata_file" ] || rm -f "$metadata_file"
 }
 
 stage_file_if_changed() {
@@ -63,6 +70,9 @@ for CORE in gw_libretro.so bluemsx_libretro.so fake08_libretro.so; do
 	stage_file "$ROOT/launcher/optional-cores/$CORE" "$PAYLOAD/optional-cores/$CORE"
 done
 stage_file "$ROOT/launcher/optional-cores/README.md" "$PAYLOAD/optional-cores/README.md"
+for FILE in Extra.-.Nintendo.DS.muxzip Extra.-.OpenBOR.muxzip manifest.txt revision README.md; do
+	stage_file "$ROOT/launcher/optional-emulators/$FILE" "$PAYLOAD/optional-emulators/$FILE"
+done
 stage_file "$ROOT/99-frontend-native-log.sh" "$CARD/MUOS/init/99-boot-timing-marker.sh"
 
 # User-owned system files are deliberately staged from the local BIOS library,
@@ -76,7 +86,31 @@ if [ -d "$HOST_BIOS_ROOT/Databases" ] && [ -d "$HOST_BIOS_ROOT/Machines" ]; then
 	stage_tree_if_missing "$HOST_BIOS_ROOT/Machines" "$CARD/MUOS/bios/Machines"
 fi
 
+if [ -f "$HOST_RUNTIME_ROOT/$MONO_RUNTIME" ]; then
+	if [ "$(md5 -q "$HOST_RUNTIME_ROOT/$MONO_RUNTIME")" != "$MONO_MD5" ]; then
+		printf 'Refusing unverified Mono runtime: %s\n' "$HOST_RUNTIME_ROOT/$MONO_RUNTIME" >&2
+		exit 1
+	fi
+	mkdir -p "$CARD/MUOS/PortMaster/libs"
+	stage_file_if_changed "$HOST_RUNTIME_ROOT/$MONO_RUNTIME" \
+		"$CARD/MUOS/PortMaster/libs/$MONO_RUNTIME"
+fi
+if [ -f "$CARD/ROMS/Ports/StardewValley.sh" ]; then
+	stage_file "$ROOT/launcher/port-overrides/StardewValley.sh" \
+		"$CARD/ROMS/Ports/StardewValley.sh"
+	chmod 755 "$CARD/ROMS/Ports/StardewValley.sh"
+fi
+
 chmod 755 "$PAYLOAD/S03danilauncher" "$CARD/MUOS/init/99-boot-timing-marker.sh"
+
+# PortMaster tries to parse macOS AppleDouble sidecars as launch scripts. They
+# contain no game data and only generate errors, so keep the fixed-device card
+# clean after every copy and metadata operation in this rebuild.
+for CLEAN_ROOT in "$PAYLOAD" "$CARD/MUOS/init" "$CARD/MUOS/PortMaster/libs" \
+	"$CARD/ROMS/Ports" "$CARD/ports"; do
+	[ ! -d "$CLEAN_ROOT" ] || find "$CLEAN_ROOT" -type f -name '._*' -delete
+done
+
 sync
 
 game_count=$(awk -F '\t' 'NR > 1 && $1 == "PLAY" {count++} END {print count + 0}' \

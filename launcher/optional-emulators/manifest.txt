@@ -1,0 +1,3 @@
+policy	rg34xxsp-english-minimal-v1
+Extra.-.Nintendo.DS.muxzip	1d9852f709342ab03a886b8f7f10f6690c93e4271de81bf4125bba1efa3a23fe
+Extra.-.OpenBOR.muxzip	d01ae049e3e1a303668548ae6a2d51787c667009664780b7cc6aeb364b9d6595

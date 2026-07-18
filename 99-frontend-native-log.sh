@@ -55,6 +55,12 @@ LAUNCHER_TARGET="/opt/muos/bin/dani-launcher"
 OPTIONAL_CORE_SOURCE_DIR="$LAUNCHER_ROOT/optional-cores"
 OPTIONAL_CORE_TARGET_DIR="/opt/muos/share/core"
 OPTIONAL_CORE_NAMES="gw_libretro.so bluemsx_libretro.so fake08_libretro.so"
+OPTIONAL_EMULATOR_ROOT="$LAUNCHER_ROOT/optional-emulators"
+OPTIONAL_EMULATOR_REVISION_SOURCE="$OPTIONAL_EMULATOR_ROOT/revision"
+OPTIONAL_EMULATOR_STATE="$LAUNCHER_ROOT/optional-emulators-current.revision"
+OPTIONAL_EMULATOR_LOG="$OPTIONAL_EMULATOR_ROOT/install.log"
+NDS_ARCHIVE="$OPTIONAL_EMULATOR_ROOT/Extra.-.Nintendo.DS.muxzip"
+OPENBOR_ARCHIVE="$OPTIONAL_EMULATOR_ROOT/Extra.-.OpenBOR.muxzip"
 LAUNCHER_PROOF_STATE="$LAUNCHER_ROOT/proof-v4-remaining.state"
 LAUNCHER_PROOF_LOG="$LAUNCHER_ROOT/proof-v4-remaining.log"
 EARLY_LAUNCHER_STATE="$LAUNCHER_ROOT/early-launcher-current.revision"
@@ -672,6 +678,128 @@ if [ "$BESPOKE_BRIGHTNESS_POLICY_READY" -eq 1 ] &&
 		rm -f "$LAUNCHER_NEW"
 		printf '%s ERROR: early launcher/core installation failed; installation will retry\n' \
 			"$(date -Iseconds 2>/dev/null || date)" >>"$BESPOKE_ROOT/install.log"
+	fi
+fi
+
+# Install only the fixed-device pieces needed by the two optional systems in
+# the embedded catalog. This is a one-time user-init operation, not boot-path
+# discovery: later boots read only the completed revision state.
+OPTIONAL_EMULATOR_WANTED=$(cat "$OPTIONAL_EMULATOR_REVISION_SOURCE" 2>/dev/null)
+OPTIONAL_EMULATOR_CURRENT=$(cat "$OPTIONAL_EMULATOR_STATE" 2>/dev/null)
+if [ "${#OPTIONAL_EMULATOR_WANTED}" -eq 64 ] &&
+	printf '%s\n' "$OPTIONAL_EMULATOR_WANTED" | grep -Eq '^[0-9a-f]{64}$' &&
+	[ "$OPTIONAL_EMULATOR_CURRENT" != "$OPTIONAL_EMULATOR_WANTED" ]; then
+	EMULATOR_WORK="/tmp/dani-optional-emulators.$$"
+	NDS_STAGE="$EMULATOR_WORK/nds/emulator/drastic-trngaje"
+	OPENBOR_STAGE="$EMULATOR_WORK/openbor"
+	OPTIONAL_EMULATOR_FAILED=0
+
+	rm -rf "$EMULATOR_WORK"
+	mkdir -p "$EMULATOR_WORK/nds" "$OPENBOR_STAGE"
+
+	if ! command -v unzip >/dev/null 2>&1; then
+		printf '%s ERROR: unzip is unavailable; optional emulators will retry\n' \
+			"$(date -Iseconds 2>/dev/null || date)" >>"$OPTIONAL_EMULATOR_LOG"
+		OPTIONAL_EMULATOR_FAILED=1
+	elif ! unzip -q "$NDS_ARCHIVE" \
+		'emulator/drastic-trngaje/drastic' \
+		'emulator/drastic-trngaje/launch.sh' \
+		'emulator/drastic-trngaje/show_hotkeys' \
+		'emulator/drastic-trngaje/game_database.xml' \
+		'emulator/drastic-trngaje/usrcheat.dat' \
+		'emulator/drastic-trngaje/config/*' \
+		'emulator/drastic-trngaje/system/drastic_bios_arm7.bin' \
+		'emulator/drastic-trngaje/system/drastic_bios_arm9.bin' \
+		'emulator/drastic-trngaje/libs/rg/*' \
+		'emulator/drastic-trngaje/resources/font/*' \
+		'emulator/drastic-trngaje/resources/bg/720x480/*' \
+		'emulator/drastic-trngaje/resources/menu/640/*' \
+		'emulator/drastic-trngaje/resources/pen/*' \
+		'emulator/drastic-trngaje/microphone/*' \
+		-d "$EMULATOR_WORK/nds" ||
+		[ ! -s "$NDS_STAGE/drastic" ] || [ ! -s "$NDS_STAGE/launch.sh" ] ||
+		[ ! -s "$NDS_STAGE/libs/rg/libadvdrastic.so" ]; then
+		printf '%s ERROR: could not extract minimal RG Nintendo DS payload\n' \
+			"$(date -Iseconds 2>/dev/null || date)" >>"$OPTIONAL_EMULATOR_LOG"
+		OPTIONAL_EMULATOR_FAILED=1
+	else
+		NDS_TARGET="/opt/muos/share/emulator/drastic-trngaje"
+		NDS_NEW="/opt/muos/share/emulator/.drastic-trngaje.dani-new"
+		if [ -f "$NDS_TARGET/config/drastic.cf2" ]; then
+			cp -f "$NDS_TARGET/config/drastic.cf2" "$NDS_STAGE/config/drastic.cf2"
+		fi
+		chmod 755 "$NDS_STAGE/drastic" "$NDS_STAGE/launch.sh" "$NDS_STAGE/show_hotkeys"
+		chmod 755 "$NDS_STAGE"/libs/rg/*
+		rm -rf "$NDS_NEW"
+		if mv "$NDS_STAGE" "$NDS_NEW"; then
+			rm -rf "$NDS_TARGET"
+			if mv "$NDS_NEW" "$NDS_TARGET"; then
+				printf '%s installed RG-only DraStic payload\n' \
+					"$(date -Iseconds 2>/dev/null || date)" >>"$OPTIONAL_EMULATOR_LOG"
+			else
+				OPTIONAL_EMULATOR_FAILED=1
+			fi
+		else
+			OPTIONAL_EMULATOR_FAILED=1
+		fi
+	fi
+
+	if ! unzip -q "$OPENBOR_ARCHIVE" \
+		'emulator/openbor/OpenBOR7530' \
+		'script/launch/ext-openbor.sh' \
+		'script/control/openbor.sh' \
+		-d "$OPENBOR_STAGE" ||
+		[ ! -s "$OPENBOR_STAGE/emulator/openbor/OpenBOR7530" ] ||
+		[ ! -s "$OPENBOR_STAGE/script/launch/ext-openbor.sh" ]; then
+		printf '%s ERROR: could not extract OpenBOR 7530 payload\n' \
+			"$(date -Iseconds 2>/dev/null || date)" >>"$OPTIONAL_EMULATOR_LOG"
+		OPTIONAL_EMULATOR_FAILED=1
+	else
+		OPENBOR_TARGET="/opt/muos/share/emulator/openbor"
+		OPENBOR_DATA="/mnt/mmc/MUOS/save/openbor"
+		OPENBOR_INSTALL_FAILED=0
+		mkdir -p "$OPENBOR_TARGET" \
+			"$OPENBOR_DATA/screenshots/openbor" \
+			"$OPENBOR_DATA/saves/openbor" \
+			"$OPENBOR_DATA/system/logs/openbor" \
+			"$OPENBOR_DATA/system/configs/openbor" \
+			"/opt/muos/script/launch" "/opt/muos/script/control"
+		if ! cp -f "$OPENBOR_STAGE/emulator/openbor/OpenBOR7530" \
+			"$OPENBOR_TARGET/.OpenBOR7530.dani-new" ||
+			! chmod 755 "$OPENBOR_TARGET/.OpenBOR7530.dani-new" ||
+			! mv -f "$OPENBOR_TARGET/.OpenBOR7530.dani-new" "$OPENBOR_TARGET/OpenBOR7530"; then
+			OPENBOR_INSTALL_FAILED=1
+		fi
+		if [ "$OPENBOR_INSTALL_FAILED" -eq 0 ]; then
+			rm -rf "$OPENBOR_TARGET/userdata"
+			ln -s "$OPENBOR_DATA" "$OPENBOR_TARGET/userdata" || OPENBOR_INSTALL_FAILED=1
+		fi
+		for OPENBOR_SCRIPT in launch/ext-openbor.sh control/openbor.sh; do
+			OPENBOR_SCRIPT_TARGET="/opt/muos/script/$OPENBOR_SCRIPT"
+			if ! cp -f "$OPENBOR_STAGE/script/$OPENBOR_SCRIPT" "$OPENBOR_SCRIPT_TARGET.dani-new" ||
+				! chmod 755 "$OPENBOR_SCRIPT_TARGET.dani-new" ||
+				! mv -f "$OPENBOR_SCRIPT_TARGET.dani-new" "$OPENBOR_SCRIPT_TARGET"; then
+				OPENBOR_INSTALL_FAILED=1
+			fi
+		done
+		if [ "$OPENBOR_INSTALL_FAILED" -eq 0 ]; then
+			printf '%s installed OpenBOR 7530 with persistent card data\n' \
+				"$(date -Iseconds 2>/dev/null || date)" >>"$OPTIONAL_EMULATOR_LOG"
+		else
+			OPTIONAL_EMULATOR_FAILED=1
+			printf '%s ERROR: OpenBOR 7530 installation incomplete\n' \
+				"$(date -Iseconds 2>/dev/null || date)" >>"$OPTIONAL_EMULATOR_LOG"
+		fi
+	fi
+
+	rm -rf "$EMULATOR_WORK"
+	if [ "$OPTIONAL_EMULATOR_FAILED" -eq 0 ]; then
+		printf '%s\n' "$OPTIONAL_EMULATOR_WANTED" >"$OPTIONAL_EMULATOR_STATE"
+		printf '%s optional emulator revision %s complete\n' \
+			"$(date -Iseconds 2>/dev/null || date)" "$OPTIONAL_EMULATOR_WANTED" >>"$OPTIONAL_EMULATOR_LOG"
+	else
+		printf '%s optional emulator installation incomplete; retrying next boot\n' \
+			"$(date -Iseconds 2>/dev/null || date)" >>"$OPTIONAL_EMULATOR_LOG"
 	fi
 fi
 
