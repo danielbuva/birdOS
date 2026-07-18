@@ -146,3 +146,21 @@ from stock at exactly 21 bytes: one DTB value byte and the required 20-byte
 Android boot ID. It has not been written to `/dev/mmcblk0p4`; the active card's
 boot firmware remains unchanged until a controlled installer and restore path
 are staged.
+
+`device-install-backlight-25.sh` is that controlled one-shot path. It waits
+until after the usable-screen path, verifies the candidate, accepts only the
+known stock boot-partition hash, creates and verifies a 64 MiB backup, writes
+the candidate, reads the raw partition back, and automatically restores stock
+if verification fails. It then renames its card-side user-init copy to `.done`.
+It deliberately does not reboot the device.
+
+`device-restore-stock-boot.sh` is the inverse helper. It accepts only the known
+candidate hash, prefers the device-created backup, verifies the raw restore and
+is not installed as a user-init script unless a rollback is intentionally
+requested.
+
+The one-shot installer is currently staged as
+`/mnt/mmc/MUOS/init/98-install-backlight-25.sh`. The rollback helper is inert at
+`/mnt/mmc/.firmware-work/device-restore-stock-boot.sh`. The active boot
+partition is still stock at this checkpoint; the installer will change it only
+after its first device-side hash check.
