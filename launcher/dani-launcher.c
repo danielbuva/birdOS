@@ -1308,7 +1308,7 @@ static int application(void) {
         log_number(boot_animation_started);
         log_text(" duration_ms=");
         log_number(BOOT_ANIMATION_MS);
-        log_text(" brightness_source=firmware-default\n");
+        log_text(" brightness_source=unchanged-display-handoff\n");
     } else {
         boot_animation_complete = 1;
     }

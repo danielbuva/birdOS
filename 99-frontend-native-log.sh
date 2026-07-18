@@ -274,9 +274,9 @@ if [ -f "$QUIET_DEVICE" ] && ! grep -q "$BESPOKE_DEVICE_MARKER" "$QUIET_DEVICE";
 	fi
 fi
 
-# Preserve the brightness established by the boot firmware. Remove the later
-# stock restore from device/start.sh so it cannot overwrite that value
-# asynchronously in the middle of the launcher or its boot animation.
+# Preserve the display-handoff brightness already visible when Linux starts.
+# Remove the later stock saved-setting restore from device/start.sh so it cannot
+# overwrite that value asynchronously in the launcher or its boot animation.
 BESPOKE_BRIGHTNESS_POLICY_READY=0
 if [ -f "$QUIET_DEVICE" ] && ! grep -q "$BESPOKE_BRIGHTNESS_MARKER" "$QUIET_DEVICE"; then
 	mkdir -p "$BESPOKE_ROOT/backup"
@@ -290,7 +290,7 @@ if [ -f "$QUIET_DEVICE" ] && ! grep -q "$BESPOKE_BRIGHTNESS_MARKER" "$QUIET_DEVI
 		if [ "$SKIP_BRIGHTNESS_BLOCK" -eq 0 ] &&
 			[ "$LINE" = "$(printf '\t%s' '/opt/muos/script/device/bright.sh R')" ]; then
 			printf '\t# %s\n' "$BESPOKE_BRIGHTNESS_MARKER"
-			printf '\t%s\n' ': # Keep firmware-established boot brightness; manual controls remain available.'
+			printf '\t%s\n' ': # Keep display-handoff brightness; manual controls remain available.'
 			SKIP_BRIGHTNESS_BLOCK=1
 			BRIGHTNESS_BLOCK_FOUND=1
 		elif [ "$SKIP_BRIGHTNESS_BLOCK" -eq 1 ]; then
@@ -311,7 +311,7 @@ if [ -f "$QUIET_DEVICE" ] && ! grep -q "$BESPOKE_BRIGHTNESS_MARKER" "$QUIET_DEVI
 		[ "$BRIGHTNESS_BLOCK_FOUND" -eq 1 ] && [ "$BRIGHTNESS_BLOCK_ENDED" -eq 1 ]; then
 		chmod 755 "$PATCHED"
 		mv -f "$PATCHED" "$QUIET_DEVICE"
-		printf '%s removed asynchronous brightness restore; preserved firmware-established boot value\n' \
+		printf '%s removed asynchronous brightness restore; preserved display-handoff value\n' \
 			"$(date -Iseconds 2>/dev/null || date)" >>"$BESPOKE_ROOT/install.log"
 	else
 		rm -f "$PATCHED"

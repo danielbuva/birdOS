@@ -48,10 +48,12 @@ The Android boot image uses a 2,048-byte v2 header layout:
 
 The device tree explicitly identifies `rg34xxsp_v1`, enables the internal LCD,
 contains the complete Anbernic GPIO key map and sets `lcd_backlight = <0x32>`
-(50 decimal). This is the firmware-established brightness that now remains
-stable because the later muOS brightness restore was removed. A future fixed
-25% firmware default is therefore `<0x19>`; it belongs here, not in an
-asynchronous userspace script.
+(50 decimal). A verified candidate changed it to `<0x19>` and booted normally,
+but two cold hardware tests showed no visible brightness change. This property
+therefore does not own the RG34XX-SP's displayed boot level, at least across its
+seamless U-Boot/Linux display handoff. Visible brightness is controlled later
+through the Allwinner `dispdbg` `disp0 getbl/setbl` interface; the earlier owner
+still needs to be traced.
 
 `boot-resource/bootlogo.bmp` is a 720x480 24-bit image shown before Linux. It is
 the correct frame-zero asset for a visually immediate boot. The final image can
@@ -120,8 +122,7 @@ v2 SHA-1 ID using the payload-plus-little-endian-size order specified by the
 Passing the original extracted DTB must reproduce the complete 64 MiB stock
 boot partition byte-for-byte; this is the mandatory no-change safety test.
 
-Generate the first fixed-device DTB candidate with a 25% firmware-established
-backlight:
+Generate the tested DTB-property candidate:
 
 ```sh
 ./firmware/set-backlight-dtb.sh INPUT_DTB OUTPUT_DTB 25
@@ -131,7 +132,7 @@ No firmware candidate should be written to the card's boot partition until its
 unpacked kernel, ramdisk, device tree, layout, digest and no-change round trip
 all pass offline verification.
 
-## Current candidate (not installed)
+## Installed DTB experiment
 
 The hidden card workspace contains:
 
@@ -143,9 +144,12 @@ The hidden card workspace contains:
 Re-extraction proves that the candidate's kernel and ramdisk are byte-identical
 to stock and its `lcd_backlight` reads 25. The complete 64 MiB image differs
 from stock at exactly 21 bytes: one DTB value byte and the required 20-byte
-Android boot ID. It has not been written to `/dev/mmcblk0p4`; the active card's
-boot firmware remains unchanged until a controlled installer and restore path
-are staged.
+Android boot ID. The installer wrote it to `/dev/mmcblk0p4`, read the raw
+partition back and matched SHA-256
+`eab1f16833a69c8e9a04297d87d0dee1b86980d27edc8e027ae3966b352865bd`.
+Two subsequent cold boots remained approximately four seconds and looked
+identical in brightness, disproving the working ownership assumption without
+regressing boot or launcher behavior.
 
 `device-install-backlight-25.sh` is that controlled one-shot path. It waits
 until after the usable-screen path, verifies the candidate, accepts only the
@@ -159,8 +163,15 @@ candidate hash, prefers the device-created backup, verifies the raw restore and
 is not installed as a user-init script unless a rollback is intentionally
 requested.
 
-The one-shot installer is currently staged as
-`/mnt/mmc/MUOS/init/98-install-backlight-25.sh`. The rollback helper is inert at
-`/mnt/mmc/.firmware-work/device-restore-stock-boot.sh`. The active boot
-partition is still stock at this checkpoint; the installer will change it only
-after its first device-side hash check.
+The completed installer is disabled as
+`/mnt/mmc/MUOS/init/98-install-backlight-25.sh.done`. Its verified 64 MiB stock
+backup is `/mnt/mmc/.firmware-work/device-boot-before-backlight.img`; the
+rollback helper remains inert at
+`/mnt/mmc/.firmware-work/device-restore-stock-boot.sh`.
+
+`device-backlight-probe.sh` is the next diagnostic. It runs asynchronously
+before the launcher and never sets a brightness value. It records the configured
+brightness, DTB cell, standard backlight sysfs nodes, PWM diagnostics and nine
+`disp0 getbl` samples, then persists the result after ROM storage mounts. The one-shot
+`device-install-backlight-probe.sh` installs it into the early async init
+directory without delaying the usable-screen path.

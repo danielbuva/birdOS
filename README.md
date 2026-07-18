@@ -49,7 +49,7 @@ index, on-demand networking, and a reproducible firmware image.
   launcher, and the permanent shell no longer times out into stock.
 - The boot-effects proof animates only after the usable frame and starts a tiny
   preconverted PCM chime only after the normal audio route is ready. The later
-  muOS brightness restore is removed, leaving the firmware-established level
+  muOS brightness restore is removed, leaving the display-handoff level
   unchanged until a manual adjustment. Final effects move to firmware later.
 - Sounds, low-power monitoring, USB setup, device-control refresh, and SDL-map
   refresh deferred until after frontend startup.
@@ -57,7 +57,9 @@ index, on-demand networking, and a reproducible firmware image.
   caused PipeWire/SDL audio to block the frontend until 12-14 seconds.
 - The stock 8.17 GiB image now has an exact partition map and verified offline
   extraction workflow. Its Android boot v2 payload round-trips byte-for-byte;
-  a 25% firmware-backlight candidate is built and verified but not installed.
+  a 25% `lcd_backlight` DTB candidate was verified, installed and found not to
+  control the visible RG34XX-SP boot level. The real backlight path is now being
+  profiled through the Allwinner `disp0 getbl/setbl` interface.
 
 The cached-module test reported `cached`, and the complete post-change
 functionality test passed. The optimized-stock checkpoint remains in Git; the

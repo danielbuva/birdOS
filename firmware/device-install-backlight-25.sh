@@ -105,4 +105,4 @@ fi
 printf '%s\n' "$CANDIDATE_SHA" >"$MARKER"
 disable_installer
 log "SUCCESS: candidate verified on raw boot partition"
-log "next power cycle will use the fixed 25% firmware brightness"
+log "next power cycle will test the DTB lcd_backlight=25 candidate"

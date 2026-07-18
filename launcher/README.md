@@ -149,7 +149,7 @@ why the chime arrived after the animation.
 
 The v9 build removes brightness handling from the boot experience rather than
 choosing a card-side percentage. `device/start.sh` no longer performs its late
-saved-brightness restore, so the firmware-established brightness remains stable
+saved-brightness restore, so the display-handoff brightness remains stable
 until the user changes it manually. The 1.6-second animation starts with the
 first interactive frame again. Input still intentionally completes and removes
 the decorative animation immediately; this is an explicit interaction policy,

@@ -30,4 +30,4 @@ fdtput -t i "$OUTPUT" "$NODE" lcd_backlight "$LEVEL"
 NEW_LEVEL=$(fdtget -t i "$OUTPUT" "$NODE" lcd_backlight)
 [ "$NEW_LEVEL" -eq "$LEVEL" ] || fail "device-tree verification failed"
 
-printf 'RG34XX-SP firmware backlight: %s%% -> %s%% (%s)\n' "$OLD_LEVEL" "$NEW_LEVEL" "$OUTPUT"
+printf 'RG34XX-SP DTB lcd_backlight: %s -> %s (%s)\n' "$OLD_LEVEL" "$NEW_LEVEL" "$OUTPUT"

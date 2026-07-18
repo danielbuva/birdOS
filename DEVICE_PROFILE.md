@@ -71,7 +71,7 @@ Both paths are hardware-verified and do not enter the stock frontend.
 The boot-effects proof keeps the complete menu as frame zero and starts its
 1.6-second procedural accent immediately. It completes on the first input, so
 it cannot delay or capture interaction. muOS's later saved-brightness restore
-is disabled; the firmware-established value remains until manual adjustment.
+is disabled; the existing display-handoff value remains until manual adjustment.
 A 320 ms mono PCM chime waits asynchronously for the existing PipeWire route,
 uses the proven `mpv` path directly, and is cancelled if the launcher hands off
 before playback. The line and tone are development assets; final effects move
