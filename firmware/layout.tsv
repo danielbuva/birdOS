@@ -1,0 +1,7 @@
+partition	name	start_lba	end_lba	sectors	offset_mib	size_mib	format
+1	spare	73728	90111	16384	36	8	Allwinner boot payload / protective MBR
+2	boot-resource	90112	155647	65536	44	32	FAT16 resource image (declares 128 MiB internally)
+3	env	155648	188415	32768	76	16	Allwinner U-Boot environment
+4	boot	188416	319487	131072	92	64	Android boot image v2
+5	rootfs	319488	17096703	16777216	156	8192	ext4
+6	roms	17096704	17104895	8192	8348	4	exFAT seed (expanded after flashing)

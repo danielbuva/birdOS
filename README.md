@@ -55,6 +55,9 @@ index, on-demand networking, and a reproducible firmware image.
   refresh deferred until after frontend startup.
 - Early entropy retained: deferring haveged delayed kernel CRNG readiness and
   caused PipeWire/SDL audio to block the frontend until 12-14 seconds.
+- The stock 8.17 GiB image now has an exact partition map and verified offline
+  extraction workflow. Its Android boot v2 payload round-trips byte-for-byte;
+  a 25% firmware-backlight candidate is built and verified but not installed.
 
 The cached-module test reported `cached`, and the complete post-change
 functionality test passed. The optimized-stock checkpoint remains in Git; the
@@ -81,6 +84,8 @@ writes a content revision that user-init installs on the next boot.
 - `DEVICE_PROFILE.md`: fixed hardware and experience contract.
 - `INPUT_MAP.md`: confirmed logical control bitmasks and muOS calibration notes.
 - `launcher/`: dependency-free direct-framebuffer launcher proof.
+- `firmware/`: exact stock partition map, checksums and reproducible offline
+  image inspection tools.
 - `generate-boot-sound.py`: deterministic source for the tiny PCM boot chime.
 
 The untouched recovery card remains the authoritative known-good system.

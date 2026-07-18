@@ -47,6 +47,10 @@ The long-term centerpiece would be a tiny custom launcher—ideally a small stat
   boot audio.
 - [x] Remove the asynchronous saved-brightness restore and profile the existing
   sound-player paths.
+- [x] Inventory the exact GPT, boot resource, U-Boot environment, Android boot
+  image, initramfs and ext4 rootfs from the trusted stock archive.
+- [x] Prove a byte-identical Android boot v2 unpack/repack round trip and build
+  an offline-only 25% device-tree brightness candidate.
 - [ ] Move the final animation and audio to the earlier firmware layer.
 - [ ] Complete the final visual, animation and audio identity.
 - [ ] Remove superseded muOS components and produce a reproducible firmware image.

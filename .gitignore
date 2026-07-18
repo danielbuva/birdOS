@@ -1,3 +1,5 @@
 .DS_Store
 ._*
-
+firmware/work/
+firmware/*.img
+firmware/*.ext4
