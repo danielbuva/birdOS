@@ -22,3 +22,9 @@ ROOT=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
     -o "$ROOT/launcher/dani-launcher.o"
 
 file "$ROOT/launcher/dani-launcher.o"
+OBJECT_HASH=$(shasum -a 256 "$ROOT/launcher/dani-launcher.o" | cut -d ' ' -f 1)
+INIT_HASH=$(shasum -a 256 "$ROOT/launcher/S03danilauncher" | cut -d ' ' -f 1)
+printf '%s\n%s\n' "$OBJECT_HASH" "$INIT_HASH" | shasum -a 256 | cut -d ' ' -f 1 \
+    >"$ROOT/launcher/catalog.revision"
+printf 'catalog revision: '
+cat "$ROOT/launcher/catalog.revision"

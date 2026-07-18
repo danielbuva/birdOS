@@ -35,6 +35,8 @@ index, on-demand networking, and a reproducible firmware image.
 - The fixed launcher starts before udev, renders directly to both framebuffer
   pages, and reads the built-in evdev device without SDL or joystick services.
 - Its embedded catalog remains browsable while ROM storage mounts concurrently.
+- The real cache contains 5,953 games across 27 systems; artwork and metadata
+  stay out of the boot executable.
 - SNES, PSP, and native Port launch/return paths work with audio and volume.
 - PortMaster and shutdown run directly without entering the stock frontend.
 - Persistent Favorites and most-recent path tracking are hardware-verified.
@@ -58,6 +60,11 @@ active card now boots the custom launcher as its normal frontend.
 Run `./build-font-stubs.sh` on macOS to compile the five AArch64 relocatable
 objects. The device-side user-init hook links them with the target system's own
 GNU linker, then installs the resulting shared libraries.
+
+Double-click `/Users/dani/Desktop/Rebuild Dani SP Library.command` whenever the
+card's library changes. It inventories the mounted card, regenerates the
+embedded cache, compiles the AArch64 object, verifies every staged copy and
+writes a content revision that user-init installs on the next boot.
 
 ## Important files
 

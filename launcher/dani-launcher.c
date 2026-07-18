@@ -57,6 +57,7 @@ typedef signed long s64;
 #define VIEW_SYSTEMS 1U
 #define VIEW_GAMES 2U
 #define VIEW_FAVORITES 3U
+#define SYSTEM_ROWS 8U
 #define GAME_ROWS 8U
 #define ACTION_NONE 0
 #define ACTION_STOCK 1
@@ -593,16 +594,20 @@ static void draw_screen(void) {
             }
         }
     } else if (view == VIEW_SYSTEMS) {
+        u32 first = selection < SYSTEM_ROWS ? 0U : selection - SYSTEM_ROWS + 1U;
         draw_text(32, 22, "GAMES", 4, primary);
         draw_text(34, 62, "EMBEDDED CATALOG // NO SCAN", 2, muted);
-        for (i = 0; i < CATALOG_SYSTEM_COUNT; i++) {
-            int y = 122 + (int)i * 64;
-            if (i == selection) {
-                rectangle(92, y - 10, 492, 52, selected);
-                draw_text(108, y + 4, ">", 3, background);
-                draw_text(148, y, catalog_systems[i].name, 4, background);
+        for (i = 0; i < SYSTEM_ROWS && first + i < CATALOG_SYSTEM_COUNT; i++) {
+            u32 system_index = first + i;
+            int y = 102 + (int)i * 38;
+            if (system_index == selection) {
+                rectangle(32, y - 7, 656, 31, selected);
+                draw_text(44, y, ">", 2, background);
+                draw_text_limited(72, y, catalog_systems[system_index].name,
+                                  2, background, 50U);
             } else {
-                draw_text(148, y, catalog_systems[i].name, 4, primary);
+                draw_text_limited(72, y, catalog_systems[system_index].name,
+                                  2, primary, 50U);
             }
         }
     } else {
@@ -643,6 +648,8 @@ static void draw_screen(void) {
         draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE  L1 R1 PAGE  A LAUNCH  Y FAV  B BACK", 2, primary);
     else if (view == VIEW_FAVORITES)
         draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE  L1 R1 PAGE  A LAUNCH  Y REMOVE  B BACK", 2, primary);
+    else if (view == VIEW_SYSTEMS)
+        draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE  L1 R1 PAGE  A OPEN  B BACK", 2, primary);
     else
         draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE   A OPEN   B BACK", 2, primary);
     __asm__ volatile("dmb ishst" ::: "memory");
@@ -695,6 +702,9 @@ static int write_launch_request(const struct catalog_system *system,
     kind[0] = (char)('0' + system->launch_kind);
     kind[1] = '\n';
     if (sys_write((int)fd, kind, sizeof(kind)) != (long)sizeof(kind) ||
+        sys_write((int)fd, system->core, string_length(system->core)) !=
+            (long)string_length(system->core) ||
+        sys_write((int)fd, "\n", 1) != 1 ||
         sys_write((int)fd, entry->name, string_length(entry->name)) !=
             (long)string_length(entry->name) ||
         sys_write((int)fd, "\n", 1) != 1 ||
@@ -713,6 +723,8 @@ static int write_launch_request(const struct catalog_system *system,
     log_number(boot_ms());
     log_text(" kind=");
     log_number(system->launch_kind);
+    log_text(" core=");
+    log_text(system->core);
     log_text(" path=");
     log_text(entry->path);
     log_text(" result=ready\n");
@@ -886,12 +898,14 @@ static int handle_event(const struct input_event *event) {
             toggle_current_favorite();
             return 0;
         }
-        if ((view == VIEW_GAMES || view == VIEW_FAVORITES) && event->code == BTN_TL) {
-            move_selection(-1, GAME_ROWS);
+        if ((view == VIEW_SYSTEMS || view == VIEW_GAMES || view == VIEW_FAVORITES) &&
+            event->code == BTN_TL) {
+            move_selection(-1, view == VIEW_SYSTEMS ? SYSTEM_ROWS : GAME_ROWS);
             return 0;
         }
-        if ((view == VIEW_GAMES || view == VIEW_FAVORITES) && event->code == BTN_TR) {
-            move_selection(1, GAME_ROWS);
+        if ((view == VIEW_SYSTEMS || view == VIEW_GAMES || view == VIEW_FAVORITES) &&
+            event->code == BTN_TR) {
+            move_selection(1, view == VIEW_SYSTEMS ? SYSTEM_ROWS : GAME_ROWS);
             return 0;
         }
     }

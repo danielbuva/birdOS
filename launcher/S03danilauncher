@@ -85,6 +85,7 @@ RUN_GAME() {
 
 	{
 		IFS= read -r LAUNCH_KIND
+		IFS= read -r GAME_CORE
 		IFS= read -r GAME_NAME
 		IFS= read -r GAME_PATH
 	} <"$LAUNCH_REQUEST"
@@ -100,17 +101,24 @@ RUN_GAME() {
 	. /opt/muos/script/var/func.sh
 	GOVERNOR_FILE=$(GET_VAR "device" "cpu/governor")
 	PREVIOUS_GOVERNOR=$(cat "$GOVERNOR_FILE" 2>/dev/null)
-	[ "$LAUNCH_KIND" = "2" ] && printf '%s\n' performance >"$GOVERNOR_FILE"
+	case "$LAUNCH_KIND:$GAME_CORE" in
+		2:* | 4:* | 5:* | *:flycast* | *:mupen64plus*)
+			printf '%s\n' performance >"$GOVERNOR_FILE"
+			;;
+	esac
 
 	printf 'game launch start uptime: '
 	cut -d ' ' -f 1 /proc/uptime
-	printf 'game launch kind=%s name=%s path=%s\n' "$LAUNCH_KIND" "$GAME_NAME" "$GAME_PATH"
+	printf 'game launch kind=%s core=%s name=%s path=%s\n' \
+		"$LAUNCH_KIND" "$GAME_CORE" "$GAME_NAME" "$GAME_PATH"
 	SNAPSHOT_LOG
 
 	case "$LAUNCH_KIND" in
-		1) /opt/muos/script/launch/lr-general.sh "$GAME_NAME" "snes9x_libretro.so" "$GAME_PATH" ;;
+		1) /opt/muos/script/launch/lr-general.sh "$GAME_NAME" "$GAME_CORE" "$GAME_PATH" ;;
 		2) /opt/muos/script/launch/ext-ppsspp.sh "$GAME_NAME" "ext-ppsspp" "$GAME_PATH" ;;
 		3) /opt/muos/script/launch/ext-general.sh "$GAME_NAME" "external" "$GAME_PATH" ;;
+		4) /opt/muos/script/launch/ext-drastic.sh "$GAME_NAME" "$GAME_CORE" "$GAME_PATH" ;;
+		5) /opt/muos/script/launch/ext-openbor.sh "$GAME_NAME" "$GAME_CORE" "$GAME_PATH" ;;
 		*)
 			printf 'launch bridge error: unsupported kind %s\n' "$LAUNCH_KIND"
 			return 1

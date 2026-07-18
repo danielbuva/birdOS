@@ -35,37 +35,46 @@ The verified direct build starts at 2.269 seconds of kernel uptime with input
 already usable and completes its first frame at 2.289 seconds. The corresponding
 LED-on stopwatch time is approximately four seconds.
 
-## Embedded catalogue proof
+## Real embedded library catalogue
 
-`generate-launcher-catalog.py` converts a host-side ROM manifest into a C header
-that is compiled directly into the launcher. The launcher never scans storage
-at boot and can browse the cached names before `/mnt/mmc` is mounted. A narrow
-50 ms readiness probe reports when `/mnt/mmc/ROMS` appears; selecting a cached
-title tests only that title's exact path.
+`generate-launcher-catalog.py` inventories the mounted card and converts every
+supported ROM path into a C header compiled directly into the launcher. The
+launcher never scans storage at boot and can browse cached names before
+`/mnt/mmc` is mounted. A narrow 50 ms readiness probe reports when
+`/mnt/mmc/ROMS` appears; selecting a cached title tests only that exact path.
 
-The first proof manifest contains four already-tested games across SNES, PSP,
-and Ports. It validates nested browsing, paging, back navigation, and storage
-readiness without treating the card's temporary 1,952-game SNES set as the final
-library. Regenerate the same header from the final curated manifest later with:
+The v11 inventory contains 5,953 launchable files across 27 populated systems.
+It excludes AppleDouble files, hidden files, artwork directories, PNG artwork,
+Windows thumbnail databases and other metadata. The generated TSV also records
+the current media library: three Listen items, no Read items and six Watch
+items. Media is inventoried now but remains outside the game-launch index until
+those views are implemented.
+
+Regenerate the complete cache and stage it on an inserted card by double-clicking
+`Rebuild Dani SP Library.command` on the Mac Desktop, or run:
 
 ```sh
-./generate-launcher-catalog.sh /Volumes/dani-sp/ROMS path/to/manifest.txt
+./rebuild-library.command /Volumes/dani-sp
 ```
 
-The catalogue proof measured process entry at 2.305 seconds, first interactive
-frame at 2.327 seconds, and ROM storage readiness at 4.117 seconds. All four
-cached paths tested ready without any runtime directory scan.
+The generator can still build a narrow diagnostic manifest by passing it as the
+second argument to `generate-launcher-catalog.sh`. The full system view is now
+an eight-row scrolling list with L1/R1 paging, so all 27 systems remain visible.
 
 ## Fixed game handoff
 
-Selecting a ready title writes a three-line request containing only launch kind,
-display name, and exact ROM path, then exits cleanly to release framebuffer and
-evdev ownership. `S03danilauncher` waits for the already-dispatched startup,
-PipeWire socket, and fixed controller map before using these confirmed mappings:
+Selecting a ready title writes a four-line request containing launch kind, exact
+core, display name and exact ROM path, then exits cleanly to release framebuffer
+and evdev ownership. `S03danilauncher` waits for the already-dispatched startup,
+PipeWire socket and fixed controller map. Libretro systems use the proven
+`lr-general.sh` bridge with the system's compiled core; PSP, Ports, NDS and
+OpenBOR use their dedicated muOS wrappers.
 
 - SNES: `snes9x_libretro.so` through `lr-general.sh`
 - PSP: standalone PPSSPP through `ext-ppsspp.sh`
 - Ports: executable script through `ext-general.sh`
+- NDS: standalone DraStic through `ext-drastic.sh`
+- OpenBOR: standalone OpenBOR 7530 through its optional package wrapper
 
 The supervisor waits for the game process, records its result, and starts the
 custom launcher again without starting the stock frontend or calling `mufbset`.
@@ -160,3 +169,12 @@ launcher's own ROM-readiness callback. Storage and Favorites became ready at
 The callback now changes state and logs readiness without drawing. The next
 user action naturally renders the current state, so background storage work
 cannot overwrite the foreground or interrupt unrelated visual effects.
+
+## Real-cache deployment
+
+The v11 build replaces the five-title proof with the real 5,953-title card
+inventory and carries a core assignment beside each system. A content-addressed
+revision file covers both the launcher object and supervisor. User-init links a
+new payload only when that revision changes, which makes repeated Mac-side
+cache rebuilds safe and avoids relinking unchanged catalogs. The first boot
+after a rebuild installs the revision; the following boot uses it from S03.

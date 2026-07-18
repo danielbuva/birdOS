@@ -54,7 +54,8 @@ LAUNCHER_SOUND="$LAUNCHER_ROOT/boot.wav"
 LAUNCHER_TARGET="/opt/muos/bin/dani-launcher"
 LAUNCHER_PROOF_STATE="$LAUNCHER_ROOT/proof-v4-remaining.state"
 LAUNCHER_PROOF_LOG="$LAUNCHER_ROOT/proof-v4-remaining.log"
-EARLY_LAUNCHER_STATE="$LAUNCHER_ROOT/early-launcher-v10-permanent-shell.state"
+EARLY_LAUNCHER_STATE="$LAUNCHER_ROOT/early-launcher-v11-real-catalog.revision"
+EARLY_LAUNCHER_REVISION_SOURCE="$LAUNCHER_ROOT/catalog.revision"
 EARLY_INIT_SOURCE="$LAUNCHER_ROOT/S03danilauncher"
 EARLY_INIT_TARGET="/opt/muos/script/init/S03danilauncher"
 EARLY_OLD_INIT_TARGET="/opt/muos/script/init/S11danilauncher"
@@ -582,17 +583,24 @@ fi
 # Promote the fixed-device framebuffer/input program to the earliest normal
 # init slot. S03 starts before the 1.6-second udev phase, returns immediately,
 # and lets normal muOS startup continue behind the custom screen. The binary
-# waits only for /dev/fb0 and /dev/input/event1 and reads evdev directly. B (or
-# the safety timeout) hands off after normal startup reports that it is ready.
+# waits only for /dev/fb0 and /dev/input/event1 and reads evdev directly. B on
+# the main menu is the explicit recovery handoff after normal startup is ready.
+EARLY_LAUNCHER_WANTED_REVISION=$(cat "$EARLY_LAUNCHER_REVISION_SOURCE" 2>/dev/null)
+EARLY_LAUNCHER_CURRENT_REVISION=$(cat "$EARLY_LAUNCHER_STATE" 2>/dev/null)
+if [ "${#EARLY_LAUNCHER_WANTED_REVISION}" -ne 64 ] ||
+	! printf '%s\n' "$EARLY_LAUNCHER_WANTED_REVISION" | grep -Eq '^[0-9a-f]{64}$'; then
+	EARLY_LAUNCHER_WANTED_REVISION=""
+fi
 if [ "$BESPOKE_BRIGHTNESS_POLICY_READY" -eq 1 ] &&
 	[ -s "$LAUNCHER_OBJECT" ] && [ -s "$EARLY_INIT_SOURCE" ] && [ -s "$LAUNCHER_SOUND" ] &&
-	[ ! -f "$EARLY_LAUNCHER_STATE" ]; then
+	[ -n "$EARLY_LAUNCHER_WANTED_REVISION" ] &&
+	[ "$EARLY_LAUNCHER_CURRENT_REVISION" != "$EARLY_LAUNCHER_WANTED_REVISION" ]; then
 	LAUNCHER_NEW="/tmp/dani-launcher-direct.$$"
 	PATCHED="/tmp/startup-early-launcher.$$.sh"
 	STARTUP_READY=0
 
 	if /usr/bin/ld -static --build-id=none -z noexecstack -s -e _start \
-		-o "$LAUNCHER_NEW" "$LAUNCHER_OBJECT" >"$LAUNCHER_ROOT/link-early-v10-permanent-shell.log" 2>&1; then
+		-o "$LAUNCHER_NEW" "$LAUNCHER_OBJECT" >"$LAUNCHER_ROOT/link-early-v11-real-catalog.log" 2>&1; then
 		chmod 755 "$LAUNCHER_NEW"
 		if grep -q "$EARLY_STARTUP_MARKER" "$EARLY_STARTUP_TARGET"; then
 			STARTUP_READY=1
@@ -623,9 +631,9 @@ if [ "$BESPOKE_BRIGHTNESS_POLICY_READY" -eq 1 ] &&
 			cp -f "$EARLY_INIT_SOURCE" "$EARLY_INIT_TARGET"
 			chmod 755 "$EARLY_INIT_TARGET"
 			rm -f "$EARLY_OLD_INIT_TARGET"
-			printf '%s\n' "installed" >"$EARLY_LAUNCHER_STATE"
-			printf '%s permanent launcher shell and state-only asynchronous storage installed; active next boot\n' \
-				"$(date -Iseconds 2>/dev/null || date)" >>"$BESPOKE_ROOT/install.log"
+			printf '%s\n' "$EARLY_LAUNCHER_WANTED_REVISION" >"$EARLY_LAUNCHER_STATE"
+			printf '%s real cached library revision %s installed; active next boot\n' \
+				"$(date -Iseconds 2>/dev/null || date)" "$EARLY_LAUNCHER_WANTED_REVISION" >>"$BESPOKE_ROOT/install.log"
 		else
 			rm -f "$PATCHED" "$LAUNCHER_NEW"
 			printf '%s ERROR: stock frontend start line not found; early launcher not installed\n' \
