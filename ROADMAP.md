@@ -37,6 +37,10 @@ The long-term centerpiece would be a tiny custom launcher—ideally a small stat
 - [x] Add fixed SNES/PSP/Port launch handoff and reliable direct return.
 - [x] Replace daily PortMaster/network and shutdown stock-frontend paths.
 - [x] Prove persistent Favorites and recent-game state.
+- [x] Replace the diagnostic Home menu with fixed Play, Listen, Read and Watch
+  destinations and compile the real audio/video library into the cache.
+- [x] Add native MPV media handoff and exact media-screen return without a boot
+  scan or a new playback dependency.
 - [x] Promote the launcher to a permanent shell with B-only stock recovery and
   state-only asynchronous storage completion.
 - [x] Prove nonblocking procedural animation, input skip and handoff-cancelled

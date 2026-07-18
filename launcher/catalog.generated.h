@@ -2,13 +2,26 @@
 #ifndef DANI_CATALOG_GENERATED_H
 #define DANI_CATALOG_GENERATED_H
 
+#define CATALOG_LAUNCH_NONE 0
 #define CATALOG_LAUNCH_RETROARCH 1
 #define CATALOG_LAUNCH_PPSSPP 2
 #define CATALOG_LAUNCH_PORTMASTER 3
 #define CATALOG_LAUNCH_DRASTIC 4
 #define CATALOG_LAUNCH_OPENBOR 5
+#define CATALOG_LAUNCH_MPV 6
+#define CATALOG_MEDIA_SECTION_LISTEN 1
+#define CATALOG_MEDIA_SECTION_READ 2
+#define CATALOG_MEDIA_SECTION_WATCH 3
 #define CATALOG_SYSTEM_COUNT 27U
 #define CATALOG_ENTRY_COUNT 5953U
+#define CATALOG_MEDIA_CATEGORY_COUNT 2U
+#define CATALOG_MEDIA_ENTRY_COUNT 9U
+#define CATALOG_LISTEN_CATEGORY_FIRST 0U
+#define CATALOG_LISTEN_CATEGORY_COUNT 1U
+#define CATALOG_READ_CATEGORY_FIRST 1U
+#define CATALOG_READ_CATEGORY_COUNT 0U
+#define CATALOG_WATCH_CATEGORY_FIRST 1U
+#define CATALOG_WATCH_CATEGORY_COUNT 1U
 
 struct catalog_system {
     const char *name;
@@ -22,6 +35,21 @@ struct catalog_entry {
     const char *name;
     const char *path;
     u16 system;
+};
+
+struct catalog_media_category {
+    const char *name;
+    const char *core;
+    u32 first;
+    u32 count;
+    u8 section;
+    u8 launch_kind;
+};
+
+struct catalog_media_entry {
+    const char *name;
+    const char *path;
+    u16 category;
 };
 
 static const struct catalog_system catalog_systems[CATALOG_SYSTEM_COUNT] = {
@@ -6008,6 +6036,23 @@ static const struct catalog_entry catalog_entries[CATALOG_ENTRY_COUNT] = {
     {"ZOOL - NINJA OF THE 'NTH' DIMENSION (USA)", "/mnt/mmc/ROMS/SNES/Zool - Ninja of the 'Nth' Dimension (USA).zip", 26U},
     {"ZOOP (USA)", "/mnt/mmc/ROMS/SNES/Zoop (USA).zip", 26U},
     {"ZOOTTO MAHJONG! (JAPAN) (REV 1) (NP)", "/mnt/mmc/ROMS/SNES/Zootto Mahjong! (Japan) (Rev 1) (NP).zip", 26U},
+};
+
+static const struct catalog_media_category catalog_media_categories[CATALOG_MEDIA_CATEGORY_COUNT] = {
+    {"AW", "ext-mpv-general", 0U, 3U, CATALOG_MEDIA_SECTION_LISTEN, CATALOG_LAUNCH_MPV},
+    {"MOVIES", "ext-mpv-general", 3U, 6U, CATALOG_MEDIA_SECTION_WATCH, CATALOG_LAUNCH_MPV},
+};
+
+static const struct catalog_media_entry catalog_media_entries[CATALOG_MEDIA_ENTRY_COUNT] = {
+    {"OUT OF YOUR MIND 1", "/mnt/mmc/MEDIA/LISTEN/aw/out of your mind 1.mp3", 0U},
+    {"OUT OF YOUR MIND 2", "/mnt/mmc/MEDIA/LISTEN/aw/out of your mind 2.mp3", 0U},
+    {"OUT OF YOUR MIND 3", "/mnt/mmc/MEDIA/LISTEN/aw/out of your mind 3.mp3", 0U},
+    {"12 ANGRY MEN", "/mnt/mmc/MEDIA/WATCH/movies/12 Angry Men.mp4", 1U},
+    {"ANGEL'S EGG", "/mnt/mmc/MEDIA/WATCH/movies/Angel's Egg.mkv", 1U},
+    {"GHOST IN THE SHELL", "/mnt/mmc/MEDIA/WATCH/movies/Ghost in the Shell.mkv", 1U},
+    {"MARY AND MAX", "/mnt/mmc/MEDIA/WATCH/movies/Mary and Max.mp4", 1U},
+    {"THE GODFATHER", "/mnt/mmc/MEDIA/WATCH/movies/The Godfather.mp4", 1U},
+    {"THE THING 1987", "/mnt/mmc/MEDIA/WATCH/movies/THE THING 1987.mp4", 1U},
 };
 
 #endif

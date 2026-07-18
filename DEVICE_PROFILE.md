@@ -30,33 +30,38 @@ product decisions, not runtime options.
 
 ## Launcher menu
 
-The first hardware proof deliberately contains only:
+The permanent fixed shell starts with exactly:
 
-1. Games
-2. Favorites
-3. PortMaster
-4. Shutdown
+1. Play
+2. Listen
+3. Read
+4. Watch
 
-This is a functional skeleton, not the final visual design. It embeds only its
-English bitmap glyphs, draws directly to the Linux framebuffer, reads evdev
-directly, and remains resident as the permanent shell. B from the main screen
+It embeds only its English bitmap glyphs, draws directly to the Linux
+framebuffer, reads evdev directly, and remains the permanent shell. B from Home
 is the explicit development recovery path; there is no inactivity handoff to
 stock.
 
-Games opens an embedded, generated catalogue. The current proof catalogue
-contains five titles across SNES, PSP, and Ports, including the newly installed
-ROTA Port. It is browsable
-before ROM storage mounts; storage readiness and individual ROM availability
-are presented separately.
+Play contains Library, Favorites, PortMaster and Shutdown. Library opens the
+embedded 5,953-title, 27-system game catalogue. It is browsable before ROM
+storage mounts; storage readiness and individual ROM availability remain
+separate.
 
 Favorites is an exact-path cache, not a scan. Y adds or removes the selected
 title, an atomic text file persists the selection across boots and catalogue
 reordering, and the cache is loaded only after ROM storage becomes ready.
 
-Ready proof titles use fixed launch mappings: Snes9x for SNES, standalone PPSSPP
-for PSP, and the external-script launcher for Ports. The custom launcher releases
-display and input ownership while content runs, then returns directly when the
-content process exits. No automatic core discovery is part of this device.
+Ready titles use their compiled launch mappings, including RetroArch cores,
+standalone PPSSPP, DraStic, OpenBOR and Port scripts. The custom launcher
+releases display and input ownership while content runs, then returns to the
+exact previous view and row. No automatic core discovery is part of this
+device.
+
+Listen and Watch open their own compiled category/file catalogues. The current
+card has three MP3s below `MEDIA/LISTEN/AW` and six films below
+`MEDIA/WATCH/MOVIES`. Both use the firmware-native MPV bridge and controller
+map. Read is a deliberate empty destination until its reader and supported
+formats are fixed. None of these views scans storage at boot.
 
 PortMaster is the explicit network boundary: selecting it loads Wi-Fi, connects,
 runs the tool, then disconnects services and unloads the driver before returning.

@@ -5952,12 +5952,12 @@ PLAY	SNES	ZOMBIES ATE MY NEIGHBORS (USA)	ROMS/SNES/Zombies Ate My Neighbors (USA
 PLAY	SNES	ZOOL - NINJA OF THE 'NTH' DIMENSION (USA)	ROMS/SNES/Zool - Ninja of the 'Nth' Dimension (USA).zip	RETROARCH	snes9x_libretro.so
 PLAY	SNES	ZOOP (USA)	ROMS/SNES/Zoop (USA).zip	RETROARCH	snes9x_libretro.so
 PLAY	SNES	ZOOTTO MAHJONG! (JAPAN) (REV 1) (NP)	ROMS/SNES/Zootto Mahjong! (Japan) (Rev 1) (NP).zip	RETROARCH	snes9x_libretro.so
-LISTEN	aw	OUT OF YOUR MIND 1	MEDIA/LISTEN/aw/out of your mind 1.mp3	PENDING	PENDING
-LISTEN	aw	OUT OF YOUR MIND 2	MEDIA/LISTEN/aw/out of your mind 2.mp3	PENDING	PENDING
-LISTEN	aw	OUT OF YOUR MIND 3	MEDIA/LISTEN/aw/out of your mind 3.mp3	PENDING	PENDING
-WATCH	movies	12 ANGRY MEN	MEDIA/WATCH/movies/12 Angry Men.mp4	PENDING	PENDING
-WATCH	movies	ANGEL'S EGG	MEDIA/WATCH/movies/Angel's Egg.mkv	PENDING	PENDING
-WATCH	movies	GHOST IN THE SHELL	MEDIA/WATCH/movies/Ghost in the Shell.mkv	PENDING	PENDING
-WATCH	movies	MARY AND MAX	MEDIA/WATCH/movies/Mary and Max.mp4	PENDING	PENDING
-WATCH	movies	THE GODFATHER	MEDIA/WATCH/movies/The Godfather.mp4	PENDING	PENDING
-WATCH	movies	THE THING 1987	MEDIA/WATCH/movies/THE THING 1987.mp4	PENDING	PENDING
+LISTEN	AW	OUT OF YOUR MIND 1	MEDIA/LISTEN/aw/out of your mind 1.mp3	MPV	ext-mpv-general
+LISTEN	AW	OUT OF YOUR MIND 2	MEDIA/LISTEN/aw/out of your mind 2.mp3	MPV	ext-mpv-general
+LISTEN	AW	OUT OF YOUR MIND 3	MEDIA/LISTEN/aw/out of your mind 3.mp3	MPV	ext-mpv-general
+WATCH	MOVIES	12 ANGRY MEN	MEDIA/WATCH/movies/12 Angry Men.mp4	MPV	ext-mpv-general
+WATCH	MOVIES	ANGEL'S EGG	MEDIA/WATCH/movies/Angel's Egg.mkv	MPV	ext-mpv-general
+WATCH	MOVIES	GHOST IN THE SHELL	MEDIA/WATCH/movies/Ghost in the Shell.mkv	MPV	ext-mpv-general
+WATCH	MOVIES	MARY AND MAX	MEDIA/WATCH/movies/Mary and Max.mp4	MPV	ext-mpv-general
+WATCH	MOVIES	THE GODFATHER	MEDIA/WATCH/movies/The Godfather.mp4	MPV	ext-mpv-general
+WATCH	MOVIES	THE THING 1987	MEDIA/WATCH/movies/THE THING 1987.mp4	MPV	ext-mpv-general

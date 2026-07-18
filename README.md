@@ -37,6 +37,11 @@ index, on-demand networking, and a reproducible firmware image.
 - Its embedded catalog remains browsable while ROM storage mounts concurrently.
 - The real cache contains 5,953 games across 27 systems; artwork and metadata
   stay out of the boot executable.
+- Home is fixed to Play, Listen, Read and Watch. The same generated cache now
+  embeds three audio files and six films, while Read remains an intentional
+  empty destination until its reader policy is fixed.
+- Local audio and video launch through the exact firmware's existing MPV bridge
+  and controller map, then return to the selected cached media row.
 - SNES, PSP, and native Port launch/return paths work with audio and volume.
 - PortMaster and shutdown run directly without entering the stock frontend.
 - Persistent Favorites and most-recent path tracking are hardware-verified.

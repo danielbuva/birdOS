@@ -543,7 +543,9 @@ if [ -f "$DEPMOD_STATUS" ] && [ ! -f "$BESPOKE_ROOT/depmod-status" ]; then
 	cp -f "$DEPMOD_STATUS" "$BESPOKE_ROOT/depmod-status"
 fi
 
-# Build and run the first custom-launcher hardware proof exactly once. The
+# Preserve the original late custom-launcher hardware proof installer for a
+# fresh base image. The active fixed-device path below supersedes it after the
+# one-time framebuffer/input calibration state exists. The
 # host supplies one freestanding AArch64 object; the target's own linker turns
 # it into a static executable with no runtime library dependencies. Because
 # user-init runs after the stock frontend has started, this proof stops stock,
@@ -590,11 +592,12 @@ if [ -s "$LAUNCHER_OBJECT" ] && [ ! -f "$LAUNCHER_PROOF_STATE" ]; then
 	fi
 fi
 
-# Promote the fixed-device framebuffer/input program to the earliest normal
+# Install each content-addressed fixed-device launcher revision in the earliest normal
 # init slot. S03 starts before the 1.6-second udev phase, returns immediately,
 # and lets normal muOS startup continue behind the custom screen. The binary
 # waits only for /dev/fb0 and /dev/input/event1 and reads evdev directly. B on
-# the main menu is the explicit recovery handoff after normal startup is ready.
+# Home is the explicit recovery handoff after normal startup is ready. Games
+# and media are both compiled caches and add no storage scan to first frame.
 EARLY_LAUNCHER_WANTED_REVISION=$(cat "$EARLY_LAUNCHER_REVISION_SOURCE" 2>/dev/null)
 EARLY_LAUNCHER_CURRENT_REVISION=$(cat "$EARLY_LAUNCHER_STATE" 2>/dev/null)
 if [ "${#EARLY_LAUNCHER_WANTED_REVISION}" -ne 64 ] ||
@@ -634,7 +637,7 @@ if [ "$BESPOKE_BRIGHTNESS_POLICY_READY" -eq 1 ] &&
 
 	if [ "$OPTIONAL_CORES_READY" -eq 1 ] &&
 		/usr/bin/ld -static --build-id=none -z noexecstack -s -e _start \
-		-o "$LAUNCHER_NEW" "$LAUNCHER_OBJECT" >"$LAUNCHER_ROOT/link-early-v12-exact-return.log" 2>&1; then
+			-o "$LAUNCHER_NEW" "$LAUNCHER_OBJECT" >"$LAUNCHER_ROOT/link-early-v14-media.log" 2>&1; then
 		chmod 755 "$LAUNCHER_NEW"
 		if grep -q "$EARLY_STARTUP_MARKER" "$EARLY_STARTUP_TARGET"; then
 			STARTUP_READY=1
@@ -667,7 +670,7 @@ if [ "$BESPOKE_BRIGHTNESS_POLICY_READY" -eq 1 ] &&
 			rm -f "$EARLY_OLD_INIT_TARGET"
 			printf '%s\n' "$EARLY_LAUNCHER_WANTED_REVISION" >"$EARLY_LAUNCHER_STATE"
 			rm -f "$EARLY_OLD_LAUNCHER_STATE"
-			printf '%s exact-return library revision %s installed; active next boot\n' \
+			printf '%s cached game/media launcher revision %s installed; active next boot\n' \
 				"$(date -Iseconds 2>/dev/null || date)" "$EARLY_LAUNCHER_WANTED_REVISION" >>"$BESPOKE_ROOT/install.log"
 		else
 			rm -f "$PATCHED" "$LAUNCHER_NEW"

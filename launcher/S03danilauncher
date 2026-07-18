@@ -77,7 +77,7 @@ RUN_BOOT_SOUND() {
 	exit "$SOUND_RESULT"
 }
 
-RUN_GAME() {
+RUN_CONTENT() {
 	[ -s "$LAUNCH_REQUEST" ] || {
 		printf '%s\n' 'launch bridge error: request missing'
 		return 1
@@ -85,54 +85,55 @@ RUN_GAME() {
 
 	{
 		IFS= read -r LAUNCH_KIND
-		IFS= read -r GAME_CORE
-		IFS= read -r GAME_NAME
-		IFS= read -r GAME_PATH
+		IFS= read -r CONTENT_CORE
+		IFS= read -r CONTENT_NAME
+		IFS= read -r CONTENT_PATH
 	} <"$LAUNCH_REQUEST"
 	rm -f "$LAUNCH_REQUEST"
 
-	[ -f "$GAME_PATH" ] || {
-		printf 'launch bridge error: ROM missing: %s\n' "$GAME_PATH"
+	[ -f "$CONTENT_PATH" ] || {
+		printf 'launch bridge error: content missing: %s\n' "$CONTENT_PATH"
 		return 1
 	}
 
-	WAIT_RUNTIME game || return 1
+	WAIT_RUNTIME content || return 1
 
 	. /opt/muos/script/var/func.sh
 	GOVERNOR_FILE=$(GET_VAR "device" "cpu/governor")
 	PREVIOUS_GOVERNOR=$(cat "$GOVERNOR_FILE" 2>/dev/null)
-	case "$LAUNCH_KIND:$GAME_CORE" in
-		2:* | 4:* | 5:* | *:flycast* | *:mupen64plus*)
+	case "$LAUNCH_KIND:$CONTENT_CORE" in
+		2:* | 4:* | 5:* | 6:* | *:flycast* | *:mupen64plus*)
 			printf '%s\n' performance >"$GOVERNOR_FILE"
 			;;
 	esac
 
-	printf 'game launch start uptime: '
+	printf 'content launch start uptime: '
 	cut -d ' ' -f 1 /proc/uptime
-	printf 'game launch kind=%s core=%s name=%s path=%s\n' \
-		"$LAUNCH_KIND" "$GAME_CORE" "$GAME_NAME" "$GAME_PATH"
+	printf 'content launch kind=%s core=%s name=%s path=%s\n' \
+		"$LAUNCH_KIND" "$CONTENT_CORE" "$CONTENT_NAME" "$CONTENT_PATH"
 	SNAPSHOT_LOG
 
 	case "$LAUNCH_KIND" in
-		1) /opt/muos/script/launch/lr-general.sh "$GAME_NAME" "$GAME_CORE" "$GAME_PATH" ;;
-		2) /opt/muos/script/launch/ext-ppsspp.sh "$GAME_NAME" "ext-ppsspp" "$GAME_PATH" ;;
-		3) /opt/muos/script/launch/ext-general.sh "$GAME_NAME" "external" "$GAME_PATH" ;;
-		4) /opt/muos/script/launch/ext-drastic.sh "$GAME_NAME" "$GAME_CORE" "$GAME_PATH" ;;
-		5) /opt/muos/script/launch/ext-openbor.sh "$GAME_NAME" "$GAME_CORE" "$GAME_PATH" ;;
+		1) /opt/muos/script/launch/lr-general.sh "$CONTENT_NAME" "$CONTENT_CORE" "$CONTENT_PATH" ;;
+		2) /opt/muos/script/launch/ext-ppsspp.sh "$CONTENT_NAME" "ext-ppsspp" "$CONTENT_PATH" ;;
+		3) /opt/muos/script/launch/ext-general.sh "$CONTENT_NAME" "external" "$CONTENT_PATH" ;;
+		4) /opt/muos/script/launch/ext-drastic.sh "$CONTENT_NAME" "$CONTENT_CORE" "$CONTENT_PATH" ;;
+		5) /opt/muos/script/launch/ext-openbor.sh "$CONTENT_NAME" "$CONTENT_CORE" "$CONTENT_PATH" ;;
+		6) /opt/muos/script/launch/ext-mpv.sh "$CONTENT_NAME" "$CONTENT_CORE" "$CONTENT_PATH" ;;
 		*)
 			printf 'launch bridge error: unsupported kind %s\n' "$LAUNCH_KIND"
 			return 1
 			;;
 	esac
-	GAME_RESULT=$?
+	CONTENT_RESULT=$?
 
 	[ -n "$PREVIOUS_GOVERNOR" ] && printf '%s\n' "$PREVIOUS_GOVERNOR" >"$GOVERNOR_FILE"
 	SET_VAR "system" "foreground_process" "dani-launcher"
-	printf 'game launch result: %s\n' "$GAME_RESULT"
-	printf 'game launch end uptime: '
+	printf 'content launch result: %s\n' "$CONTENT_RESULT"
+	printf 'content launch end uptime: '
 	cut -d ' ' -f 1 /proc/uptime
 	SNAPSHOT_LOG
-	return "$GAME_RESULT"
+	return "$CONTENT_RESULT"
 }
 
 RUN_PORTMASTER() {
@@ -209,7 +210,7 @@ case "$1" in
 					fi
 
 					case "$LAUNCHER_RESULT" in
-						10) RUN_GAME ;;
+						10) RUN_CONTENT ;;
 						11) RUN_SHUTDOWN || : ;;
 						12) RUN_PORTMASTER ;;
 						*) break ;;

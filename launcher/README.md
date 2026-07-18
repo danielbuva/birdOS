@@ -43,12 +43,12 @@ launcher never scans storage at boot and can browse cached names before
 `/mnt/mmc` is mounted. A narrow 50 ms readiness probe reports when
 `/mnt/mmc/ROMS` appears; selecting a cached title tests only that exact path.
 
-The v11 inventory contains 5,953 launchable files across 27 populated systems.
+The current inventory contains 5,953 launchable files across 27 populated systems.
 It excludes AppleDouble files, hidden files, artwork directories, PNG artwork,
 Windows thumbnail databases and other metadata. The generated TSV also records
 the current media library: three Listen items, no Read items and six Watch
-items. Media is inventoried now but remains outside the game-launch index until
-those views are implemented.
+items. v14 compiles both the game and media records into the executable; neither
+catalog is read from the card or regenerated during boot.
 
 Regenerate the complete cache and stage it on an inserted card by double-clicking
 `Rebuild Dani SP Library.command` on the Mac Desktop, or run:
@@ -223,3 +223,21 @@ stages the official runtime from `$HOME/Games/runtimes`, and installs a fixed
 muOS/RG34XX-SP-only Stardew wrapper with explicit runtime failure handling and
 no irrelevant `systemctl` cleanup call. Neither optional emulators nor the Mono
 runtime are inspected during normal boot.
+
+## Fixed four-part library and native media handoff
+
+The v14 Home screen is the product structure rather than a diagnostic menu:
+`PLAY`, `LISTEN`, `READ`, and `WATCH`. Play contains the game Library,
+Favorites, on-demand PortMaster, and Shutdown. Listen and Watch contain the
+first directory below their media root as a category, followed by exact cached
+files. Read remains deliberately visible and empty until its final reader and
+format policy are chosen.
+
+The real card currently compiles one Listen category (`AW`) with three MP3s and
+one Watch category (`MOVIES`) with six MP4/MKV files. Selecting either writes
+the same four-line content request used by games, then the supervisor calls the
+firmware's existing `ext-mpv.sh` with its native `ext-mpv-general` controller
+map. Audio/video playback therefore inherits muOS pause, quit, mute, OSD,
+subtitle, volume and display setup without a new player dependency. The
+volatile exact-return record also restores the selected media row after MPV
+exits and returns to the Play tools row after PortMaster exits.

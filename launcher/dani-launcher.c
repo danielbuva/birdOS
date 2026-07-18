@@ -47,7 +47,7 @@ typedef signed long s64;
 #define ROM_ROOT "/mnt/mmc/ROMS"
 #define LAUNCH_REQUEST "/run/muos/dani-launch-request"
 #define UI_RESUME_PATH "/run/muos/dani-launcher-ui-resume"
-#define UI_RESUME_MAGIC 0x44414e49U
+#define UI_RESUME_MAGIC 0x44414e4aU
 #define FAVORITES_PATH "/mnt/mmc/MUOS/bespoke-launcher/favorites.txt"
 #define FAVORITES_TEMP "/mnt/mmc/MUOS/bespoke-launcher/favorites.tmp"
 #define RECENT_PATH "/mnt/mmc/MUOS/bespoke-launcher/recent.txt"
@@ -56,9 +56,12 @@ typedef signed long s64;
 #define BOOT_SOUND_CANCEL "/run/muos/dani-boot-sound-cancel"
 
 #define VIEW_MAIN 0U
-#define VIEW_SYSTEMS 1U
-#define VIEW_GAMES 2U
-#define VIEW_FAVORITES 3U
+#define VIEW_PLAY 1U
+#define VIEW_SYSTEMS 2U
+#define VIEW_GAMES 3U
+#define VIEW_FAVORITES 4U
+#define VIEW_MEDIA_CATEGORIES 5U
+#define VIEW_MEDIA_ENTRIES 6U
 #define SYSTEM_ROWS 8U
 #define GAME_ROWS 8U
 #define ACTION_NONE 0
@@ -144,7 +147,7 @@ struct glyph {
 struct ui_resume_state {
     u32 magic;
     u32 view;
-    u32 active_system;
+    u32 active_index;
     u32 selection;
 };
 
@@ -156,6 +159,8 @@ static int input_fd = -1;
 static u32 view;
 static u32 selection;
 static u32 active_system;
+static u32 active_media_category;
+static u32 media_section;
 static int axis_x;
 static int axis_y;
 static int storage_ready;
@@ -170,7 +175,8 @@ static u64 next_storage_probe;
 static u32 captured_events;
 static const char *selected_status = "DIRECT FRAMEBUFFER READY";
 
-static const char *menu_item[4] = {"GAMES", "FAVORITES", "PORTMASTER", "SHUTDOWN"};
+static const char *menu_item[4] = {"PLAY", "LISTEN", "READ", "WATCH"};
+static const char *play_item[4] = {"LIBRARY", "FAVORITES", "PORTMASTER", "SHUTDOWN"};
 
 /* Five-wide uppercase bitmap alphabet plus the exact punctuation this UI uses. */
 static const struct glyph font[] = {
@@ -427,7 +433,8 @@ static int save_ui_resume(void) {
     long fd;
     state.magic = UI_RESUME_MAGIC;
     state.view = view;
-    state.active_system = active_system;
+    state.active_index =
+        view == VIEW_MEDIA_ENTRIES ? active_media_category : active_system;
     state.selection = selection;
 
     fd = sys_create(UI_RESUME_PATH, O_WRONLY | O_CREAT | O_TRUNC, 0600);
@@ -442,8 +449,8 @@ static int save_ui_resume(void) {
     log_number(boot_ms());
     log_text(" view=");
     log_number(view);
-    log_text(" system=");
-    log_number(active_system);
+    log_text(" active_index=");
+    log_number(state.active_index);
     log_text(" selection=");
     log_number(selection);
     log_text(" result=ready\n");
@@ -462,27 +469,38 @@ static int load_ui_resume(void) {
     if (count != (long)sizeof(state) || state.magic != UI_RESUME_MAGIC)
         return 0;
     if (state.view == VIEW_GAMES) {
-        if (state.active_system >= CATALOG_SYSTEM_COUNT ||
-            state.selection >= catalog_systems[state.active_system].count)
+        if (state.active_index >= CATALOG_SYSTEM_COUNT ||
+            state.selection >= catalog_systems[state.active_index].count)
             return 0;
     } else if (state.view == VIEW_FAVORITES) {
         load_favorites();
         if (!favorite_count) state.selection = 0;
         else if (state.selection >= favorite_count) state.selection = favorite_count - 1U;
+    } else if (state.view == VIEW_MEDIA_ENTRIES) {
+        if (state.active_index >= CATALOG_MEDIA_CATEGORY_COUNT ||
+            state.selection >= catalog_media_categories[state.active_index].count)
+            return 0;
+    } else if (state.view == VIEW_PLAY) {
+        if (state.selection >= 4U) return 0;
     } else {
         return 0;
     }
 
     view = state.view;
-    active_system = state.active_system;
+    if (view == VIEW_GAMES)
+        active_system = state.active_index;
+    else if (view == VIEW_MEDIA_ENTRIES) {
+        active_media_category = state.active_index;
+        media_section = catalog_media_categories[active_media_category].section;
+    }
     selection = state.selection;
     selected_status = "RETURNED TO PREVIOUS SCREEN";
     log_text("ui_resume_load boot_ms=");
     log_number(boot_ms());
     log_text(" view=");
     log_number(view);
-    log_text(" system=");
-    log_number(active_system);
+    log_text(" active_index=");
+    log_number(state.active_index);
     log_text(" selection=");
     log_number(selection);
     log_text(" result=ready\n");
@@ -624,11 +642,43 @@ static void draw_text_limited(int x, int y, const char *text, int scale, u32 val
     }
 }
 
+static u32 media_category_first(void) {
+    if (media_section == CATALOG_MEDIA_SECTION_LISTEN)
+        return CATALOG_LISTEN_CATEGORY_FIRST;
+    if (media_section == CATALOG_MEDIA_SECTION_READ)
+        return CATALOG_READ_CATEGORY_FIRST;
+    return CATALOG_WATCH_CATEGORY_FIRST;
+}
+
+static u32 media_category_count(void) {
+    if (media_section == CATALOG_MEDIA_SECTION_LISTEN)
+        return CATALOG_LISTEN_CATEGORY_COUNT;
+    if (media_section == CATALOG_MEDIA_SECTION_READ)
+        return CATALOG_READ_CATEGORY_COUNT;
+    return CATALOG_WATCH_CATEGORY_COUNT;
+}
+
+static const char *media_section_name(void) {
+    if (media_section == CATALOG_MEDIA_SECTION_LISTEN) return "LISTEN";
+    if (media_section == CATALOG_MEDIA_SECTION_READ) return "READ";
+    return "WATCH";
+}
+
+static const char *empty_media_text(void) {
+    if (media_section == CATALOG_MEDIA_SECTION_LISTEN) return "NOTHING TO LISTEN TO YET";
+    if (media_section == CATALOG_MEDIA_SECTION_READ) return "NOTHING TO READ YET";
+    return "NOTHING TO WATCH YET";
+}
+
 static u32 current_count(void) {
     if (view == VIEW_MAIN) return 4U;
+    if (view == VIEW_PLAY) return 4U;
     if (view == VIEW_SYSTEMS) return CATALOG_SYSTEM_COUNT;
     if (view == VIEW_GAMES) return catalog_systems[active_system].count;
     if (view == VIEW_FAVORITES) return favorite_count;
+    if (view == VIEW_MEDIA_CATEGORIES) return media_category_count();
+    if (view == VIEW_MEDIA_ENTRIES)
+        return catalog_media_categories[active_media_category].count;
     return 0U;
 }
 
@@ -656,17 +706,20 @@ static void draw_screen(void) {
     rectangle(32, 86, 656, 3,
               boot_animation_complete ? selected : color(48, 58, 70));
 
-    if (view == VIEW_MAIN) {
-        draw_text(32, 22, "DANI // RG34-SP", 4, primary);
-        draw_text(34, 62, "BESPOKE CONSOLE", 2, muted);
+    if (view == VIEW_MAIN || view == VIEW_PLAY) {
+        const char **items = view == VIEW_MAIN ? menu_item : play_item;
+        draw_text(32, 22, view == VIEW_MAIN ? "DANI // RG34-SP" : "PLAY", 4, primary);
+        draw_text(34, 62,
+                  view == VIEW_MAIN ? "BESPOKE CONSOLE" : "LIBRARY // TOOLS // POWER",
+                  2, muted);
         for (i = 0; i < 4U; i++) {
             int y = 122 + (int)i * 64;
             if (i == selection) {
                 rectangle(92, y - 10, 492, 52, selected);
                 draw_text(108, y + 4, ">", 3, background);
-                draw_text(148, y, menu_item[i], 4, background);
+                draw_text(148, y, items[i], 4, background);
             } else {
-                draw_text(148, y, menu_item[i], 4, primary);
+                draw_text(148, y, items[i], 4, primary);
             }
         }
     } else if (view == VIEW_SYSTEMS) {
@@ -686,7 +739,7 @@ static void draw_screen(void) {
                                   2, primary, 50U);
             }
         }
-    } else {
+    } else if (view == VIEW_GAMES || view == VIEW_FAVORITES) {
         u32 count = current_count();
         u32 first = selection < GAME_ROWS ? 0U : selection - GAME_ROWS + 1U;
         if (view == VIEW_GAMES) {
@@ -715,17 +768,61 @@ static void draw_screen(void) {
             if (view == VIEW_GAMES && is_favorite(catalog_index))
                 draw_text(654, y, "*", 2, first + i == selection ? background : selected);
         }
+    } else if (view == VIEW_MEDIA_CATEGORIES) {
+        u32 count = current_count();
+        u32 section_first = media_category_first();
+        u32 first = selection < SYSTEM_ROWS ? 0U : selection - SYSTEM_ROWS + 1U;
+        draw_text(32, 22, media_section_name(), 4, primary);
+        draw_text(34, 62, "EMBEDDED MEDIA CATALOG // NO SCAN", 2, muted);
+        if (!count) draw_text(72, 160, empty_media_text(), 3, primary);
+        for (i = 0; i < SYSTEM_ROWS && first + i < count; i++) {
+            u32 category_index = section_first + first + i;
+            int y = 102 + (int)i * 38;
+            if (first + i == selection) {
+                rectangle(32, y - 7, 656, 31, selected);
+                draw_text(44, y, ">", 2, background);
+                draw_text_limited(72, y, catalog_media_categories[category_index].name,
+                                  2, background, 50U);
+            } else {
+                draw_text_limited(72, y, catalog_media_categories[category_index].name,
+                                  2, primary, 50U);
+            }
+        }
+    } else if (view == VIEW_MEDIA_ENTRIES) {
+        const struct catalog_media_category *category =
+            &catalog_media_categories[active_media_category];
+        u32 first = selection < GAME_ROWS ? 0U : selection - GAME_ROWS + 1U;
+        draw_text(32, 22, category->name, 4, primary);
+        draw_text(34, 62, "CACHED MEDIA // STORAGE ASYNC", 2, muted);
+        for (i = 0; i < GAME_ROWS && first + i < category->count; i++) {
+            const struct catalog_media_entry *entry =
+                &catalog_media_entries[category->first + first + i];
+            int y = 102 + (int)i * 38;
+            if (first + i == selection) {
+                rectangle(32, y - 7, 656, 31, selected);
+                draw_text(44, y, ">", 2, background);
+                draw_text_limited(72, y, entry->name, 2, background, 50U);
+            } else {
+                draw_text_limited(72, y, entry->name, 2, primary, 50U);
+            }
+        }
     }
 
     draw_text(32, (int)fb_var.yres - 54, selected_status, 2, muted);
     if (view == VIEW_MAIN)
         draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE   A SELECT   B STOCK", 2, primary);
+    else if (view == VIEW_PLAY)
+        draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE   A SELECT   B BACK", 2, primary);
     else if (view == VIEW_GAMES)
         draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE  L1 R1 PAGE  A LAUNCH  Y FAV  B BACK", 2, primary);
     else if (view == VIEW_FAVORITES)
         draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE  L1 R1 PAGE  A LAUNCH  Y REMOVE  B BACK", 2, primary);
     else if (view == VIEW_SYSTEMS)
         draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE  L1 R1 PAGE  A OPEN  B BACK", 2, primary);
+    else if (view == VIEW_MEDIA_CATEGORIES)
+        draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE  L1 R1 PAGE  A OPEN  B BACK", 2, primary);
+    else if (view == VIEW_MEDIA_ENTRIES)
+        draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE  L1 R1 PAGE  A PLAY  B BACK", 2, primary);
     else
         draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE   A OPEN   B BACK", 2, primary);
     __asm__ volatile("dmb ishst" ::: "memory");
@@ -765,8 +862,9 @@ static void animate_boot(void) {
     next_animation_frame = now + 32UL;
 }
 
-static int write_launch_request(const struct catalog_system *system,
-                                const struct catalog_entry *entry) {
+static int write_content_request(u8 launch_kind, const char *core,
+                                 const char *name, const char *path,
+                                 const char *status) {
     char kind[2];
     long fd = sys_create(LAUNCH_REQUEST, O_WRONLY | O_CREAT | O_TRUNC, 0600);
     if (fd < 0) {
@@ -775,17 +873,14 @@ static int write_launch_request(const struct catalog_system *system,
         return ACTION_NONE;
     }
 
-    kind[0] = (char)('0' + system->launch_kind);
+    kind[0] = (char)('0' + launch_kind);
     kind[1] = '\n';
     if (sys_write((int)fd, kind, sizeof(kind)) != (long)sizeof(kind) ||
-        sys_write((int)fd, system->core, string_length(system->core)) !=
-            (long)string_length(system->core) ||
+        sys_write((int)fd, core, string_length(core)) != (long)string_length(core) ||
         sys_write((int)fd, "\n", 1) != 1 ||
-        sys_write((int)fd, entry->name, string_length(entry->name)) !=
-            (long)string_length(entry->name) ||
+        sys_write((int)fd, name, string_length(name)) != (long)string_length(name) ||
         sys_write((int)fd, "\n", 1) != 1 ||
-        sys_write((int)fd, entry->path, string_length(entry->path)) !=
-            (long)string_length(entry->path) ||
+        sys_write((int)fd, path, string_length(path)) != (long)string_length(path) ||
         sys_write((int)fd, "\n", 1) != 1) {
         sys_close((int)fd);
         selected_status = "LAUNCH REQUEST WRITE FAILED";
@@ -799,16 +894,15 @@ static int write_launch_request(const struct catalog_system *system,
         log_text("launch_request result=resume-save-failed\n");
         return ACTION_NONE;
     }
-    save_recent(entry);
-    selected_status = "STARTING GAME";
+    selected_status = status;
     log_text("launch_request boot_ms=");
     log_number(boot_ms());
     log_text(" kind=");
-    log_number(system->launch_kind);
+    log_number(launch_kind);
     log_text(" core=");
-    log_text(system->core);
+    log_text(core);
     log_text(" path=");
-    log_text(entry->path);
+    log_text(path);
     log_text(" result=ready\n");
     return ACTION_LAUNCH;
 }
@@ -817,6 +911,7 @@ static int launch_catalog_entry(u32 catalog_index) {
     const struct catalog_entry *entry;
     const struct catalog_system *system;
     long fd;
+    int action;
     if (catalog_index >= CATALOG_ENTRY_COUNT) return ACTION_NONE;
     entry = &catalog_entries[catalog_index];
     system = &catalog_systems[entry->system];
@@ -828,9 +923,39 @@ static int launch_catalog_entry(u32 catalog_index) {
     if (fd >= 0) {
         sys_close((int)fd);
         log_text(" result=ready\n");
-        return write_launch_request(system, entry);
+        action = write_content_request(system->launch_kind, system->core,
+                                       entry->name, entry->path, "STARTING GAME");
+        if (action == ACTION_LAUNCH) save_recent(entry);
+        return action;
     }
     selected_status = "WAITING FOR ROM STORAGE";
+    log_text(" result=not-ready\n");
+    return ACTION_NONE;
+}
+
+static int launch_media_entry(void) {
+    const struct catalog_media_category *category;
+    const struct catalog_media_entry *entry;
+    u32 entry_index;
+    long fd;
+    if (active_media_category >= CATALOG_MEDIA_CATEGORY_COUNT)
+        return ACTION_NONE;
+    category = &catalog_media_categories[active_media_category];
+    if (selection >= category->count) return ACTION_NONE;
+    entry_index = category->first + selection;
+    entry = &catalog_media_entries[entry_index];
+    fd = sys_open(entry->path, O_RDONLY | O_NONBLOCK);
+    log_text("media_test boot_ms=");
+    log_number(boot_ms());
+    log_text(" path=");
+    log_text(entry->path);
+    if (fd >= 0) {
+        sys_close((int)fd);
+        log_text(" result=ready\n");
+        return write_content_request(category->launch_kind, category->core,
+                                     entry->name, entry->path, "STARTING MEDIA");
+    }
+    selected_status = "WAITING FOR MEDIA STORAGE";
     log_text(" result=not-ready\n");
     return ACTION_NONE;
 }
@@ -880,6 +1005,27 @@ static int select_current(void) {
     int action = ACTION_NONE;
     if (view == VIEW_MAIN) {
         if (selection == 0U) {
+            view = VIEW_PLAY;
+            selection = 0U;
+            selected_status = "PLAY LIBRARY READY";
+        } else if (selection == 1U) {
+            media_section = CATALOG_MEDIA_SECTION_LISTEN;
+            view = VIEW_MEDIA_CATEGORIES;
+            selection = 0U;
+            selected_status = "AUDIO CATALOG READY FROM FIRMWARE";
+        } else if (selection == 2U) {
+            media_section = CATALOG_MEDIA_SECTION_READ;
+            view = VIEW_MEDIA_CATEGORIES;
+            selection = 0U;
+            selected_status = "READING LIBRARY READY FROM FIRMWARE";
+        } else {
+            media_section = CATALOG_MEDIA_SECTION_WATCH;
+            view = VIEW_MEDIA_CATEGORIES;
+            selection = 0U;
+            selected_status = "VIDEO CATALOG READY FROM FIRMWARE";
+        }
+    } else if (view == VIEW_PLAY) {
+        if (selection == 0U) {
             view = VIEW_SYSTEMS;
             selection = 0U;
             selected_status = "CATALOG READY FROM FIRMWARE";
@@ -889,7 +1035,10 @@ static int select_current(void) {
             selected_status = favorites_loaded ? "FAVORITES READY" : "FAVORITES LOAD WITH STORAGE";
         } else if (selection == 2U) {
             selected_status = "CONNECTING PORTMASTER";
-            action = ACTION_PORTMASTER;
+            if (save_ui_resume() == 0)
+                action = ACTION_PORTMASTER;
+            else
+                selected_status = "RETURN STATE SAVE FAILED";
         } else {
             selected_status = "SHUTTING DOWN";
             action = ACTION_SHUTDOWN;
@@ -905,6 +1054,17 @@ static int select_current(void) {
             action = launch_catalog_entry(catalog_index);
         else
             selected_status = "NO GAME SELECTED";
+    } else if (view == VIEW_MEDIA_CATEGORIES) {
+        if (selection < media_category_count()) {
+            active_media_category = media_category_first() + selection;
+            view = VIEW_MEDIA_ENTRIES;
+            selection = 0U;
+            selected_status = storage_ready ? "MEDIA STORAGE READY" : "CATALOG READY // MEDIA MOUNTING";
+        } else {
+            selected_status = empty_media_text();
+        }
+    } else if (view == VIEW_MEDIA_ENTRIES) {
+        action = launch_media_entry();
     }
     draw_screen();
     return action;
@@ -928,9 +1088,9 @@ static int handle_direction(int direction) {
 
 static int handle_back(void) {
     if (view == VIEW_FAVORITES) {
-        view = VIEW_MAIN;
+        view = VIEW_PLAY;
         selection = 1U;
-        selected_status = "DIRECT FRAMEBUFFER READY";
+        selected_status = "PLAY LIBRARY READY";
         draw_screen();
         return 0;
     }
@@ -942,8 +1102,31 @@ static int handle_back(void) {
         return 0;
     }
     if (view == VIEW_SYSTEMS) {
+        view = VIEW_PLAY;
+        selection = 0U;
+        selected_status = "PLAY LIBRARY READY";
+        draw_screen();
+        return 0;
+    }
+    if (view == VIEW_PLAY) {
         view = VIEW_MAIN;
         selection = 0U;
+        selected_status = "DIRECT FRAMEBUFFER READY";
+        draw_screen();
+        return 0;
+    }
+    if (view == VIEW_MEDIA_ENTRIES) {
+        view = VIEW_MEDIA_CATEGORIES;
+        selection = active_media_category - media_category_first();
+        selected_status = "MEDIA CATALOG READY FROM FIRMWARE";
+        draw_screen();
+        return 0;
+    }
+    if (view == VIEW_MEDIA_CATEGORIES) {
+        view = VIEW_MAIN;
+        selection = media_section == CATALOG_MEDIA_SECTION_LISTEN
+                        ? 1U
+                        : (media_section == CATALOG_MEDIA_SECTION_READ ? 2U : 3U);
         selected_status = "DIRECT FRAMEBUFFER READY";
         draw_screen();
         return 0;
@@ -980,14 +1163,22 @@ static int handle_event(const struct input_event *event) {
             toggle_current_favorite();
             return 0;
         }
-        if ((view == VIEW_SYSTEMS || view == VIEW_GAMES || view == VIEW_FAVORITES) &&
+        if ((view == VIEW_SYSTEMS || view == VIEW_GAMES || view == VIEW_FAVORITES ||
+             view == VIEW_MEDIA_CATEGORIES || view == VIEW_MEDIA_ENTRIES) &&
             event->code == BTN_TL) {
-            move_selection(-1, view == VIEW_SYSTEMS ? SYSTEM_ROWS : GAME_ROWS);
+            move_selection(-1,
+                           view == VIEW_SYSTEMS || view == VIEW_MEDIA_CATEGORIES
+                               ? SYSTEM_ROWS
+                               : GAME_ROWS);
             return 0;
         }
-        if ((view == VIEW_SYSTEMS || view == VIEW_GAMES || view == VIEW_FAVORITES) &&
+        if ((view == VIEW_SYSTEMS || view == VIEW_GAMES || view == VIEW_FAVORITES ||
+             view == VIEW_MEDIA_CATEGORIES || view == VIEW_MEDIA_ENTRIES) &&
             event->code == BTN_TR) {
-            move_selection(1, view == VIEW_SYSTEMS ? SYSTEM_ROWS : GAME_ROWS);
+            move_selection(1,
+                           view == VIEW_SYSTEMS || view == VIEW_MEDIA_CATEGORIES
+                               ? SYSTEM_ROWS
+                               : GAME_ROWS);
             return 0;
         }
     }
@@ -1126,6 +1317,8 @@ static int application(void) {
     log_number(boot_ms());
     log_text(" input_ready=1 catalog_entries=");
     log_number(CATALOG_ENTRY_COUNT);
+    log_text(" media_entries=");
+    log_number(CATALOG_MEDIA_ENTRY_COUNT);
     log_text("\n");
 
     while (exit_action == ACTION_NONE) {

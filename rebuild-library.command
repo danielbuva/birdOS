@@ -107,7 +107,7 @@ chmod 755 "$PAYLOAD/S03danilauncher" "$CARD/MUOS/init/99-boot-timing-marker.sh"
 # contain no game data and only generate errors, so keep the fixed-device card
 # clean after every copy and metadata operation in this rebuild.
 for CLEAN_ROOT in "$PAYLOAD" "$CARD/MUOS/init" "$CARD/MUOS/PortMaster/libs" \
-	"$CARD/ROMS/Ports" "$CARD/ports"; do
+	"$CARD/ROMS/Ports" "$CARD/ports" "$CARD/MEDIA"; do
 	[ ! -d "$CLEAN_ROOT" ] || find "$CLEAN_ROOT" -type f -name '._*' -delete
 done
 
