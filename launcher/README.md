@@ -28,8 +28,8 @@ The direct-event version removes that helper and the joystick compatibility
 path. `S03danilauncher` starts before udev, and the binary waits only for the
 fixed `/dev/fb0` and `/dev/input/event1` nodes. It reads the RG34XX-SP controls
 straight from evdev while stock initialization continues behind it. B hands
-off to stock after the system-ready marker; a two-minute timeout provides the
-same fallback. D-pad navigation wraps so every direction press visibly moves.
+off to stock after the system-ready marker. D-pad navigation wraps so every
+direction press visibly moves.
 
 The verified direct build starts at 2.269 seconds of kernel uptime with input
 already usable and completes its first frame at 2.289 seconds. The corresponding
@@ -147,3 +147,16 @@ the decorative animation immediately; this is an explicit interaction policy,
 not an accidental repaint side effect. The sound wrapper invokes the proven
 `mpv` path directly, eliminating the known failing-player delay while keeping
 game-launch cancellation.
+
+## Permanent launcher shell
+
+The v10 build removes the proof's two-minute automatic handoff to stock. The
+launcher now remains the permanent shell until the user launches content,
+selects a system action, or explicitly presses B on the main menu for recovery.
+
+Hardware testing also proved that the apparent late display repaint was the
+launcher's own ROM-readiness callback. Storage and Favorites became ready at
+3.69--4.40 seconds and `probe_storage()` unnecessarily called `draw_screen()`.
+The callback now changes state and logs readiness without drawing. The next
+user action naturally renders the current state, so background storage work
+cannot overwrite the foreground or interrupt unrelated visual effects.

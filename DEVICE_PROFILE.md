@@ -39,8 +39,9 @@ The first hardware proof deliberately contains only:
 
 This is a functional skeleton, not the final visual design. It embeds only its
 English bitmap glyphs, draws directly to the Linux framebuffer, reads evdev
-directly, and exits back to stock on B from the main screen or after its safety
-timeout.
+directly, and remains resident as the permanent shell. B from the main screen
+is the explicit development recovery path; there is no inactivity handoff to
+stock.
 
 Games opens an embedded, generated catalogue. The current proof catalogue
 contains five titles across SNES, PSP, and Ports, including the newly installed
@@ -62,14 +63,14 @@ runs the tool, then disconnects services and unloads the driver before returning
 Shutdown uses the normal muOS poweroff machinery directly from the custom menu.
 Both paths are hardware-verified and do not enter the stock frontend.
 
-The boot-effects proof keeps the complete menu as frame zero. The refined
-1.6-second procedural accent waits for muOS to signal that the saved backlight
-value has been restored, then starts from a clean redraw. It immediately
-completes on the first input, so it cannot delay or capture interaction. A
-320 ms mono PCM chime waits asynchronously for the existing PipeWire route and
-is cancelled if the launcher hands off before playback. The supervisor prefers
-muOS's lightweight PCM players before falling back to `mpv`. The line and tone
-are development assets, not the final visual or sonic identity.
+The boot-effects proof keeps the complete menu as frame zero and starts its
+1.6-second procedural accent immediately. It completes on the first input, so
+it cannot delay or capture interaction. muOS's later saved-brightness restore
+is disabled; the firmware-established value remains until manual adjustment.
+A 320 ms mono PCM chime waits asynchronously for the existing PipeWire route,
+uses the proven `mpv` path directly, and is cancelled if the launcher hands off
+before playback. The line and tone are development assets; final effects move
+to an earlier firmware layer.
 
 ## Decisions reserved for the visual phase
 

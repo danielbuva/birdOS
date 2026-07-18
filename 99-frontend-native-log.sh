@@ -54,7 +54,7 @@ LAUNCHER_SOUND="$LAUNCHER_ROOT/boot.wav"
 LAUNCHER_TARGET="/opt/muos/bin/dani-launcher"
 LAUNCHER_PROOF_STATE="$LAUNCHER_ROOT/proof-v4-remaining.state"
 LAUNCHER_PROOF_LOG="$LAUNCHER_ROOT/proof-v4-remaining.log"
-EARLY_LAUNCHER_STATE="$LAUNCHER_ROOT/early-launcher-v9-no-brightness-restore.state"
+EARLY_LAUNCHER_STATE="$LAUNCHER_ROOT/early-launcher-v10-permanent-shell.state"
 EARLY_INIT_SOURCE="$LAUNCHER_ROOT/S03danilauncher"
 EARLY_INIT_TARGET="/opt/muos/script/init/S03danilauncher"
 EARLY_OLD_INIT_TARGET="/opt/muos/script/init/S11danilauncher"
@@ -592,7 +592,7 @@ if [ "$BESPOKE_BRIGHTNESS_POLICY_READY" -eq 1 ] &&
 	STARTUP_READY=0
 
 	if /usr/bin/ld -static --build-id=none -z noexecstack -s -e _start \
-		-o "$LAUNCHER_NEW" "$LAUNCHER_OBJECT" >"$LAUNCHER_ROOT/link-early-v9-no-brightness-restore.log" 2>&1; then
+		-o "$LAUNCHER_NEW" "$LAUNCHER_OBJECT" >"$LAUNCHER_ROOT/link-early-v10-permanent-shell.log" 2>&1; then
 		chmod 755 "$LAUNCHER_NEW"
 		if grep -q "$EARLY_STARTUP_MARKER" "$EARLY_STARTUP_TARGET"; then
 			STARTUP_READY=1
@@ -624,7 +624,7 @@ if [ "$BESPOKE_BRIGHTNESS_POLICY_READY" -eq 1 ] &&
 			chmod 755 "$EARLY_INIT_TARGET"
 			rm -f "$EARLY_OLD_INIT_TARGET"
 			printf '%s\n' "installed" >"$EARLY_LAUNCHER_STATE"
-			printf '%s no asynchronous brightness restore, immediate animation, and direct proven sound path installed; active next boot\n' \
+			printf '%s permanent launcher shell and state-only asynchronous storage installed; active next boot\n' \
 				"$(date -Iseconds 2>/dev/null || date)" >>"$BESPOKE_ROOT/install.log"
 		else
 			rm -f "$PATCHED" "$LAUNCHER_NEW"

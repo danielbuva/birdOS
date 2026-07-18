@@ -41,7 +41,6 @@ typedef signed long s64;
 #define ABS_HAT0Y 17
 
 #define CLOCK_BOOTTIME 7
-#define STOCK_FALLBACK_TIMEOUT_MS 120000UL
 #define DEVICE_WAIT_MS 5000UL
 #define BOOT_ANIMATION_MS 1600UL
 #define INPUT_PATH "/dev/input/event1"
@@ -924,11 +923,9 @@ static void probe_storage(void) {
     sys_close((int)fd);
     storage_ready = 1;
     load_favorites();
-    selected_status = view == VIEW_FAVORITES ? "FAVORITES READY" : "ROM STORAGE READY";
     log_text("storage_ready boot_ms=");
     log_number(now);
-    log_text(" path=" ROM_ROOT "\n");
-    draw_screen();
+    log_text(" path=" ROM_ROOT " ui_redraw=deferred\n");
 }
 
 static int open_fixed_input(void) {
@@ -1034,8 +1031,7 @@ static int application(void) {
     log_number(CATALOG_ENTRY_COUNT);
     log_text("\n");
 
-    deadline = boot_ms() + STOCK_FALLBACK_TIMEOUT_MS;
-    while (boot_ms() < deadline && exit_action == ACTION_NONE) {
+    while (exit_action == ACTION_NONE) {
         struct input_event event;
         long count;
         while ((count = sys_read(input_fd, &event, sizeof(event))) == (long)sizeof(event)) {
@@ -1057,10 +1053,8 @@ static int application(void) {
         log_text("exit reason=shutdown-request boot_ms=");
     else if (exit_action == ACTION_PORTMASTER)
         log_text("exit reason=portmaster-request boot_ms=");
-    else if (exit_action == ACTION_STOCK)
-        log_text("exit reason=b-button boot_ms=");
     else
-        log_text("exit reason=stock-fallback-timeout boot_ms=");
+        log_text("exit reason=b-button boot_ms=");
     log_number(boot_ms());
     log_text(" captured_events=");
     log_number(captured_events);
