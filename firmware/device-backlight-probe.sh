@@ -67,8 +67,16 @@ fi
 
 LOG_VALUE "probe" "start"
 
-DT_BACKLIGHT="/proc/device-tree/lcd0@01c0c000/lcd_backlight"
-if [ -r "$DT_BACKLIGHT" ]; then
+DT_BACKLIGHT=""
+for DT_CANDIDATE in \
+	/sys/firmware/devicetree/base/soc@03000000/lcd0@01c0c000/lcd_backlight \
+	/proc/device-tree/soc@03000000/lcd0@01c0c000/lcd_backlight; do
+	if [ -r "$DT_CANDIDATE" ]; then
+		DT_BACKLIGHT="$DT_CANDIDATE"
+		break
+	fi
+done
+if [ -n "$DT_BACKLIGHT" ]; then
 	DT_HEX=$(od -An -tx1 "$DT_BACKLIGHT" 2>/dev/null | tr -d ' \n')
 	LOG_VALUE "device_tree.lcd_backlight.hex" "${DT_HEX:-unreadable}"
 else

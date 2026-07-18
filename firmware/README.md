@@ -52,8 +52,33 @@ contains the complete Anbernic GPIO key map and sets `lcd_backlight = <0x32>`
 but two cold hardware tests showed no visible brightness change. This property
 therefore does not own the RG34XX-SP's displayed boot level, at least across its
 seamless U-Boot/Linux display handoff. Visible brightness is controlled later
-through the Allwinner `dispdbg` `disp0 getbl/setbl` interface; the earlier owner
-still needs to be traced.
+through the Allwinner `dispdbg` `disp0 getbl/setbl` interface.
+
+## Confirmed U-Boot payload and brightness owner
+
+Allwinner boot0 and the checksummed TOC1 package live before the first GPT
+partition. The active TOC1 package begins at byte `0x1004000` (sector 32800),
+is `0x140000` bytes long and contains four items:
+
+- 1 MiB U-Boot payload at relative offset `0x800`
+- 105 KiB ARM trusted monitor at `0x100800`
+- 3 KiB DT overlay at `0x11ac00`
+- 137,756-byte U-Boot DTB at `0x11b800`
+
+That separate U-Boot DTB contains `lcd_backlight = <50>` and
+`lcd_pwm_max_limit = <255>`. The early hardware probe measured all of the
+following on the same cold boot:
+
+- active Linux DTB candidate: raw 25
+- saved muOS setting: raw 16
+- U-Boot DTB: raw 50
+- `disp0 getbl`: 50 from 2.31 through 6.35 seconds
+- PWM: 50 kHz, 3,906 ns duty over a 20,000 ns period
+
+Only U-Boot's value matches the inherited hardware state. It is therefore the
+visible boot-brightness owner; Linux preserves that already-running display.
+These are raw 0--255 driver units, not percentages: raw 25 is about 9.8% and a
+literal 25% target would be approximately raw 64.
 
 `boot-resource/bootlogo.bmp` is a 720x480 24-bit image shown before Linux. It is
 the correct frame-zero asset for a visually immediate boot. The final image can
@@ -85,10 +110,10 @@ muOS frontend.
 
 ## Reproduce the inventory
 
-Install the two host dependencies once:
+Install the host dependencies once:
 
 ```sh
-brew install coreutils e2fsprogs
+brew install coreutils e2fsprogs dtc
 ```
 
 Extract exact partitions into the hidden workspace on the mounted card:
@@ -122,15 +147,25 @@ v2 SHA-1 ID using the payload-plus-little-endian-size order specified by the
 Passing the original extracted DTB must reproduce the complete 64 MiB stock
 boot partition byte-for-byte; this is the mandatory no-change safety test.
 
-Generate the tested DTB-property candidate:
+Extract the boot0/TOC1 area and its U-Boot DTB:
+
+```sh
+./firmware/extract-stock-bootloader.sh SOURCE_IMG_GZ OUTPUT_DIRECTORY
+```
+
+Generate a DTB candidate in raw driver units and repack the TOC1 checksum:
 
 ```sh
 ./firmware/set-backlight-dtb.sh INPUT_DTB OUTPUT_DTB 25
+./firmware/repack-toc1-dtb.sh STOCK_TOC1 OUTPUT_DTB OUTPUT_TOC1
 ```
 
-No firmware candidate should be written to the card's boot partition until its
-unpacked kernel, ramdisk, device tree, layout, digest and no-change round trip
-all pass offline verification.
+The TOC1 repacker validates every fixed header, item offset and payload length,
+then recomputes Allwinner's stamped additive checksum. Passing the original
+U-Boot DTB reproduces the stock package byte-for-byte with SHA-256
+`3973c37b2bc1f0b242c5d89b7a64a864d619dc9d9ae21aee40265c62dfc115e5`.
+No candidate should be written until both Android-boot and TOC1 no-change round
+trips pass offline verification.
 
 ## Installed DTB experiment
 
@@ -169,9 +204,27 @@ backup is `/mnt/mmc/.firmware-work/device-boot-before-backlight.img`; the
 rollback helper remains inert at
 `/mnt/mmc/.firmware-work/device-restore-stock-boot.sh`.
 
-`device-backlight-probe.sh` is the next diagnostic. It runs asynchronously
+`device-backlight-probe.sh` runs asynchronously
 before the launcher and never sets a brightness value. It records the configured
 brightness, DTB cell, standard backlight sysfs nodes, PWM diagnostics and nine
 `disp0 getbl` samples, then persists the result after ROM storage mounts. The one-shot
 `device-install-backlight-probe.sh` installs it into the early async init
 directory without delaying the usable-screen path.
+
+## Staged U-Boot ownership test
+
+The U-Boot DTB candidate changes raw brightness from 50 to 25. Its SHA-256 is
+`5252e2325ad49837f3210d3069f4f5efc0e0aabcc59308fd852aa592b26d482e`.
+The repacked TOC1 SHA-256 is
+`6330ac906f69a283e76e4a2c4387f6480becefdc1abbadd79fbefd585dccd737`.
+The complete package differs from stock at exactly two bytes: the DTB value and
+the resulting checksum byte. U-Boot, monitor and DTBO payloads remain
+byte-identical.
+
+`device-install-uboot-backlight-25.sh` is staged as the next one-shot user-init
+installer. It accepts only the exact stock raw TOC1 hash, creates and verifies a
+1.25 MiB device backup, writes sector 32800, reads the raw package back and
+automatically restores stock on write-verification failure. Because a
+checksum-valid but unbootable U-Boot change cannot restore itself, the trusted
+stock image remains the external recovery path. The inert on-device helper is
+`device-restore-stock-toc1.sh` for cases that still reach user-init.

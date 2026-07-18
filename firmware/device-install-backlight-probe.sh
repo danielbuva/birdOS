@@ -10,7 +10,7 @@ TARGET_NEW="$TARGET.dani-new"
 STATE="$WORK_DIR/backlight-probe-installed"
 LOG="$ROM_MOUNT/MUOS/log/brightness-probe-install.log"
 CARD_INSTALLER="$ROM_MOUNT/MUOS/init/97-install-backlight-probe.sh"
-EXPECTED_SHA="18e038216c2aa2737ae1a7ee044c1dbfb08568275039f911165ac2eca3a12ec3"
+EXPECTED_SHA="a7ec727e80c2f55c79d09f5f0bec0a7a48d6aea3cf9c3b9c59f1930c8b792bdf"
 
 mkdir -p "$ROM_MOUNT/MUOS/log"
 : >"$LOG"

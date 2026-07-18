@@ -57,9 +57,10 @@ index, on-demand networking, and a reproducible firmware image.
   caused PipeWire/SDL audio to block the frontend until 12-14 seconds.
 - The stock 8.17 GiB image now has an exact partition map and verified offline
   extraction workflow. Its Android boot v2 payload round-trips byte-for-byte;
-  a 25% `lcd_backlight` DTB candidate was verified, installed and found not to
+  a raw-25 `lcd_backlight` DTB candidate was verified, installed and found not to
   control the visible RG34XX-SP boot level. The real backlight path is now being
-  profiled through the Allwinner `disp0 getbl/setbl` interface.
+  profiled through the Allwinner `disp0 getbl/setbl` interface. Early hardware
+  traces identify U-Boot's separate raw-50 DTB value as the actual handoff owner.
 
 The cached-module test reported `cached`, and the complete post-change
 functionality test passed. The optimized-stock checkpoint remains in Git; the
