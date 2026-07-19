@@ -55,7 +55,9 @@ The long-term centerpiece would be a tiny custom launcher—ideally a small stat
   `lcd_backlight` property does not own the visible boot brightness.
 - [x] Trace the Allwinner `disp0 getbl/setbl` handoff to U-Boot's separate
   raw-50 DTB property.
-- [ ] Hardware-test the checksum-verified U-Boot raw-25 ownership candidate.
+- [x] Hardware-test the checksum-verified U-Boot raw-25 ownership candidate;
+  U-Boot and Linux both preserve raw 25 with no later display write.
+- [ ] Replace the stock U-Boot splash with a launcher-aligned frame zero.
 - [ ] Move the final animation and audio to the earlier firmware layer.
 - [ ] Complete the final visual, animation and audio identity.
 - [ ] Remove superseded muOS components and produce a reproducible firmware image.

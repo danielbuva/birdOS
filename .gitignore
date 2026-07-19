@@ -1,5 +1,6 @@
 .DS_Store
 ._*
+__pycache__/
 firmware/work/
 firmware/*.img
 firmware/*.ext4

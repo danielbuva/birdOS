@@ -85,6 +85,18 @@ the correct frame-zero asset for a visually immediate boot. The final image can
 match the launcher's background so the U-Boot-to-launcher transition appears
 continuous even before U-Boot itself is customized.
 
+`fat16-file.py` safely extracts or replaces a fixed-size file in the exact
+32 MiB partition payload despite the incorrect 128 MiB BPB size. It follows
+the real FAT16 cluster chain and changes no allocation table, directory entry
+or timestamp. `build-launcher-boot-resource.sh` first proves a byte-identical
+no-change replacement, then generates a 720x480 launcher-aligned first frame
+and replaces only `bootlogo.bmp`. The charging image remains stock.
+
+The first frame uses the launcher's exact background, header, bitmap font and
+idle accent colours but intentionally omits menu rows. U-Boot can display it
+before Linux without pretending input is ready; the interactive launcher adds
+the menu at its first real frame.
+
 ## Early Linux findings
 
 The initramfs expands to about 8.0 MiB. Its `/init` mounts proc, sysfs and
@@ -211,7 +223,7 @@ brightness, DTB cell, standard backlight sysfs nodes, PWM diagnostics and nine
 `device-install-backlight-probe.sh` installs it into the early async init
 directory without delaying the usable-screen path.
 
-## Staged U-Boot ownership test
+## Completed U-Boot ownership test
 
 The U-Boot DTB candidate changes raw brightness from 50 to 25. Its SHA-256 is
 `5252e2325ad49837f3210d3069f4f5efc0e0aabcc59308fd852aa592b26d482e`.
@@ -221,10 +233,32 @@ The complete package differs from stock at exactly two bytes: the DTB value and
 the resulting checksum byte. U-Boot, monitor and DTBO payloads remain
 byte-identical.
 
-`device-install-uboot-backlight-25.sh` is staged as the next one-shot user-init
+`device-install-uboot-backlight-25.sh` was installed as a one-shot user-init
 installer. It accepts only the exact stock raw TOC1 hash, creates and verifies a
 1.25 MiB device backup, writes sector 32800, reads the raw package back and
 automatically restores stock on write-verification failure. Because a
 checksum-valid but unbootable U-Boot change cannot restore itself, the trusted
 stock image remains the external recovery path. The inert on-device helper is
 `device-restore-stock-toc1.sh` for cases that still reach user-init.
+
+The cold hardware trace confirmed raw 25 in the active U-Boot/Linux device
+tree, `disp0 getbl` and the corresponding 1,953 ns inverse-PWM duty from 2.31
+through 6.35 seconds. No later brightness writer exists on this boot path.
+
+## Launcher-aligned frame-zero candidate
+
+Build from an extracted stock boot-resource partition:
+
+```sh
+./firmware/build-launcher-boot-resource.sh STOCK_BOOT_RESOURCE OUTPUT_DIRECTORY
+```
+
+The no-change FAT16 round trip is byte-identical. The generated BMP is exactly
+1,036,938 bytes, 720x480, uncompressed 24-bit BGR with a 138-byte V5 header.
+The verified candidate SHA-256 is
+`38f42814f8523225e6695f6e446eb435a821410c53214ded80be729f2b138fd7`.
+Read-only mounting and `fsck_msdos -n` confirm that the FAT16 filesystem is
+valid, `bootlogo.bmp` has changed to SHA-256
+`79eddfdd5a452d150ea2d89784da4b094f1e6d2ba05e9d3168e935739a6fc842`,
+and `bat/battery_charge.bmp` retains the stock SHA-256
+`c0c724acc8bb666b0800fcfd0ba72f9dd117e370dc6137c4cfaa67bee82617e8`.
