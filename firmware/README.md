@@ -120,6 +120,20 @@ kernel uptime, so remaining large perceived-boot gains are now in the static
 boot resource, Android boot payload, kernel and U-Boot rather than in the stock
 muOS frontend.
 
+The latest complete kernel log further divides the pre-muOS interval. Built-in
+kernel initialization finishes and frees unused memory at 1.809 seconds. The
+initramfs checks and mounts the clean ext4 root by 1.852 seconds, after which
+switch-root and generic BusyBox inittab work take roughly 0.36 seconds before
+the instrumented muOS dispatcher begins. Input is already registered at 1.726
+seconds and ALSA at 1.808 seconds. This makes an early-root launcher handoff the
+next firmware target before rebuilding the kernel itself.
+
+The 150 ms initramfs unpack currently includes a 2.8 MiB `magic.mgc`, generic
+ALSA profiles and recovery utilities unused by normal boot. Kernel logs also
+show unconditional USB host, network protocol, Bluetooth, HDMI and extra
+SD/SDIO initialization. These are fixed-kernel targets; they cannot be removed
+from the ROM partition alone.
+
 ## Reproduce the inventory
 
 Install the host dependencies once:
@@ -262,3 +276,12 @@ valid, `bootlogo.bmp` has changed to SHA-256
 `79eddfdd5a452d150ea2d89784da4b094f1e6d2ba05e9d3168e935739a6fc842`,
 and `bat/battery_charge.bmp` retains the stock SHA-256
 `c0c724acc8bb666b0800fcfd0ba72f9dd117e370dc6137c4cfaa67bee82617e8`.
+
+The device installer intentionally refused to write this candidate: the test
+card's active partition hashes to
+`eb55e0793d7064e5db4654681e19e1054b94a0736b01a29638b3d564aed81e64`,
+not the fresh archive's partition hash. No boot-resource bytes were changed.
+The active card was evidently provisioned after flashing, so the archived FAT
+asset cannot yet be assumed to own its normal splash. The failed installer is
+disabled and this investigation is shelved until after first interaction is
+optimized.

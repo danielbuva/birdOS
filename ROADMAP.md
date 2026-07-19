@@ -57,7 +57,11 @@ The long-term centerpiece would be a tiny custom launcher—ideally a small stat
   raw-50 DTB property.
 - [x] Hardware-test the checksum-verified U-Boot raw-25 ownership candidate;
   U-Boot and Linux both preserve raw 25 with no later display write.
-- [ ] Replace the stock U-Boot splash with a launcher-aligned frame zero.
+- [ ] Revisit the active splash owner after first-frame optimization; the
+  archived-image FAT asset is not identical to this card's provisioned asset.
+- [x] Remove the RGB call and dispatch the interactive launcher before entropy,
+  storage mounting and diagnostic observers.
+- [x] Remove the proof animation and chime from the active critical-UI path.
 - [ ] Move the final animation and audio to the earlier firmware layer.
 - [ ] Complete the final visual, animation and audio identity.
 - [ ] Remove superseded muOS components and produce a reproducible firmware image.

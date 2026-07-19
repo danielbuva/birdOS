@@ -64,7 +64,8 @@ stage_file "$ROOT/launcher/dani-launcher.o" "$PAYLOAD/dani-launcher.o"
 stage_file "$ROOT/launcher/catalog.revision" "$PAYLOAD/catalog.revision"
 stage_file "$ROOT/launcher/library.inventory.tsv" "$PAYLOAD/library.inventory.tsv"
 stage_file "$ROOT/launcher/S03danilauncher" "$PAYLOAD/S03danilauncher"
-stage_file "$ROOT/launcher/boot.wav" "$PAYLOAD/boot.wav"
+stage_file "$ROOT/launcher/patch-critical-ui-sysinit.sh" \
+	"$PAYLOAD/patch-critical-ui-sysinit.sh"
 stage_file "$ROOT/launcher/README.md" "$PAYLOAD/README.md"
 for CORE in gw_libretro.so bluemsx_libretro.so fake08_libretro.so; do
 	stage_file "$ROOT/launcher/optional-cores/$CORE" "$PAYLOAD/optional-cores/$CORE"
@@ -101,7 +102,8 @@ if [ -f "$CARD/ROMS/Ports/StardewValley.sh" ]; then
 	chmod 755 "$CARD/ROMS/Ports/StardewValley.sh"
 fi
 
-chmod 755 "$PAYLOAD/S03danilauncher" "$CARD/MUOS/init/99-boot-timing-marker.sh"
+chmod 755 "$PAYLOAD/S03danilauncher" "$PAYLOAD/patch-critical-ui-sysinit.sh" \
+	"$CARD/MUOS/init/99-boot-timing-marker.sh"
 
 # PortMaster tries to parse macOS AppleDouble sidecars as launch scripts. They
 # contain no game data and only generate errors, so keep the fixed-device card

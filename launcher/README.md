@@ -157,6 +157,21 @@ not an accidental repaint side effect. The sound wrapper invokes the proven
 `mpv` path directly, eliminating the known failing-player delay while keeping
 game-launch cancellation.
 
+## Critical interactive-menu phase
+
+The current performance phase deliberately removes the proof animation and
+MPV chime from the active boot path. They demonstrated the intended policy but
+are not part of first-frame measurement; final animation and direct audio will
+return only after the earliest interactive menu point is established.
+
+The launcher now creates `/run/muos/dani-first-frame-ready` immediately after
+its framebuffer write barrier. The fixed sysinit patch dispatches the launcher
+before all asynchronous observers and general init services, waits only for
+that exact marker, then continues initialization. `S02rgb` is skipped because
+it consistently costs about 40 ms and returns failure on the RG34XX-SP. Early
+entropy remains enabled after the first frame because prior hardware tests
+proved that deferring it creates multi-second CRNG/audio stalls.
+
 ## Permanent launcher shell
 
 The v10 build removes the proof's two-minute automatic handoff to stock. The

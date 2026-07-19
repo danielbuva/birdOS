@@ -9,16 +9,43 @@ the launcher itself is already interactive at 2.286 seconds of kernel uptime.
 
 | Time | Work | Cost | Decision |
 | ---: | --- | ---: | --- |
-| 0--2.17 s | kernel, initramfs, root switch and BusyBox inittab mounts | 2.17 s | Lower-layer target after the userspace path is clean. |
+| 0--1.809 s | kernel built-in driver initialization | 1.809 s | Fixed-device kernel/DT target. Input is registered at 1.726 s and ALSA finishes at 1.808 s. |
+| 0.755--0.905 s | unpack 2.6 MiB compressed initramfs | 150 ms, overlapping kernel init | Remove the 2.8 MiB magic database, generic ALSA profiles and unused recovery tools. |
+| 1.809--1.852 s | initramfs filesystem check and root mount | ~43 ms on a clean boot | Use a dirty-state policy instead of unconditional `e2fsck -y`; retain recovery for unclean shutdowns. |
+| 1.852--2.21 s | switch-root and generic BusyBox inittab setup | ~358 ms | Start the static launcher at the early-root handoff, then finish generic mounts in parallel. |
 | 2.17--2.18 s | `S01entropy` starts `haveged` | ~10 ms | Retain for now; an earlier deferral caused CRNG/audio stalls. Start it after launcher dispatch in the next init-order proof. |
 | 2.18--2.22 s | `S02rgb` | ~40 ms, `rc=1` | Remove. This fixed device has no requested RGB experience and the hook fails. |
 | 2.22--2.24 s | `S03danilauncher` supervisor dispatch | ~20 ms | Move ahead of all asynchronous observers and optional init hooks. |
 | 2.253--2.286 s | open fixed framebuffer/input and draw | 33 ms | Already appropriately narrow; profile after the init-order change. |
 
-The asynchronous backlight, ROM-mount and general boot probes currently start
-at 2.17 seconds and compete with the first draw. They do not logically belong
-before the menu. Keep the diagnostics, but dispatch them after the launcher has
-started; retain the launcher's own exact first-frame/input timestamps.
+The next critical-UI revision dispatches the launcher before the asynchronous
+backlight, ROM-mount and general boot probes, waits only for its post-draw
+marker, and then continues normal initialization. `S02rgb` is skipped. The
+proof animation and chime are also removed from the active path so measurements
+represent the interactive menu alone.
+
+## Kernel-time opportunities inside the first 1.809 seconds
+
+The kernel log exposes concrete general-purpose work that is unrelated to this
+fixed internal-screen, one-card menu:
+
+- Three EHCI and three OHCI host-controller probes occupy much of
+  approximately 0.99--1.32 seconds.
+- Wi-Fi/Bluetooth platform and protocol setup runs despite network being
+  disabled at userspace boot.
+- Extra SD/SDIO hosts probe from roughly 1.49--1.65 seconds; one repeatedly
+  times out while looking for the network device.
+- PPP, IPsec, tunnelling, IPv6 and generic USB storage/network/HID drivers are
+  built in and initialized unconditionally.
+- HDMI initializes even though this experience is permanently internal-screen.
+- Failed CPU OPP/debug link creation consumes roughly 40 ms at 1.676--1.716.
+
+Before rebuilding the kernel, moving the existing static launcher into the
+early-root handoff can plausibly move first interaction from roughly 2.3 to
+1.85--1.95 kernel seconds. A fixed kernel can then attack the larger 0--1.809
+interval by disabling unused DT nodes and making optional subsystems load only
+when their features are selected. U-Boot time before the kernel is additional
+and is not included in these timestamps.
 
 ## Work already after the usable menu
 
@@ -59,10 +86,9 @@ menu. The intended reduction is:
 
 ## Ordered attack plan
 
-1. Install the launcher-aligned static U-Boot frame zero without changing
-   Linux timing.
-2. Dispatch the launcher before asynchronous probes and remove failing RGB
-   init. This is the last easy pre-menu userspace gain.
+1. Dispatch the launcher before asynchronous probes, remove failing RGB init,
+   and measure the menu without proof animation/audio.
+2. Move that same static launcher into the early-root/initramfs handoff.
 3. Record `/dev`, module and audio-node state immediately before and after udev;
    replace its 1.53-second generic cold replay with a fixed-device sequence.
 4. Replace the dynamic multi-storage/UnionFS startup with a fixed ROM mount.
@@ -70,5 +96,5 @@ menu. The intended reduction is:
    content-triggered.
 6. Bake successful card-side changes into rootfs, delete production user-init
    and generic maintenance jobs, then profile the smaller image.
-7. Optimize initramfs, kernel and U-Boot last; this is where most of the
-   remaining power-on-to-kernel interval lives.
+7. Trim the initramfs, then build the fixed kernel and optimize U-Boot last;
+   this is where most of the remaining power-on-to-menu interval lives.

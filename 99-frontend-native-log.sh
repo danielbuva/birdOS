@@ -42,6 +42,7 @@ BESPOKE_OLD_BRIGHTNESS_MARKER="DANI_BRIGHTNESS_READY_V1"
 BESPOKE_BRIGHTNESS_MARKER="DANI_DISABLE_ASYNC_BRIGHTNESS_RESTORE_V1"
 BESPOKE_SYSINIT_MARKER="BOOT_TIMING_DEFER_CHRONY_ENTROPY_V1"
 BESPOKE_ENTROPY_FIX_MARKER="BOOT_TIMING_RESTORE_EARLY_ENTROPY_V2"
+CRITICAL_UI_BACKUP="$BESPOKE_ROOT/backup/sysinit.pre-critical-ui"
 WIFI_DIAG_ROOT="/mnt/mmc/MUOS/boot-timing/wifi-module-diagnostic"
 WIFI_DIAG_STATE="$WIFI_DIAG_ROOT/state"
 WIFI_MODULE_TARGET="/opt/muos/script/device/module.sh"
@@ -50,7 +51,6 @@ DEPMOD_CACHE_MARKER="BOOT_TIMING_CACHE_DEPMOD_V1"
 DEPMOD_STATUS="/tmp/muos/depmod-status"
 LAUNCHER_ROOT="/mnt/mmc/MUOS/bespoke-launcher"
 LAUNCHER_OBJECT="$LAUNCHER_ROOT/dani-launcher.o"
-LAUNCHER_SOUND="$LAUNCHER_ROOT/boot.wav"
 LAUNCHER_TARGET="/opt/muos/bin/dani-launcher"
 OPTIONAL_CORE_SOURCE_DIR="$LAUNCHER_ROOT/optional-cores"
 OPTIONAL_CORE_TARGET_DIR="/opt/muos/share/core"
@@ -68,6 +68,7 @@ EARLY_OLD_LAUNCHER_STATE="$LAUNCHER_ROOT/early-launcher-v11-real-catalog.revisio
 EARLY_LAUNCHER_REVISION_SOURCE="$LAUNCHER_ROOT/catalog.revision"
 EARLY_INIT_SOURCE="$LAUNCHER_ROOT/S03danilauncher"
 EARLY_INIT_TARGET="/opt/muos/script/init/S03danilauncher"
+CRITICAL_UI_PATCH_SOURCE="$LAUNCHER_ROOT/patch-critical-ui-sysinit.sh"
 EARLY_OLD_INIT_TARGET="/opt/muos/script/init/S11danilauncher"
 EARLY_STARTUP_TARGET="/opt/muos/script/system/startup.sh"
 EARLY_STARTUP_BACKUP="$LAUNCHER_ROOT/startup.pre-early-launcher"
@@ -474,6 +475,16 @@ if { grep -q 'S01entropy.*deferred-20s' "$SYSINIT_TARGET" 2>/dev/null || \
 	fi
 fi
 
+# The framebuffer and fixed input node exist before muOS init begins. Dispatch
+# the launcher before every observer and general service, then wait only for its
+# post-draw marker. RGB is skipped entirely. Entropy starts immediately after
+# the visible menu so the proven CRNG/audio behaviour is preserved.
+if [ -x "$CRITICAL_UI_PATCH_SOURCE" ] && [ -x "$LAUNCHER_TARGET" ] && \
+	[ -s "$EARLY_INIT_TARGET" ]; then
+	"$CRITICAL_UI_PATCH_SOURCE" "$SYSINIT_TARGET" "$CRITICAL_UI_BACKUP" \
+		"$BESPOKE_ROOT/install.log" || :
+fi
+
 # General device-module setup claims to exclude networking, but module.sh
 # still unconditionally modprobes 8821cs. The explicit network path uses
 # device/network.sh and loads the same driver itself, so remove it from boot.
@@ -605,7 +616,7 @@ if [ "${#EARLY_LAUNCHER_WANTED_REVISION}" -ne 64 ] ||
 	EARLY_LAUNCHER_WANTED_REVISION=""
 fi
 if [ "$BESPOKE_BRIGHTNESS_POLICY_READY" -eq 1 ] &&
-	[ -s "$LAUNCHER_OBJECT" ] && [ -s "$EARLY_INIT_SOURCE" ] && [ -s "$LAUNCHER_SOUND" ] &&
+	[ -s "$LAUNCHER_OBJECT" ] && [ -s "$EARLY_INIT_SOURCE" ] &&
 	[ -n "$EARLY_LAUNCHER_WANTED_REVISION" ] &&
 	[ "$EARLY_LAUNCHER_CURRENT_REVISION" != "$EARLY_LAUNCHER_WANTED_REVISION" ]; then
 	LAUNCHER_NEW="/tmp/dani-launcher-direct.$$"
