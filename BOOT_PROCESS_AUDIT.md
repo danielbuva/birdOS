@@ -3,7 +3,7 @@
 This audit uses cold boot `723d4474-e6c2-4936-bd71-b123d5d97f0c`, after the
 raw-25 U-Boot backlight change. Times are Linux kernel uptime, not LED-on
 stopwatch time. The current stopwatch result is approximately four seconds;
-the launcher itself is already interactive at 2.286 seconds of kernel uptime.
+the latest three launcher frames average 2.252 seconds of kernel uptime.
 
 ## Work before the usable menu
 
@@ -91,6 +91,8 @@ menu. The intended reduction is:
 - The menu and its exact post-draw timestamp are the only ordinary-boot
   observability on the critical path.
 - Polling is a temporary bring-up technique, not a permanent idle behavior.
+- The launcher now blocks on evdev once storage is ready; its former 4 ms idle
+  poll and ordinary raw-event logging are removed.
 - General services start on content demand unless hardware correctness requires
   them earlier.
 - A compatibility component is removed only after its exact launcher, emulator,

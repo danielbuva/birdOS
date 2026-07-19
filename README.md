@@ -16,8 +16,10 @@ must serve this one device and this one experience.
 - Pre-font internal input-ready average: 9.84 seconds.
 - English-only-font internal input-ready average: 9.60 seconds.
 - Optimized-stock internal input-ready average: 8.43 seconds.
-- Last hardware-verified direct-launcher entry: 2.256 seconds of kernel uptime.
-- Last hardware-verified interactive frame: 2.276 seconds, 20 ms later.
+- Latest three hardware-verified direct-launcher entries average 2.222 seconds
+  of kernel uptime.
+- Latest three interactive frames average 2.252 seconds, with input ready on
+  every frame; the range is 2.242--2.272 seconds.
 - Current LED-on stopwatch result: approximately four seconds.
 
 The staged critical-UI revision runs the launcher before every optional
@@ -32,6 +34,8 @@ card-side patches.
 - Frontend/audio readiness gate removed while PipeWire remains available.
 - Historical detailed sysinit, mount, frontend and process logs retained;
   continuous observers are being replaced by explicitly armed diagnostic runs.
+- The launcher blocks on evdev after storage readiness instead of waking 250
+  times per second, and ordinary boots no longer record every raw input event.
 - Maintenance and log copying moved away from the UI critical path.
 - Emulator verification deferred and cached by OS build.
 - Five unused multilingual font DSOs replaced by tiny AArch64 stubs.

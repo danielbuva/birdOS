@@ -6,11 +6,13 @@ The macOS build produces a relocatable object; the RG34XX-SP's own GNU linker
 creates the final static executable during user-init.
 
 This is a functionally proven prototype, not the final optimized launcher.
-Architectural boot-path work has priority. Once the earliest launch point is
-fixed, launcher profiling will target idle wake-ups first (the current event
-loop sleeps for 4 ms), then framebuffer write volume, redraw granularity,
-catalog representation, code size and supervisor handoff overhead. Battery
-efficiency outranks memory reduction when those trade off.
+Architectural boot-path work has priority. The first idle-efficiency pass has
+replaced the 4 ms input poll and raw-event logging with a blocking `ppoll` on
+the fixed evdev descriptor. A 50 ms timeout exists only until ROM storage is
+ready; ordinary menu idle then generates no launcher timer wake-ups. Later
+profiling targets framebuffer write volume, redraw granularity, catalogue
+representation, code size and supervisor handoff overhead. Battery efficiency
+outranks memory reduction when those trade off.
 
 The calibration runs were deliberately late and temporary:
 

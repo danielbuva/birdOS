@@ -84,10 +84,11 @@ Priorities are strict:
 3. Memory efficiency: remove unused processes, libraries, caches and assets.
 4. Add only the exact features Dani chooses and uses.
 
-The launcher remains a prototype. Its architecture is proven, but its 4 ms
-idle polling loop, framebuffer write strategy and state representation are
-explicit later optimization targets rather than reasons to delay larger boot
-and init wins.
+The launcher remains a prototype. Its architecture is proven, and its first
+idle pass now blocks on the fixed evdev descriptor instead of waking every
+4 ms. Framebuffer write strategy and state representation remain explicit
+later optimization targets rather than reasons to delay larger boot and init
+wins.
 
 ## Decisions reserved for the visual phase
 

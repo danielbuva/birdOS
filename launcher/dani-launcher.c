@@ -38,6 +38,7 @@ typedef signed long s64;
 #define BTN_TR 309
 #define ABS_HAT0X 16
 #define ABS_HAT0Y 17
+#define POLLIN 0x0001
 
 #define CLOCK_BOOTTIME 7
 #define DEVICE_WAIT_MS 5000UL
@@ -136,6 +137,12 @@ struct timespec {
     s64 nsec;
 };
 
+struct pollfd {
+    int fd;
+    short events;
+    short revents;
+};
+
 struct glyph {
     char c;
     u8 row[7];
@@ -165,7 +172,6 @@ static int favorites_loaded;
 static u32 favorite_count;
 static u8 favorites[(CATALOG_ENTRY_COUNT + 7U) / 8U];
 static u64 next_storage_probe;
-static u32 captured_events;
 static const char *selected_status = "DIRECT FRAMEBUFFER READY";
 
 static const char *menu_item[4] = {"PLAY", "LISTEN", "READ", "WATCH"};
@@ -261,6 +267,10 @@ static long sys_clock_gettime(struct timespec *value) {
     return syscall6(113, CLOCK_BOOTTIME, (long)value, 0, 0, 0, 0);
 }
 
+static long sys_ppoll(struct pollfd *fds, u64 count, struct timespec *timeout) {
+    return syscall6(73, (long)fds, (long)count, (long)timeout, 0, 0, 0);
+}
+
 static void sys_nanosleep(s64 nanoseconds) {
     struct timespec request;
     request.sec = 0;
@@ -293,15 +303,6 @@ static void log_number(u64 value) {
         value /= 10;
     }
     sys_write(1, &buffer[position + 1], (u64)(22 - position));
-}
-
-static void log_signed(s64 value) {
-    if (value < 0) {
-        log_text("-");
-        log_number((u64)-value);
-    } else {
-        log_number((u64)value);
-    }
 }
 
 static u64 boot_ms(void) {
@@ -1086,19 +1087,6 @@ static int handle_back(void) {
 }
 
 static int handle_event(const struct input_event *event) {
-    if ((event->type == EV_KEY || event->type == EV_ABS) && captured_events < 300) {
-        log_text("event boot_ms=");
-        log_number(boot_ms());
-        log_text(" type=");
-        log_number(event->type);
-        log_text(" code=");
-        log_number(event->code);
-        log_text(" value=");
-        log_signed(event->value);
-        log_text("\n");
-        captured_events++;
-    }
-
     if (event->type == EV_KEY && event->value == 1) {
         if (event->code == BTN_SOUTH) {
             return select_current();
@@ -1256,16 +1244,29 @@ static int application(void) {
     log_text("\n");
 
     while (exit_action == ACTION_NONE) {
+        struct pollfd input_poll;
+        struct timespec storage_timeout;
+        struct timespec *timeout = 0;
         struct input_event event;
         long count;
+
+        probe_storage();
+        input_poll.fd = input_fd;
+        input_poll.events = POLLIN;
+        input_poll.revents = 0;
+        if (!storage_ready) {
+            storage_timeout.sec = 0;
+            storage_timeout.nsec = 50000000L;
+            timeout = &storage_timeout;
+        }
+        sys_ppoll(&input_poll, 1, timeout);
+
         while ((count = sys_read(input_fd, &event, sizeof(event))) == (long)sizeof(event)) {
             exit_action = handle_event(&event);
             if (exit_action != ACTION_NONE) {
                 break;
             }
         }
-        probe_storage();
-        sys_nanosleep(4000000L);
     }
 
     if (exit_action == ACTION_LAUNCH)
@@ -1277,8 +1278,6 @@ static int application(void) {
     else
         log_text("exit reason=b-button boot_ms=");
     log_number(boot_ms());
-    log_text(" captured_events=");
-    log_number(captured_events);
     log_text("\n");
     sys_close(input_fd);
     sys_munmap((void *)fb, fb_fix.smem_len);

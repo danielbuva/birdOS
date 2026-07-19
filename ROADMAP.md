@@ -44,6 +44,7 @@ application and move everything unrelated to an interactive menu behind it.
 - [x] Remove the failed RGB hook from the fixed device path.
 - [x] Remove proof animation and audio from the critical interaction path.
 - [x] Retire completed high-frequency observers and their 60-second log sync.
+- [x] Replace launcher idle polling and raw-event logs with blocking evdev.
 - [ ] Inventory every remaining boot process, fork, file read and idle wake-up.
 - [ ] Replace dynamic multi-storage discovery and UnionFS with exact card paths.
 - [ ] Make the general audio stack content-triggered where compatibility allows.
@@ -94,10 +95,10 @@ and a deliberate recovery path.
 3. Memory efficiency: load and retain only what the fixed experience uses.
 4. Add the exact desired features after the base system is lean.
 
-The launcher remains a prototype. Its current short idle input poll was useful
-for bring-up, but the permanent version should block on events, minimize
-framebuffer writes, keep compact state and make emulator/media handoffs exact.
-This profiling follows the larger architectural savings; it is not forgotten.
+The launcher remains a prototype. Blocking input is complete; the permanent
+version should also minimize framebuffer writes, keep compact state and make
+emulator/media handoffs exact. This profiling follows the larger architectural
+savings; it is not forgotten.
 
 ## Current implementation status
 
@@ -139,9 +140,10 @@ This profiling follows the larger architectural savings; it is not forgotten.
 - [ ] Remove superseded muOS components and produce a reproducible firmware image.
 - [ ] Optimize kernel and U-Boot last.
 
-Verified interactive milestone: the current build entered at 2.238 seconds of
-kernel uptime with input ready and drew its first frame at 2.260 seconds. LED-on
-to an immediately usable menu is approximately four seconds by stopwatch.
+Verified interactive milestone: the latest three boots entered the launcher at
+2.222 seconds average kernel uptime and drew an input-ready first frame at
+2.252 seconds average (2.242--2.272 seconds). LED-on to an immediately usable
+menu remains approximately four seconds by stopwatch.
 All three emulator/Port paths are playable with audio and return to a redrawn
 launcher in 27--29 ms.
 
