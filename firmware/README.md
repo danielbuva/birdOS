@@ -111,14 +111,19 @@ targets, but they must be removed from a repacked copy and timed on hardware;
 the current clean-root `e2fsck -y` should also be measured before changing its
 policy.
 
-After the root switch, BusyBox runs:
+Before the critical-UI patch, BusyBox ran:
 
 `S00chrony -> S01entropy -> S02rgb -> S10udev -> S30dbus -> S99muos`
 
-The custom launcher already enters before udev, at roughly 2.26 seconds of
-kernel uptime, so remaining large perceived-boot gains are now in the static
-boot resource, Android boot payload, kernel and U-Boot rather than in the stock
-muOS frontend.
+The staged fixed-device order is now:
+
+`launcher + exact first-frame marker -> entropy -> udev -> D-Bus -> compatibility startup`
+
+RGB, the continuous backlight/process observers and the 60-second background
+log-sync sleeper are removed from ordinary boots. Specific firmware diagnostics
+remain available as deliberately armed probes. The next lower-layer target is
+starting the same static launcher during early-root handoff, before generic
+BusyBox startup.
 
 The latest complete kernel log further divides the pre-muOS interval. Built-in
 kernel initialization finishes and frees unused memory at 1.809 seconds. The

@@ -17,15 +17,87 @@ The target experience is:
 
 ```text
 Power button
-→ immediate LED/display response
-→ lightweight animation and sound
-→ usable text menu within a few seconds
-→ cached game collection appears
-→ storage finishes mounting asynchronously
-→ games become launchable
+→ interactive text menu at the earliest hardware-supported instant
+→ cached collection is immediately browsable
+→ essential storage and runtime setup finish asynchronously
+→ selected content becomes launchable
+→ optional effects appear only if the final experience benefits from them
 ```
 
 The long-term centerpiece would be a tiny custom launcher—ideally a small statically linked program—that replaces the heavier general-purpose frontend while retaining muOS underneath for hardware support, emulator launching, PortMaster, power controls and other useful infrastructure.
+
+## Governing optimization order
+
+This layered order supersedes the original feature-oriented numbering below.
+Every retained process, wake-up, file read, library and line of code must serve
+the fixed RG34XX-SP experience.
+
+### Layer 1 — userspace
+
+Highest return and lowest risk. Make the launcher the first userspace
+application and move everything unrelated to an interactive menu behind it.
+
+- [x] Replace the stock frontend with the static direct-framebuffer launcher.
+- [x] Compile the real library catalogue instead of scanning it at boot.
+- [x] Keep networking off until PortMaster or scraping explicitly requests it.
+- [x] Dispatch the launcher before entropy, storage and diagnostic observers.
+- [x] Remove the failed RGB hook from the fixed device path.
+- [x] Remove proof animation and audio from the critical interaction path.
+- [x] Retire completed high-frequency observers and their 60-second log sync.
+- [ ] Inventory every remaining boot process, fork, file read and idle wake-up.
+- [ ] Replace dynamic multi-storage discovery and UnionFS with exact card paths.
+- [ ] Make the general audio stack content-triggered where compatibility allows.
+- [ ] Absorb fixed controls and hardware policy into build-time state.
+- [ ] Bake changes into the image and disable the development user-init path.
+
+### Layer 2 — early userspace and init
+
+Replace generic startup with a minimal fixed-device init. Start the same static
+launcher immediately after `switch_root`, then complete only required setup in
+parallel.
+
+- [ ] Build and test a minimal fixed init with a stock-init recovery route.
+- [ ] Launch the menu at the early-root handoff.
+- [ ] Mount only the exact filesystems and device nodes the experience uses.
+- [ ] Replace unconditional filesystem repair with a safe dirty-state policy.
+- [ ] Remove unused magic data, generic ALSA profiles and recovery tools from
+  the initramfs.
+- [ ] Produce a reproducible boot image containing this early path.
+
+### Layer 3 — fixed RG34XX-SP kernel
+
+Build for the hardware that actually exists rather than a family of possible
+boards.
+
+- [ ] Reproduce the current vendor 4.9.170 kernel before changing its config.
+- [ ] Record and hardcode the exact board hardware, buses and device IDs.
+- [ ] Remove unused drivers, protocols, filesystems and alternate-board paths.
+- [ ] Disable or defer unused USB hosts, HDMI, Bluetooth, Wi-Fi and extra SDIO.
+- [ ] Remove known failed probes and generic discovery paths.
+- [ ] Measure kernel and initramfs compression choices on real hardware.
+
+### Layer 4 — bootloader
+
+Optimize U-Boot only after the userspace, early-init and kernel boundaries are
+measured. Keep the minimum required for power, the internal display, SD boot
+and a deliberate recovery path.
+
+- [ ] Remove unused boot targets, probes and environment flexibility.
+- [ ] Preserve a clean display handoff to the launcher.
+- [ ] Decide whether a splash is useful only after final menu latency is known.
+- [ ] Optimize U-Boot configuration and timing last.
+
+## System-wide efficiency priorities
+
+1. Power-on-to-interaction time and interaction latency.
+2. Battery efficiency: eliminate polling, needless wake-ups and resident work.
+3. Memory efficiency: load and retain only what the fixed experience uses.
+4. Add the exact desired features after the base system is lean.
+
+The launcher remains a prototype. Its current short idle input poll was useful
+for bring-up, but the permanent version should block on events, minimize
+framebuffer writes, keep compact state and make emulator/media handoffs exact.
+This profiling follows the larger architectural savings; it is not forgotten.
 
 ## Current implementation status
 
@@ -73,7 +145,10 @@ to an immediately usable menu is approximately four seconds by stopwatch.
 All three emulator/Port paths are playable with audio and return to a redrawn
 launcher in 27--29 ms.
 
-## Priority list
+## Original feature-oriented checklist
+
+This checklist records the build history and feature milestones. The layered
+roadmap above controls the order of new optimization work.
 
 ### 1. Preserve the working system and measurements
 
@@ -393,7 +468,7 @@ When installed-file experimentation stabilizes, create a reproducible custom OS 
 
 This turns the project from “modified SD card” into a repeatable personal firmware build.
 
-### 20. Touch kernel and U-Boot last
+### 20. Specialize the kernel, then touch U-Boot last
 
 Only proceed here after userspace is highly optimized and measurements prove meaningful time remains below it.
 
@@ -408,7 +483,9 @@ Possible later work:
 * Tune kernel compression
 * Narrow device-tree configuration
 
-These changes are higher risk and will likely save less time than replacing the frontend and critical userspace path.
+These changes are higher risk, but measurements now show that the kernel owns
+the largest remaining measured interval before the menu. They begin after the
+userspace and early-init boundaries are made exact; U-Boot remains last.
 
 ## Best immediate sequence
 
@@ -421,10 +498,12 @@ Your next concrete milestones should be:
 4. [done] Load a cached game list
 5. [done] Mount storage in parallel
 6. [done] Launch games and return directly to the menu
-7. [in progress] Replace muxfrontend's remaining daily-use paths
-8. Add optimized animation and audio
-9. Strip services and dependencies
-10. Package the complete custom image
+7. [in progress] Remove/defer every remaining nonessential userspace task
+8. Replace dynamic storage, audio and device discovery with fixed paths
+9. Launch the same static menu from a minimal early-root init
+10. Bake and reproduce the complete custom image
+11. Build the fixed RG34XX-SP kernel
+12. Reduce U-Boot only after the final boundary measurement
 ```
 
 The philosophy is simple: **one device, one experience, no unnecessary decisions, no unnecessary work, and something useful on-screen as early as the hardware permits.**

@@ -5,6 +5,13 @@ uses direct kernel syscalls and has no libc or dynamic-library dependencies.
 The macOS build produces a relocatable object; the RG34XX-SP's own GNU linker
 creates the final static executable during user-init.
 
+This is a functionally proven prototype, not the final optimized launcher.
+Architectural boot-path work has priority. Once the earliest launch point is
+fixed, launcher profiling will target idle wake-ups first (the current event
+loop sleeps for 4 ms), then framebuffer write volume, redraw granularity,
+catalog representation, code size and supervisor handoff overhead. Battery
+efficiency outranks memory reduction when those trade off.
+
 The calibration runs were deliberately late and temporary:
 
 1. Stock muOS reaches its normal screen.

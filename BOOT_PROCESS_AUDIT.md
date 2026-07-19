@@ -18,11 +18,13 @@ the launcher itself is already interactive at 2.286 seconds of kernel uptime.
 | 2.22--2.24 s | `S03danilauncher` supervisor dispatch | ~20 ms | Move ahead of all asynchronous observers and optional init hooks. |
 | 2.253--2.286 s | open fixed framebuffer/input and draw | 33 ms | Already appropriately narrow; profile after the init-order change. |
 
-The next critical-UI revision dispatches the launcher before the asynchronous
-backlight, ROM-mount and general boot probes, waits only for its post-draw
-marker, and then continues normal initialization. `S02rgb` is skipped. The
-proof animation and chime are also removed from the active path so measurements
-represent the interactive menu alone.
+The staged critical-UI revision dispatches the launcher before entropy, ROM
+mounting and compatibility startup, waits only for its exact post-draw marker,
+and then continues normal initialization. `S02rgb` and the completed polling
+observers are deleted from ordinary boot, and the 60-second log-sync sleeper is
+removed. Their source and historical results remain available for deliberately
+armed firmware experiments. Proof animation and chime are also absent so the
+measurement represents the interactive menu alone.
 
 ## Kernel-time opportunities inside the first 1.809 seconds
 
@@ -59,8 +61,8 @@ and is not included in these timestamps.
 | 4.61 s | boot partition and storage bind setup | no first-frame dependency | Defer or delete any bind/boot mounts unused by the fixed launcher and launch wrappers. |
 | 4.84 s | stock hotkey service | volume/system shortcuts become ready later | Keep during compatibility phase; later integrate the exact desired shortcuts into the launcher. |
 | 4.94 s | user-init | development installers and patch guards run | Keep while developing. Bake all changes into the final image, then disable it in production. |
-| 6.60 s | backlight probe ends | diagnostic only | Convert to an armed firmware-test probe after the brightness value is finalized. |
-| 33.37 s | generic boot probe ends | scans `/proc` every 200 ms and keeps a logger alive | Keep diagnostics but stop once the relevant milestones are captured; remove its 60-second background copy schedule. |
+| 6.60 s | backlight probe ends | diagnostic only | Removed from ordinary boot; restore only as an explicitly armed firmware-test probe. |
+| 33.37 s | generic boot probe ends | scanned `/proc` every 200 ms and kept a logger alive | Removed from ordinary boot together with its 60-second background copy schedule. |
 
 The stock frontend appearing at 18.64 seconds in this trace is not ordinary
 boot work. B was pressed at 18.55 seconds, deliberately invoking the stock
@@ -84,17 +86,31 @@ menu. The intended reduction is:
 5. Absorb the exact lid and volume behavior into the permanent launcher before
    removing their general-purpose services.
 
+## Efficiency rules
+
+- The menu and its exact post-draw timestamp are the only ordinary-boot
+  observability on the critical path.
+- Polling is a temporary bring-up technique, not a permanent idle behavior.
+- General services start on content demand unless hardware correctness requires
+  them earlier.
+- A compatibility component is removed only after its exact launcher, emulator,
+  media, lid, volume or shutdown responsibility has a fixed replacement.
+- Optimize in order: interaction latency, battery/wake-ups, resident memory,
+  then the exact desired features.
+
 ## Ordered attack plan
 
-1. Dispatch the launcher before asynchronous probes, remove failing RGB init,
-   and measure the menu without proof animation/audio.
-2. Move that same static launcher into the early-root/initramfs handoff.
-3. Record `/dev`, module and audio-node state immediately before and after udev;
+1. [staged] Dispatch the launcher first; remove RGB, completed polling probes,
+   the 60-second sync and proof effects while retaining the first-frame marker.
+2. Inventory and eliminate/defer remaining nonessential userspace work, starting
+   with dynamic multi-storage/UnionFS and always-resident general audio.
+3. Move that same static launcher into the early-root/initramfs handoff.
+4. Record `/dev`, module and audio-node state immediately before and after udev;
    replace its 1.53-second generic cold replay with a fixed-device sequence.
-4. Replace the dynamic multi-storage/UnionFS startup with a fixed ROM mount.
-5. Move the boot chime to fixed direct ALSA and make the general audio stack
+5. Replace the dynamic multi-storage/UnionFS startup with a fixed ROM mount.
+6. Make the general audio stack
    content-triggered.
-6. Bake successful card-side changes into rootfs, delete production user-init
+7. Bake successful card-side changes into rootfs, delete production user-init
    and generic maintenance jobs, then profile the smaller image.
-7. Trim the initramfs, then build the fixed kernel and optimize U-Boot last;
+8. Trim the initramfs, then build the fixed kernel and optimize U-Boot last;
    this is where most of the remaining power-on-to-menu interval lives.

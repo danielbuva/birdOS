@@ -1,7 +1,13 @@
-# RG34XX-SP bespoke muOS work
+# Dani's fixed RG34XX-SP operating system
 
 This repository contains the host-side sources and installation hooks used to
-profile and convert muOS 2601.1 into a fixed-purpose RG34XX-SP system.
+profile and convert muOS 2601.1 into a fixed-purpose RG34XX-SP operating
+system. muOS is now the compatibility foundation, not the product boundary.
+
+The governing priority is: boot latency, interaction latency, battery
+efficiency, memory efficiency, then exact user features. Generality is a cost,
+not a feature. Every persistent process, wake-up, probe, parser and loaded byte
+must serve this one device and this one experience.
 
 ## Measured state
 
@@ -10,19 +16,22 @@ profile and convert muOS 2601.1 into a fixed-purpose RG34XX-SP system.
 - Pre-font internal input-ready average: 9.84 seconds.
 - English-only-font internal input-ready average: 9.60 seconds.
 - Optimized-stock internal input-ready average: 8.43 seconds.
-- Current direct-launcher process entry: 2.256 seconds of kernel uptime.
-- Current first interactive frame: 2.276 seconds, 20 ms after process entry.
+- Last hardware-verified direct-launcher entry: 2.256 seconds of kernel uptime.
+- Last hardware-verified interactive frame: 2.276 seconds, 20 ms later.
 - Current LED-on stopwatch result: approximately four seconds.
 
-Diagnostics remain enabled. The long-term target is a small custom launcher
-with fixed RG34XX-SP hardware, English text, embedded assets, a cached game
-index, on-demand networking, and a reproducible firmware image.
+The staged critical-UI revision runs the launcher before every optional
+userspace hook, deletes RGB and completed high-frequency diagnostic observers,
+and retains only the exact post-draw marker needed to measure first interaction.
+The long-term target is a reproducible fixed-device image, not a collection of
+card-side patches.
 
 ## Current changes
 
 - Early ROM mount.
 - Frontend/audio readiness gate removed while PipeWire remains available.
-- Detailed sysinit, mount, frontend, process, and native frontend logging.
+- Historical detailed sysinit, mount, frontend and process logs retained;
+  continuous observers are being replaced by explicitly armed diagnostic runs.
 - Maintenance and log copying moved away from the UI critical path.
 - Emulator verification deferred and cached by OS build.
 - Five unused multilingual font DSOs replaced by tiny AArch64 stubs.
@@ -47,12 +56,11 @@ index, on-demand networking, and a reproducible firmware image.
 - Persistent Favorites and most-recent path tracking are hardware-verified.
 - ROM/Favorites readiness updates state without asynchronously repainting the
   launcher, and the permanent shell no longer times out into stock.
-- The boot-effects proof animates only after the usable frame and starts a tiny
-  preconverted PCM chime only after the normal audio route is ready. The later
-  muOS brightness restore is removed, leaving the display-handoff level
-  unchanged until a manual adjustment. Final effects move to firmware later.
-- Sounds, low-power monitoring, USB setup, device-control refresh, and SDL-map
-  refresh deferred until after frontend startup.
+- The animation and MPV-chime proofs are removed from the active path until the
+  earliest interactive-menu architecture is complete. Final effects come later.
+- Low-power monitoring, USB setup, device-control refresh and SDL-map refresh
+  remain post-menu compatibility work and are candidates for fixed/on-demand
+  replacement.
 - Early entropy retained: deferring haveged delayed kernel CRNG readiness and
   caused PipeWire/SDL audio to block the frontend until 12-14 seconds.
 - The stock 8.17 GiB image now has an exact partition map and verified offline
@@ -79,7 +87,8 @@ writes a content revision that user-init installs on the next boot.
 
 ## Important files
 
-- `99-frontend-native-log.sh`: persistent installer and diagnostic collector.
+- `99-frontend-native-log.sh`: development-only persistent installer; it will
+  disappear from the production image after rootfs changes are baked in.
 - `PortMaster.sh`: captured PortMaster reference; the on-demand network boundary
   lives in `launcher/S03danilauncher`.
 - `font-stubs/`: source and AArch64 object payloads for unused language fonts.
@@ -89,6 +98,7 @@ writes a content revision that user-init installs on the next boot.
 - `launcher/`: dependency-free direct-framebuffer launcher proof.
 - `firmware/`: exact stock partition map, checksums and reproducible offline
   image inspection tools.
-- `generate-boot-sound.py`: deterministic source for the tiny PCM boot chime.
+- `generate-boot-sound.py`: archived deterministic source for the completed
+  chime proof; it is not staged on the active boot path.
 
 The untouched recovery card remains the authoritative known-good system.

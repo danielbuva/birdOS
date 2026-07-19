@@ -43,6 +43,7 @@ BESPOKE_BRIGHTNESS_MARKER="DANI_DISABLE_ASYNC_BRIGHTNESS_RESTORE_V1"
 BESPOKE_SYSINIT_MARKER="BOOT_TIMING_DEFER_CHRONY_ENTROPY_V1"
 BESPOKE_ENTROPY_FIX_MARKER="BOOT_TIMING_RESTORE_EARLY_ENTROPY_V2"
 CRITICAL_UI_BACKUP="$BESPOKE_ROOT/backup/sysinit.pre-critical-ui"
+LEAN_USERSPACE_STATE="/opt/muos/config/system/dani_lean_userspace_v1"
 WIFI_DIAG_ROOT="/mnt/mmc/MUOS/boot-timing/wifi-module-diagnostic"
 WIFI_DIAG_STATE="$WIFI_DIAG_ROOT/state"
 WIFI_MODULE_TARGET="/opt/muos/script/device/module.sh"
@@ -483,6 +484,26 @@ if [ -x "$CRITICAL_UI_PATCH_SOURCE" ] && [ -x "$LAUNCHER_TARGET" ] && \
 	[ -s "$EARLY_INIT_TARGET" ]; then
 	"$CRITICAL_UI_PATCH_SOURCE" "$SYSINIT_TARGET" "$CRITICAL_UI_BACKUP" \
 		"$BESPOKE_ROOT/install.log" || :
+fi
+
+# Retire completed high-frequency diagnostics from ordinary boots. Their source
+# and historical output stay on the card and in Git, so a specific probe can be
+# armed deliberately for a firmware experiment. The launcher's exact post-draw
+# marker and the dispatcher TSV remain sufficient for current first-frame work.
+if [ ! -f "$LEAN_USERSPACE_STATE" ]; then
+	LEAN_REMOVED=0
+	for LEAN_PATH in \
+		/opt/muos/script/init/S02rgb \
+		/opt/muos/script/init/async/S04backlightprobe.sh \
+		/opt/muos/script/init/async/S90bootprobe.sh; do
+		if [ -e "$LEAN_PATH" ]; then
+			rm -f "$LEAN_PATH"
+			LEAN_REMOVED=$((LEAN_REMOVED + 1))
+		fi
+	done
+	printf '%s\n' "removed=$LEAN_REMOVED" >"$LEAN_USERSPACE_STATE"
+	printf '%s lean userspace installed; removed %s obsolete boot hooks\n' \
+		"$(date -Iseconds 2>/dev/null || date)" "$LEAN_REMOVED" >>"$BESPOKE_ROOT/install.log"
 fi
 
 # General device-module setup claims to exclude networking, but module.sh

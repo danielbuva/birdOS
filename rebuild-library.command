@@ -67,6 +67,7 @@ stage_file "$ROOT/launcher/S03danilauncher" "$PAYLOAD/S03danilauncher"
 stage_file "$ROOT/launcher/patch-critical-ui-sysinit.sh" \
 	"$PAYLOAD/patch-critical-ui-sysinit.sh"
 stage_file "$ROOT/launcher/README.md" "$PAYLOAD/README.md"
+[ ! -f "$PAYLOAD/boot.wav" ] || rm -f "$PAYLOAD/boot.wav"
 for CORE in gw_libretro.so bluemsx_libretro.so fake08_libretro.so; do
 	stage_file "$ROOT/launcher/optional-cores/$CORE" "$PAYLOAD/optional-cores/$CORE"
 done

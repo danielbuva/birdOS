@@ -22,8 +22,9 @@ product decisions, not runtime options.
 - Game discovery: a generated cache, never a boot-time directory scan.
 - Storage readiness: the cached collection remains browsable while storage is
   made ready asynchronously; launching is gated on the selected ROM path.
-- Diagnostics: retained during development, then reduced to precise milestone
-  markers in the reproducible firmware.
+- Diagnostics: off in ordinary boots except for the exact first-frame marker.
+  Deeper probes are individually armed for a specific experiment and removed
+  again afterward.
 - Stock muOS frontend: retained only as a fallback until the custom launcher
   can launch games, return from them, suspend and shut down reliably. B on the
   main menu remains the explicit recovery path during development.
@@ -68,14 +69,25 @@ runs the tool, then disconnects services and unloads the driver before returning
 Shutdown uses the normal muOS poweroff machinery directly from the custom menu.
 Both paths are hardware-verified and do not enter the stock frontend.
 
-The boot-effects proof keeps the complete menu as frame zero and starts its
-1.6-second procedural accent immediately. It completes on the first input, so
-it cannot delay or capture interaction. muOS's later saved-brightness restore
-is disabled; the existing display-handoff value remains until manual adjustment.
-A 320 ms mono PCM chime waits asynchronously for the existing PipeWire route,
-uses the proven `mpv` path directly, and is cancelled if the launcher hands off
-before playback. The line and tone are development assets; final effects move
-to an earlier firmware layer.
+The active boot path has no animation or startup sound while earliest
+interaction is being optimized. muOS's later saved-brightness restore remains
+disabled; the U-Boot-established value persists until manual adjustment. Final
+effects will be designed only after the fixed init/kernel path is complete.
+
+## Efficiency contract
+
+Priorities are strict:
+
+1. Boot and interaction latency.
+2. Battery efficiency: eliminate polling, needless wake-ups and resident
+   services.
+3. Memory efficiency: remove unused processes, libraries, caches and assets.
+4. Add only the exact features Dani chooses and uses.
+
+The launcher remains a prototype. Its architecture is proven, but its 4 ms
+idle polling loop, framebuffer write strategy and state representation are
+explicit later optimization targets rather than reasons to delay larger boot
+and init wins.
 
 ## Decisions reserved for the visual phase
 

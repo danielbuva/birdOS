@@ -26,8 +26,20 @@ IN_NORMAL=0
 FUNCTION_ADDED=0
 SKIPS_ADDED=0
 CALL_ADDED=0
+SKIP_FINAL_SYNC=0
+FINAL_FUNCTION_REMOVED=0
+FINAL_CALL_REMOVED=0
 while IFS= read -r LINE; do
-	if [ "$LINE" = 'RUN_NORMAL() {' ]; then
+	if [ "$SKIP_FINAL_SYNC" -eq 1 ]; then
+		if [ "$LINE" = '}' ]; then
+			SKIP_FINAL_SYNC=0
+		fi
+	elif [ "$LINE" = 'FINAL_SYNC() {' ]; then
+		SKIP_FINAL_SYNC=1
+		FINAL_FUNCTION_REMOVED=1
+	elif [ "$LINE" = "$(printf '\t\t%s' 'FINAL_SYNC &')" ]; then
+		FINAL_CALL_REMOVED=1
+	elif [ "$LINE" = 'RUN_NORMAL() {' ]; then
 		printf '%s\n' '# DANI_CRITICAL_UI_FIRST_V1'
 		printf '%s\n' 'RUN_CRITICAL_UI() {'
 		printf '\t%s\n' 'SCRIPT="$INIT_DIR/S03danilauncher"'
@@ -63,7 +75,8 @@ while IFS= read -r LINE; do
 done <"$TARGET" >"$PATCHED"
 
 if [ "$FUNCTION_ADDED" -ne 1 ] || [ "$SKIPS_ADDED" -ne 1 ] || \
-	[ "$CALL_ADDED" -ne 1 ] || ! grep -q "$MARKER" "$PATCHED" || \
+	[ "$CALL_ADDED" -ne 1 ] || [ "$FINAL_FUNCTION_REMOVED" -ne 1 ] || \
+	[ "$FINAL_CALL_REMOVED" -ne 1 ] || ! grep -q "$MARKER" "$PATCHED" || \
 	! sh -n "$PATCHED"; then
 	printf '%s ERROR: critical UI ordering patch did not match current sysinit\n' \
 		"$(date -Iseconds 2>/dev/null || date)" >>"$INSTALL_LOG"
