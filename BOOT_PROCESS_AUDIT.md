@@ -26,11 +26,14 @@ removed. Their source and historical results remain available for deliberately
 armed firmware experiments. Proof animation and chime are also absent so the
 measurement represents the interactive menu alone.
 
-The next card-side proof inserts an additive BusyBox inittab entry immediately
+The hardware-verified card-side proof inserts an additive BusyBox inittab entry immediately
 after the fixed `/run` setup and before the generic sysinit tree. It leaves the
-existing sysinit launcher entry in place as an automatic fallback and adds duplicate-start protection to the
-supervisor. This measures how much of the 1.852--2.21 second interval belongs
-to `rcS`; it is intentionally a precursor to changing the initramfs itself.
+existing sysinit launcher entry in place as an automatic fallback and adds
+duplicate-start protection to the supervisor. Its first frames varied from
+2.220 to 2.327 seconds, leaving root mount/inittab work in front of the menu.
+The in-progress candidate therefore embeds the launcher in initramfs and starts
+its root supervisor before `switch_root`, while leaving both later starts as
+duplicate-safe fallbacks.
 
 ## Kernel-time opportunities inside the first 1.809 seconds
 
@@ -112,8 +115,8 @@ menu. The intended reduction is:
    the 60-second sync and proof effects while retaining the first-frame marker.
 2. Inventory and eliminate/defer remaining nonessential userspace work, starting
    with dynamic multi-storage/UnionFS and always-resident general audio.
-3. [staged] Start the same launcher before `rcS`, measure it, then move the
-   proven boundary into the initramfs root-mount handoff.
+3. [in progress] Move the hardware-verified pre-`rcS` boundary into the
+   initramfs root-mount handoff and defer root BusyBox init until first frame.
 4. Record `/dev`, module and audio-node state immediately before and after udev;
    replace its 1.53-second generic cold replay with a fixed-device sequence.
 5. Replace the dynamic multi-storage/UnionFS startup with a fixed ROM mount.

@@ -58,8 +58,13 @@ launcher immediately after `switch_root`, then complete only required setup in
 parallel.
 
 - [ ] Build and test a minimal fixed init with a stock-init recovery route.
-- [ ] Hardware-verify the staged pre-`rcS` inittab launch and fallback.
-- [ ] Launch the menu at the early-root handoff.
+- [x] Hardware-verify the pre-`rcS` inittab launch and fallback.
+- [ ] [in progress] Embed the launcher in initramfs and draw before
+  `switch_root`.
+- [ ] Replace the initramfs shell and root BusyBox PID 1 with a tiny static
+  fixed-device init.
+- [ ] Invoke remaining compatibility applets only when their feature requests
+  them, then rebuild BusyBox with only that measured command set.
 - [ ] Mount only the exact filesystems and device nodes the experience uses.
 - [ ] Replace unconditional filesystem repair with a safe dirty-state policy.
 - [ ] Remove unused magic data, generic ALSA profiles and recovery tools from
@@ -503,7 +508,7 @@ Your next concrete milestones should be:
 6. [done] Launch games and return directly to the menu
 7. [in progress] Remove/defer every remaining nonessential userspace task
 8. Replace dynamic storage, audio and device discovery with fixed paths
-9. Launch the same static menu from a minimal early-root init
+9. [in progress] Launch the same static menu before `switch_root`
 10. Bake and reproduce the complete custom image
 11. Build the fixed RG34XX-SP kernel
 12. Reduce U-Boot only after the final boundary measurement

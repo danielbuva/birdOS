@@ -123,8 +123,8 @@ RGB, the continuous backlight/process observers and the 60-second background
 log-sync sleeper are removed from ordinary boots. Specific firmware diagnostics
 remain available as deliberately armed probes. The staged intermediate proof
 adds the launcher immediately after BusyBox's essential mounts and `/run` setup,
-before the generic sysinit tree; it does not alter the boot partition. Once hardware-verified, the
-same boundary can move into the repacked initramfs immediately after root mount.
+before the generic sysinit tree; it does not alter the boot partition. Hardware
+testing verified that boundary with fully functional sub-four-second boots.
 
 The latest complete kernel log further divides the pre-muOS interval. Built-in
 kernel initialization finishes and frees unused memory at 1.809 seconds. The
@@ -134,6 +134,21 @@ the instrumented muOS dispatcher begins. Input is already registered at 1.726
 seconds and ALSA at 1.808 seconds. The inittab proof attacks the tail of that
 interval; moving it across `switch_root` in the boot image attacks the remainder
 before rebuilding the kernel itself.
+
+`build-initramfs-launcher.sh` builds the next candidate from the exact installed
+backlight-25 boot image. It links the launcher as a stripped static AArch64 ELF,
+embeds it in initramfs, bind mounts it into the already-mounted root, starts the
+existing supervisor in that root, waits only for the first-frame marker, then
+executes `switch_root`. Generic root BusyBox init therefore begins after the
+interactive frame.
+
+BusyBox is not a daemon: its current initramfs shell interprets `/init`, and its
+root `init` becomes PID 1 after `switch_root`; individual applets run only when
+invoked. This candidate defers generic root init but still uses a BusyBox shell
+for mount and supervisor glue. The permanent architecture replaces that glue
+with a tiny static PID 1, invokes compatibility applets on demand, and then
+either rebuilds BusyBox with the measured minimal applet set or removes it from
+the normal path entirely.
 
 The 150 ms initramfs unpack currently includes a 2.8 MiB `magic.mgc`, generic
 ALSA profiles and recovery utilities unused by normal boot. Kernel logs also
@@ -146,7 +161,7 @@ from the ROM partition alone.
 Install the host dependencies once:
 
 ```sh
-brew install coreutils e2fsprogs dtc
+brew install coreutils e2fsprogs dtc lld
 ```
 
 Extract exact partitions into the hidden workspace on the mounted card:
@@ -154,6 +169,27 @@ Extract exact partitions into the hidden workspace on the mounted card:
 ```sh
 ./firmware/extract-stock-partitions.sh
 ```
+
+Build and stage the pre-`switch_root` launcher candidate:
+
+```sh
+./firmware/build-initramfs-launcher.sh
+./firmware/stage-initramfs-launcher.sh
+```
+
+The builder refuses any base other than the exact installed backlight-25 boot
+image. It verifies that kernel and DTB bytes are unchanged after repacking and
+that the embedded executable and patched `/init` survive a complete unpack.
+The device installer then verifies the 64 MiB candidate, backs up the active raw
+boot partition to `.firmware-work/device-boot-before-initramfs-launcher.img`,
+writes it, rereads the raw partition and automatically restores the backup if
+verification fails. The installation boot still uses the previous image; the
+following cold boot tests the candidate.
+
+The first verified build links the complete 5,953-game launcher to 621,736
+bytes. Its compressed initramfs grows from 2,606,337 to 2,768,060 bytes: only
+161,723 bytes. The exact staged 64 MiB candidate is SHA-256
+`316cb568015cf7d13ab5b33ab9b7d5fb8e274de59d5951951e5cbe8449fd5107`.
 
 Validate sizes, ext4 integrity and optionally all checksums:
 

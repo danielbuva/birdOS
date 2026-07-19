@@ -52,6 +52,10 @@ card-side patches.
   pages, and reads the built-in evdev device without SDL or joystick services.
 - The staged early-root proof starts it before `rcS`; duplicate-start protection
   lets the existing sysinit entry remain as a fallback during hardware testing.
+- That proof is hardware-verified with sub-four-second stopwatch results. The
+  in-progress boot-image candidate embeds the freestanding executable in
+  initramfs, starts it after the fixed root mount, and crosses `switch_root`
+  only after the interactive frame.
 - Its embedded catalog remains browsable while ROM storage mounts concurrently.
 - The real cache contains 5,953 games across 27 systems; artwork and metadata
   stay out of the boot executable.
