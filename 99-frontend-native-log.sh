@@ -69,6 +69,11 @@ EARLY_OLD_LAUNCHER_STATE="$LAUNCHER_ROOT/early-launcher-v11-real-catalog.revisio
 EARLY_LAUNCHER_REVISION_SOURCE="$LAUNCHER_ROOT/catalog.revision"
 EARLY_INIT_SOURCE="$LAUNCHER_ROOT/S03danilauncher"
 EARLY_INIT_TARGET="/opt/muos/script/init/S03danilauncher"
+EARLIEST_UI_SOURCE="$LAUNCHER_ROOT/dani-earliest-ui.sh"
+EARLIEST_UI_TARGET="/opt/muos/script/init/dani-earliest-ui.sh"
+EARLIEST_UI_INITTAB="/etc/inittab"
+EARLIEST_UI_INITTAB_BACKUP="$BESPOKE_ROOT/backup/inittab.pre-earliest-ui"
+EARLIEST_UI_PATCH_SOURCE="$LAUNCHER_ROOT/patch-earliest-ui-inittab.sh"
 CRITICAL_UI_PATCH_SOURCE="$LAUNCHER_ROOT/patch-critical-ui-sysinit.sh"
 EARLY_OLD_INIT_TARGET="/opt/muos/script/init/S11danilauncher"
 EARLY_STARTUP_TARGET="/opt/muos/script/system/startup.sh"
@@ -714,6 +719,28 @@ if [ "$BESPOKE_BRIGHTNESS_POLICY_READY" -eq 1 ] &&
 		printf '%s ERROR: early launcher/core installation failed; installation will retry\n' \
 			"$(date -Iseconds 2>/dev/null || date)" >>"$BESPOKE_ROOT/install.log"
 	fi
+fi
+
+# Begin the fixed menu before the generic rcS tree. BusyBox has already mounted
+# proc/dev/run through its inittab at this point, so the static launcher needs
+# no service discovery. The new entry is deliberately additive: a missing or
+# failed early helper returns to the stock rcS line immediately, and rcS still
+# invokes S03 as the normal fallback.
+if [ -s "$EARLIEST_UI_SOURCE" ] && [ -x "$EARLIEST_UI_PATCH_SOURCE" ] &&
+	[ -f "$EARLIEST_UI_INITTAB" ]; then
+	EARLIEST_UI_NEW="$EARLIEST_UI_TARGET.dani-new"
+	if ! cmp -s "$EARLIEST_UI_SOURCE" "$EARLIEST_UI_TARGET" 2>/dev/null; then
+		if cp -f "$EARLIEST_UI_SOURCE" "$EARLIEST_UI_NEW" &&
+			chmod 755 "$EARLIEST_UI_NEW"; then
+			mv -f "$EARLIEST_UI_NEW" "$EARLIEST_UI_TARGET"
+		else
+			rm -f "$EARLIEST_UI_NEW"
+		fi
+	fi
+
+	[ ! -x "$EARLIEST_UI_TARGET" ] ||
+		"$EARLIEST_UI_PATCH_SOURCE" "$EARLIEST_UI_INITTAB" \
+			"$EARLIEST_UI_INITTAB_BACKUP" "$BESPOKE_ROOT/install.log" || :
 fi
 
 # Install only the fixed-device pieces needed by the two optional systems in

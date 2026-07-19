@@ -121,17 +121,19 @@ The staged fixed-device order is now:
 
 RGB, the continuous backlight/process observers and the 60-second background
 log-sync sleeper are removed from ordinary boots. Specific firmware diagnostics
-remain available as deliberately armed probes. The next lower-layer target is
-starting the same static launcher during early-root handoff, before generic
-BusyBox startup.
+remain available as deliberately armed probes. The staged intermediate proof
+adds the launcher immediately after BusyBox's essential mounts and `/run` setup,
+before the generic sysinit tree; it does not alter the boot partition. Once hardware-verified, the
+same boundary can move into the repacked initramfs immediately after root mount.
 
 The latest complete kernel log further divides the pre-muOS interval. Built-in
 kernel initialization finishes and frees unused memory at 1.809 seconds. The
 initramfs checks and mounts the clean ext4 root by 1.852 seconds, after which
 switch-root and generic BusyBox inittab work take roughly 0.36 seconds before
 the instrumented muOS dispatcher begins. Input is already registered at 1.726
-seconds and ALSA at 1.808 seconds. This makes an early-root launcher handoff the
-next firmware target before rebuilding the kernel itself.
+seconds and ALSA at 1.808 seconds. The inittab proof attacks the tail of that
+interval; moving it across `switch_root` in the boot image attacks the remainder
+before rebuilding the kernel itself.
 
 The 150 ms initramfs unpack currently includes a 2.8 MiB `magic.mgc`, generic
 ALSA profiles and recovery utilities unused by normal boot. Kernel logs also

@@ -58,6 +58,7 @@ launcher immediately after `switch_root`, then complete only required setup in
 parallel.
 
 - [ ] Build and test a minimal fixed init with a stock-init recovery route.
+- [ ] Hardware-verify the staged pre-`rcS` inittab launch and fallback.
 - [ ] Launch the menu at the early-root handoff.
 - [ ] Mount only the exact filesystems and device nodes the experience uses.
 - [ ] Replace unconditional filesystem repair with a safe dirty-state policy.

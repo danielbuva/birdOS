@@ -25,8 +25,11 @@ file "$ROOT/launcher/dani-launcher.o"
 OBJECT_HASH=$(shasum -a 256 "$ROOT/launcher/dani-launcher.o" | cut -d ' ' -f 1)
 INIT_HASH=$(shasum -a 256 "$ROOT/launcher/S03danilauncher" | cut -d ' ' -f 1)
 ORDER_HASH=$(shasum -a 256 "$ROOT/launcher/patch-critical-ui-sysinit.sh" | cut -d ' ' -f 1)
+EARLIEST_HASH=$(shasum -a 256 "$ROOT/launcher/dani-earliest-ui.sh" | cut -d ' ' -f 1)
+INITTAB_HASH=$(shasum -a 256 "$ROOT/launcher/patch-earliest-ui-inittab.sh" | cut -d ' ' -f 1)
 {
-	printf '%s\n%s\n%s\n' "$OBJECT_HASH" "$INIT_HASH" "$ORDER_HASH"
+	printf '%s\n%s\n%s\n%s\n%s\n' \
+		"$OBJECT_HASH" "$INIT_HASH" "$ORDER_HASH" "$EARLIEST_HASH" "$INITTAB_HASH"
     for CORE in gw_libretro.so bluemsx_libretro.so fake08_libretro.so; do
         shasum -a 256 "$ROOT/launcher/optional-cores/$CORE" | cut -d ' ' -f 1
     done

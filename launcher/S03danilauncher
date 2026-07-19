@@ -148,6 +148,12 @@ case "$1" in
 	start)
 		[ -x "$TARGET" ] || exit 0
 		mkdir -p "$RUN_DIR"
+		if [ -e "$ACTIVE" ] && [ -s "$SUPERVISOR_PID" ]; then
+			RUNNING_PID=$(cat "$SUPERVISOR_PID" 2>/dev/null)
+			if [ -n "$RUNNING_PID" ] && kill -0 "$RUNNING_PID" 2>/dev/null; then
+				exit 0
+			fi
+		fi
 		rm -f "$STOPPING" "$FIRST_FRAME_MARKER"
 		: >"$ACTIVE"
 

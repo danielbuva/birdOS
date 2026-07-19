@@ -181,6 +181,13 @@ it consistently costs about 40 ms and returns failure on the RG34XX-SP. Early
 entropy remains enabled after the first frame because prior hardware tests
 proved that deferring it creates multi-second CRNG/audio stalls.
 
+The next staged proof moves the same supervisor ahead of `rcS`. A small BusyBox
+inittab entry runs `dani-earliest-ui.sh` immediately after essential mounts.
+The supervisor refuses a duplicate start, so the later instrumented sysinit
+entry becomes a no-op when early launch succeeds. If the helper or launcher
+fails, BusyBox continues into normal `rcS`, which still contains the proven
+launcher path and stock-frontend recovery.
+
 ## Permanent launcher shell
 
 The v10 build removes the proof's two-minute automatic handoff to stock. The

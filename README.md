@@ -25,6 +25,9 @@ must serve this one device and this one experience.
 The staged critical-UI revision runs the launcher before every optional
 userspace hook, deletes RGB and completed high-frequency diagnostic observers,
 and retains only the exact post-draw marker needed to measure first interaction.
+The next staged proof starts that same supervisor from BusyBox inittab after
+essential mounts but before the generic `rcS` tree, with normal `rcS` retained
+as an automatic fallback.
 The long-term target is a reproducible fixed-device image, not a collection of
 card-side patches.
 
@@ -47,6 +50,8 @@ card-side patches.
 - The custom launcher supervisor loads the network only around PortMaster.
 - The fixed launcher starts before udev, renders directly to both framebuffer
   pages, and reads the built-in evdev device without SDL or joystick services.
+- The staged early-root proof starts it before `rcS`; duplicate-start protection
+  lets the existing sysinit entry remain as a fallback during hardware testing.
 - Its embedded catalog remains browsable while ROM storage mounts concurrently.
 - The real cache contains 5,953 games across 27 systems; artwork and metadata
   stay out of the boot executable.
