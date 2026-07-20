@@ -86,9 +86,10 @@ card-side patches.
   stage appears. Warm equivalents are 0.04, 0.20 and 1.79 seconds. The fixed
   direct bridge passed complete functionality testing but remained perceptibly
   slow, so further game-load work is documented and deferred.
-- A one-cold-boot, behavior-preserving udev inventory is staged. It records
-  exact device nodes, modules, input/audio state and the udev database before
-  replacing the stock all-device replay or its resident daemon.
+- The behavior-preserving udev inventory is complete. Across its 1.51-second
+  daemon/trigger/settle phase, only `mali_kbase` and `/dev/mali0` were new;
+  input, ALSA and partition state was already present. A checksum-gated fixed
+  replacement is staged with no `udevd` or generic device replay.
 - ROM/Favorites readiness updates state without asynchronously repainting the
   launcher, and the permanent shell no longer times out into stock.
 - The animation and MPV-chime proofs are removed from the active path until the
@@ -132,6 +133,8 @@ writes a content revision that user-init installs on the next boot.
 - `ROADMAP.md`: target architecture and project sequence.
 - `GAME_LOAD_DEFERRED.md`: parked cold-game findings and resume-later build
   checklist.
+- `POWER_BUTTON_DEFERRED.md`: confirmed PMIC turn-on threshold values and the
+  final-firmware 128 ms hardware proof plan.
 - `DEVICE_PROFILE.md`: fixed hardware and experience contract.
 - `INPUT_MAP.md`: confirmed logical control bitmasks and muOS calibration notes.
 - `launcher/`: dependency-free direct-framebuffer launcher proof.

@@ -149,6 +149,8 @@ savings; it is not forgotten.
 - [x] Remove the RGB call and dispatch the interactive launcher before entropy,
   storage mounting and diagnostic observers.
 - [x] Remove the proof animation and chime from the active critical-UI path.
+- [ ] [fixed replacement staged] Replace the 1.51-second all-device udev replay
+  and resident daemon with explicit Mali loading and fixed access modes.
 - [ ] Move the final animation and audio to the earlier firmware layer.
 - [ ] Complete the final visual, animation and audio identity.
 - [ ] Remove superseded muOS components and produce a reproducible firmware image.
@@ -522,11 +524,18 @@ Your next concrete milestones should be:
 12. Build the fixed RG34XX-SP kernel
 13. Reduce U-Boot only after the final boundary measurement
 14. [deferred] Optimize cold game loading after the current system roadmap
+15. [deferred] Reduce the PMIC cold-power hold from 512 ms to its 128 ms
+    minimum and distinguish button acceptance from green-LED response
 ```
 
 Cold game launch findings and the resume-later checklist are intentionally
 parked in [`GAME_LOAD_DEFERRED.md`](GAME_LOAD_DEFERRED.md). The installed fixed
 bridge is functional, but further timing work now waits until the OS, services,
 storage, audio and reproducible image are exact.
+
+The power-key threshold is confirmed programmable in the AXP2202/AXP2101 PMIC,
+but its hardware proof belongs with the final firmware work. Exact DTB findings,
+ownership caveats and the test sequence are in
+[`POWER_BUTTON_DEFERRED.md`](POWER_BUTTON_DEFERRED.md).
 
 The philosophy is simple: **one device, one experience, no unnecessary decisions, no unnecessary work, and something useful on-screen as early as the hardware permits.**

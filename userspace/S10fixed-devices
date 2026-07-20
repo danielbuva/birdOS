@@ -1,0 +1,76 @@
+#!/bin/sh
+
+# Fixed RG34XX-SP device setup. devtmpfs has already created every built-in
+# input, sound, framebuffer and block node. The stock udev replay added only
+# mali_kbase plus generic ownership and convenience links on the measured card.
+STAGES="/tmp/muos/fixed-device-init.tsv"
+
+mkdir -p /tmp/muos
+printf 'uptime_s\tevent\n' >"$STAGES"
+
+mark() {
+	IFS=' ' read -r NOW _ </proc/uptime
+	printf '%s\t%s\n' "$NOW" "$1" >>"$STAGES"
+}
+
+case "$1" in
+	start)
+		printf 'Applying fixed RG34XX-SP device setup: '
+		mark fixed-device-start
+
+		# This was the only module added by the measured all-device udev replay.
+		modprobe -q mali_kbase || {
+			echo 'FAIL (mali_kbase)'
+			exit 1
+		}
+		mark mali-module-loaded
+
+		# Use readiness rather than a fixed delay if devtmpfs publication trails
+		# the synchronous module insertion.
+		WAIT_COUNT=0
+		while [ ! -e /dev/mali0 ] && [ "$WAIT_COUNT" -lt 100 ]; do
+			sleep 0.01
+			WAIT_COUNT=$((WAIT_COUNT + 1))
+		done
+		[ -e /dev/mali0 ] || {
+			echo 'FAIL (/dev/mali0)'
+			exit 1
+		}
+		chmod 0666 /dev/mali0
+		mark mali-device-ready
+
+		# Preserve only the stock access policy used by the launcher, SDL and
+		# audio stack. All current consumers run as root, but these modes retain
+		# compatibility without replaying every device in the machine.
+		for NODE in /dev/input/event*; do
+			[ -e "$NODE" ] || continue
+			chgrp input "$NODE" 2>/dev/null || :
+			chmod 0660 "$NODE"
+		done
+		for NODE in /dev/input/js*; do
+			[ -e "$NODE" ] || continue
+			chgrp input "$NODE" 2>/dev/null || :
+			chmod 0664 "$NODE"
+		done
+		for NODE in /dev/snd/*; do
+			[ -c "$NODE" ] || continue
+			chgrp audio "$NODE" 2>/dev/null || :
+			chmod 0660 "$NODE"
+		done
+		ln -sf rtc0 /dev/rtc
+		mark fixed-permissions-ready
+
+		mark fixed-device-complete
+		echo 'done'
+		;;
+	stop)
+		# No daemon or execution queue remains to stop.
+		mark fixed-device-stop-noop
+		;;
+	*)
+		echo "Usage: $0 {start|stop}"
+		exit 1
+		;;
+esac
+
+exit 0

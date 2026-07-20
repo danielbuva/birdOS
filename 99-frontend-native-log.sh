@@ -81,6 +81,8 @@ EARLY_STARTUP_BACKUP="$LAUNCHER_ROOT/startup.pre-early-launcher"
 EARLY_STARTUP_MARKER="DANI_EARLY_LAUNCHER_V1"
 UDEV_PROFILE_TMP="/tmp/muos/udev-profile"
 UDEV_PROFILE_ROOT="/mnt/mmc/MUOS/boot-timing/udev-profile/results"
+FIXED_DEVICE_TMP="/tmp/muos/fixed-device-init.tsv"
+FIXED_DEVICE_ROOT="/mnt/mmc/MUOS/boot-timing/udev-fixed/results"
 
 if [ -r /proc/sys/kernel/random/boot_id ]; then
 	IFS= read -r BOOT_ID </proc/sys/kernel/random/boot_id
@@ -109,6 +111,12 @@ if [ -d "$UDEV_PROFILE_TMP" ]; then
 	UDEV_PROFILE_FINAL="$UDEV_PROFILE_ROOT/$BOOT_ID"
 	mkdir -p "$UDEV_PROFILE_FINAL"
 	cp -R "$UDEV_PROFILE_TMP/." "$UDEV_PROFILE_FINAL/"
+fi
+
+if [ -f "$FIXED_DEVICE_TMP" ]; then
+	mkdir -p "$FIXED_DEVICE_ROOT"
+	cp -f "$FIXED_DEVICE_TMP" "$FIXED_DEVICE_ROOT/$BOOT_ID.tsv"
+	cp -f "$FIXED_DEVICE_TMP" "$FIXED_DEVICE_ROOT/latest.tsv"
 fi
 
 mkdir -p "$TRACE_ROOT/backup" "$TRACE_LOG_DIR"
