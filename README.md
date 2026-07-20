@@ -80,10 +80,11 @@ card-side patches.
 - SNES, PSP, and native Port launch/return paths work with audio and volume.
 - PortMaster and shutdown run directly without entering the stock frontend.
 - Persistent Favorites and most-recent path tracking are hardware-verified.
-- Cold libretro handoff is now measured separately: three first launches spent
-  5.78--7.40 seconds inside muOS's generic wrapper before its RetroArch stage,
-  while a second launch in the same boot took 2.19 seconds. A behavior-identical
-  profiled wrapper is staged to divide this into exact removable substages.
+- Cold libretro handoff is now measured separately. The profiler attributes
+  1.63 seconds to the generic SDL/controller scan, 0.20 seconds to remaining
+  shell/config work and 5.67 seconds after RetroArch exec before its no-op color
+  stage appears. Warm equivalents are 0.04, 0.20 and 1.79 seconds. A fixed
+  direct bridge is staged with the exact RG34XX-SP map and constant settings.
 - ROM/Favorites readiness updates state without asynchronously repainting the
   launcher, and the permanent shell no longer times out into stock.
 - The animation and MPV-chime proofs are removed from the active path until the

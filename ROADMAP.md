@@ -149,9 +149,11 @@ savings; it is not forgotten.
 - [x] Remove the RGB call and dispatch the interactive launcher before entropy,
   storage mounting and diagnostic observers.
 - [x] Remove the proof animation and chime from the active critical-UI path.
-- [ ] [profiling staged] Replace the generic cold libretro launch wrapper;
-  isolate its 5.78--7.40-second first-launch setup into fixed SDL, RetroArch
-  configuration, control-map and process-start phases.
+- [ ] [fixed bridge staged] Replace the generic cold libretro launch wrapper.
+  Profiling isolated 1.63 seconds in SDL/controller setup, 0.20 seconds in
+  repeated config and 5.67 seconds in cold RetroArch/library/core startup.
+- [ ] Build a fixed RetroArch without the unused FFmpeg, subtitle, font,
+  translation, USB and other generic dependencies revealed by this profile.
 - [ ] Move the final animation and audio to the earlier firmware layer.
 - [ ] Complete the final visual, animation and audio identity.
 - [ ] Remove superseded muOS components and produce a reproducible firmware image.

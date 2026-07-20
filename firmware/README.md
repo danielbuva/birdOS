@@ -206,6 +206,14 @@ show unconditional USB host, network protocol, Bluetooth, HDMI and extra
 SD/SDIO initialization. These are fixed-kernel targets; they cannot be removed
 from the ROM partition alone.
 
+The cold-game profile exposes a second firmware-build target. The 12.4 MB
+generic RetroArch executable directly requests 24 shared libraries, including
+FFmpeg codec/device/format/scaling/resampling, ASS subtitles, FriBidi,
+Fontconfig, FreeType and libusb. Flycast adds a 22.4 MB cold core. The measured
+first Dreamcast launch spent 5.67 seconds between `exec` and the first identity
+color-stage message versus 1.79 seconds warm. A fixed RetroArch build can remove
+the unused dependency graph instead of hiding it with unconditional prefetch.
+
 ## Reproduce the inventory
 
 Install the host dependencies once:

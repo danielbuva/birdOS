@@ -114,6 +114,21 @@ backs it up before installing this diagnostic. The resulting measurements will
 define a minimal fixed libretro bridge; the profiler is not a production
 dependency.
 
+The hardware profile split the cold first launch as follows: function loading
+and fixed home lookup were 0.01 seconds, generic SDL/controller setup was 1.63
+seconds, remaining foreground/config/swap work was 0.20 seconds, and the period
+from RetroArch exec to the identity color-stage message was 5.67 seconds. On
+the second launch, SDL setup fell to 0.04 seconds and exec-to-stage fell to 1.79
+seconds. This is a cold file/dependency cost, not an arbitrary delay.
+
+`lr-fixed.sh` is the next staged proof. It directly exports the measured
+RG34XX-SP values (720x480, no rotation, retro ABXY mapping, fixed muOS-Keys SDL
+row), writes the foreground owner, and execs RetroArch. It removes the
+controller-database scan, per-launch configuration rewrite, swap detection and
+`libmustage.so` preload; the latter only reported identity brightness, contrast,
+saturation, hue and gamma values. The prerequisite RetroArch files were already
+created by the verified generic path and are checked by the one-shot installer.
+
 ## Native system actions
 
 The launcher uses the same narrow exit-code handoff for its remaining system

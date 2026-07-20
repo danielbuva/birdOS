@@ -47,7 +47,7 @@ fi
 if [ -f "$BACKUP" ]; then
 	[ "$(sha_file "$BACKUP")" = "$STOCK_SHA" ] || fail "existing backup checksum mismatch"
 else
-	cp -p "$TARGET" "$BACKUP"
+	cp "$TARGET" "$BACKUP"
 	[ "$(sha_file "$BACKUP")" = "$STOCK_SHA" ] || fail "new backup checksum mismatch"
 fi
 
