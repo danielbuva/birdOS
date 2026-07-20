@@ -1,0 +1,73 @@
+#!/bin/sh
+
+# Seed early exactly as before, then remove haveged once muOS's existing
+# entropy-ready threshold is satisfied. If readiness takes too long, retain it.
+ENTROPY_FILE="/proc/sys/kernel/random/entropy_avail"
+ENTROPY_TARGET=256
+STAGES="/tmp/muos/entropy-once.tsv"
+
+mkdir -p /tmp/muos
+
+mark() {
+	IFS=' ' read -r NOW _ </proc/uptime
+	printf '%s\t%s\n' "$NOW" "$1" >>"$STAGES"
+}
+
+entropy_ok() {
+	IFS= read -r CURRENT_ENTROPY <"$ENTROPY_FILE" 2>/dev/null || return 1
+	[ -n "$CURRENT_ENTROPY" ] && [ "$CURRENT_ENTROPY" -ge "$ENTROPY_TARGET" ]
+}
+
+start_once() {
+	printf 'uptime_s\tevent\n' >"$STAGES"
+	/opt/muos/bin/haveged -w 1024 -T 4 &
+	mark haveged-started
+
+	(
+		COUNT=0
+		while ! entropy_ok && [ "$COUNT" -lt 100 ]; do
+			COUNT=$((COUNT + 1))
+			sleep 0.05
+		done
+
+		if ! entropy_ok; then
+			mark entropy-timeout-haveged-retained
+			exit 0
+		fi
+		mark entropy-ready
+
+		killall haveged 2>/dev/null || :
+		STOP_COUNT=0
+		while [ -n "$(pidof haveged 2>/dev/null)" ] && [ "$STOP_COUNT" -lt 20 ]; do
+			STOP_COUNT=$((STOP_COUNT + 1))
+			sleep 0.05
+		done
+		if [ -n "$(pidof haveged 2>/dev/null)" ]; then
+			killall -9 haveged 2>/dev/null || :
+			mark haveged-force-stopped
+		else
+			mark haveged-stopped
+		fi
+	) &
+}
+
+stop_once() {
+	killall haveged 2>/dev/null || :
+	mark haveged-stop-requested
+}
+
+case "${1-}" in
+	start) start_once ;;
+	stop) stop_once ;;
+	restart)
+		stop_once
+		start_once
+		;;
+	status)
+		entropy_ok
+		;;
+	*)
+		printf 'Usage: %s {start|stop|restart|status}\n' "$0" >&2
+		exit 1
+		;;
+esac

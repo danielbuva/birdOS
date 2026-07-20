@@ -67,3 +67,12 @@ it: it is already interactive before this independent stage starts. Replace
 direct-event paths before retrying daemon removal. Delete udev only after the
 launcher, every emulator family, MPV audio/video controls, volume, suspend/lid,
 the deferred PortMaster/network check and shutdown all pass.
+
+## Entropy lifecycle
+
+`S01entropy-once` preserves the early haveged start that previously prevented
+CRNG/audio stalls. A background readiness guard uses muOS's existing 256-bit
+threshold and stops haveged only after it is satisfied; on a five-second
+timeout, the daemon remains resident. It is staged independently alongside the
+fixed-storage batch so audio behavior and the final haveged PID can be tested
+and attributed separately.

@@ -74,7 +74,7 @@ and is not included in these timestamps.
 | 2.26--3.77 s | full udev daemon, cold replay and settle | 1.51 s; gates the stock startup sequence, not the menu | The 1.35-second input/sound-only replay is functional and current. The rejected one-shot proof broke MPV's rich controls and timed out stopping udevd. |
 | 3.77--3.85 s | D-Bus | 80 ms; required mainly by the general audio stack | Start concurrently where safe; eventually remove if direct ALSA replaces the PipeWire boot path. |
 | 3.85--3.86 s | dispatch stock startup | 10 ms | Keep only as a temporary compatibility supervisor while dependencies are extracted. |
-| 2.24--4.49 s | dynamic ROM-storage mount path | storage becomes browse-launchable at 4.115 s | A first proof replaces the two resident FUSE unions with exact kernel binds. Next replace device discovery, `blkid`, SD/USB probes and generic bind selection with one fixed `/dev/mmcblk0p6` path. |
+| 2.24--4.49 s | dynamic ROM-storage mount path | latest storage ready at 3.75 s; no first-frame dependency | Exact kernel binds are verified with no FUSE PIDs. Direct `/dev/mmcblk0p6` mounting, no SD/USB probing, no boot/configfs startup mounts and a fixed bind map are staged together with separate logs. |
 | 4.18--4.38 s | PipeWire and WirePlumber | socket only; final boot chime starts at 4.66 s | The largest experiential target: fixed ALSA setup plus a tiny embedded-PCM player, with PipeWire started only for content that needs it. |
 | 4.61 s | boot partition and storage bind setup | no first-frame dependency | Defer or delete any bind/boot mounts unused by the fixed launcher and launch wrappers. |
 | 4.84 s | stock hotkey service | volume/system shortcuts become ready later | Keep during compatibility phase; later integrate the exact desired shortcuts into the launcher. |
@@ -142,10 +142,11 @@ menu. The intended reduction is:
    player-volume controls. The resident minimal bridge is therefore the current
    checkpoint until those libudev/SDL clients receive fixed direct-event
    replacements. PortMaster/network remains a deferred acceptance check.
-7. [fixed UnionFS replacement staged] Replace the dynamic multi-storage/UnionFS
-   startup with a fixed ROM mount. First remove its two resident FUSE processes
-   behind identical compatibility paths; after hardware verification, replace
-   the remaining ROM/SD/USB discovery and generic storage binds.
+7. [FUSE removal verified; exact mount/binds staged] Replace the dynamic
+   multi-storage/UnionFS startup with a fixed ROM mount. Its two resident FUSE
+   processes are gone behind identical kernel-bind compatibility paths. The
+   next batch replaces the remaining probing, unused boot/configfs mounts and
+   generic bind selection.
 8. Make the general audio stack
    content-triggered.
 9. Bake successful card-side changes into rootfs, delete production user-init

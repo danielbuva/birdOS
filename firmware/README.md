@@ -206,6 +206,21 @@ show unconditional USB host, network protocol, Bluetooth, HDMI and extra
 SD/SDIO initialization. These are fixed-kernel targets; they cannot be removed
 from the ROM partition alone.
 
+## Power-key threshold proof
+
+The Linux DTB programs the AXP2202/AXP2101-compatible power key for a 512 ms
+cold-power hold, while the U-Boot DTB already requests the PMIC's 128 ms
+minimum. `build-power-key-128.sh` patches only the Linux property in the exact
+static-PID1 image. A complete repack/unpack verification proves the kernel and
+initramfs are byte-identical and the 1,500/6,000 ms long/forced-off thresholds
+are unchanged. The candidate SHA-256 is
+`a6bafa83add62af92a27450594f6da4e8dfacdbcc0c247c08c512a7b1495b6b5`.
+
+Because Linux can program only the *next* cold-power state, the installation
+boot writes the image, the following boot runs the new driver and programs the
+PMIC, and only the third boot is a valid short-tap test. The device installer
+backs up and raw-verifies all 64 MiB with automatic restore on mismatch.
+
 The cold-game profile exposes a second firmware-build target. The 12.4 MB
 generic RetroArch executable directly requests 24 shared libraries, including
 FFmpeg codec/device/format/scaling/resampling, ASS subtitles, FriBidi,

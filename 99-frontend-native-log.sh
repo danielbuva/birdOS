@@ -89,6 +89,11 @@ UDEV_ONCE_TMP="/tmp/muos/udev-once.tsv"
 UDEV_ONCE_ROOT="/mnt/mmc/MUOS/boot-timing/udev-once/results"
 FIXED_UNION_TMP="/tmp/muos/fixed-union.tsv"
 FIXED_STORAGE_ROOT="/mnt/mmc/MUOS/boot-timing/fixed-storage/results"
+FIXED_MOUNT_TMP="/tmp/muos/fixed-mount.tsv"
+FIXED_STORAGE_START_TMP="/tmp/muos/fixed-storage-start.tsv"
+FIXED_BIND_TMP="/tmp/muos/fixed-bind.tsv"
+ENTROPY_ONCE_TMP="/tmp/muos/entropy-once.tsv"
+ENTROPY_ONCE_ROOT="/mnt/mmc/MUOS/boot-timing/entropy-once/results"
 
 if [ -r /proc/sys/kernel/random/boot_id ]; then
 	IFS= read -r BOOT_ID </proc/sys/kernel/random/boot_id
@@ -146,6 +151,28 @@ if [ -f "$FIXED_UNION_TMP" ]; then
 		printf 'unionfs_pids='
 		pidof unionfs 2>/dev/null || :
 	} >"$FIXED_STORAGE_ROOT/latest-processes.txt"
+fi
+
+for FIXED_PAIR in \
+	"$FIXED_MOUNT_TMP|mount" \
+	"$FIXED_STORAGE_START_TMP|start" \
+	"$FIXED_BIND_TMP|bind"; do
+	FIXED_SOURCE="${FIXED_PAIR%%|*}"
+	FIXED_NAME="${FIXED_PAIR#*|}"
+	[ -f "$FIXED_SOURCE" ] || continue
+	mkdir -p "$FIXED_STORAGE_ROOT"
+	cp -f "$FIXED_SOURCE" "$FIXED_STORAGE_ROOT/$BOOT_ID-$FIXED_NAME.tsv"
+	cp -f "$FIXED_SOURCE" "$FIXED_STORAGE_ROOT/latest-$FIXED_NAME.tsv"
+done
+
+if [ -f "$ENTROPY_ONCE_TMP" ]; then
+	mkdir -p "$ENTROPY_ONCE_ROOT"
+	cp -f "$ENTROPY_ONCE_TMP" "$ENTROPY_ONCE_ROOT/$BOOT_ID.tsv"
+	cp -f "$ENTROPY_ONCE_TMP" "$ENTROPY_ONCE_ROOT/latest.tsv"
+	{
+		printf 'haveged_pids='
+		pidof haveged 2>/dev/null || :
+	} >"$ENTROPY_ONCE_ROOT/latest-processes.txt"
 fi
 
 mkdir -p "$TRACE_ROOT/backup" "$TRACE_LOG_DIR"

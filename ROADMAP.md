@@ -46,11 +46,14 @@ application and move everything unrelated to an interactive menu behind it.
 - [x] Retire completed high-frequency observers and their 60-second log sync.
 - [x] Replace launcher idle polling and raw-event logs with blocking evdev.
 - [ ] Inventory every remaining boot process, fork, file read and idle wake-up.
-- [ ] [fixed UnionFS replacement staged] Replace dynamic multi-storage
-  discovery and UnionFS with exact card paths. First preserve the two stock
-  compatibility paths as kernel binds and prove FUSE removal; then replace the
-  ROM/SD/USB discovery and generic `/run/muos/storage` selection.
+- [ ] [FUSE removal verified; exact mount/binds staged] Replace dynamic
+  multi-storage discovery and UnionFS with exact card paths. Kernel binds now
+  preserve both union compatibility paths with zero resident FUSE processes.
+  The next batched proof replaces ROM/SD/USB discovery, unused boot/configfs
+  mounts and generic `/run/muos/storage` source selection.
 - [ ] Make the general audio stack content-triggered where compatibility allows.
+- [ ] [one-shot proof staged] Retain early entropy seeding but terminate haveged
+  after the existing readiness threshold instead of keeping it resident.
 - [ ] Absorb fixed controls and hardware policy into build-time state.
 - [ ] Bake changes into the image and disable the development user-init path.
 
@@ -531,8 +534,9 @@ Your next concrete milestones should be:
 12. Build the fixed RG34XX-SP kernel
 13. Reduce U-Boot only after the final boundary measurement
 14. [deferred] Optimize cold game loading after the current system roadmap
-15. [deferred] Reduce the PMIC cold-power hold from 512 ms to its 128 ms
-    minimum and distinguish button acceptance from green-LED response
+15. [128 ms Linux-DTB proof staged in current batch] Reduce the PMIC cold-power
+    hold from 512 ms to its minimum and distinguish button acceptance from
+    green-LED response
 ```
 
 Cold game launch findings and the resume-later checklist are intentionally
@@ -540,9 +544,9 @@ parked in [`GAME_LOAD_DEFERRED.md`](GAME_LOAD_DEFERRED.md). The installed fixed
 bridge is functional, but further timing work now waits until the OS, services,
 storage, audio and reproducible image are exact.
 
-The power-key threshold is confirmed programmable in the AXP2202/AXP2101 PMIC,
-but its hardware proof belongs with the final firmware work. Exact DTB findings,
-ownership caveats and the test sequence are in
+The power-key threshold is confirmed programmable in the AXP2202/AXP2101 PMIC.
+Its isolated Linux-DTB proof has been promoted into the current batch; exact
+ownership caveats and the required three-boot test sequence are in
 [`POWER_BUTTON_DEFERRED.md`](POWER_BUTTON_DEFERRED.md).
 
 The philosophy is simple: **one device, one experience, no unnecessary decisions, no unnecessary work, and something useful on-screen as early as the hardware permits.**
