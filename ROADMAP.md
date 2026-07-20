@@ -46,14 +46,16 @@ application and move everything unrelated to an interactive menu behind it.
 - [x] Retire completed high-frequency observers and their 60-second log sync.
 - [x] Replace launcher idle polling and raw-event logs with blocking evdev.
 - [ ] Inventory every remaining boot process, fork, file read and idle wake-up.
-- [ ] [FUSE removal verified; exact mount/binds staged] Replace dynamic
+- [x] Replace dynamic
   multi-storage discovery and UnionFS with exact card paths. Kernel binds now
   preserve both union compatibility paths with zero resident FUSE processes.
-  The next batched proof replaces ROM/SD/USB discovery, unused boot/configfs
-  mounts and generic `/run/muos/storage` source selection.
-- [ ] Make the general audio stack content-triggered where compatibility allows.
-- [ ] [one-shot proof staged] Retain early entropy seeding but terminate haveged
-  after the existing readiness threshold instead of keeping it resident.
+  Direct `/dev/mmcblk0p6` mounting, unused boot/configfs-mount removal and the
+  fixed `/run/muos/storage` map passed the combined functionality test.
+- [ ] [staged] Make D-Bus, PipeWire and WirePlumber content-triggered; stop them
+  when the selected game/media process returns to the launcher.
+- [ ] [CRNG-event revision staged] Retain early entropy seeding but terminate
+  haveged after the kernel's explicit readiness event. The first 256-bit
+  counter proof safely retained the daemon instead of proving termination.
 - [ ] Absorb fixed controls and hardware policy into build-time state.
 - [ ] Bake changes into the image and disable the development user-init path.
 
@@ -103,6 +105,10 @@ and a deliberate recovery path.
 - [ ] Preserve a clean display handoff to the launcher.
 - [ ] Decide whether a splash is useful only after final menu latency is known.
 - [ ] Optimize U-Boot configuration and timing last.
+- [ ] Measure and advance the PMIC green-LED assertion if the verified 128 ms
+  power-key threshold does not already own the observed delay.
+- [ ] Start the fixed `rg34xxsp_v1` LCD/panel sequence earlier in U-Boot; Linux
+  inherits an already-running display and cannot recover pre-kernel darkness.
 
 ## System-wide efficiency priorities
 

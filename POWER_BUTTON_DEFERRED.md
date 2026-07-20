@@ -53,20 +53,33 @@ The checksum-gated installer accepts only the currently verified boot image,
 backs it up, writes and rereads the raw partition, and automatically restores
 the backup on a verification mismatch.
 
-## Hardware proof plan
+## Hardware result
 
-1. The first boot installs the candidate but still runs the old 512 ms kernel.
-2. The second cold boot runs the new DTB and programs the PMIC, then must be
-   shut down normally. This press may still require the old threshold.
-3. Starting with the third cold boot, test at least ten deliberate normal taps
+The checksum-gated image installed and reread successfully. After the new
+Linux driver had run and the device was shut down normally, the user confirmed
+that an ordinary quick tap powers on the device. This strongly supports the
+ownership model above: Linux programs the retained PMIC threshold for the next
+cold start. Forced-off, lid, charging and repeated near-boundary behavior still
+belong in the final firmware acceptance sweep.
+
+The green work LED is separately described as PMIC/battery GPIO PI12, while the
+panel is initialized by U-Boot's fixed `rg34xxsp_v1` LCD node. The shorter PMIC
+acceptance threshold should naturally advance the green-light boundary by
+roughly 384 ms. Any residual LED delay needs PMIC/bootloader measurement; any
+residual display-dark interval needs U-Boot panel-sequence work. Neither should
+be pushed into the launcher.
+
+## Remaining acceptance plan
+
+1. Starting with a post-programming cold boot, test at least ten normal taps
    and several intentionally too-short presses near/below 128 ms.
-4. Correlate button-down, green-LED and first-frame timing with video if the
+2. Correlate button-down, green-LED and first-frame timing with video if the
    subjective acceptance boundary remains unclear.
-5. Verify normal shutdown, forced-off behavior, lid wake, charging startup and
+3. Verify normal shutdown, forced-off behavior, lid wake, charging startup and
    recovery-key behavior are unchanged.
-6. If the green LED still appears late, separate PMIC acceptance time from
+4. If the green LED still appears late, separate PMIC acceptance time from
    bootloader LED policy; do not misattribute an LED delay to the power key.
-7. Bake the verified 128 ms setting into the reproducible final firmware and
+5. Bake the verified 128 ms setting into the reproducible final firmware and
    remove the experimental installer.
 
 ## References

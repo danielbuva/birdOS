@@ -8,6 +8,7 @@ SHARE_ROOT="/opt/muos/share"
 BINDMAP="$STORE_ROOT/bindmap"
 MOUNT_FAILURE="/tmp/muos/fixed-bind-failure"
 STAGES="/tmp/muos/fixed-bind.tsv"
+RESULTS="/mnt/mmc/MUOS/boot-timing/fixed-storage/results"
 KEYS=""
 
 PRIORITY_LOCS="application bios init info/track music save theme"
@@ -143,3 +144,13 @@ write_map task INTERNAL "$SHARE_ROOT/task"
 LC_ALL=C awk -F'|' -v OFS='|' '$1 == "package" { sub(/\/package\/.*/, "/package", $3) } { print }' \
 	"$BINDMAP" | LC_ALL=C sort -t'|' -k1,1 >"$BINDMAP.tmp" && mv "$BINDMAP.tmp" "$BINDMAP" || exit 1
 mark fixed-bind-complete
+
+# The ordinary user-init collector can run before the noncritical bind tail is
+# finished. Persist the completed record here, after every bind is verified.
+BOOT_ID=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null)
+[ -n "$BOOT_ID" ] || BOOT_ID=unknown
+mkdir -p "$RESULTS"
+cp -f "$STAGES" "$RESULTS/$BOOT_ID-bind.tsv"
+cp -f "$STAGES" "$RESULTS/latest-bind.tsv"
+grep -E ' /run/muos/storage/| /opt/muos/share/emulator/' /proc/mounts \
+	>"$RESULTS/latest-bind-mounts.txt" 2>/dev/null || :

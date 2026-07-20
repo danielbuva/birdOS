@@ -1,10 +1,12 @@
 #!/bin/sh
 
-# Seed early exactly as before, then remove haveged once muOS's existing
-# entropy-ready threshold is satisfied. If readiness takes too long, retain it.
+# Seed early exactly as before, then remove haveged when this kernel explicitly
+# reports that its CRNG is initialized. The old 256-bit counter test can remain
+# below 256 even after the CRNG is ready, which left haveged resident.
 ENTROPY_FILE="/proc/sys/kernel/random/entropy_avail"
 ENTROPY_TARGET=256
 STAGES="/tmp/muos/entropy-once.tsv"
+RESULTS="/mnt/mmc/MUOS/boot-timing/entropy-once/results"
 
 mkdir -p /tmp/muos
 
@@ -18,6 +20,23 @@ entropy_ok() {
 	[ -n "$CURRENT_ENTROPY" ] && [ "$CURRENT_ENTROPY" -ge "$ENTROPY_TARGET" ]
 }
 
+crng_ok() {
+	dmesg 2>/dev/null | grep -q 'random: crng init done'
+}
+
+persist() {
+	[ -d /mnt/mmc/MUOS ] || return 0
+	BOOT_ID=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null)
+	[ -n "$BOOT_ID" ] || BOOT_ID=unknown
+	mkdir -p "$RESULTS"
+	cp -f "$STAGES" "$RESULTS/$BOOT_ID.tsv"
+	cp -f "$STAGES" "$RESULTS/latest.tsv"
+	{
+		printf 'haveged_pids='
+		pidof haveged 2>/dev/null || :
+	} >"$RESULTS/latest-processes.txt"
+}
+
 start_once() {
 	printf 'uptime_s\tevent\n' >"$STAGES"
 	/opt/muos/bin/haveged -w 1024 -T 4 &
@@ -25,16 +44,17 @@ start_once() {
 
 	(
 		COUNT=0
-		while ! entropy_ok && [ "$COUNT" -lt 100 ]; do
+		while ! crng_ok && [ "$COUNT" -lt 80 ]; do
 			COUNT=$((COUNT + 1))
-			sleep 0.05
+			sleep 0.10
 		done
 
-		if ! entropy_ok; then
-			mark entropy-timeout-haveged-retained
+		if ! crng_ok; then
+			mark crng-timeout-haveged-retained
+			persist
 			exit 0
 		fi
-		mark entropy-ready
+		mark crng-ready
 
 		killall haveged 2>/dev/null || :
 		STOP_COUNT=0
@@ -48,6 +68,7 @@ start_once() {
 		else
 			mark haveged-stopped
 		fi
+		persist
 	) &
 }
 
@@ -64,7 +85,7 @@ case "${1-}" in
 		start_once
 		;;
 	status)
-		entropy_ok
+		crng_ok
 		;;
 	*)
 		printf 'Usage: %s {start|stop|restart|status}\n' "$0" >&2

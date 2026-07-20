@@ -1,0 +1,58 @@
+#!/bin/sh
+
+REAL="/opt/muos/script/init/S30dbus.dani-real"
+DEMAND="/run/muos/dani-audio-demand"
+STAGES="/tmp/muos/audio-on-demand.tsv"
+RESULTS="/mnt/mmc/MUOS/boot-timing/audio-on-demand/results"
+
+mkdir -p /run/muos /tmp/muos
+
+mark() {
+	IFS=' ' read -r NOW _ </proc/uptime
+	printf '%s\t%s\n' "$NOW" "$1" >>"$STAGES"
+}
+
+persist() {
+	[ -d /mnt/mmc/MUOS ] || return 0
+	BOOT_ID=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null)
+	[ -n "$BOOT_ID" ] || BOOT_ID=unknown
+	mkdir -p "$RESULTS"
+	cp -f "$STAGES" "$RESULTS/$BOOT_ID.tsv"
+	cp -f "$STAGES" "$RESULTS/latest.tsv"
+}
+
+case "${1-}" in
+	start)
+		if [ ! -e "$DEMAND" ]; then
+			mark dbus-boot-start-deferred
+			exit 0
+		fi
+		[ -S /run/dbus/system_bus_socket ] && exit 0
+		exec "$REAL" start
+		;;
+	demand-start)
+		: >"$DEMAND"
+		if [ -S /run/dbus/system_bus_socket ]; then
+			mark dbus-already-ready
+			persist
+			exit 0
+		fi
+		mark dbus-demand-start
+		"$REAL" start
+		RESULT=$?
+		mark "dbus-demand-result-$RESULT"
+		persist
+		exit "$RESULT"
+		;;
+	demand-stop)
+		if [ -S /run/dbus/system_bus_socket ] || [ -f /run/messagebus.pid ]; then
+			mark dbus-demand-stop
+			"$REAL" stop || :
+		fi
+		rm -f "$DEMAND"
+		mark dbus-demand-stopped
+		persist
+		exit 0
+		;;
+	*) exec "$REAL" "$@" ;;
+esac

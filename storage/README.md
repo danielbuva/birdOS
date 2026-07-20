@@ -21,16 +21,14 @@ PortMaster, media, stock fallback, Favorites, global controls and shutdown to
 remain functional. The diagnostic collector records bind timing, final mount
 types and any remaining `unionfs` PIDs.
 
-The next batched proof has three separately gated components:
+The direct fixed-storage batch is hardware-verified:
 
 - `fixed-storage.sh` and `fixed-start.sh` mount only `/dev/mmcblk0p6`, remove
   ROM/SD/USB probing, and omit unused boot-partition/configfs startup mounts;
 - `fixed-bind.sh` preserves all current `/run/muos/storage` and emulator save
   compatibility paths but maps them deterministically from `/mnt/mmc`;
-- `S01entropy-once` remains an independent userspace component. It starts
-  haveged at the same early point, waits for the existing 256-bit readiness
-  threshold, then terminates the generator instead of leaving it resident.
+- `fixed-bind.sh` now additionally persists its own completed record because
+  the early user-init collector can run before the noncritical bind tail ends.
 
-Run `stage-fixed-storage-batch.sh /Volumes/dani-sp` to deliver all three in one
-card cycle. Installers `81`, `82`, and `83` keep separate checksum gates,
-backups, markers and logs so a batched test still has component-level evidence.
+The behavior change is complete; the self-persisted proof revision is bundled
+with the next userspace batch and does not change any mount or bind path.

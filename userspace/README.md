@@ -71,8 +71,22 @@ the deferred PortMaster/network check and shutdown all pass.
 ## Entropy lifecycle
 
 `S01entropy-once` preserves the early haveged start that previously prevented
-CRNG/audio stalls. A background readiness guard uses muOS's existing 256-bit
-threshold and stops haveged only after it is satisfied; on a five-second
-timeout, the daemon remains resident. It is staged independently alongside the
-fixed-storage batch so audio behavior and the final haveged PID can be tested
-and attributed separately.
+CRNG/audio stalls. The first background guard reused muOS's 256-bit counter
+test, but the captured kernel log reached `random: crng init done` while that
+condition still kept haveged alive. The revised guard watches that explicit
+kernel event, stops the generator afterward, and retains it on an eight-second
+timeout. Its completion record and final PID state are written after the ROM
+mount exists, independent of the earlier user-init collector.
+
+## Content-triggered audio
+
+`S30dbus-on-demand` and `pipewire-on-demand` are narrow wrappers around the
+unaltered stock scripts. Their ordinary boot `start` requests return without
+creating a daemon. The launcher uses the explicit `demand-start` boundary
+before any game or MPV handoff, then `demand-stop` after content returns. Stock
+frontend fallback also starts audio first. The installer preserves the exact
+stock implementations as `.dani-real`, checksum-gates all three active files,
+and applies the D-Bus, PipeWire and launcher changes as one rollback unit.
+
+Run `stage-on-demand-runtime-batch.sh /Volumes/dani-sp` to stage this audio
+boundary together with the independent CRNG-event and final-bind-log revisions.

@@ -8,9 +8,10 @@ TARGET="/opt/muos/script/init/S01entropy"
 BACKUP="$WORK_DIR/backup/S01entropy.stock"
 MARKER="$WORK_DIR/entropy-once-installed"
 LOG_FILE="$WORK_DIR/install.log"
-CARD_INSTALLER="$ROM_MOUNT/MUOS/init/83-install-entropy-once.sh"
+CARD_INSTALLER="$ROM_MOUNT/MUOS/init/78-install-entropy-crng.sh"
 OLD_SHA="542385cc824591a1a6fddde078a339c2e8467341a65e025026f95ac4623fbe02"
-NEW_SHA="8c70010ae701961582f64199abd1c42905df11c0e8c780ed6cfb967b7e0d2799"
+INTERMEDIATE_SHA="8c70010ae701961582f64199abd1c42905df11c0e8c780ed6cfb967b7e0d2799"
+NEW_SHA="aabd64646311c81d8fd18d24e9fcb8804896d652bf985fd59051e01934d2f312"
 TEMP="/opt/muos/script/init/.S01entropy.dani-once-new"
 
 mkdir -p "$WORK_DIR/backup"
@@ -40,11 +41,15 @@ if [ "$CURRENT_SHA" = "$NEW_SHA" ]; then
 	printf 'one-shot entropy service already installed\n'
 	exit 0
 fi
-[ "$CURRENT_SHA" = "$OLD_SHA" ] || fail "refusing unknown S01entropy"
+case "$CURRENT_SHA" in
+	"$OLD_SHA" | "$INTERMEDIATE_SHA") ;;
+	*) fail "refusing unknown S01entropy" ;;
+esac
 
 if [ -f "$BACKUP" ]; then
 	[ "$(sha_file "$BACKUP")" = "$OLD_SHA" ] || fail "existing entropy backup mismatch"
 else
+	[ "$CURRENT_SHA" = "$OLD_SHA" ] || fail "stock entropy backup missing"
 	cp "$TARGET" "$BACKUP"
 fi
 
@@ -58,4 +63,4 @@ sync
 
 printf '%s\n' "$NEW_SHA" >"$MARKER"
 disable_installer
-printf 'SUCCESS: one-shot entropy lifecycle installed; active next boot\n'
+printf 'SUCCESS: CRNG-event one-shot entropy lifecycle installed; active next boot\n'

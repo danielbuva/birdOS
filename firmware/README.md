@@ -97,6 +97,16 @@ idle accent colours but intentionally omits menu rows. U-Boot can display it
 before Linux without pretending input is ready; the interactive launcher adds
 the menu at its first real frame.
 
+The same U-Boot DTB proves that display onset is lower-layer work:
+`disp_init_enable = 1`, the fixed LCD driver is `rg34xxsp_v1`, and its panel,
+PWM and backlight GPIO sequence is already active before Linux. Linux inherits
+that display. Turning the panel on earlier therefore means measuring and
+shortening U-Boot's fixed panel/boot-resource path, not adding launcher code.
+The green work LED is distinct: the Linux device profile maps it through the
+AXP2202 battery/PMIC node to PI12. The verified 512-to-128 ms retained PMIC
+power-key setting should already move power acceptance—and normally that LED—
+earlier; any remaining LED delay must be isolated below userspace.
+
 ## Early Linux findings
 
 The initramfs expands to about 8.0 MiB. Its `/init` mounts proc, sysfs and

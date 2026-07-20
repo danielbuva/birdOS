@@ -40,7 +40,9 @@ card-side patches.
 ## Current changes
 
 - Early ROM mount.
-- Frontend/audio readiness gate removed while PipeWire remains available.
+- Frontend/audio readiness gate removed. A checksum-gated next-stage wrapper is
+  staged to keep D-Bus, PipeWire and WirePlumber absent until a game or media
+  selection explicitly requests audio, then stop them on return.
 - Historical detailed sysinit, mount, frontend and process logs retained;
   continuous observers are being replaced by explicitly armed diagnostic runs.
 - The launcher blocks on evdev after storage readiness instead of waking 250
@@ -96,14 +98,20 @@ card-side patches.
   resident minimal bridge is restored; it remains fully outside and after the
   interactive launcher. PortMaster/network remains a deferred check at the
   configured home network.
-- The first fixed-storage proof is verified. It replaces the two resident
+- The fixed-storage path is hardware-verified. It replaces the two resident
   UnionFS-FUSE processes with kernel bind mounts from this card at the same
   `/mnt/union/ROMS` and `/mnt/union/ports` compatibility paths; diagnostics
-  confirmed exact exFAT binds and no UnionFS PID. A three-component batch is
-  staged next: direct fixed ROM mounting, a fixed compatibility bind map, and
-  early-but-one-shot entropy generation. The independent Linux-DTB 128 ms
-  power-key proof is included in the same cycle. Each component retains a
-  separate checksum, backup and log.
+  confirmed exact exFAT binds and no UnionFS PID. The next batch adds only a
+  final self-persisted bind proof; it does not alter the verified mapping.
+- The Linux-DTB 128 ms power-key candidate is raw-verified and functional: a
+  normal quick tap now powers on the device. Because Linux programs the PMIC
+  for the next cold start, this result becomes valid only after the candidate
+  has booted and the device has shut down normally. The same lower threshold
+  should advance the PMIC power-accepted/green-LED boundary by about 384 ms.
+- The first entropy-lifecycle proof retained haveged because the 256-bit
+  counter condition stayed false even after the kernel logged CRNG readiness.
+  A revised independent stage now keys termination to the kernel's explicit
+  `random: crng init done` event and persists its final PID proof itself.
 - ROM/Favorites readiness updates state without asynchronously repainting the
   launcher, and the permanent shell no longer times out into stock.
 - The animation and MPV-chime proofs are removed from the active path until the
@@ -149,7 +157,7 @@ writes a content revision that user-init installs on the next boot.
 - `GAME_LOAD_DEFERRED.md`: parked cold-game findings and resume-later build
   checklist.
 - `POWER_BUTTON_DEFERRED.md`: staged PMIC 128 ms candidate, ownership caveats
-  and the required three-boot hardware proof plan.
+  and the hardware proof/result.
 - `DEVICE_PROFILE.md`: fixed hardware and experience contract.
 - `INPUT_MAP.md`: confirmed logical control bitmasks and muOS calibration notes.
 - `launcher/`: dependency-free direct-framebuffer launcher proof.

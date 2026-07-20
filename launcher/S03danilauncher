@@ -13,6 +13,7 @@ BOOT_ID=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null)
 [ -n "$BOOT_ID" ] || BOOT_ID="unknown"
 ARCHIVE_LOG="/mnt/mmc/MUOS/bespoke-launcher/early-launcher-$BOOT_ID.log"
 LAUNCH_REQUEST="$RUN_DIR/dani-launch-request"
+AUDIO_CONTROL="/opt/muos/script/system/pipewire.sh"
 
 SNAPSHOT_LOG() {
 	[ -d /mnt/mmc/MUOS ] || return 0
@@ -23,8 +24,7 @@ SNAPSHOT_LOG() {
 
 WAIT_RUNTIME() {
 	WAIT_COUNT=0
-	while [ ! -e "$READY" ] || [ ! -S /run/pipewire-0 ] || \
-		[ ! -e /usr/lib/gamecontrollerdb.txt ]; do
+	while [ ! -e "$READY" ] || [ ! -e /usr/lib/gamecontrollerdb.txt ]; do
 		[ -e "$STOPPING" ] && return 1
 		WAIT_COUNT=$((WAIT_COUNT + 1))
 		[ "$WAIT_COUNT" -ge 500 ] && {
@@ -36,6 +36,33 @@ WAIT_RUNTIME() {
 	done
 	printf '%s runtime ready uptime: ' "$1"
 	cut -d ' ' -f 1 /proc/uptime
+}
+
+START_AUDIO() {
+	if [ -S /run/pipewire-0 ]; then
+		return 0
+	fi
+	printf 'audio demand start uptime: '
+	cut -d ' ' -f 1 /proc/uptime
+	"$AUDIO_CONTROL" demand-start || {
+		printf 'audio demand failed uptime: '
+		cut -d ' ' -f 1 /proc/uptime
+		"$AUDIO_CONTROL" demand-stop || :
+		return 1
+	}
+	[ -S /run/pipewire-0 ] || {
+		"$AUDIO_CONTROL" demand-stop || :
+		return 1
+	}
+	printf 'audio demand ready uptime: '
+	cut -d ' ' -f 1 /proc/uptime
+}
+
+STOP_AUDIO() {
+	[ -e "$RUN_DIR/dani-audio-demand" ] || return 0
+	printf 'audio demand stop uptime: '
+	cut -d ' ' -f 1 /proc/uptime
+	"$AUDIO_CONTROL" demand-stop || :
 }
 
 RUN_CONTENT() {
@@ -58,6 +85,7 @@ RUN_CONTENT() {
 	}
 
 	WAIT_RUNTIME content || return 1
+	START_AUDIO || return 1
 
 	. /opt/muos/script/var/func.sh
 	GOVERNOR_FILE=$(GET_VAR "device" "cpu/governor")
@@ -83,6 +111,7 @@ RUN_CONTENT() {
 		6) /opt/muos/script/launch/ext-mpv.sh "$CONTENT_NAME" "$CONTENT_CORE" "$CONTENT_PATH" ;;
 		*)
 			printf 'launch bridge error: unsupported kind %s\n' "$LAUNCH_KIND"
+			STOP_AUDIO
 			return 1
 			;;
 	esac
@@ -93,12 +122,14 @@ RUN_CONTENT() {
 	printf 'content launch result: %s\n' "$CONTENT_RESULT"
 	printf 'content launch end uptime: '
 	cut -d ' ' -f 1 /proc/uptime
+	STOP_AUDIO
 	SNAPSHOT_LOG
 	return "$CONTENT_RESULT"
 }
 
 RUN_PORTMASTER() {
 	WAIT_RUNTIME portmaster || return 1
+	/opt/muos/script/init/S30dbus demand-start || return 1
 	printf 'portmaster network connect start uptime: '
 	cut -d ' ' -f 1 /proc/uptime
 	SNAPSHOT_LOG
@@ -122,6 +153,7 @@ RUN_PORTMASTER() {
 	fi
 
 	/opt/muos/script/system/network.sh disconnect
+	/opt/muos/script/init/S30dbus demand-stop || :
 	. /opt/muos/script/var/func.sh
 	SET_VAR "system" "foreground_process" "dani-launcher"
 	printf 'portmaster network disconnected uptime: '
@@ -184,6 +216,7 @@ case "$1" in
 
 				SNAPSHOT_LOG
 				rm -f "$ACTIVE"
+				START_AUDIO || :
 				. /opt/muos/script/var/func.sh
 				FRONTEND start
 				printf 'stock frontend handoff requested at uptime: '

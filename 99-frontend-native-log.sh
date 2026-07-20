@@ -94,6 +94,8 @@ FIXED_STORAGE_START_TMP="/tmp/muos/fixed-storage-start.tsv"
 FIXED_BIND_TMP="/tmp/muos/fixed-bind.tsv"
 ENTROPY_ONCE_TMP="/tmp/muos/entropy-once.tsv"
 ENTROPY_ONCE_ROOT="/mnt/mmc/MUOS/boot-timing/entropy-once/results"
+AUDIO_ON_DEMAND_TMP="/tmp/muos/audio-on-demand.tsv"
+AUDIO_ON_DEMAND_ROOT="/mnt/mmc/MUOS/boot-timing/audio-on-demand/results"
 
 if [ -r /proc/sys/kernel/random/boot_id ]; then
 	IFS= read -r BOOT_ID </proc/sys/kernel/random/boot_id
@@ -173,6 +175,21 @@ if [ -f "$ENTROPY_ONCE_TMP" ]; then
 		printf 'haveged_pids='
 		pidof haveged 2>/dev/null || :
 	} >"$ENTROPY_ONCE_ROOT/latest-processes.txt"
+fi
+
+if [ -f "$AUDIO_ON_DEMAND_TMP" ]; then
+	mkdir -p "$AUDIO_ON_DEMAND_ROOT"
+	cp -f "$AUDIO_ON_DEMAND_TMP" "$AUDIO_ON_DEMAND_ROOT/$BOOT_ID.tsv"
+	cp -f "$AUDIO_ON_DEMAND_TMP" "$AUDIO_ON_DEMAND_ROOT/latest.tsv"
+	{
+		printf 'dbus_pids='
+		pidof dbus-daemon 2>/dev/null || :
+		printf '\npipewire_pids='
+		pidof pipewire 2>/dev/null || :
+		printf '\nwireplumber_pids='
+		pidof wireplumber 2>/dev/null || :
+		printf '\n'
+	} >"$AUDIO_ON_DEMAND_ROOT/latest-processes.txt"
 fi
 
 mkdir -p "$TRACE_ROOT/backup" "$TRACE_LOG_DIR"
