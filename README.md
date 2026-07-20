@@ -25,9 +25,9 @@ must serve this one device and this one experience.
 The boot image now starts the launcher from initramfs after mounting the fixed
 root but before `switch_root`. The launcher and its input descriptors survive
 the handoff, while the later root startup sees the existing supervisor and does
-not start a duplicate. The next staged proof replaces the generic initramfs
-shell with a static fixed-device init while retaining the existing root PID 1
-as its fallback second phase.
+not start a duplicate. A staged candidate now replaces the generic initramfs
+shell with a 6,424-byte static fixed-device init while retaining the verified
+shell as `/init.stock` and the existing root PID 1 as its second phase.
 The long-term target is a reproducible fixed-device image, not a collection of
 card-side patches.
 
@@ -56,6 +56,10 @@ card-side patches.
   results. It embeds the freestanding executable in initramfs, starts it after
   the fixed root mount, and crosses `switch_root` only after the interactive
   frame.
+- The next boot-image candidate hardcodes the exact SD root and mount sequence
+  in a freestanding C `/init`. Its full 64 MiB image rebuilds byte-for-byte and
+  is staged for hardware testing with raw-write verification and automatic
+  restore on a write mismatch.
 - Its embedded catalog remains browsable while ROM storage mounts concurrently.
 - The real cache contains 5,953 games across 27 systems; artwork and metadata
   stay out of the boot executable.

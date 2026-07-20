@@ -159,6 +159,9 @@ case "$1" in
 
 		(
 			{
+				if [ -e "$RUN_DIR/dani-fixed-initramfs-v1" ]; then
+					printf '%s\n' 'fixed initramfs path: active'
+				fi
 				printf 'direct supervisor start uptime: '
 					cut -d ' ' -f 1 /proc/uptime
 				while :; do

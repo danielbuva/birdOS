@@ -156,6 +156,22 @@ with a tiny static PID 1, invokes compatibility applets on demand, and then
 either rebuilds BusyBox with the measured minimal applet set or removes it from
 the normal path entirely.
 
+`build-fixed-initramfs.sh` implements the first half of that replacement. Its
+6,424-byte freestanding AArch64 `/init` hardcodes `/dev/mmcblk0p5`, invokes the
+existing filesystem check, mounts only proc, sysfs, devtmpfs, the ext4 root,
+`/run`, and `/tmp`, dispatches the verified launcher supervisor, waits for its
+exact first-frame marker, then uses the existing `switch_root`. NAND, MTD,
+autoconfiguration, command-line parsing, `awk`, `grep`, `expr`, and generic
+getty branches are absent from the executable. The verified shell path remains
+as `/init.stock` for failures before the root is mounted; the existing root
+BusyBox PID 1 remains the second phase.
+
+The build normalizes host-dependent newc CPIO inode identity without changing
+device-node identities or payload bytes. Two clean builds produced the same
+2,769,443-byte compressed initramfs, Android SHA-1 boot ID, and complete 64 MiB
+image. The staged candidate is SHA-256
+`3f6e8b07826ba307ff22665b9ca4d6cd2a485ce3b5162be95c7eacfa8301578c`.
+
 The 150 ms initramfs unpack currently includes a 2.8 MiB `magic.mgc`, generic
 ALSA profiles and recovery utilities unused by normal boot. Kernel logs also
 show unconditional USB host, network protocol, Bluetooth, HDMI and extra
@@ -183,9 +199,24 @@ Build and stage the pre-`switch_root` launcher candidate:
 ./firmware/stage-initramfs-launcher.sh
 ```
 
-The builder refuses any base other than the exact installed backlight-25 boot
-image. It verifies that kernel and DTB bytes are unchanged after repacking and
-that the embedded executable and patched `/init` survive a complete unpack.
+After hardware-verifying that image, build and stage the fixed `/init`
+candidate:
+
+```sh
+./firmware/build-fixed-initramfs.sh
+./firmware/stage-fixed-initramfs.sh
+```
+
+The installation boot continues using the verified shell image. Leave that
+boot running for at least 30 seconds so the installer can back up, write and
+reread the raw partition. The following cold boot tests the static init.
+
+The launcher builder refuses any base other than the exact installed
+backlight-25 boot image. It verifies that kernel and DTB bytes are unchanged
+after repacking and that the embedded executable and patched `/init` survive a
+complete unpack. The fixed-init builder similarly requires the exact
+hardware-verified launcher image and verifies `/init`, `/init.stock`, the
+launcher, kernel and DTB after another complete unpack.
 The device installer then verifies the 64 MiB candidate, backs up the active raw
 boot partition to `.firmware-work/device-boot-before-initramfs-launcher.img`,
 writes it, rereads the raw partition and automatically restores the backup if

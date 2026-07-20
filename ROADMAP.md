@@ -57,12 +57,14 @@ Replace generic startup with a minimal fixed-device init. The static launcher
 now draws before `switch_root`; next, replace each generic init layer while
 keeping the verified menu-first boundary.
 
-- [ ] Build and test a minimal fixed init with a stock-init recovery route.
+- [ ] [in progress] Build and hardware-test a minimal fixed init with a
+  stock-init recovery route.
 - [x] Hardware-verify the pre-`rcS` inittab launch and fallback.
 - [x] Embed the launcher in initramfs and hardware-verify an interactive frame
   before `switch_root`.
-- [ ] [next] Replace the generic initramfs shell with a tiny static fixed-device
-  init while retaining the existing root PID 1 as the fallback second phase.
+- [ ] [staged] Replace the generic initramfs shell with a tiny static
+  fixed-device init while retaining the existing root PID 1 as the fallback
+  second phase.
 - [ ] Replace the root BusyBox PID 1 with the hardware-verified static init.
 - [ ] Invoke remaining compatibility applets only when their feature requests
   them, then rebuild BusyBox with only that measured command set.
@@ -70,7 +72,8 @@ keeping the verified menu-first boundary.
 - [ ] Replace unconditional filesystem repair with a safe dirty-state policy.
 - [ ] Remove unused magic data, generic ALSA profiles and recovery tools from
   the initramfs.
-- [ ] Produce a reproducible boot image containing this early path.
+- [x] Produce a byte-reproducible boot-image candidate containing this early
+  path.
 
 ### Layer 3 — fixed RG34XX-SP kernel
 
