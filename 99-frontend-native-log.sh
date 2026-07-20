@@ -79,6 +79,8 @@ EARLY_OLD_INIT_TARGET="/opt/muos/script/init/S11danilauncher"
 EARLY_STARTUP_TARGET="/opt/muos/script/system/startup.sh"
 EARLY_STARTUP_BACKUP="$LAUNCHER_ROOT/startup.pre-early-launcher"
 EARLY_STARTUP_MARKER="DANI_EARLY_LAUNCHER_V1"
+UDEV_PROFILE_TMP="/tmp/muos/udev-profile"
+UDEV_PROFILE_ROOT="/mnt/mmc/MUOS/boot-timing/udev-profile/results"
 
 if [ -r /proc/sys/kernel/random/boot_id ]; then
 	IFS= read -r BOOT_ID </proc/sys/kernel/random/boot_id
@@ -99,6 +101,14 @@ if [ -f "$TIMING_TMP" ]; then
 	mkdir -p "$TIMING_FINAL_DIR"
 	cp -f "$TIMING_TMP" "$TIMING_FINAL_DIR/boot-timing-$BOOT_ID.tsv"
 	cp -f "$TIMING_TMP" "$TIMING_FINAL_DIR/boot-timing-latest.tsv"
+fi
+
+# Persist an explicitly armed one-boot udev inventory after the ROM partition
+# exists. The S10 wrapper never waits for removable storage itself.
+if [ -d "$UDEV_PROFILE_TMP" ]; then
+	UDEV_PROFILE_FINAL="$UDEV_PROFILE_ROOT/$BOOT_ID"
+	mkdir -p "$UDEV_PROFILE_FINAL"
+	cp -R "$UDEV_PROFILE_TMP/." "$UDEV_PROFILE_FINAL/"
 fi
 
 mkdir -p "$TRACE_ROOT/backup" "$TRACE_LOG_DIR"

@@ -121,13 +121,19 @@ from RetroArch exec to the identity color-stage message was 5.67 seconds. On
 the second launch, SDL setup fell to 0.04 seconds and exec-to-stage fell to 1.79
 seconds. This is a cold file/dependency cost, not an arbitrary delay.
 
-`lr-fixed.sh` is the next staged proof. It directly exports the measured
+`lr-fixed.sh` is the installed fixed bridge. It directly exports the measured
 RG34XX-SP values (720x480, no rotation, retro ABXY mapping, fixed muOS-Keys SDL
 row), writes the foreground owner, and execs RetroArch. It removes the
 controller-database scan, per-launch configuration rewrite, swap detection and
 `libmustage.so` preload; the latter only reported identity brightness, contrast,
 saturation, hue and gamma values. The prerequisite RetroArch files were already
 created by the verified generic path and are checked by the one-shot installer.
+
+Hardware testing confirmed the bridge retains gameplay, controls, audio,
+volume, save/return behavior and shutdown. Perceived cold timing remained slow,
+because the dominant work is now the oversized generic RetroArch dependency
+graph and core rather than this wrapper. Further work is parked in
+`GAME_LOAD_DEFERRED.md` until the active OS roadmap is complete.
 
 ## Native system actions
 

@@ -1,0 +1,92 @@
+#!/bin/sh
+
+# One-boot inventory wrapper around the exact stock eudev cold replay. It keeps
+# stock behavior while recording which fixed-device state actually changes.
+PROFILE_ROOT="/tmp/muos/udev-profile"
+STAGES="$PROFILE_ROOT/stages.tsv"
+UDEV_CONFIG="/etc/udev/udev.conf"
+
+mkdir -p "$PROFILE_ROOT"
+printf 'uptime_s\tevent\n' >"$STAGES"
+
+mark() {
+	IFS=' ' read -r NOW _ </proc/uptime
+	printf '%s\t%s\n' "$NOW" "$1" >>"$STAGES"
+}
+
+snapshot() {
+	LABEL=$1
+	OUT="$PROFILE_ROOT/$LABEL"
+	mkdir -p "$OUT"
+
+	cat /proc/modules >"$OUT/proc-modules.txt" 2>/dev/null || :
+	cat /proc/partitions >"$OUT/proc-partitions.txt" 2>/dev/null || :
+	cat /proc/bus/input/devices >"$OUT/input-devices.txt" 2>/dev/null || :
+	cat /proc/asound/cards >"$OUT/asound-cards.txt" 2>/dev/null || :
+	cat /proc/asound/devices >"$OUT/asound-devices.txt" 2>/dev/null || :
+	ps w >"$OUT/processes.txt" 2>/dev/null || ps >"$OUT/processes.txt"
+	find /dev -xdev -print 2>/dev/null | sort >"$OUT/dev-nodes.txt"
+	ls -1 /sys/module 2>/dev/null | sort >"$OUT/sys-modules.txt"
+
+	: >"$OUT/dev-detail.txt"
+	for DIR in /dev/input /dev/snd /dev/dri /dev/block /dev/disk; do
+		printf '\n[%s]\n' "$DIR" >>"$OUT/dev-detail.txt"
+		ls -laR "$DIR" >>"$OUT/dev-detail.txt" 2>&1 || :
+	done
+
+	: >"$OUT/sys-class.txt"
+	for CLASS in input sound drm block misc graphics rtc power_supply backlight; do
+		DIR="/sys/class/$CLASS"
+		[ -d "$DIR" ] || continue
+		printf '\n[%s]\n' "$DIR" >>"$OUT/sys-class.txt"
+		ls -laR "$DIR" >>"$OUT/sys-class.txt" 2>&1 || :
+	done
+}
+
+mark profile-start
+snapshot before
+mark before-snapshot-complete
+
+test -r "$UDEV_CONFIG" || exit 6
+. "$UDEV_CONFIG"
+
+case "$1" in
+	start)
+		printf "Populating %s using profiled udev: " "${udev_root:-/dev}"
+		[ -e /proc/sys/kernel/hotplug ] && printf '\000\000\000\000' >/proc/sys/kernel/hotplug
+		mark udevd-start
+		/sbin/udevd -d || {
+			echo "FAIL"
+			exit 1
+		}
+		mark udevd-ready
+		udevadm trigger --type=subsystems --action=add
+		mark subsystem-trigger-complete
+		udevadm trigger --type=devices --action=add
+		mark device-trigger-complete
+		udevadm settle --timeout=30 || echo "udevadm settle failed"
+		mark udev-core-complete
+
+		snapshot after
+		mark after-snapshot-complete
+		mkdir -p "$PROFILE_ROOT/after/run-udev-data"
+		for RECORD in /run/udev/data/*; do
+			[ -f "$RECORD" ] || continue
+			cp "$RECORD" "$PROFILE_ROOT/after/run-udev-data/${RECORD##*/}"
+		done
+		udevadm info --export-db >"$PROFILE_ROOT/after/udev-export-db.txt" 2>&1 || :
+		dmesg >"$PROFILE_ROOT/after/dmesg.txt" 2>/dev/null || :
+		mark profile-complete
+		echo "done"
+		;;
+	stop)
+		udevadm control --stop-exec-queue
+		killall udevd
+		;;
+	*)
+		echo "Usage: $0 {start|stop}"
+		exit 1
+		;;
+esac
+
+exit 0

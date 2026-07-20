@@ -71,7 +71,7 @@ and is not included in these timestamps.
 
 | Time | Work | Current effect | Bespoke direction |
 | ---: | --- | --- | --- |
-| 2.24--3.77 s | full udev cold replay and settle | 1.53 s; gates the stock startup sequence, not the menu | Inventory pre/post device nodes, then replace the all-subsystem/all-device replay with the fixed devices actually needed. |
+| 2.24--3.77 s | full udev cold replay and settle | 1.53 s; gates the stock startup sequence, not the menu | A behavior-preserving pre/post inventory is staged; use its hardware result to replace the all-subsystem/all-device replay with the fixed devices actually needed. |
 | 3.77--3.85 s | D-Bus | 80 ms; required mainly by the general audio stack | Start concurrently where safe; eventually remove if direct ALSA replaces the PipeWire boot path. |
 | 3.85--3.86 s | dispatch stock startup | 10 ms | Keep only as a temporary compatibility supervisor while dependencies are extracted. |
 | 2.24--4.49 s | dynamic ROM-storage mount path | storage becomes browse-launchable at 4.115 s | Replace device discovery, `blkid`, SD/USB probes and union setup with one fixed `/dev/mmcblk0p6` mount. |
@@ -130,8 +130,13 @@ menu. The intended reduction is:
    hardware testing shows no recovery activation.
 5. [done] Replace root BusyBox PID 1/inittab with the fixed static child reaper
    and shutdown event loop; three boots verified content and shutdown.
-6. Record `/dev`, module and audio-node state immediately before and after udev;
-   replace its 1.53-second generic cold replay with a fixed-device sequence.
+6. [staged] Record `/dev`, module and audio-node state immediately before and
+   after udev; replace its 1.53-second generic cold replay with a fixed-device
+   sequence. Stock currently replays every subsystem and device against 29
+   generic rule files plus a 9.7 MB hardware database, then leaves `udevd`
+   resident. Existing timing logs show only `mali_kbase` visibly appearing in
+   the kernel log during this interval; the staged inventory will test the full
+   device-node and rule result before anything is removed.
 7. Replace the dynamic multi-storage/UnionFS startup with a fixed ROM mount.
 8. Make the general audio stack
    content-triggered.

@@ -83,8 +83,12 @@ card-side patches.
 - Cold libretro handoff is now measured separately. The profiler attributes
   1.63 seconds to the generic SDL/controller scan, 0.20 seconds to remaining
   shell/config work and 5.67 seconds after RetroArch exec before its no-op color
-  stage appears. Warm equivalents are 0.04, 0.20 and 1.79 seconds. A fixed
-  direct bridge is staged with the exact RG34XX-SP map and constant settings.
+  stage appears. Warm equivalents are 0.04, 0.20 and 1.79 seconds. The fixed
+  direct bridge passed complete functionality testing but remained perceptibly
+  slow, so further game-load work is documented and deferred.
+- A one-cold-boot, behavior-preserving udev inventory is staged. It records
+  exact device nodes, modules, input/audio state and the udev database before
+  replacing the stock all-device replay or its resident daemon.
 - ROM/Favorites readiness updates state without asynchronously repainting the
   launcher, and the permanent shell no longer times out into stock.
 - The animation and MPV-chime proofs are removed from the active path until the
@@ -123,7 +127,11 @@ writes a content revision that user-init installs on the next boot.
 - `PortMaster.sh`: captured PortMaster reference; the on-demand network boundary
   lives in `launcher/S03danilauncher`.
 - `font-stubs/`: source and AArch64 object payloads for unused language fonts.
+- `userspace/`: fixed-service profiling and replacement stages, beginning with
+  the behavior-preserving udev pre/post inventory.
 - `ROADMAP.md`: target architecture and project sequence.
+- `GAME_LOAD_DEFERRED.md`: parked cold-game findings and resume-later build
+  checklist.
 - `DEVICE_PROFILE.md`: fixed hardware and experience contract.
 - `INPUT_MAP.md`: confirmed logical control bitmasks and muOS calibration notes.
 - `launcher/`: dependency-free direct-framebuffer launcher proof.
