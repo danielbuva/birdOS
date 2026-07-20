@@ -72,10 +72,10 @@ and is not included in these timestamps.
 | Time | Work | Current effect | Bespoke direction |
 | ---: | --- | --- | --- |
 | 2.26--3.77 s | full udev daemon, cold replay and settle | 1.51 s; gates the stock startup sequence, not the menu | The 1.35-second input/sound-only replay is functional and current. The rejected one-shot proof broke MPV's rich controls and timed out stopping udevd. |
-| 3.45--3.52 s | unintended stock D-Bus copy | 70 ms; the preserved `S30dbus.dani-real` accidentally matches `S??*` | Staged migration hides the real script, skips boot D-Bus, then warms it asynchronously after the menu. |
+| 3.49 s | D-Bus boot entry skipped | zero daemon work on the dispatcher path | Verified migration hides the preserved stock implementation and starts D-Bus only in the post-menu audio worker. |
 | 3.85--3.86 s | dispatch stock startup | 10 ms | Keep only as a temporary compatibility supervisor while dependencies are extracted. |
 | 2.24--4.49 s | dynamic ROM-storage mount path | latest storage ready at 3.75 s; no first-frame dependency | Exact kernel binds are verified with no FUSE PIDs. Direct `/dev/mmcblk0p6` mounting, no SD/USB probing, no boot/configfs startup mounts and a fixed bind map are staged together with separate logs. |
-| after system-ready (staged) | PipeWire and WirePlumber post-menu warm-up | wrapper returns immediately; measured cold readiness costs 1.0--1.5 s | Run concurrently with entropy/noncritical storage and retain for the session; later replace the general graph with a fixed audio profile or direct ALSA. |
+| 3.60--6.31 s | post-menu D-Bus/PipeWire/WirePlumber warm-up | system-ready 3.95 s; D-Bus 4.22 s; full audio 6.31 s | Verified outside the menu path. Fixed ALSA-only WirePlumber monitor overrides are staged next. |
 | 4.61 s | boot partition and storage bind setup | no first-frame dependency | Defer or delete any bind/boot mounts unused by the fixed launcher and launch wrappers. |
 | 4.84 s | stock hotkey service | volume/system shortcuts become ready later | Keep during compatibility phase; later integrate the exact desired shortcuts into the launcher. |
 | 4.94 s | user-init | development installers and patch guards run | Keep while developing. Bake all changes into the final image, then disable it in production. |
@@ -88,13 +88,12 @@ recovery frontend.
 
 ## Persistent userspace after startup
 
-The current compatibility system retains `udevd`, the lid listener and the
-hotkey listener in addition to the custom launcher. The latest entropy proof
-removes `haveged`, fixed binds removed both UnionFS workers, and the current
-content-triggered audio proof leaves PipeWire/WirePlumber absent. An accidental
-visible stock-script copy still starts D-Bus; the staged migration fixes that
-and then intentionally warms the three audio processes after the menu. None is
-required to draw or operate the main menu. The intended reduction is:
+The current compatibility system retains `udevd`, the lid listener, hotkey
+listener, D-Bus, PipeWire and WirePlumber in addition to the custom launcher.
+The latest entropy proof removes `haveged`, fixed binds removed both UnionFS
+workers, and audio now becomes intentionally session-resident only after the
+menu. None is required to draw or operate the main menu. The intended reduction
+is:
 
 1. Stop `haveged` once the CRNG is ready rather than leaving it resident.
 2. Replace generic udev cold discovery with fixed-device setup; retain hotplug
@@ -145,14 +144,14 @@ required to draw or operate the main menu. The intended reduction is:
    player-volume controls. The resident minimal bridge is therefore the current
    checkpoint until those libudev/SDL clients receive fixed direct-event
    replacements. PortMaster/network remains a deferred acceptance check.
-7. [FUSE removal verified; exact mount/binds staged] Replace the dynamic
-   multi-storage/UnionFS startup with a fixed ROM mount. Its two resident FUSE
-   processes are gone behind identical kernel-bind compatibility paths. The
-   next batch replaces the remaining probing, unused boot/configfs mounts and
-   generic bind selection.
-8. [staged] Warm the general audio stack asynchronously after the menu, with
+7. [done] Replace dynamic multi-storage/UnionFS startup with the fixed ROM
+   mount and exact bind map. Both resident FUSE processes, unused boot/configfs
+   mounts and generic source selection are gone; hardware verification passed.
+8. [done] Warm the general audio stack asynchronously after the menu, with
    locked first-selection joining and no launcher/storage wait.
-9. Bake successful card-side changes into rootfs, delete production user-init
+9. [staged] Remove unused delayed startup jobs and disable non-ALSA WirePlumber
+   discovery, then inspect the armed stable-runtime snapshot.
+10. Bake successful card-side changes into rootfs, delete production user-init
    and generic maintenance jobs, then profile the smaller image.
-10. Trim the initramfs, then build the fixed kernel and optimize U-Boot last;
+11. Trim the initramfs, then build the fixed kernel and optimize U-Boot last;
    this is where most of the remaining power-on-to-menu interval lives.

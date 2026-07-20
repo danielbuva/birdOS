@@ -86,7 +86,7 @@ daemons absent until selection and passed the full game/media/system-control
 test. Its measured cold initialization cost was about 1.0--1.5 seconds, which
 made the first content choice pay avoidable latency.
 
-The next stage schedules audio only when the existing startup reaches the
+The verified stage schedules audio only when the existing startup reaches the
 wrapper after the menu is interactive. Its worker waits for the system-ready
 marker, then runs concurrently with entropy and the noncritical storage tail.
 Storage does not depend on CRNG; audio may block only inside its own random
@@ -96,6 +96,12 @@ Audio remains warm across game/media returns. PortMaster can borrow the same
 D-Bus without stopping it underneath PipeWire, while stock-frontend fallback
 explicitly ensures audio is ready.
 
+The measured behavior boot drew its input-ready menu at 2.11 seconds, scheduled
+audio at 3.60, crossed system-ready at 3.95, started the audio worker at 3.97,
+completed D-Bus at 4.22 and completed PipeWire/WirePlumber at 6.31. A game
+selected at 18.84 seconds therefore did not pay audio initialization. Games,
+MP3, movies and system controls remained functional.
+
 The original installer stored the stock D-Bus implementation at a visible
 `S30dbus.dani-real` name. The `S??*` dispatcher consequently ran that file as a
 second boot service and left D-Bus resident. The migration hides the preserved
@@ -103,6 +109,18 @@ implementation as `.S30dbus.dani-real` and explicitly skips `S30dbus` in the
 generic dispatcher. These D-Bus, PipeWire, launcher and dispatcher changes are
 checksum-gated and installed as one rollback unit.
 
-Run `stage-postmenu-audio-batch.sh /Volumes/dani-sp` to stage the migration and
-an independent capture of the exact PipeWire/WirePlumber configuration for the
-later fixed-profile reduction.
+The captured default WirePlumber graph enables camera, V4L2, ALSA MIDI,
+Bluetooth and logind even though this fixed experience uses only built-in ALSA.
+`89-dani-fixed-main.lua` and `89-dani-fixed-bluetooth.lua` turn off those
+monitors without replacing the proven sink, volume and stream-linking policy.
+
+`patch-fixed-startup-tail.sh` independently removes delayed generic jobs that
+wake 8--20 seconds into a session: USB gadget setup, catalogue generation,
+controller and SDL-map rewriting, system-sound preparation, recursive SSH
+permission repair, RetroArch precache and log cleanup. It preserves low-battery
+monitoring, user-init and delayed `dmesg` diagnostics. This is also a plausible
+secondary cold-game improvement because a recent game launch began at 18.9
+seconds while those sleepers were armed.
+
+Run `stage-fixed-postmenu-batch.sh /Volumes/dani-sp` to stage the two independent
+changes plus a one-shot stable runtime snapshot for the following behavior boot.

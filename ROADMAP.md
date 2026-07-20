@@ -46,15 +46,22 @@ application and move everything unrelated to an interactive menu behind it.
 - [x] Retire completed high-frequency observers and their 60-second log sync.
 - [x] Replace launcher idle polling and raw-event logs with blocking evdev.
 - [ ] Inventory every remaining boot process, fork, file read and idle wake-up.
+  A one-shot stable 12-second process/memory/wakeup snapshot is staged for the
+  next behavior boot.
 - [x] Replace dynamic
   multi-storage discovery and UnionFS with exact card paths. Kernel binds now
   preserve both union compatibility paths with zero resident FUSE processes.
   Direct `/dev/mmcblk0p6` mounting, unused boot/configfs-mount removal and the
   fixed `/run/muos/storage` map passed the combined functionality test.
-- [ ] [post-menu revision staged] The content-triggered audio proof passed, but
-  made the first selection pay 1.0--1.5 seconds. Keep the interactive menu
-  first, then warm D-Bus, PipeWire and WirePlumber concurrently and retain them
-  for the session. Immediate selections join the same locked initialization.
+- [x] Warm D-Bus, PipeWire and WirePlumber after the interactive menu and retain
+  them for the session. Hardware verification recorded 3.97-second dispatch,
+  4.22-second D-Bus readiness and 6.31-second audio completion; immediate
+  selections join the same locked initialization and functionality passed.
+- [ ] [staged] Disable WirePlumber camera, V4L2, MIDI, Bluetooth and logind
+  discovery while retaining the exact built-in ALSA graph and routing policy.
+- [ ] [staged] Remove delayed generic startup jobs for unused USB, catalogue,
+  sound preparation, log cleanup, SSH permission repair and fixed controller
+  rewrites. Retain low-battery monitoring, diagnostics and user-init.
 - [x] Retain early entropy seeding and terminate haveged after the kernel's
   explicit readiness event. Hardware logs show CRNG ready at 4.07 seconds and
   haveged gone at 4.10 seconds. Storage never waits for it.

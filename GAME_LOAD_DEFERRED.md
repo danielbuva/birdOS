@@ -25,6 +25,14 @@ swap detection and does not preload `libmustage.so`. Hardware testing confirmed
 controls, sound, volume, gameplay, saves/return behavior and shutdown, but the
 cold game still felt slow.
 
+A later behavior boot removed audio as a possible explanation: D-Bus was ready
+at 4.22 seconds and PipeWire/WirePlumber at 6.31 seconds, while the game was not
+selected until 18.84 seconds. The stock startup still had delayed 8--20-second
+controller, permission, USB, catalogue, sound and maintenance jobs armed at
+that moment. Their independent removal is being tested now; it may eliminate
+contention, but it does not change the larger 5.67-second cold executable/core
+page-in finding below.
+
 The remaining general RetroArch binary is 12.4 MB and directly requests 24
 shared libraries. Its dependency list includes FFmpeg codec/device/format,
 scaling and resampling libraries, ASS subtitles, FriBidi, Fontconfig, FreeType,

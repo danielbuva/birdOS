@@ -40,10 +40,10 @@ card-side patches.
 ## Current changes
 
 - Early ROM mount.
-- Frontend/audio readiness gate removed. The content-triggered proof passed its
-  functionality test. The next checksum-gated stage keeps the menu first, then
-  warms D-Bus, PipeWire and WirePlumber concurrently in the background and
-  retains them for the session. An immediate selection joins the same startup.
+- Frontend/audio readiness gate removed. The session-warm stage is verified:
+  menu input was ready at 2.11 seconds, audio started at 3.97, D-Bus completed
+  at 4.22 and PipeWire/WirePlumber completed at 6.31. All tested functionality
+  passed, and immediate selections join the same locked startup.
 - Historical detailed sysinit, mount, frontend and process logs retained;
   continuous observers are being replaced by explicitly armed diagnostic runs.
 - The launcher blocks on evdev after storage readiness instead of waking 250
@@ -89,6 +89,10 @@ card-side patches.
   stage appears. Warm equivalents are 0.04, 0.20 and 1.79 seconds. The fixed
   direct bridge passed complete functionality testing but remained perceptibly
   slow, so further game-load work is documented and deferred.
+- A later game request at 18.84 seconds proved audio had already been ready for
+  more than 12 seconds, excluding audio initialization from that perceived
+  delay. The generic startup still had 8--20-second sleepers that could wake
+  during cold RetroArch loading; their removal is staged as a separate test.
 - The behavior-preserving udev inventory is complete. A no-udev proof retained
   the menu and shutdown but exposed current `/run/udev` dependencies in
   RetroArch/MPV input, ALSA setup and system hotkeys. Explicit Mali probing
@@ -102,8 +106,8 @@ card-side patches.
 - The fixed-storage path is hardware-verified. It replaces the two resident
   UnionFS-FUSE processes with kernel bind mounts from this card at the same
   `/mnt/union/ROMS` and `/mnt/union/ports` compatibility paths; diagnostics
-  confirmed exact exFAT binds and no UnionFS PID. The next batch adds only a
-  final self-persisted bind proof; it does not alter the verified mapping.
+  confirmed exact exFAT binds and no UnionFS PID. Its final self-persisted proof
+  is complete and it is unchanged by the current batch.
 - The Linux-DTB 128 ms power-key candidate is raw-verified and functional: a
   normal quick tap now powers on the device. Because Linux programs the PMIC
   for the next cold start, this result becomes valid only after the candidate
@@ -117,9 +121,13 @@ card-side patches.
   launcher, and the permanent shell no longer times out into stock.
 - The animation and MPV-chime proofs are removed from the active path until the
   earliest interactive-menu architecture is complete. Final effects come later.
-- Low-power monitoring, USB setup, device-control refresh and SDL-map refresh
-  remain post-menu compatibility work and are candidates for fixed/on-demand
-  replacement.
+- Low-power monitoring remains for battery safety. The current staged startup
+  pass removes per-boot USB setup, device-control/SDL rewrites, catalogue
+  generation, sound preparation, recursive SSH permission repair and log
+  cleanup; their fixed results or unused status are already known.
+- The captured WirePlumber graph still enables camera, V4L2, MIDI, Bluetooth
+  and logind discovery. Fixed overrides disabling those paths while retaining
+  ALSA and normal policy/routing are staged independently.
 - Early entropy retained: deferring haveged delayed kernel CRNG readiness and
   caused PipeWire/SDL audio to block the frontend until 12-14 seconds.
 - Storage has no CRNG dependency. Entropy, fixed storage and post-menu audio
