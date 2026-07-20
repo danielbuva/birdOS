@@ -64,8 +64,8 @@ keeping the verified menu-first boundary.
   before `switch_root`.
 - [x] Replace the generic initramfs shell with a tiny static fixed-device init
   while retaining the existing root PID 1 as the fallback second phase.
-- [ ] [built offline] Replace the root BusyBox PID 1 with a blocking 5,128-byte
-  static init; stage it only after the independent brightness test.
+- [ ] [staged] Replace the root BusyBox PID 1 with a blocking 5,128-byte static
+  init; hardware-test shutdown, content round trips and fallback behavior.
 - [ ] Invoke remaining compatibility applets only when their feature requests
   them, then rebuild BusyBox with only that measured command set.
 - [ ] Mount only the exact filesystems and device nodes the experience uses.
@@ -140,8 +140,10 @@ savings; it is not forgotten.
   raw-50 DTB property.
 - [x] Hardware-test the checksum-verified U-Boot raw-25 ownership candidate;
   U-Boot and Linux both preserve raw 25 with no later display write.
-- [ ] [staged] Set the inherited startup level to raw 3 of 255 (1.18%) in the
-  owning U-Boot DTB, with no userspace brightness write.
+- [x] Install and raw-verify inherited startup level 3 of 255 in the owning
+  U-Boot DTB, with no userspace brightness write. Perceived brightness is
+  dimmer, but raw units are not a linear optical percentage and differ from the
+  scale used by manual controls.
 - [ ] Revisit the active splash owner after first-frame optimization; the
   archived-image FAT asset is not identical to this card's provisioned asset.
 - [x] Remove the RGB call and dispatch the interactive launcher before entropy,
@@ -155,7 +157,7 @@ savings; it is not forgotten.
 Verified interactive milestone: the latest three static-`/init` boots entered
 the launcher at 1.943 seconds average kernel uptime and drew an input-ready
 first frame at 1.967 seconds average (1.957--1.980 seconds). LED-on to an
-immediately usable menu is now approximately 3.5 seconds by stopwatch.
+immediately usable menu is now approximately 3.5--3.8 seconds by stopwatch.
 All three emulator/Port paths are playable with audio and return to a redrawn
 launcher in 27--29 ms.
 

@@ -20,15 +20,16 @@ must serve this one device and this one experience.
   seconds of kernel uptime.
 - Their interactive frames are at 1.957, 1.980 and 1.964 seconds, with input
   ready on every frame; permanent-root startup begins later at 2.18--2.20.
-- Current LED-on stopwatch result: approximately 3.5 seconds.
+- Current LED-on stopwatch range: approximately 3.5--3.8 seconds.
 
 The boot image now starts the launcher from initramfs after mounting the fixed
 root but before `switch_root`. The launcher and its input descriptors survive
 the handoff, while the later root startup sees the existing supervisor and does
 not start a duplicate. The generic initramfs shell is now replaced by a
 6,424-byte static fixed-device init, with the verified shell retained as
-`/init.stock`. An offline candidate replaces the remaining root BusyBox PID 1
-with a 5,128-byte blocking static init after the independent brightness test.
+`/init.stock`. The next staged candidate replaces the remaining root BusyBox
+PID 1 with a 5,128-byte blocking static init; BusyBox remains available only as
+feature-triggered applets and as the automatic root-init fallback.
 The long-term target is a reproducible fixed-device image, not a collection of
 card-side patches.
 
@@ -60,8 +61,10 @@ card-side patches.
 - The active boot image hardcodes the exact SD root and mount sequence in a
   freestanding C `/init`. Its full 64 MiB image rebuilds byte-for-byte and is
   hardware-verified with no recovery activation.
-- A two-byte U-Boot package change is staged to make frame-zero through menu
-  inherit raw brightness 3/255 (1.18%) with no userspace display write.
+- A two-byte U-Boot package change is installed and raw-verified, making
+  frame-zero through menu inherit raw brightness 3/255 with no userspace
+  display write. This is 1.18% of the raw range, not a claim of linear panel
+  luminance or the same scale used by manual brightness controls.
 - Its embedded catalog remains browsable while ROM storage mounts concurrently.
 - The real cache contains 5,953 games across 27 systems; artwork and metadata
   stay out of the boot executable.

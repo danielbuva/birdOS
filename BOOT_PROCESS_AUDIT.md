@@ -4,7 +4,7 @@ This audit uses cold boot `723d4474-e6c2-4936-bd71-b123d5d97f0c`, after the
 raw-25 U-Boot backlight change. Times are Linux kernel uptime, not LED-on
 stopwatch time. The static-`/init` first frames are at 1.957, 1.980 and 1.964
 seconds of kernel uptime, while current LED-on stopwatch timing is approximately
-3.5 seconds.
+3.5--3.8 seconds.
 
 ## Work before the usable menu
 
@@ -38,8 +38,8 @@ duplicate-safe fallbacks. The generic shell `/init` is now replaced by a
 6,424-byte static fixed-device executable, with the verified shell retained as
 `/init.stock`. Three hardware boots explicitly report the fixed path active and
 average 1.967 seconds to an input-ready frame, about 88 ms earlier than the
-previous initramfs-shell pair. The offline next candidate replaces the
-remaining root BusyBox PID 1 with a 5,128-byte blocking static init.
+previous initramfs-shell pair. The staged next candidate replaces the remaining
+root BusyBox PID 1 with a 5,128-byte blocking static init.
 
 ## Kernel-time opportunities inside the first 1.809 seconds
 
@@ -125,8 +125,8 @@ menu. The intended reduction is:
    root-mount handoff and defer root BusyBox init until first frame.
 4. [done] Replace the generic shell `/init` with the fixed-device static init;
    hardware testing shows no recovery activation.
-5. [built offline] Replace root BusyBox PID 1/inittab with the fixed static
-   child reaper and shutdown event loop after the brightness-only boot test.
+5. [staged] Replace root BusyBox PID 1/inittab with the fixed static child
+   reaper and shutdown event loop; verify shutdown and application round trips.
 6. Record `/dev`, module and audio-node state immediately before and after udev;
    replace its 1.53-second generic cold replay with a fixed-device sequence.
 7. Replace the dynamic multi-storage/UnionFS startup with a fixed ROM mount.

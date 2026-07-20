@@ -177,8 +177,9 @@ device-node identities or payload bytes. Two clean builds produced the same
 image. The hardware-verified image is SHA-256
 `3f6e8b07826ba307ff22665b9ca4d6cd2a485ce3b5162be95c7eacfa8301578c`.
 
-`build-static-pid1.sh` produces the next, currently offline-only candidate. It
-binds a 5,128-byte static executable into the future root and asks the existing
+`build-static-pid1.sh` produces the next candidate, now staged for hardware
+testing. It binds a 5,128-byte static executable into the future root and asks
+the existing
 `switch_root` applet to execute it as PID 1 instead of `/init`. That binary
 performs only the remaining devpts, shared-memory, fixed symlink and hostname
 setup, dispatches compatibility sysinit behind the already-interactive menu,
@@ -187,6 +188,12 @@ polling. BusyBox remains available as feature-triggered applets and as an
 automatic root-init fallback. Two clean builds produce the same 2,772,302-byte
 ramdisk and complete image, SHA-256
 `c8e5e713488bb334e083ba1c686ac3b405ea96b7b98c3e7957ca3f32edec5bf3`.
+
+`stage-static-pid1.sh` places the image and a checksum-gated one-shot installer
+on the ROM partition. The installer accepts only the hardware-verified fixed
+init image, backs up all 64 MiB of the active boot partition, rereads the write,
+and restores automatically if raw verification fails. It also updates the late
+timing collector so the following boot records `static_pid1_active`.
 
 The 150 ms initramfs unpack currently includes a 2.8 MiB `magic.mgc`, generic
 ALSA profiles and recovery utilities unused by normal boot. Kernel logs also
@@ -223,13 +230,12 @@ candidate:
 ./firmware/stage-fixed-initramfs.sh
 ```
 
-Build the static root PID 1 candidate offline:
+Build and stage the static root PID 1 candidate:
 
 ```sh
 ./firmware/build-static-pid1.sh
+./firmware/stage-static-pid1.sh
 ```
-
-It is deliberately not staged alongside an independent U-Boot experiment.
 
 The installation boot continues using the verified shell image. Leave that
 boot running for at least 30 seconds so the installer can back up, write and
@@ -363,17 +369,19 @@ The cold hardware trace confirmed raw 25 in the active U-Boot/Linux device
 tree, `disp0 getbl` and the corresponding 1,953 ns inverse-PWM duty from 2.31
 through 6.35 seconds. No later brightness writer exists on this boot path.
 
-## Staged one-percent startup brightness
+## Installed raw-3 startup brightness
 
 The requested fixed startup level is encoded where the panel level originates:
-U-Boot's DTB. Raw `3/255` is the nearest integer representation of 1%, or
-1.18%. `build-uboot-backlight.sh` starts from the hardware-verified raw-25
+U-Boot's DTB. Raw `3/255` is the nearest integer representation of 1% of the
+driver range, or 1.18%. It is not a promise of linear optical luminance and is
+not necessarily the same scale exposed by manual brightness controls.
+`build-uboot-backlight.sh` starts from the hardware-verified raw-25
 package, proves a byte-identical no-change repack, changes the DTB value to 3,
 and recomputes the Allwinner package checksum. The result changes exactly two
 of 1,310,720 bytes. U-Boot, the trusted monitor, overlay, remaining DTB
 properties and Android boot image are unchanged.
 
-The staged TOC1 candidate is SHA-256
+The installed and raw-verified TOC1 candidate is SHA-256
 `50fe29fb4f8783c1abf97d610dbdbba466da296f516b24311b8124b711c84720`.
 Its one-shot installer accepts only the active raw-25 package, backs it up,
 writes and rereads sector 32800, and automatically restores raw 25 on a write
