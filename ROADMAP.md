@@ -57,15 +57,15 @@ Replace generic startup with a minimal fixed-device init. The static launcher
 now draws before `switch_root`; next, replace each generic init layer while
 keeping the verified menu-first boundary.
 
-- [ ] [in progress] Build and hardware-test a minimal fixed init with a
-  stock-init recovery route.
+- [x] Build and hardware-test a minimal fixed init with a stock-init recovery
+  route.
 - [x] Hardware-verify the pre-`rcS` inittab launch and fallback.
 - [x] Embed the launcher in initramfs and hardware-verify an interactive frame
   before `switch_root`.
-- [ ] [staged] Replace the generic initramfs shell with a tiny static
-  fixed-device init while retaining the existing root PID 1 as the fallback
-  second phase.
-- [ ] Replace the root BusyBox PID 1 with the hardware-verified static init.
+- [x] Replace the generic initramfs shell with a tiny static fixed-device init
+  while retaining the existing root PID 1 as the fallback second phase.
+- [ ] [built offline] Replace the root BusyBox PID 1 with a blocking 5,128-byte
+  static init; stage it only after the independent brightness test.
 - [ ] Invoke remaining compatibility applets only when their feature requests
   them, then rebuild BusyBox with only that measured command set.
 - [ ] Mount only the exact filesystems and device nodes the experience uses.
@@ -140,6 +140,8 @@ savings; it is not forgotten.
   raw-50 DTB property.
 - [x] Hardware-test the checksum-verified U-Boot raw-25 ownership candidate;
   U-Boot and Linux both preserve raw 25 with no later display write.
+- [ ] [staged] Set the inherited startup level to raw 3 of 255 (1.18%) in the
+  owning U-Boot DTB, with no userspace brightness write.
 - [ ] Revisit the active splash owner after first-frame optimization; the
   archived-image FAT asset is not identical to this card's provisioned asset.
 - [x] Remove the RGB call and dispatch the interactive launcher before entropy,
@@ -150,10 +152,10 @@ savings; it is not forgotten.
 - [ ] Remove superseded muOS components and produce a reproducible firmware image.
 - [ ] Optimize kernel and U-Boot last.
 
-Verified interactive milestone: the latest three boots entered the launcher at
-2.222 seconds average kernel uptime and drew an input-ready first frame at
-2.252 seconds average (2.242--2.272 seconds). LED-on to an immediately usable
-menu remains approximately four seconds by stopwatch.
+Verified interactive milestone: the latest three static-`/init` boots entered
+the launcher at 1.943 seconds average kernel uptime and drew an input-ready
+first frame at 1.967 seconds average (1.957--1.980 seconds). LED-on to an
+immediately usable menu is now approximately 3.5 seconds by stopwatch.
 All three emulator/Port paths are playable with audio and return to a redrawn
 launcher in 27--29 ms.
 

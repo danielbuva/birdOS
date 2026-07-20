@@ -16,18 +16,19 @@ must serve this one device and this one experience.
 - Pre-font internal input-ready average: 9.84 seconds.
 - English-only-font internal input-ready average: 9.60 seconds.
 - Optimized-stock internal input-ready average: 8.43 seconds.
-- The two latest pre-`switch_root` supervisor starts are at 2.00 and 2.06
+- The latest static-`/init` supervisor starts are at 1.93, 1.96 and 1.94
   seconds of kernel uptime.
-- Their interactive frames are at 2.029 and 2.082 seconds, with input ready on
-  both frames; permanent-root startup begins later at 2.25--2.30 seconds.
-- Current LED-on stopwatch result: approximately four seconds.
+- Their interactive frames are at 1.957, 1.980 and 1.964 seconds, with input
+  ready on every frame; permanent-root startup begins later at 2.18--2.20.
+- Current LED-on stopwatch result: approximately 3.5 seconds.
 
 The boot image now starts the launcher from initramfs after mounting the fixed
 root but before `switch_root`. The launcher and its input descriptors survive
 the handoff, while the later root startup sees the existing supervisor and does
-not start a duplicate. A staged candidate now replaces the generic initramfs
-shell with a 6,424-byte static fixed-device init while retaining the verified
-shell as `/init.stock` and the existing root PID 1 as its second phase.
+not start a duplicate. The generic initramfs shell is now replaced by a
+6,424-byte static fixed-device init, with the verified shell retained as
+`/init.stock`. An offline candidate replaces the remaining root BusyBox PID 1
+with a 5,128-byte blocking static init after the independent brightness test.
 The long-term target is a reproducible fixed-device image, not a collection of
 card-side patches.
 
@@ -56,10 +57,11 @@ card-side patches.
   results. It embeds the freestanding executable in initramfs, starts it after
   the fixed root mount, and crosses `switch_root` only after the interactive
   frame.
-- The next boot-image candidate hardcodes the exact SD root and mount sequence
-  in a freestanding C `/init`. Its full 64 MiB image rebuilds byte-for-byte and
-  is staged for hardware testing with raw-write verification and automatic
-  restore on a write mismatch.
+- The active boot image hardcodes the exact SD root and mount sequence in a
+  freestanding C `/init`. Its full 64 MiB image rebuilds byte-for-byte and is
+  hardware-verified with no recovery activation.
+- A two-byte U-Boot package change is staged to make frame-zero through menu
+  inherit raw brightness 3/255 (1.18%) with no userspace display write.
 - Its embedded catalog remains browsable while ROM storage mounts concurrently.
 - The real cache contains 5,953 games across 27 systems; artwork and metadata
   stay out of the boot executable.

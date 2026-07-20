@@ -91,6 +91,10 @@ if [ -f "$TIMING_TMP" ]; then
 	IFS=' ' read -r UPTIME_S _ </proc/uptime
 	printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
 		"$BOOT_ID" "$UPTIME_S" "milestone" "user" "user_init_hook" "0" >>"$TIMING_TMP"
+	if [ -e /run/muos/dani-root-init-active ]; then
+		printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+			"$BOOT_ID" "$UPTIME_S" "milestone" "init" "static_pid1_active" "0" >>"$TIMING_TMP"
+	fi
 
 	mkdir -p "$TIMING_FINAL_DIR"
 	cp -f "$TIMING_TMP" "$TIMING_FINAL_DIR/boot-timing-$BOOT_ID.tsv"

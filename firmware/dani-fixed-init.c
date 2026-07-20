@@ -34,6 +34,10 @@ typedef signed long s64;
 #define ROOT_SUPERVISOR "/opt/muos/script/init/S03danilauncher"
 #define READY_MARKER "/mnt/run/muos/dani-first-frame-ready"
 #define FIXED_INIT_MARKER "/mnt/run/muos/dani-fixed-initramfs-v1"
+#ifdef DANI_STATIC_ROOT_INIT
+#define ROOT_INIT_SOURCE "/opt/dani-root-init"
+#define ROOT_INIT_TARGET "/mnt/sbin/dani-root-init"
+#endif
 
 struct timespec {
     s64 sec;
@@ -49,6 +53,10 @@ static char *const fixed_env[] = {
     "USER=root",
     0,
 };
+
+#ifdef DANI_STATIC_ROOT_INIT
+static int root_init_bound;
+#endif
 
 static long syscall6(long number, long a0, long a1, long a2, long a3, long a4,
                      long a5) {
@@ -306,6 +314,30 @@ static int start_launcher_supervisor(void) {
     return status;
 }
 
+#ifdef DANI_STATIC_ROOT_INIT
+static void bind_static_root_init(void) {
+    long target_fd;
+
+    make_dir("/mnt/sbin", 0755);
+    if (!path_exists(ROOT_INIT_SOURCE)) {
+        log_stage("root-init-source-missing");
+        return;
+    }
+    target_fd = sys_open(ROOT_INIT_TARGET, O_WRONLY | O_CREAT | O_CLOEXEC, 0755);
+    if (target_fd < 0) {
+        log_stage("root-init-target-failed");
+        return;
+    }
+    sys_close((int)target_fd);
+    if (sys_mount(ROOT_INIT_SOURCE, ROOT_INIT_TARGET, 0, MS_BIND, 0) < 0) {
+        log_stage("root-init-bind-failed");
+        return;
+    }
+    root_init_bound = 1;
+    log_stage("root-init-bound");
+}
+#endif
+
 static void wait_for_first_frame(void) {
     int count;
     for (count = 0; count < 500; count++) {
@@ -319,16 +351,34 @@ static void wait_for_first_frame(void) {
 }
 
 __attribute__((noreturn)) static void handoff_root_init(void) {
-    char *const switch_argv[] = {"/sbin/switch_root", "/mnt", "/init", 0};
+    char *const stock_switch_argv[] = {"/sbin/switch_root", "/mnt", "/init", 0};
+#ifdef DANI_STATIC_ROOT_INIT
+    char *const fixed_switch_argv[] = {
+        "/sbin/switch_root", "/mnt", "/sbin/dani-root-init", 0};
+#endif
     char *const init_argv[] = {"/init", 0};
     char *const shell_argv[] = {"/bin/sh", 0};
 
+#ifdef DANI_STATIC_ROOT_INIT
+    if (root_init_bound) {
+        log_stage("switch-root-static-pid1");
+        sys_execve(fixed_switch_argv[0], fixed_switch_argv, fixed_env);
+    }
+    log_stage("switch-root-stock-pid1");
+#else
     log_stage("switch-root");
-    sys_execve(switch_argv[0], switch_argv, fixed_env);
+#endif
+    sys_execve(stock_switch_argv[0], stock_switch_argv, fixed_env);
 
     /* Emergency functional handoff if the compatibility applet cannot exec. */
     log_stage("switch-root-exec-failed");
     if (sys_chroot(ROOT_MOUNT) >= 0 && sys_chdir("/") >= 0) {
+#ifdef DANI_STATIC_ROOT_INIT
+        if (root_init_bound) {
+            char *const fixed_init_argv[] = {"/sbin/dani-root-init", 0};
+            sys_execve(fixed_init_argv[0], fixed_init_argv, fixed_env);
+        }
+#endif
         sys_execve(init_argv[0], init_argv, fixed_env);
         sys_execve(shell_argv[0], shell_argv, fixed_env);
     }
@@ -356,6 +406,10 @@ static void application(void) {
         log_stage("future-root-partial-fallback");
         handoff_root_init();
     }
+
+#ifdef DANI_STATIC_ROOT_INIT
+    bind_static_root_init();
+#endif
 
     supervisor_status = start_launcher_supervisor();
     log_text("fixed-init supervisor_wait_status=");

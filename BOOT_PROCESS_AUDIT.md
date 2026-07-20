@@ -2,9 +2,9 @@
 
 This audit uses cold boot `723d4474-e6c2-4936-bd71-b123d5d97f0c`, after the
 raw-25 U-Boot backlight change. Times are Linux kernel uptime, not LED-on
-stopwatch time. The current stopwatch result is approximately four seconds;
-the hardware-verified pre-`switch_root` frames are at 2.029 and 2.082 seconds
-of kernel uptime.
+stopwatch time. The static-`/init` first frames are at 1.957, 1.980 and 1.964
+seconds of kernel uptime, while current LED-on stopwatch timing is approximately
+3.5 seconds.
 
 ## Work before the usable menu
 
@@ -13,7 +13,7 @@ of kernel uptime.
 | 0--1.809 s | kernel built-in driver initialization | 1.809 s | Fixed-device kernel/DT target. Input is registered at 1.726 s and ALSA finishes at 1.808 s. |
 | 0.755--0.905 s | unpack 2.6 MiB compressed initramfs | 150 ms, overlapping kernel init | Remove the 2.8 MiB magic database, generic ALSA profiles and unused recovery tools. |
 | 1.809--1.852 s | initramfs filesystem check and root mount | ~43 ms on a clean boot | Use a dirty-state policy instead of unconditional `e2fsck -y`; retain recovery for unclean shutdowns. |
-| 1.852--2.21 s | early-root handoff and generic BusyBox inittab setup | ~358 ms historically | The launcher now draws at 2.029--2.082 s before root dispatch begins at 2.25--2.30 s. |
+| 1.852--2.20 s | fixed early-root handoff, then root BusyBox setup | menu cost is now 105--128 ms | The launcher draws at 1.957--1.980 s before root dispatch begins at 2.18--2.20 s. |
 | 2.17--2.18 s | `S01entropy` starts `haveged` | ~10 ms | Retain for now; an earlier deferral caused CRNG/audio stalls. Start it after launcher dispatch in the next init-order proof. |
 | 2.18--2.22 s | `S02rgb` | ~40 ms, `rc=1` | Remove. This fixed device has no requested RGB experience and the hook fails. |
 | 2.22--2.24 s | `S03danilauncher` supervisor dispatch | ~20 ms | Move ahead of all asynchronous observers and optional init hooks. |
@@ -34,10 +34,12 @@ duplicate-start protection to the supervisor. Its first frames varied from
 2.220 to 2.327 seconds, leaving root mount/inittab work in front of the menu.
 The verified candidate embeds the launcher in initramfs and starts its root
 supervisor before `switch_root`, while leaving both later starts as
-duplicate-safe fallbacks. The next staged candidate replaces the generic shell
-`/init` with a 6,424-byte static fixed-device executable. It keeps the verified
-shell as `/init.stock`, preserves the existing root PID 1 as the second phase,
-and changes neither the kernel nor DTB.
+duplicate-safe fallbacks. The generic shell `/init` is now replaced by a
+6,424-byte static fixed-device executable, with the verified shell retained as
+`/init.stock`. Three hardware boots explicitly report the fixed path active and
+average 1.967 seconds to an input-ready frame, about 88 ms earlier than the
+previous initramfs-shell pair. The offline next candidate replaces the
+remaining root BusyBox PID 1 with a 5,128-byte blocking static init.
 
 ## Kernel-time opportunities inside the first 1.809 seconds
 
@@ -121,14 +123,16 @@ menu. The intended reduction is:
    with dynamic multi-storage/UnionFS and always-resident general audio.
 3. [done] Move the hardware-verified pre-`rcS` boundary into the initramfs
    root-mount handoff and defer root BusyBox init until first frame.
-4. [staged] Replace the generic shell `/init` with the fixed-device static init;
-   hardware-verify its recovery route before replacing root PID 1.
-5. Record `/dev`, module and audio-node state immediately before and after udev;
+4. [done] Replace the generic shell `/init` with the fixed-device static init;
+   hardware testing shows no recovery activation.
+5. [built offline] Replace root BusyBox PID 1/inittab with the fixed static
+   child reaper and shutdown event loop after the brightness-only boot test.
+6. Record `/dev`, module and audio-node state immediately before and after udev;
    replace its 1.53-second generic cold replay with a fixed-device sequence.
-6. Replace the dynamic multi-storage/UnionFS startup with a fixed ROM mount.
-7. Make the general audio stack
+7. Replace the dynamic multi-storage/UnionFS startup with a fixed ROM mount.
+8. Make the general audio stack
    content-triggered.
-8. Bake successful card-side changes into rootfs, delete production user-init
+9. Bake successful card-side changes into rootfs, delete production user-init
    and generic maintenance jobs, then profile the smaller image.
-9. Trim the initramfs, then build the fixed kernel and optimize U-Boot last;
+10. Trim the initramfs, then build the fixed kernel and optimize U-Boot last;
    this is where most of the remaining power-on-to-menu interval lives.
