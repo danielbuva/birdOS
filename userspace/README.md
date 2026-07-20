@@ -78,15 +78,31 @@ kernel event, stops the generator afterward, and retains it on an eight-second
 timeout. Its completion record and final PID state are written after the ROM
 mount exists, independent of the earlier user-init collector.
 
-## Content-triggered audio
+## Post-menu session-warm audio
 
 `S30dbus-on-demand` and `pipewire-on-demand` are narrow wrappers around the
-unaltered stock scripts. Their ordinary boot `start` requests return without
-creating a daemon. The launcher uses the explicit `demand-start` boundary
-before any game or MPV handoff, then `demand-stop` after content returns. Stock
-frontend fallback also starts audio first. The installer preserves the exact
-stock implementations as `.dani-real`, checksum-gates all three active files,
-and applies the D-Bus, PipeWire and launcher changes as one rollback unit.
+unaltered stock scripts. The first content-triggered proof kept all three audio
+daemons absent until selection and passed the full game/media/system-control
+test. Its measured cold initialization cost was about 1.0--1.5 seconds, which
+made the first content choice pay avoidable latency.
 
-Run `stage-on-demand-runtime-batch.sh /Volumes/dani-sp` to stage this audio
-boundary together with the independent CRNG-event and final-bind-log revisions.
+The next stage schedules audio only when the existing startup reaches the
+wrapper after the menu is interactive. Its worker waits for the system-ready
+marker, then runs concurrently with entropy and the noncritical storage tail.
+Storage does not depend on CRNG; audio may block only inside its own random
+request, and cannot hold the menu or mount path. A lock makes an unusually fast
+content selection join the same startup instead of creating duplicate daemons.
+Audio remains warm across game/media returns. PortMaster can borrow the same
+D-Bus without stopping it underneath PipeWire, while stock-frontend fallback
+explicitly ensures audio is ready.
+
+The original installer stored the stock D-Bus implementation at a visible
+`S30dbus.dani-real` name. The `S??*` dispatcher consequently ran that file as a
+second boot service and left D-Bus resident. The migration hides the preserved
+implementation as `.S30dbus.dani-real` and explicitly skips `S30dbus` in the
+generic dispatcher. These D-Bus, PipeWire, launcher and dispatcher changes are
+checksum-gated and installed as one rollback unit.
+
+Run `stage-postmenu-audio-batch.sh /Volumes/dani-sp` to stage the migration and
+an independent capture of the exact PipeWire/WirePlumber configuration for the
+later fixed-profile reduction.

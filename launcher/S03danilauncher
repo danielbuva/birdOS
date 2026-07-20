@@ -122,7 +122,8 @@ RUN_CONTENT() {
 	printf 'content launch result: %s\n' "$CONTENT_RESULT"
 	printf 'content launch end uptime: '
 	cut -d ' ' -f 1 /proc/uptime
-	STOP_AUDIO
+	# Audio is session-warm after the menu appears. Retain it across content
+	# returns so the next selection never repays daemon startup latency.
 	SNAPSHOT_LOG
 	return "$CONTENT_RESULT"
 }

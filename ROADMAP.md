@@ -51,11 +51,13 @@ application and move everything unrelated to an interactive menu behind it.
   preserve both union compatibility paths with zero resident FUSE processes.
   Direct `/dev/mmcblk0p6` mounting, unused boot/configfs-mount removal and the
   fixed `/run/muos/storage` map passed the combined functionality test.
-- [ ] [staged] Make D-Bus, PipeWire and WirePlumber content-triggered; stop them
-  when the selected game/media process returns to the launcher.
-- [ ] [CRNG-event revision staged] Retain early entropy seeding but terminate
-  haveged after the kernel's explicit readiness event. The first 256-bit
-  counter proof safely retained the daemon instead of proving termination.
+- [ ] [post-menu revision staged] The content-triggered audio proof passed, but
+  made the first selection pay 1.0--1.5 seconds. Keep the interactive menu
+  first, then warm D-Bus, PipeWire and WirePlumber concurrently and retain them
+  for the session. Immediate selections join the same locked initialization.
+- [x] Retain early entropy seeding and terminate haveged after the kernel's
+  explicit readiness event. Hardware logs show CRNG ready at 4.07 seconds and
+  haveged gone at 4.10 seconds. Storage never waits for it.
 - [ ] Absorb fixed controls and hardware policy into build-time state.
 - [ ] Bake changes into the image and disable the development user-init path.
 

@@ -3,6 +3,9 @@
 REAL="/opt/muos/script/system/pipewire.sh.dani-real"
 DBUS="/opt/muos/script/init/S30dbus"
 DEMAND="/run/muos/dani-audio-demand"
+START_LOCK="/run/muos/dani-audio-starting"
+WARM_SCHEDULED="/run/muos/dani-audio-warm-scheduled"
+SYSTEM_READY="/run/muos/dani-system-ready"
 STAGES="/tmp/muos/audio-on-demand.tsv"
 RESULTS="/mnt/mmc/MUOS/boot-timing/audio-on-demand/results"
 
@@ -31,14 +34,41 @@ persist() {
 	} >"$RESULTS/latest-processes.txt"
 }
 
+schedule_warm() {
+	[ -S /run/pipewire-0 ] && return 0
+	[ -e "$WARM_SCHEDULED" ] && return 0
+	: >"$WARM_SCHEDULED"
+	mark post-menu-audio-warm-scheduled
+
+	(
+		COUNT=0
+		while [ ! -e "$SYSTEM_READY" ] && [ "$COUNT" -lt 100 ]; do
+			COUNT=$((COUNT + 1))
+			sleep 0.05
+		done
+		if [ -e "$SYSTEM_READY" ]; then
+			mark post-menu-system-ready
+		else
+			# Do not permanently lose audio if the compatibility marker fails.
+			mark post-menu-system-ready-timeout
+		fi
+		if /opt/muos/script/init/S01entropy status >/dev/null 2>&1; then
+			mark post-menu-audio-crng-already-ready
+		else
+			# Do not serialize audio behind CRNG. PipeWire/D-Bus can perform
+			# independent setup now and only their own random call may wait.
+			mark post-menu-audio-crng-concurrent
+		fi
+		"$0" demand-start
+	) >/dev/null 2>&1 &
+}
+
 case "${1-}" in
 	start)
-		if [ ! -e "$DEMAND" ]; then
-			mark pipewire-boot-start-deferred
-			exit 0
-		fi
-		[ -S /run/pipewire-0 ] && exit 0
-		exec "$REAL" start
+		# The stock startup reaches this wrapper after the menu is interactive.
+		# Schedule an asynchronous warm-up and return immediately.
+		schedule_warm
+		exit 0
 		;;
 	demand-start)
 		: >"$DEMAND"
@@ -47,27 +77,50 @@ case "${1-}" in
 			persist
 			exit 0
 		fi
+		if ! mkdir "$START_LOCK" 2>/dev/null; then
+			mark audio-start-joined
+			COUNT=0
+			while [ -d "$START_LOCK" ] && [ "$COUNT" -lt 100 ]; do
+				COUNT=$((COUNT + 1))
+				sleep 0.05
+			done
+			if [ -S /run/pipewire-0 ]; then
+				mark audio-joined-ready
+				persist
+				exit 0
+			fi
+			[ ! -d "$START_LOCK" ] && exec "$0" demand-start
+			mark audio-start-lock-timeout
+			persist
+			exit 1
+		fi
+		trap 'rmdir "$START_LOCK" 2>/dev/null || :' 0 1 2 15
 		mark pipewire-demand-start
 		"$DBUS" demand-start || {
 			RESULT=$?
 			mark "pipewire-dbus-failed-$RESULT"
+			persist
 			exit "$RESULT"
 		}
 		"$REAL" start
 		RESULT=$?
 		mark "pipewire-demand-result-$RESULT"
 		persist
+		rmdir "$START_LOCK" 2>/dev/null || :
+		trap - 0 1 2 15
 		exit "$RESULT"
 		;;
 	demand-stop)
 		if [ -S /run/pipewire-0 ] || pidof pipewire >/dev/null 2>&1; then
 			mark pipewire-demand-stop
-			"$REAL" stop || :
 		fi
-		"$DBUS" demand-stop || :
+		# Stop D-Bus first so it cannot be stranded if the stock audio stop
+		# helper terminates its invoking shell along with the named daemons.
+		"$DBUS" demand-stop-force || :
 		rm -f "$DEMAND"
-		mark audio-demand-stopped
+		mark audio-demand-stop-dispatched
 		persist
+		"$REAL" stop || :
 		exit 0
 		;;
 	*) exec "$REAL" "$@" ;;

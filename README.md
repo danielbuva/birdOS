@@ -40,9 +40,10 @@ card-side patches.
 ## Current changes
 
 - Early ROM mount.
-- Frontend/audio readiness gate removed. A checksum-gated next-stage wrapper is
-  staged to keep D-Bus, PipeWire and WirePlumber absent until a game or media
-  selection explicitly requests audio, then stop them on return.
+- Frontend/audio readiness gate removed. The content-triggered proof passed its
+  functionality test. The next checksum-gated stage keeps the menu first, then
+  warms D-Bus, PipeWire and WirePlumber concurrently in the background and
+  retains them for the session. An immediate selection joins the same startup.
 - Historical detailed sysinit, mount, frontend and process logs retained;
   continuous observers are being replaced by explicitly armed diagnostic runs.
 - The launcher blocks on evdev after storage readiness instead of waking 250
@@ -121,6 +122,9 @@ card-side patches.
   replacement.
 - Early entropy retained: deferring haveged delayed kernel CRNG readiness and
   caused PipeWire/SDL audio to block the frontend until 12-14 seconds.
+- Storage has no CRNG dependency. Entropy, fixed storage and post-menu audio
+  therefore run concurrently; only audio's own random request may wait for the
+  CRNG, never the launcher or storage path.
 - The stock 8.17 GiB image now has an exact partition map and verified offline
   extraction workflow. Its Android boot v2 payload round-trips byte-for-byte;
   a raw-25 `lcd_backlight` DTB candidate was verified, installed and found not to

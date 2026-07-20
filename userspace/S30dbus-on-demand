@@ -1,7 +1,8 @@
 #!/bin/sh
 
-REAL="/opt/muos/script/init/S30dbus.dani-real"
+REAL="/opt/muos/script/init/.S30dbus.dani-real"
 DEMAND="/run/muos/dani-audio-demand"
+START_LOCK="/run/muos/dani-dbus-starting"
 STAGES="/tmp/muos/audio-on-demand.tsv"
 RESULTS="/mnt/mmc/MUOS/boot-timing/audio-on-demand/results"
 
@@ -37,20 +38,57 @@ case "${1-}" in
 			persist
 			exit 0
 		fi
+		if ! mkdir "$START_LOCK" 2>/dev/null; then
+			mark dbus-start-joined
+			COUNT=0
+			while [ -d "$START_LOCK" ] && [ "$COUNT" -lt 100 ]; do
+				COUNT=$((COUNT + 1))
+				sleep 0.05
+			done
+			if [ -S /run/dbus/system_bus_socket ]; then
+				mark dbus-joined-ready
+				persist
+				exit 0
+			fi
+			[ ! -d "$START_LOCK" ] && exec "$0" demand-start
+			mark dbus-start-lock-timeout
+			persist
+			exit 1
+		fi
+		trap 'rmdir "$START_LOCK" 2>/dev/null || :' 0 1 2 15
 		mark dbus-demand-start
 		"$REAL" start
 		RESULT=$?
 		mark "dbus-demand-result-$RESULT"
 		persist
+		rmdir "$START_LOCK" 2>/dev/null || :
+		trap - 0 1 2 15
 		exit "$RESULT"
 		;;
 	demand-stop)
+		# PortMaster also borrows D-Bus. Keep the shared bus alive when the
+		# post-menu audio stack is using it.
+		if [ -S /run/pipewire-0 ] || pidof pipewire >/dev/null 2>&1; then
+			mark dbus-retained-for-audio
+			persist
+			exit 0
+		fi
 		if [ -S /run/dbus/system_bus_socket ] || [ -f /run/messagebus.pid ]; then
 			mark dbus-demand-stop
 			"$REAL" stop || :
 		fi
 		rm -f "$DEMAND"
 		mark dbus-demand-stopped
+		persist
+		exit 0
+		;;
+	demand-stop-force)
+		if [ -S /run/dbus/system_bus_socket ] || [ -f /run/messagebus.pid ]; then
+			mark dbus-force-stop
+			"$REAL" stop || :
+		fi
+		rm -f "$DEMAND"
+		mark dbus-force-stopped
 		persist
 		exit 0
 		;;

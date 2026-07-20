@@ -10,7 +10,7 @@ PW_TARGET="/opt/muos/script/system/pipewire.sh"
 DBUS_TARGET="/opt/muos/script/init/S30dbus"
 LAUNCHER_TARGET="/opt/muos/script/init/S03danilauncher"
 PW_REAL="$PW_TARGET.dani-real"
-DBUS_REAL="$DBUS_TARGET.dani-real"
+DBUS_REAL="/opt/muos/script/init/.S30dbus.dani-real"
 PW_BACKUP="$WORK_DIR/backup/pipewire.sh.stock"
 DBUS_BACKUP="$WORK_DIR/backup/S30dbus.stock"
 LAUNCHER_BACKUP="$WORK_DIR/backup/S03danilauncher.pre-audio-demand"
@@ -20,9 +20,9 @@ CARD_INSTALLER="$ROM_MOUNT/MUOS/init/77-install-audio-on-demand.sh"
 PW_OLD_SHA="81c6890f17deafec9d9afe214fba0badcb2b2c42a334ef3e57a74f3810a4d79d"
 DBUS_OLD_SHA="726c0803e66157bbb9aca253b3d0c5146d577a8264032a6cd82deebdb870cd37"
 LAUNCHER_OLD_SHA="d747b32432f19845dcc80d6a8b9fae2c6f10ef39ed711e396829be4da03464ac"
-PW_NEW_SHA="3c03475cddde170325b707b0cfc3a07c935c4ddd7d5883863f66b9436b254e85"
-DBUS_NEW_SHA="68fe4472c703bde2515bbce956add89ef329813921aa04c8ec1f28199f3d0cdb"
-LAUNCHER_NEW_SHA="70e1aa1485357a5cf0951641976a9121f9aaa1a388e75366d0287582db25b766"
+PW_NEW_SHA="54aae202d0ca514dfc63d426d651bb4be99b7f5983936e49cb51575290782e62"
+DBUS_NEW_SHA="b942c2877db0be3012ec46cfdbe3c555982dcf9dfeaf658fc21ca5d3169f9817"
+LAUNCHER_NEW_SHA="ef3ae835a1ef9c74156967a9e52f7398ccb2f96e282773df0416cd771ee9c05a"
 PW_TEMP="$PW_TARGET.dani-new"
 DBUS_TEMP="$DBUS_TARGET.dani-new"
 LAUNCHER_TEMP="$LAUNCHER_TARGET.dani-new"
@@ -54,7 +54,7 @@ fail() {
 	exit 1
 }
 
-printf 'content-triggered D-Bus/PipeWire installer start\n'
+printf 'post-menu D-Bus/PipeWire warm-up installer start\n'
 [ "$(sha_file "$PW_SOURCE")" = "$PW_NEW_SHA" ] || fail "PipeWire wrapper source mismatch"
 [ "$(sha_file "$DBUS_SOURCE")" = "$DBUS_NEW_SHA" ] || fail "D-Bus wrapper source mismatch"
 [ "$(sha_file "$LAUNCHER_SOURCE")" = "$LAUNCHER_NEW_SHA" ] || fail "launcher source mismatch"
@@ -72,7 +72,7 @@ if [ "$CURRENT_PW" = "$PW_NEW_SHA" ] && [ "$CURRENT_DBUS" = "$DBUS_NEW_SHA" ] &&
 	[ -f "$DBUS_REAL" ] && [ "$(sha_file "$DBUS_REAL")" = "$DBUS_OLD_SHA" ]; then
 	printf '%s %s %s\n' "$PW_NEW_SHA" "$DBUS_NEW_SHA" "$LAUNCHER_NEW_SHA" >"$MARKER"
 	disable_installer
-	printf 'content-triggered audio already installed\n'
+	printf 'post-menu audio already installed\n'
 	exit 0
 fi
 
@@ -123,4 +123,4 @@ sync || fail "sync failed"
 INSTALL_STARTED=0
 printf '%s %s %s\n' "$PW_NEW_SHA" "$DBUS_NEW_SHA" "$LAUNCHER_NEW_SHA" >"$MARKER"
 disable_installer
-printf 'SUCCESS: D-Bus and PipeWire are now content-triggered; active next boot\n'
+printf 'SUCCESS: D-Bus and PipeWire now warm after the menu; active next boot\n'

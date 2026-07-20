@@ -71,5 +71,5 @@ rm -f \
 	"$INIT_DIR"/._99-boot-timing-marker.sh
 
 sync
-printf 'Staged three independent parts: content-triggered audio/D-Bus, CRNG-event haveged exit, and completed bind proof.\n'
+printf 'Staged legacy combined proof. For the active card use stage-postmenu-audio-batch.sh.\n'
 printf 'Boot once to install; the following boot is the behavior test.\n'
