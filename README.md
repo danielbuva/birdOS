@@ -16,10 +16,9 @@ must serve this one device and this one experience.
 - Pre-font internal input-ready average: 9.84 seconds.
 - English-only-font internal input-ready average: 9.60 seconds.
 - Optimized-stock internal input-ready average: 8.43 seconds.
-- The latest static-`/init` supervisor starts are at 1.93, 1.96 and 1.94
-  seconds of kernel uptime.
-- Their interactive frames are at 1.957, 1.980 and 1.964 seconds, with input
-  ready on every frame; permanent-root startup begins later at 2.18--2.20.
+- The static-`/init` launcher record remains 1.957 seconds to an input-ready
+  frame. The latest verified behavior boot produced its frame at 1.997 seconds,
+  with permanent-root sysinit beginning later at 2.03 seconds.
 - Three static-root-PID-1 boots explicitly recorded the new init marker,
   produced input-ready frames at 2.032--2.103 seconds, launched content and
   shut down normally. As expected for post-frame work, stopwatch boot time
@@ -91,8 +90,12 @@ card-side patches.
   slow, so further game-load work is documented and deferred.
 - A later game request at 18.84 seconds proved audio had already been ready for
   more than 12 seconds, excluding audio initialization from that perceived
-  delay. The generic startup still had 8--20-second sleepers that could wake
-  during cold RetroArch loading; their removal is staged as a separate test.
+  delay. The generic 8--20-second startup jobs have since been removed and the
+  resulting complete game/media/control behavior test passed.
+- A reported first Flycast/RetroArch exit pause is not launcher restoration:
+  after the content process actually exited, the supervisor restarted the
+  launcher and drew its prior screen in about 32 ms. Core/frontend teardown is
+  now recorded with the deferred cold-game work.
 - The behavior-preserving udev inventory is complete. A no-udev proof retained
   the menu and shutdown but exposed current `/run/udev` dependencies in
   RetroArch/MPV input, ALSA setup and system hotkeys. Explicit Mali probing
@@ -121,13 +124,21 @@ card-side patches.
   launcher, and the permanent shell no longer times out into stock.
 - The animation and MPV-chime proofs are removed from the active path until the
   earliest interactive-menu architecture is complete. Final effects come later.
-- Low-power monitoring remains for battery safety. The current staged startup
+- Low-power monitoring remains for battery safety. The verified startup-tail
   pass removes per-boot USB setup, device-control/SDL rewrites, catalogue
   generation, sound preparation, recursive SSH permission repair and log
-  cleanup; their fixed results or unused status are already known.
-- The captured WirePlumber graph still enables camera, V4L2, MIDI, Bluetooth
-  and logind discovery. Fixed overrides disabling those paths while retaining
-  ALSA and normal policy/routing are staged independently.
+  cleanup; its full functionality test passed.
+- Fixed WirePlumber overrides now disable camera, V4L2, MIDI, Bluetooth and
+  logind discovery while retaining ALSA and normal policy/routing. Their full
+  functionality test passed.
+- The current card batch replaces the remaining generic root startup
+  coordinator with a fixed RG34XX-SP script. It removes factory-reset,
+  first-boot, HDMI and alternate-board branches, dispatches only the proven
+  device/storage/audio workers and starts global hotkeys before storage binding
+  completes. Content readiness still waits for the fixed mount marker.
+- The accompanying explicitly armed process snapshot now waits until the ROM
+  mount exposes its arm file, captures once after the system settles, and
+  removes its own rootfs hook after success.
 - Early entropy retained: deferring haveged delayed kernel CRNG readiness and
   caused PipeWire/SDL audio to block the frontend until 12-14 seconds.
 - Storage has no CRNG dependency. Entropy, fixed storage and post-menu audio

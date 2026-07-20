@@ -114,13 +114,27 @@ Bluetooth and logind even though this fixed experience uses only built-in ALSA.
 `89-dani-fixed-main.lua` and `89-dani-fixed-bluetooth.lua` turn off those
 monitors without replacing the proven sink, volume and stream-linking policy.
 
-`patch-fixed-startup-tail.sh` independently removes delayed generic jobs that
+`patch-fixed-startup-tail.sh` independently removed delayed generic jobs that
 wake 8--20 seconds into a session: USB gadget setup, catalogue generation,
 controller and SDL-map rewriting, system-sound preparation, recursive SSH
 permission repair, RetroArch precache and log cleanup. It preserves low-battery
-monitoring, user-init and delayed `dmesg` diagnostics. This is also a plausible
-secondary cold-game improvement because a recent game launch began at 18.9
-seconds while those sleepers were armed.
+monitoring, user-init and delayed `dmesg` diagnostics. The behavior pass after
+installation retained games, media, controls and shutdown.
 
-Run `stage-fixed-postmenu-batch.sh /Volumes/dani-sp` to stage the two independent
-changes plus a one-shot stable runtime snapshot for the following behavior boot.
+`startup-rg34xxsp.sh` is the next fixed-root step. It replaces the generic
+startup coordinator with the exact internal-display RG34XX-SP path: no factory
+reset, first-boot, HDMI, rumble-probe or alternate-board branches; Mali remains
+owned by the earlier fixed hardware service and only squashfs is dispatched
+here. Device setup, fixed storage and session-warm audio remain separate
+workers. The global hotkey daemon starts before the storage wait so system
+controls can become usable as early as possible, while game/media execution
+still waits for the fixed mount-ready marker. Its small TSV trace preserves
+substage evidence during development.
+
+The first `S98dani-stable-snapshot` incorrectly checked its card-side arm file
+before `/mnt/mmc` had mounted. The revised explicitly armed hook waits for the
+ROM mount, captures the settled process/module/mount state once, clears the arm
+and deletes itself from the rootfs. It does not become a permanent service.
+
+Run `stage-fixed-init-orchestrator.sh /Volumes/dani-sp` to stage the fixed
+startup and repaired one-shot snapshot as independent installers.

@@ -27,11 +27,10 @@ cold game still felt slow.
 
 A later behavior boot removed audio as a possible explanation: D-Bus was ready
 at 4.22 seconds and PipeWire/WirePlumber at 6.31 seconds, while the game was not
-selected until 18.84 seconds. The stock startup still had delayed 8--20-second
-controller, permission, USB, catalogue, sound and maintenance jobs armed at
-that moment. Their independent removal is being tested now; it may eliminate
-contention, but it does not change the larger 5.67-second cold executable/core
-page-in finding below.
+selected until 18.84 seconds. The remaining delayed 8--20-second controller,
+permission, USB, catalogue, sound and maintenance jobs were subsequently
+removed. Functionality passed, but the first game still felt slow, reinforcing
+the larger 5.67-second cold executable/core page-in finding below.
 
 The remaining general RetroArch binary is 12.4 MB and directly requests 24
 shared libraries. Its dependency list includes FFmpeg codec/device/format,
@@ -57,6 +56,11 @@ cold I/O and relocation work, not a fixed sleep that can simply be deleted.
    unconditional boot-time prefetch unless interaction measurements justify it.
 7. Remove verbose RetroArch logging from production after exact failure, save
    and return requirements are captured.
+8. Profile first-exit teardown separately from launch. A recent first Flycast
+   exit looked slow, but the measured interval from RetroArch process exit to
+   the restored prior launcher screen was only about 32 ms. Inspect core save,
+   config flush, shader/cache and frontend shutdown before changing the
+   launcher return path.
 
 The installed fixed bridge source remains in `launcher/lr-fixed.sh`; the
 behavior-preserving measurement wrapper remains in `launcher/lr-profiled.sh`.

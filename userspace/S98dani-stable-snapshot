@@ -4,10 +4,20 @@ ROOT="/mnt/mmc/MUOS/boot-timing/stable-runtime"
 ARM="$ROOT/armed"
 
 [ "${1-}" = start ] || exit 0
+
+# Async init begins before the ROM partition is mounted.  The original hook
+# tested its card-side arm file immediately and silently exited every time.
+# Wait for the fixed mount service before deciding whether this boot is armed.
+WAIT=0
+while [ ! -d /mnt/mmc/MUOS ]; do
+	WAIT=$((WAIT + 1))
+	[ "$WAIT" -lt 2000 ] || exit 0
+	sleep 0.01
+done
 [ -f "$ARM" ] || exit 0
 
-sleep 12
-[ -d /mnt/mmc/MUOS ] || exit 0
+# Capture the stable post-menu process set after delayed low-power work starts.
+sleep 20
 
 BOOT_ID=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null)
 [ -n "$BOOT_ID" ] || BOOT_ID=unknown
@@ -59,3 +69,6 @@ sha256sum \
 printf '%s\n' "$BOOT_ID" >"$ROOT/latest"
 rm -f "$ARM"
 
+# This is an explicitly armed diagnostic, not a permanent boot service.  A
+# successful capture removes the rootfs hook as well as its arm file.
+rm -f /opt/muos/script/init/async/S98dani-stable-snapshot

@@ -541,17 +541,21 @@ Your next concrete milestones should be:
 4. [done] Load a cached game list
 5. [done] Mount storage in parallel
 6. [done] Launch games and return directly to the menu
-7. [in progress] Remove/defer every remaining nonessential userspace task
-8. Replace dynamic storage, audio and device discovery with fixed paths
+7. [in progress] Remove/defer every remaining nonessential userspace task;
+   the fixed root startup coordinator is staged for its hardware proof
+8. [in progress] Replace dynamic storage, audio and device discovery with fixed
+   paths; storage is fixed, audio policy is narrowed and device startup remains
 9. [done] Launch the same static menu before `switch_root`
-10. Replace the two generic init layers with a tiny fixed-device PID 1
+10. [in progress] Replace the two generic init layers with a tiny fixed-device
+    PID 1; both PID 1 binaries are fixed and the remaining root coordinator is
+    staged
 11. Bake and reproduce the complete custom image
 12. Build the fixed RG34XX-SP kernel
 13. Reduce U-Boot only after the final boundary measurement
 14. [deferred] Optimize cold game loading after the current system roadmap
-15. [128 ms Linux-DTB proof staged in current batch] Reduce the PMIC cold-power
-    hold from 512 ms to its minimum and distinguish button acceptance from
-    green-LED response
+15. [done: 128 ms Linux-DTB hardware proof] Reduce the PMIC cold-power hold
+    from 512 ms to its minimum; quick-tap power-on is verified, while earlier
+    green-LED/display response remains a later bootloader/firmware boundary
 ```
 
 Cold game launch findings and the resume-later checklist are intentionally
