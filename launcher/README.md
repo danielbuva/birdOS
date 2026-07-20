@@ -96,6 +96,24 @@ with audio and the device volume controls, and each exited directly back to the
 custom launcher. The measured interval from game-process end to the next first
 launcher frame was 27--29 ms.
 
+## Cold libretro launch profile
+
+The static-root-PID-1 verification exposed the next interaction bottleneck.
+ROM storage was ready by 4.05--4.50 seconds and the launcher handed each request
+to the content bridge in about 0.1 seconds, but the first generic libretro
+launch did not reach its RetroArch stage for another 5.78--7.40 seconds. A
+second libretro launch during the same boot reached that stage in 2.19 seconds,
+showing a cold general-wrapper/page-cache cost rather than a ROM-mount wait.
+
+`lr-profiled.sh` is an otherwise behavior-identical copy of the exact 719-byte
+muOS 2601.1 `lr-general.sh`. Temporary monotonic markers surround function-file
+loading, logging, fixed home lookup, stage overlay, SDL setup, foreground state,
+RetroArch configuration rewriting, control swapping and the final process
+exec. The one-shot installer accepts only the exact stock wrapper SHA-256 and
+backs it up before installing this diagnostic. The resulting measurements will
+define a minimal fixed libretro bridge; the profiler is not a production
+dependency.
+
 ## Native system actions
 
 The launcher uses the same narrow exit-code handoff for its remaining system

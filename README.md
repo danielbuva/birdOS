@@ -20,6 +20,10 @@ must serve this one device and this one experience.
   seconds of kernel uptime.
 - Their interactive frames are at 1.957, 1.980 and 1.964 seconds, with input
   ready on every frame; permanent-root startup begins later at 2.18--2.20.
+- Three static-root-PID-1 boots explicitly recorded the new init marker,
+  produced input-ready frames at 2.032--2.103 seconds, launched content and
+  shut down normally. As expected for post-frame work, stopwatch boot time
+  remained approximately 3.8 seconds.
 - Current LED-on stopwatch range: approximately 3.5--3.8 seconds.
 
 The boot image now starts the launcher from initramfs after mounting the fixed
@@ -27,9 +31,9 @@ root but before `switch_root`. The launcher and its input descriptors survive
 the handoff, while the later root startup sees the existing supervisor and does
 not start a duplicate. The generic initramfs shell is now replaced by a
 6,424-byte static fixed-device init, with the verified shell retained as
-`/init.stock`. The next staged candidate replaces the remaining root BusyBox
-PID 1 with a 5,128-byte blocking static init; BusyBox remains available only as
-feature-triggered applets and as the automatic root-init fallback.
+`/init.stock`. The remaining root BusyBox PID 1 is also replaced by a
+hardware-verified 5,128-byte blocking static init; BusyBox remains available
+only as feature-triggered applets and as the automatic root-init fallback.
 The long-term target is a reproducible fixed-device image, not a collection of
 card-side patches.
 
@@ -76,6 +80,10 @@ card-side patches.
 - SNES, PSP, and native Port launch/return paths work with audio and volume.
 - PortMaster and shutdown run directly without entering the stock frontend.
 - Persistent Favorites and most-recent path tracking are hardware-verified.
+- Cold libretro handoff is now measured separately: three first launches spent
+  5.78--7.40 seconds inside muOS's generic wrapper before its RetroArch stage,
+  while a second launch in the same boot took 2.19 seconds. A behavior-identical
+  profiled wrapper is staged to divide this into exact removable substages.
 - ROM/Favorites readiness updates state without asynchronously repainting the
   launcher, and the permanent shell no longer times out into stock.
 - The animation and MPV-chime proofs are removed from the active path until the

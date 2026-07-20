@@ -177,9 +177,8 @@ device-node identities or payload bytes. Two clean builds produced the same
 image. The hardware-verified image is SHA-256
 `3f6e8b07826ba307ff22665b9ca4d6cd2a485ce3b5162be95c7eacfa8301578c`.
 
-`build-static-pid1.sh` produces the next candidate, now staged for hardware
-testing. It binds a 5,128-byte static executable into the future root and asks
-the existing
+`build-static-pid1.sh` produces the hardware-verified static-root candidate. It
+binds a 5,128-byte static executable into the future root and asks the existing
 `switch_root` applet to execute it as PID 1 instead of `/init`. That binary
 performs only the remaining devpts, shared-memory, fixed symlink and hostname
 setup, dispatches compatibility sysinit behind the already-interactive menu,
@@ -194,6 +193,12 @@ on the ROM partition. The installer accepts only the hardware-verified fixed
 init image, backs up all 64 MiB of the active boot partition, rereads the write,
 and restores automatically if raw verification fails. It also updates the late
 timing collector so the following boot records `static_pid1_active`.
+
+The installer raw-verified the complete partition on device. Three subsequent
+boots recorded `static_pid1_active`, launched libretro content, returned to the
+exact launcher screen and powered off normally. Input-ready frames were at
+2.032, 2.093 and 2.103 seconds; the approximately 3.8-second stopwatch result
+was unchanged because root PID 1 begins after the menu is already interactive.
 
 The 150 ms initramfs unpack currently includes a 2.8 MiB `magic.mgc`, generic
 ALSA profiles and recovery utilities unused by normal boot. Kernel logs also

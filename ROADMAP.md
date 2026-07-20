@@ -64,8 +64,8 @@ keeping the verified menu-first boundary.
   before `switch_root`.
 - [x] Replace the generic initramfs shell with a tiny static fixed-device init
   while retaining the existing root PID 1 as the fallback second phase.
-- [ ] [staged] Replace the root BusyBox PID 1 with a blocking 5,128-byte static
-  init; hardware-test shutdown, content round trips and fallback behavior.
+- [x] Replace the root BusyBox PID 1 with a blocking 5,128-byte static init;
+  three boots verified the marker, content round trips and normal shutdown.
 - [ ] Invoke remaining compatibility applets only when their feature requests
   them, then rebuild BusyBox with only that measured command set.
 - [ ] Mount only the exact filesystems and device nodes the experience uses.
@@ -149,6 +149,9 @@ savings; it is not forgotten.
 - [x] Remove the RGB call and dispatch the interactive launcher before entropy,
   storage mounting and diagnostic observers.
 - [x] Remove the proof animation and chime from the active critical-UI path.
+- [ ] [profiling staged] Replace the generic cold libretro launch wrapper;
+  isolate its 5.78--7.40-second first-launch setup into fixed SDL, RetroArch
+  configuration, control-map and process-start phases.
 - [ ] Move the final animation and audio to the earlier firmware layer.
 - [ ] Complete the final visual, animation and audio identity.
 - [ ] Remove superseded muOS components and produce a reproducible firmware image.
