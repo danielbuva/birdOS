@@ -46,7 +46,10 @@ application and move everything unrelated to an interactive menu behind it.
 - [x] Retire completed high-frequency observers and their 60-second log sync.
 - [x] Replace launcher idle polling and raw-event logs with blocking evdev.
 - [ ] Inventory every remaining boot process, fork, file read and idle wake-up.
-- [ ] Replace dynamic multi-storage discovery and UnionFS with exact card paths.
+- [ ] [fixed UnionFS replacement staged] Replace dynamic multi-storage
+  discovery and UnionFS with exact card paths. First preserve the two stock
+  compatibility paths as kernel binds and prove FUSE removal; then replace the
+  ROM/SD/USB discovery and generic `/run/muos/storage` selection.
 - [ ] Make the general audio stack content-triggered where compatibility allows.
 - [ ] Absorb fixed controls and hardware policy into build-time state.
 - [ ] Bake changes into the image and disable the development user-init path.

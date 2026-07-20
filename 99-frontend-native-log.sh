@@ -87,6 +87,8 @@ MINIMAL_UDEV_TMP="/tmp/muos/minimal-udev.tsv"
 MINIMAL_UDEV_ROOT="/mnt/mmc/MUOS/boot-timing/udev-minimal/results"
 UDEV_ONCE_TMP="/tmp/muos/udev-once.tsv"
 UDEV_ONCE_ROOT="/mnt/mmc/MUOS/boot-timing/udev-once/results"
+FIXED_UNION_TMP="/tmp/muos/fixed-union.tsv"
+FIXED_STORAGE_ROOT="/mnt/mmc/MUOS/boot-timing/fixed-storage/results"
 
 if [ -r /proc/sys/kernel/random/boot_id ]; then
 	IFS= read -r BOOT_ID </proc/sys/kernel/random/boot_id
@@ -133,6 +135,17 @@ if [ -f "$UDEV_ONCE_TMP" ]; then
 	mkdir -p "$UDEV_ONCE_ROOT"
 	cp -f "$UDEV_ONCE_TMP" "$UDEV_ONCE_ROOT/$BOOT_ID.tsv"
 	cp -f "$UDEV_ONCE_TMP" "$UDEV_ONCE_ROOT/latest.tsv"
+fi
+
+if [ -f "$FIXED_UNION_TMP" ]; then
+	mkdir -p "$FIXED_STORAGE_ROOT"
+	cp -f "$FIXED_UNION_TMP" "$FIXED_STORAGE_ROOT/$BOOT_ID.tsv"
+	cp -f "$FIXED_UNION_TMP" "$FIXED_STORAGE_ROOT/latest.tsv"
+	grep ' /mnt/union/' /proc/mounts >"$FIXED_STORAGE_ROOT/latest-mounts.txt" 2>/dev/null || :
+	{
+		printf 'unionfs_pids='
+		pidof unionfs 2>/dev/null || :
+	} >"$FIXED_STORAGE_ROOT/latest-processes.txt"
 fi
 
 mkdir -p "$TRACE_ROOT/backup" "$TRACE_LOG_DIR"

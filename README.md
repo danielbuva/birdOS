@@ -96,6 +96,10 @@ card-side patches.
   resident minimal bridge is restored; it remains fully outside and after the
   interactive launcher. PortMaster/network remains a deferred check at the
   configured home network.
+- The first fixed-storage proof is staged. It replaces the two resident
+  UnionFS-FUSE processes with kernel bind mounts from this card at the same
+  `/mnt/union/ROMS` and `/mnt/union/ports` compatibility paths. The exFAT mount
+  and `/run/muos/storage` binds are deliberately unchanged for this test.
 - ROM/Favorites readiness updates state without asynchronously repainting the
   launcher, and the permanent shell no longer times out into stock.
 - The animation and MPV-chime proofs are removed from the active path until the
@@ -136,6 +140,7 @@ writes a content revision that user-init installs on the next boot.
 - `font-stubs/`: source and AArch64 object payloads for unused language fonts.
 - `userspace/`: fixed-service profiling and replacement stages, beginning with
   the behavior-preserving udev pre/post inventory.
+- `storage/`: checksum-gated single-card mount and UnionFS replacement stages.
 - `ROADMAP.md`: target architecture and project sequence.
 - `GAME_LOAD_DEFERRED.md`: parked cold-game findings and resume-later build
   checklist.
