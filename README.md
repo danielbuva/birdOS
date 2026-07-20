@@ -16,18 +16,18 @@ must serve this one device and this one experience.
 - Pre-font internal input-ready average: 9.84 seconds.
 - English-only-font internal input-ready average: 9.60 seconds.
 - Optimized-stock internal input-ready average: 8.43 seconds.
-- Latest three hardware-verified direct-launcher entries average 2.222 seconds
-  of kernel uptime.
-- Latest three interactive frames average 2.252 seconds, with input ready on
-  every frame; the range is 2.242--2.272 seconds.
+- The two latest pre-`switch_root` supervisor starts are at 2.00 and 2.06
+  seconds of kernel uptime.
+- Their interactive frames are at 2.029 and 2.082 seconds, with input ready on
+  both frames; permanent-root startup begins later at 2.25--2.30 seconds.
 - Current LED-on stopwatch result: approximately four seconds.
 
-The staged critical-UI revision runs the launcher before every optional
-userspace hook, deletes RGB and completed high-frequency diagnostic observers,
-and retains only the exact post-draw marker needed to measure first interaction.
-The next staged proof starts that same supervisor from BusyBox inittab after
-essential mounts but before the generic `rcS` tree, with normal `rcS` retained
-as an automatic fallback.
+The boot image now starts the launcher from initramfs after mounting the fixed
+root but before `switch_root`. The launcher and its input descriptors survive
+the handoff, while the later root startup sees the existing supervisor and does
+not start a duplicate. The next staged proof replaces the generic initramfs
+shell with a static fixed-device init while retaining the existing root PID 1
+as its fallback second phase.
 The long-term target is a reproducible fixed-device image, not a collection of
 card-side patches.
 
@@ -52,10 +52,10 @@ card-side patches.
   pages, and reads the built-in evdev device without SDL or joystick services.
 - The staged early-root proof starts it before `rcS`; duplicate-start protection
   lets the existing sysinit entry remain as a fallback during hardware testing.
-- That proof is hardware-verified with sub-four-second stopwatch results. The
-  in-progress boot-image candidate embeds the freestanding executable in
-  initramfs, starts it after the fixed root mount, and crosses `switch_root`
-  only after the interactive frame.
+- The boot-image candidate is hardware-verified with sub-four-second stopwatch
+  results. It embeds the freestanding executable in initramfs, starts it after
+  the fixed root mount, and crosses `switch_root` only after the interactive
+  frame.
 - Its embedded catalog remains browsable while ROM storage mounts concurrently.
 - The real cache contains 5,953 games across 27 systems; artwork and metadata
   stay out of the boot executable.

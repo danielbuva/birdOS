@@ -142,6 +142,12 @@ existing supervisor in that root, waits only for the first-frame marker, then
 executes `switch_root`. Generic root BusyBox init therefore begins after the
 interactive frame.
 
+Hardware verification records supervisor starts at 2.00 and 2.06 seconds,
+interactive frames at 2.029 and 2.082 seconds, and generic root dispatch only
+at 2.25 and 2.30 seconds. Each boot contains one supervisor start. This proves
+that the pre-`switch_root` process survives the handoff rather than being
+replaced by the root fallback.
+
 BusyBox is not a daemon: its current initramfs shell interprets `/init`, and its
 root `init` becomes PID 1 after `switch_root`; individual applets run only when
 invoked. This candidate defers generic root init but still uses a BusyBox shell

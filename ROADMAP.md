@@ -53,16 +53,17 @@ application and move everything unrelated to an interactive menu behind it.
 
 ### Layer 2 — early userspace and init
 
-Replace generic startup with a minimal fixed-device init. Start the same static
-launcher immediately after `switch_root`, then complete only required setup in
-parallel.
+Replace generic startup with a minimal fixed-device init. The static launcher
+now draws before `switch_root`; next, replace each generic init layer while
+keeping the verified menu-first boundary.
 
 - [ ] Build and test a minimal fixed init with a stock-init recovery route.
 - [x] Hardware-verify the pre-`rcS` inittab launch and fallback.
-- [ ] [in progress] Embed the launcher in initramfs and draw before
-  `switch_root`.
-- [ ] Replace the initramfs shell and root BusyBox PID 1 with a tiny static
-  fixed-device init.
+- [x] Embed the launcher in initramfs and hardware-verify an interactive frame
+  before `switch_root`.
+- [ ] [next] Replace the generic initramfs shell with a tiny static fixed-device
+  init while retaining the existing root PID 1 as the fallback second phase.
+- [ ] Replace the root BusyBox PID 1 with the hardware-verified static init.
 - [ ] Invoke remaining compatibility applets only when their feature requests
   them, then rebuild BusyBox with only that measured command set.
 - [ ] Mount only the exact filesystems and device nodes the experience uses.
@@ -508,10 +509,11 @@ Your next concrete milestones should be:
 6. [done] Launch games and return directly to the menu
 7. [in progress] Remove/defer every remaining nonessential userspace task
 8. Replace dynamic storage, audio and device discovery with fixed paths
-9. [in progress] Launch the same static menu before `switch_root`
-10. Bake and reproduce the complete custom image
-11. Build the fixed RG34XX-SP kernel
-12. Reduce U-Boot only after the final boundary measurement
+9. [done] Launch the same static menu before `switch_root`
+10. Replace the two generic init layers with a tiny fixed-device PID 1
+11. Bake and reproduce the complete custom image
+12. Build the fixed RG34XX-SP kernel
+13. Reduce U-Boot only after the final boundary measurement
 ```
 
 The philosophy is simple: **one device, one experience, no unnecessary decisions, no unnecessary work, and something useful on-screen as early as the hardware permits.**
