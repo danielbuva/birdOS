@@ -38,4 +38,4 @@ rm -f "$WORK_DIR/._S10minimal-udev" \
 sync
 
 printf 'Staged minimal input/sound udev installer: %s\n' "$INSTALL_TARGET"
-printf 'First boot installs it; the following cold boot tests compatibility.\n'
+printf 'First boot installs/restores it; the following cold boot tests compatibility.\n'

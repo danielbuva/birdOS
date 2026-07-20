@@ -71,7 +71,7 @@ and is not included in these timestamps.
 
 | Time | Work | Current effect | Bespoke direction |
 | ---: | --- | --- | --- |
-| 2.26--3.77 s | full udev daemon, cold replay and settle | 1.51 s; gates the stock startup sequence, not the menu | The 1.35-second input/sound-only replay is functional. A one-shot variant now tests retaining its records without a resident daemon. |
+| 2.26--3.77 s | full udev daemon, cold replay and settle | 1.51 s; gates the stock startup sequence, not the menu | The 1.35-second input/sound-only replay is functional and current. The rejected one-shot proof broke MPV's rich controls and timed out stopping udevd. |
 | 3.77--3.85 s | D-Bus | 80 ms; required mainly by the general audio stack | Start concurrently where safe; eventually remove if direct ALSA replaces the PipeWire boot path. |
 | 3.85--3.86 s | dispatch stock startup | 10 ms | Keep only as a temporary compatibility supervisor while dependencies are extracted. |
 | 2.24--4.49 s | dynamic ROM-storage mount path | storage becomes browse-launchable at 4.115 s | Replace device discovery, `blkid`, SD/USB probes and union setup with one fixed `/dev/mmcblk0p6` mount. |
@@ -130,15 +130,18 @@ menu. The intended reduction is:
    hardware testing shows no recovery activation.
 5. [done] Replace root BusyBox PID 1/inittab with the fixed static child reaper
    and shutdown event loop; three boots verified content and shutdown.
-6. [minimal replay verified; one-shot daemon staged] The inventory confirmed identical
+6. [minimal replay verified; daemon removal deferred] The inventory confirmed identical
    input, ALSA and partition state across udev and found only `mali_kbase` newly
    loaded. A no-udev proof kept the menu and shutdown working but broke
    RetroArch/MPV input, ALSA initialization and system hotkeys because the
    existing binaries consume `/run/udev` input/sound records. It also measured
    about 1.10 seconds in explicit Mali probing. The narrowly filtered
    input/sound replay restored games, media, controls, volume and brightness in
-   1.35 seconds. The next proof preserves those records but terminates udevd;
-   PortMaster/network remains a deferred acceptance check.
+   1.35 seconds. The one-shot proof then timed out while stopping udevd and
+   removed MPV's `gptokeyb2`-provided pause, seek, subtitle, speed and
+   player-volume controls. The resident minimal bridge is therefore the current
+   checkpoint until those libudev/SDL clients receive fixed direct-event
+   replacements. PortMaster/network remains a deferred acceptance check.
 7. Replace the dynamic multi-storage/UnionFS startup with a fixed ROM mount.
 8. Make the general audio stack
    content-triggered.

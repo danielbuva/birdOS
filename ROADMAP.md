@@ -149,11 +149,12 @@ savings; it is not forgotten.
 - [x] Remove the RGB call and dispatch the interactive launcher before entropy,
   storage mounting and diagnostic observers.
 - [x] Remove the proof animation and chime from the active critical-UI path.
-- [ ] [minimal replay verified; one-shot daemon staged] Replace the all-device
-  replay with input/sound-only metadata while Mali loads concurrently, then
-  terminate udevd while retaining its fixed records. PortMaster/network remains
-  a deferred home-network acceptance check. Full removal waits until existing
-  RetroArch, MPV/audio and hotkey clients no longer consume `/run/udev` records.
+- [ ] [minimal replay verified; daemon removal deferred] Replace the all-device
+  replay with input/sound-only metadata while Mali loads concurrently. Keep
+  udevd resident outside and after the launcher until MPV's `gptokeyb2`/SDL
+  controls and the other libudev clients have fixed direct-event replacements.
+  The one-shot proof broke rich movie controls and did not terminate cleanly.
+  PortMaster/network remains a deferred home-network acceptance check.
 - [ ] Move the final animation and audio to the earlier firmware layer.
 - [ ] Complete the final visual, animation and audio identity.
 - [ ] Remove superseded muOS components and produce a reproducible firmware image.

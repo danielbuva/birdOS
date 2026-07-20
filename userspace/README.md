@@ -38,25 +38,32 @@ Games, MP3, movies, controls, system volume/brightness and shutdown passed.
 PortMaster/network remains an explicit deferred acceptance check because the
 test was performed away from the configured home network.
 
-`S10udev-once` is the next proof. It generates the same verified input/sound
-records, waits for all work, then stops udevd while preserving `/run/udev/data`.
-This changes daemon lifetime without changing the metadata consumed by the
-existing clients.
+`S10udev-once` is a rejected proof retained as evidence. It generated the same
+input/sound records, paused the execution queue, and attempted to stop udevd.
+The daemon did not exit within the one-second guard, so this path added about
+1.9 seconds of post-menu work. Games, audio and global hotkeys still worked,
+but MPV lost its rich pause, seek, subtitle, speed and player-volume controls.
+Those controls are injected by PortMaster's `gptokeyb2` bridge, which uses the
+SDL/libudev controller path. System volume, brightness and close continued to
+work because the separate global hotkey service owns them.
 
 `device-install-fixed-devices.sh` accepts only the measured profiler checksum,
 backs it up and atomically installs the fixed candidate. Run
 `stage-fixed-devices.sh /Volumes/dani-sp` on the Mac to deliver it.
 
-`device-install-minimal-udev.sh` accepts only that failed fixed-device checksum,
-backs it up and atomically installs the narrow compatibility candidate. Run
-`stage-minimal-udev.sh /Volumes/dani-sp` to reproduce the verified checkpoint.
+`device-install-minimal-udev.sh` accepts either the failed fixed-device proof or
+the rejected one-shot checksum, backs it up and atomically installs the narrow
+compatibility candidate. Run `stage-minimal-udev.sh /Volumes/dani-sp` to
+restore or reproduce the verified checkpoint.
 
-`device-install-udev-once.sh` accepts only the verified minimal-udev checksum
-and installs the no-resident-daemon candidate. Run
-`stage-udev-once.sh /Volumes/dani-sp` to deliver the active proof.
+`device-install-udev-once.sh` and `stage-udev-once.sh` are preserved only to
+reproduce the failed daemon-lifetime experiment. Do not deploy them as the
+current compatibility configuration.
 
-The rules and 9.7 MB hardware database remain installed. After the one-shot
-proof passes, replace remaining libudev clients or generate their fixed records
-directly. Delete udev only after launcher, every emulator family, MPV audio and
-video, volume, suspend/lid, the deferred PortMaster/network check and shutdown
-all pass.
+The rules and 9.7 MB hardware database remain installed, and the minimal udevd
+stays resident for compatibility. The launcher neither contains nor waits for
+it: it is already interactive before this independent stage starts. Replace
+`gptokeyb2`/SDL media input and the other remaining libudev clients with fixed
+direct-event paths before retrying daemon removal. Delete udev only after the
+launcher, every emulator family, MPV audio/video controls, volume, suspend/lid,
+the deferred PortMaster/network check and shutdown all pass.

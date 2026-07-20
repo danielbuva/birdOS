@@ -90,9 +90,12 @@ card-side patches.
   the menu and shutdown but exposed current `/run/udev` dependencies in
   RetroArch/MPV input, ALSA setup and system hotkeys. Explicit Mali probing
   consumes about 1.10 seconds of the former 1.51 seconds. The 1.35-second
-  input/sound-only replay restored functionality. A one-shot variant that
-  preserves its records but terminates udevd is staged next; PortMaster/network
-  remains a deferred check at the configured home network.
+  input/sound-only replay restored functionality. The one-shot variant failed
+  to terminate udevd cleanly and broke MPV's `gptokeyb2`-injected rich controls,
+  while its global close/volume/brightness controls still worked. The verified
+  resident minimal bridge is restored; it remains fully outside and after the
+  interactive launcher. PortMaster/network remains a deferred check at the
+  configured home network.
 - ROM/Favorites readiness updates state without asynchronously repainting the
   launcher, and the permanent shell no longer times out into stock.
 - The animation and MPV-chime proofs are removed from the active path until the

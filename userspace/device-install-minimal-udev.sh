@@ -6,11 +6,13 @@ WORK_DIR="$ROM_MOUNT/MUOS/boot-timing/udev-minimal"
 SOURCE="$WORK_DIR/S10minimal-udev"
 TARGET="/opt/muos/script/init/S10udev"
 BACKUP="$WORK_DIR/backup/S10fixed-devices"
+REJECTED_ONCE="$WORK_DIR/backup/S10udev-once.rejected"
 MARKER="$WORK_DIR/minimal-udev-installed"
 LOG_FILE="$WORK_DIR/install.log"
 CARD_INSTALLER="$ROM_MOUNT/MUOS/init/86-install-minimal-udev.sh"
 FIXED_SHA="de60cebfb559f7a9e7abb6ed7ec1781047425d22043db97d63d6c87713b78773"
 MINIMAL_SHA="65409a71180644525425ee9e0f6dac3c74234022523ebc3411275b89d711aecd"
+ONCE_SHA="39d962fbefca6b4f241c89b4afce79c9257fa0a93a84b0dfb95cab4c7a306a5f"
 TEMP="/opt/muos/script/init/.S10udev.dani-minimal-new"
 
 mkdir -p "$WORK_DIR/backup"
@@ -42,14 +44,25 @@ if [ "$CURRENT_SHA" = "$MINIMAL_SHA" ]; then
 	printf 'minimal udev compatibility already installed\n'
 	exit 0
 fi
-[ "$CURRENT_SHA" = "$FIXED_SHA" ] || fail "refusing unknown S10udev"
-
-if [ -f "$BACKUP" ]; then
-	[ "$(sha_file "$BACKUP")" = "$FIXED_SHA" ] || fail "existing fixed-device backup mismatch"
-else
-	cp "$TARGET" "$BACKUP"
-	[ "$(sha_file "$BACKUP")" = "$FIXED_SHA" ] || fail "new fixed-device backup mismatch"
-fi
+case "$CURRENT_SHA" in
+	"$FIXED_SHA")
+		if [ -f "$BACKUP" ]; then
+			[ "$(sha_file "$BACKUP")" = "$FIXED_SHA" ] || fail "existing fixed-device backup mismatch"
+		else
+			cp "$TARGET" "$BACKUP"
+			[ "$(sha_file "$BACKUP")" = "$FIXED_SHA" ] || fail "new fixed-device backup mismatch"
+		fi
+		;;
+	"$ONCE_SHA")
+		if [ -f "$REJECTED_ONCE" ]; then
+			[ "$(sha_file "$REJECTED_ONCE")" = "$ONCE_SHA" ] || fail "existing rejected one-shot backup mismatch"
+		else
+			cp "$TARGET" "$REJECTED_ONCE"
+			[ "$(sha_file "$REJECTED_ONCE")" = "$ONCE_SHA" ] || fail "new rejected one-shot backup mismatch"
+		fi
+		;;
+	*) fail "refusing unknown S10udev" ;;
+esac
 
 rm -f "$TEMP"
 cp "$SOURCE" "$TEMP"
