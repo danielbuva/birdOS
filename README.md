@@ -86,10 +86,11 @@ card-side patches.
   stage appears. Warm equivalents are 0.04, 0.20 and 1.79 seconds. The fixed
   direct bridge passed complete functionality testing but remained perceptibly
   slow, so further game-load work is documented and deferred.
-- The behavior-preserving udev inventory is complete. Across its 1.51-second
-  daemon/trigger/settle phase, only `mali_kbase` and `/dev/mali0` were new;
-  input, ALSA and partition state was already present. A checksum-gated fixed
-  replacement is staged with no `udevd` or generic device replay.
+- The behavior-preserving udev inventory is complete. A no-udev proof retained
+  the menu and shutdown but exposed current `/run/udev` dependencies in
+  RetroArch/MPV input, ALSA setup and system hotkeys. Explicit Mali probing
+  consumes about 1.10 seconds of the former 1.51 seconds. A minimal input/sound-only
+  replay, overlapped with Mali, is staged instead of the all-device replay.
 - ROM/Favorites readiness updates state without asynchronously repainting the
   launcher, and the permanent shell no longer times out into stock.
 - The animation and MPV-chime proofs are removed from the active path until the

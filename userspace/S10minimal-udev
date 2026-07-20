@@ -1,0 +1,77 @@
+#!/bin/sh
+
+# Narrow compatibility bridge for the fixed RG34XX-SP. The launcher is already
+# interactive before this runs. Generate only the input and sound metadata used
+# by existing libudev clients while the required Mali probe runs concurrently.
+STAGES="/tmp/muos/minimal-udev.tsv"
+
+mkdir -p /tmp/muos
+printf 'uptime_s\tevent\n' >"$STAGES"
+
+mark() {
+	IFS=' ' read -r NOW _ </proc/uptime
+	printf '%s\t%s\n' "$NOW" "$1" >>"$STAGES"
+}
+
+case "$1" in
+	start)
+		printf 'Applying minimal RG34XX-SP udev compatibility: '
+		mark minimal-udev-start
+		[ -e /proc/sys/kernel/hotplug ] && printf '\000\000\000\000' >/proc/sys/kernel/hotplug
+
+		# The GPU probe is necessary but independent of input/sound metadata.
+		# Overlap it with the narrow replay instead of serializing both paths.
+		modprobe -q mali_kbase &
+		MALI_PID=$!
+		mark mali-module-dispatched
+
+		/sbin/udevd -d || {
+			echo 'FAIL (udevd)'
+			wait "$MALI_PID" 2>/dev/null || :
+			exit 1
+		}
+		mark udevd-ready
+
+		udevadm trigger --type=devices --subsystem-match=input --action=add || {
+			echo 'FAIL (input replay)'
+			exit 1
+		}
+		mark input-replay-complete
+		udevadm trigger --type=devices --subsystem-match=sound --action=add || {
+			echo 'FAIL (sound replay)'
+			exit 1
+		}
+		mark sound-replay-complete
+
+		wait "$MALI_PID" || {
+			echo 'FAIL (mali_kbase)'
+			exit 1
+		}
+		mark mali-module-loaded
+		udevadm settle --timeout=5 || {
+			echo 'FAIL (minimal settle)'
+			exit 1
+		}
+		mark minimal-settle-complete
+
+		[ -e /dev/mali0 ] || {
+			echo 'FAIL (/dev/mali0)'
+			exit 1
+		}
+		chmod 0666 /dev/mali0
+		ln -sf rtc0 /dev/rtc
+		mark minimal-udev-complete
+		echo 'done'
+		;;
+	stop)
+		udevadm control --stop-exec-queue 2>/dev/null || :
+		killall udevd 2>/dev/null || :
+		mark minimal-udev-stopped
+		;;
+	*)
+		echo "Usage: $0 {start|stop}"
+		exit 1
+		;;
+esac
+
+exit 0

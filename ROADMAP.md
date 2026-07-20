@@ -149,8 +149,10 @@ savings; it is not forgotten.
 - [x] Remove the RGB call and dispatch the interactive launcher before entropy,
   storage mounting and diagnostic observers.
 - [x] Remove the proof animation and chime from the active critical-UI path.
-- [ ] [fixed replacement staged] Replace the 1.51-second all-device udev replay
-  and resident daemon with explicit Mali loading and fixed access modes.
+- [ ] [minimal compatibility staged] Replace the all-device udev replay with
+  input/sound-only metadata while explicit Mali loading runs concurrently.
+  Full removal is deferred until RetroArch, MPV/audio and hotkeys no longer
+  consume `/run/udev` records.
 - [ ] Move the final animation and audio to the earlier firmware layer.
 - [ ] Complete the final visual, animation and audio identity.
 - [ ] Remove superseded muOS components and produce a reproducible firmware image.

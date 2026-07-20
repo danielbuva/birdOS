@@ -71,7 +71,7 @@ and is not included in these timestamps.
 
 | Time | Work | Current effect | Bespoke direction |
 | ---: | --- | --- | --- |
-| 2.26--3.77 s | full udev daemon, cold replay and settle | 1.51 s; gates the stock startup sequence, not the menu | The completed inventory found only `mali_kbase` newly loaded. A fixed explicit Mali/device-permission replacement is staged. |
+| 2.26--3.77 s | full udev daemon, cold replay and settle | 1.51 s; gates the stock startup sequence, not the menu | Full removal proved incompatible with existing input/audio clients and isolated ~1.10 s in the necessary Mali probe. A minimal input/sound-only replay is staged. |
 | 3.77--3.85 s | D-Bus | 80 ms; required mainly by the general audio stack | Start concurrently where safe; eventually remove if direct ALSA replaces the PipeWire boot path. |
 | 3.85--3.86 s | dispatch stock startup | 10 ms | Keep only as a temporary compatibility supervisor while dependencies are extracted. |
 | 2.24--4.49 s | dynamic ROM-storage mount path | storage becomes browse-launchable at 4.115 s | Replace device discovery, `blkid`, SD/USB probes and union setup with one fixed `/dev/mmcblk0p6` mount. |
@@ -130,12 +130,13 @@ menu. The intended reduction is:
    hardware testing shows no recovery activation.
 5. [done] Replace root BusyBox PID 1/inittab with the fixed static child reaper
    and shutdown event loop; three boots verified content and shutdown.
-6. [profile done; fixed replacement staged] The inventory confirmed identical
+6. [profile done; minimal compatibility staged] The inventory confirmed identical
    input, ALSA and partition state across udev and found only `mali_kbase` newly
-   loaded. Stock spent 1.51 seconds starting a daemon and replaying every device
-   against 29 generic rules plus a 9.7 MB database. The staged replacement
-   explicitly loads Mali, preserves the few required permissions and RTC link,
-   and leaves no `udevd`; hardware compatibility testing comes next.
+   loaded. A no-udev proof kept the menu and shutdown working but broke
+   RetroArch/MPV input, ALSA initialization and system hotkeys because the
+   existing binaries consume `/run/udev` input/sound records. It also measured
+   about 1.10 seconds in explicit Mali probing. The next proof overlaps Mali
+   with a narrowly filtered input/sound replay and removes unrelated discovery.
 7. Replace the dynamic multi-storage/UnionFS startup with a fixed ROM mount.
 8. Make the general audio stack
    content-triggered.

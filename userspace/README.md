@@ -15,16 +15,38 @@ measured RG34XX-SP boot it proved:
 - the core daemon/trigger/settle phase took approximately 1.51 seconds;
 - the replay left one daemon plus temporary workers rather than a fixed result.
 
-`S10fixed-devices` is the hardware-test candidate. It explicitly loads Mali,
-waits only for `/dev/mali0`, preserves exact input/audio/Mali permissions and
-creates the `/dev/rtc` link used by shutdown. It does not start `udevd`, replay
-unrelated devices or create unused persistent-name trees.
+`S10fixed-devices` was the first hardware-test candidate. It explicitly loaded
+Mali, preserved exact input/audio/Mali permissions and created the `/dev/rtc`
+link without starting `udevd`. The menu and shutdown worked, but the existing
+compatibility clients did not:
+
+- RetroArch reported that `/run/udev` was missing and discovered no controls;
+- MPV and RetroArch failed ALSA hardware initialization;
+- the stock hotkey service did not provide game/media exit, system volume or
+  brightness handling.
+
+The candidate also proved that explicit `modprobe mali_kbase` itself consumes
+about 1.10 seconds. Most of the former 1.51-second udev interval was necessary
+GPU probing, not removable database work. The rejected candidate is retained as
+evidence and a future endpoint after those clients are replaced.
+
+`S10minimal-udev` is the next compatibility proof. The launcher is already
+interactive when it runs. It starts udevd, generates records only for the fixed
+input and sound subsystems, and overlaps that work with explicit Mali loading.
+It omits the all-subsystem/all-device replay and all persistent storage naming.
+The daemon remains resident for this proof so metadata scope and daemon lifetime
+are changed separately.
 
 `device-install-fixed-devices.sh` accepts only the measured profiler checksum,
 backs it up and atomically installs the fixed candidate. Run
 `stage-fixed-devices.sh /Volumes/dani-sp` on the Mac to deliver it.
 
-The rules and 9.7 MB hardware database deliberately remain installed during
-this proof. Delete them only after launcher, every emulator family, MPV audio
-and video, volume, suspend/lid, PortMaster/network and shutdown all pass without
-a udev daemon or database.
+`device-install-minimal-udev.sh` accepts only that failed fixed-device checksum,
+backs it up and atomically installs the narrow compatibility candidate. Run
+`stage-minimal-udev.sh /Volumes/dani-sp` to deliver the active proof.
+
+The rules and 9.7 MB hardware database remain installed. After the minimal
+input/sound proof passes, stop the daemon while retaining those generated
+records, then replace the remaining libudev clients or generate their fixed
+records directly. Delete udev only after launcher, every emulator family, MPV
+audio and video, volume, suspend/lid, PortMaster/network and shutdown all pass.

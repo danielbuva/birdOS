@@ -83,6 +83,8 @@ UDEV_PROFILE_TMP="/tmp/muos/udev-profile"
 UDEV_PROFILE_ROOT="/mnt/mmc/MUOS/boot-timing/udev-profile/results"
 FIXED_DEVICE_TMP="/tmp/muos/fixed-device-init.tsv"
 FIXED_DEVICE_ROOT="/mnt/mmc/MUOS/boot-timing/udev-fixed/results"
+MINIMAL_UDEV_TMP="/tmp/muos/minimal-udev.tsv"
+MINIMAL_UDEV_ROOT="/mnt/mmc/MUOS/boot-timing/udev-minimal/results"
 
 if [ -r /proc/sys/kernel/random/boot_id ]; then
 	IFS= read -r BOOT_ID </proc/sys/kernel/random/boot_id
@@ -117,6 +119,12 @@ if [ -f "$FIXED_DEVICE_TMP" ]; then
 	mkdir -p "$FIXED_DEVICE_ROOT"
 	cp -f "$FIXED_DEVICE_TMP" "$FIXED_DEVICE_ROOT/$BOOT_ID.tsv"
 	cp -f "$FIXED_DEVICE_TMP" "$FIXED_DEVICE_ROOT/latest.tsv"
+fi
+
+if [ -f "$MINIMAL_UDEV_TMP" ]; then
+	mkdir -p "$MINIMAL_UDEV_ROOT"
+	cp -f "$MINIMAL_UDEV_TMP" "$MINIMAL_UDEV_ROOT/$BOOT_ID.tsv"
+	cp -f "$MINIMAL_UDEV_TMP" "$MINIMAL_UDEV_ROOT/latest.tsv"
 fi
 
 mkdir -p "$TRACE_ROOT/backup" "$TRACE_LOG_DIR"
