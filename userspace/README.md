@@ -30,12 +30,18 @@ about 1.10 seconds. Most of the former 1.51-second udev interval was necessary
 GPU probing, not removable database work. The rejected candidate is retained as
 evidence and a future endpoint after those clients are replaced.
 
-`S10minimal-udev` is the next compatibility proof. The launcher is already
+`S10minimal-udev` is the hardware-verified compatibility proof. The launcher is already
 interactive when it runs. It starts udevd, generates records only for the fixed
 input and sound subsystems, and overlaps that work with explicit Mali loading.
 It omits the all-subsystem/all-device replay and all persistent storage naming.
-The daemon remains resident for this proof so metadata scope and daemon lifetime
-are changed separately.
+Games, MP3, movies, controls, system volume/brightness and shutdown passed.
+PortMaster/network remains an explicit deferred acceptance check because the
+test was performed away from the configured home network.
+
+`S10udev-once` is the next proof. It generates the same verified input/sound
+records, waits for all work, then stops udevd while preserving `/run/udev/data`.
+This changes daemon lifetime without changing the metadata consumed by the
+existing clients.
 
 `device-install-fixed-devices.sh` accepts only the measured profiler checksum,
 backs it up and atomically installs the fixed candidate. Run
@@ -43,10 +49,14 @@ backs it up and atomically installs the fixed candidate. Run
 
 `device-install-minimal-udev.sh` accepts only that failed fixed-device checksum,
 backs it up and atomically installs the narrow compatibility candidate. Run
-`stage-minimal-udev.sh /Volumes/dani-sp` to deliver the active proof.
+`stage-minimal-udev.sh /Volumes/dani-sp` to reproduce the verified checkpoint.
 
-The rules and 9.7 MB hardware database remain installed. After the minimal
-input/sound proof passes, stop the daemon while retaining those generated
-records, then replace the remaining libudev clients or generate their fixed
-records directly. Delete udev only after launcher, every emulator family, MPV
-audio and video, volume, suspend/lid, PortMaster/network and shutdown all pass.
+`device-install-udev-once.sh` accepts only the verified minimal-udev checksum
+and installs the no-resident-daemon candidate. Run
+`stage-udev-once.sh /Volumes/dani-sp` to deliver the active proof.
+
+The rules and 9.7 MB hardware database remain installed. After the one-shot
+proof passes, replace remaining libudev clients or generate their fixed records
+directly. Delete udev only after launcher, every emulator family, MPV audio and
+video, volume, suspend/lid, the deferred PortMaster/network check and shutdown
+all pass.

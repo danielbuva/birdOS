@@ -1,0 +1,90 @@
+#!/bin/sh
+
+# One-shot RG34XX-SP compatibility metadata generation. The launcher is already
+# interactive. Replay only fixed input/sound devices, overlap the required Mali
+# probe, then stop udevd while preserving /run/udev/data for existing clients.
+STAGES="/tmp/muos/udev-once.tsv"
+
+mkdir -p /tmp/muos
+printf 'uptime_s\tevent\n' >"$STAGES"
+
+mark() {
+	IFS=' ' read -r NOW _ </proc/uptime
+	printf '%s\t%s\n' "$NOW" "$1" >>"$STAGES"
+}
+
+case "$1" in
+	start)
+		printf 'Generating fixed RG34XX-SP udev metadata once: '
+		mark udev-once-start
+		[ -e /proc/sys/kernel/hotplug ] && printf '\000\000\000\000' >/proc/sys/kernel/hotplug
+
+		modprobe -q mali_kbase &
+		MALI_PID=$!
+		mark mali-module-dispatched
+
+		/sbin/udevd -d || {
+			echo 'FAIL (udevd)'
+			wait "$MALI_PID" 2>/dev/null || :
+			exit 1
+		}
+		mark udevd-ready
+
+		udevadm trigger --type=devices --subsystem-match=input --action=add || {
+			echo 'FAIL (input replay)'
+			exit 1
+		}
+		mark input-replay-complete
+		udevadm trigger --type=devices --subsystem-match=sound --action=add || {
+			echo 'FAIL (sound replay)'
+			exit 1
+		}
+		mark sound-replay-complete
+
+		wait "$MALI_PID" || {
+			echo 'FAIL (mali_kbase)'
+			exit 1
+		}
+		mark mali-module-loaded
+		udevadm settle --timeout=5 || {
+			echo 'FAIL (minimal settle)'
+			exit 1
+		}
+		mark metadata-ready
+
+		[ -e /dev/mali0 ] || {
+			echo 'FAIL (/dev/mali0)'
+			exit 1
+		}
+		chmod 0666 /dev/mali0
+		ln -sf rtc0 /dev/rtc
+
+		udevadm control --stop-exec-queue 2>/dev/null || :
+		killall udevd 2>/dev/null || :
+		WAIT_COUNT=0
+		while [ -n "$(pidof udevd 2>/dev/null)" ] && [ "$WAIT_COUNT" -lt 100 ]; do
+			sleep 0.01
+			WAIT_COUNT=$((WAIT_COUNT + 1))
+		done
+		[ -z "$(pidof udevd 2>/dev/null)" ] || {
+			mark udevd-stop-timeout
+			echo 'FAIL (udevd remained resident)'
+			exit 1
+		}
+		mark udevd-stopped
+
+		mark udev-once-complete
+		echo 'done'
+		;;
+	stop)
+		# The one-shot daemon has already exited.
+		killall udevd 2>/dev/null || :
+		mark udev-once-stop-noop
+		;;
+	*)
+		echo "Usage: $0 {start|stop}"
+		exit 1
+		;;
+esac
+
+exit 0
