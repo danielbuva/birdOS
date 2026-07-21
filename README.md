@@ -145,8 +145,9 @@ card-side patches.
 - That snapshot completed at 24.08 seconds. It confirms exact exFAT bind mounts,
   no UnionFS or haveged process, roughly 61 MiB used beyond `MemAvailable`, and
   the remaining udev, hotkey, lid, idle, battery and session-audio workers.
-- The corrected combined candidate replaces eight independent generic runtime
-  scripts with fixed RG34XX-SP policy. The first installer attempt safely
+- Eight independent generic runtime scripts are now replaced by fixed
+  RG34XX-SP policy, and the complete functionality pass succeeded at about
+  3.5 seconds by stopwatch. The first installer attempt safely
   refused every write when its device-start checksum did not match the active
   card; the settled snapshot supplied the exact replacement guard. The
   compiled `muhotkey` event source remains, while its shell wrapper loses
@@ -156,7 +157,14 @@ card-side patches.
   device's exact paths.
 - Fixed startup v2 removes per-boot writes for immutable display geometry and
   policy, the obsolete update-file delete, the zero-swap probe and a redundant
-  squashfs module request. Those constants are applied once by the installer.
+  squashfs module request. Those constants are applied once by the installer;
+  the hardware functionality pass succeeded.
+- The next reproducible boot-image candidate reduces the compressed initramfs
+  from 2,772,302 to 1,725,023 bytes (37.8%). It removes the 2.94 MB magic
+  database, 100 generic ALSA profiles, filesystem-creation/FAT/CIFS/serial
+  utilities and their unused libraries. A direct ext4-superblock test skips
+  `e2fsck` only for a clean filesystem; dirty, error-marked or unreadable roots
+  retain the existing automatic repair path. Two clean builds are byte-exact.
 - The 1,122-line card-side migration engine has completed its job. The staged
   replacement is a 45-line diagnostics-only collector with no old patch guards
   or 18--25-second log-copy sleepers.

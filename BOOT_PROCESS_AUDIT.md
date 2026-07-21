@@ -8,15 +8,17 @@ seconds of kernel uptime, while current LED-on stopwatch timing is approximately
 input-ready frames at 2.032--2.103 seconds and retained approximately
 3.8-second stopwatch timing. The first settled-runtime snapshot after the fixed
 root coordinator recorded a 2.06-second input-ready frame, system-ready at 4.24
-seconds and full audio at 6.02 seconds; stopwatch boots remain sub-3.8 seconds.
+seconds and full audio at 6.02 seconds. After startup v2 and the eight fixed
+runtime scripts passed hardware acceptance, the latest ordinary frame is again
+2.06 seconds and the user's stopwatch result is about 3.5 seconds.
 
 ## Work before the usable menu
 
 | Time | Work | Cost | Decision |
 | ---: | --- | ---: | --- |
 | 0--1.809 s | kernel built-in driver initialization | 1.809 s | Fixed-device kernel/DT target. Input is registered at 1.726 s and ALSA finishes at 1.808 s. |
-| 0.755--0.905 s | unpack 2.6 MiB compressed initramfs | 150 ms, overlapping kernel init | Remove the 2.8 MiB magic database, generic ALSA profiles and unused recovery tools. |
-| 1.809--1.852 s | initramfs filesystem check and root mount | ~43 ms on a clean boot | Use a dirty-state policy instead of unconditional `e2fsck -y`; retain recovery for unclean shutdowns. |
+| 0.755--0.905 s | unpack 2.6 MiB compressed initramfs | 150 ms, overlapping kernel init | A byte-reproducible 1.65 MiB candidate removes the magic database, generic ALSA profiles and unused recovery tools; hardware timing is staged. |
+| 1.809--1.852 s | initramfs filesystem check and root mount | ~43 ms on a clean boot | The staged static policy skips only ext4 state `0x0001`; dirty/error/unreadable roots still run the retained `e2fsck -y`. |
 | 1.852--2.20 s | fixed early-root handoff, then root BusyBox setup | menu cost is now 105--128 ms | The launcher draws at 1.957--1.980 s before root dispatch begins at 2.18--2.20 s. |
 | 2.08 s | `S01entropy` starts `haveged` | ~10 ms to dispatch; CRNG ready at 4.07 s and generator stopped at 4.10 s | Retain early and concurrent. Deferral caused CRNG/audio stalls; the revised service now exits after readiness. |
 | 2.18--2.22 s | `S02rgb` | ~40 ms, `rc=1` | Remove. This fixed device has no requested RGB experience and the hook fails. |
@@ -92,6 +94,12 @@ The first fixed-runtime installer made no rootfs changes: its all-target
 preflight correctly refused an unexpected device-start checksum. The following
 settled snapshot identified the active checksum, and the corrected eight-target
 batch retains the same validate-everything-before-writing transaction.
+
+The corrected batch subsequently passed full hardware functionality. Its
+settled snapshot records fixed startup at 3.72 seconds, storage priority-ready
+at 4.60, system-ready at 4.61 and full audio at 6.17. The idle scanner,
+haveged and both UnionFS workers are absent; udevd remains intentionally for
+the verified RetroArch/MPV compatibility boundary.
 
 ## Persistent userspace after startup
 

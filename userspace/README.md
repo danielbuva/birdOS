@@ -149,7 +149,7 @@ At 24.08 seconds, `haveged` and both UnionFS workers are absent. The remaining
 shell workers are the generic hotkey wrapper plus its five-second all-PID idle
 scanner, lid polling and low-battery polling.
 
-`stage-fixed-runtime-batch.sh` stages eight checksum-gated replacements. Every
+`stage-fixed-runtime-batch.sh` installs eight checksum-gated replacements. Every
 source and active target is validated before any target is written. The first
 six-target attempt therefore refused safely when its expected device-start
 checksum was stale; the corrected value comes from the following settled
@@ -178,3 +178,8 @@ The migration engine has already been replaced in ordinary user-init by
 minimal-udev traces. This stage preserves that collector, installs startup v2,
 and rearms a self-removing snapshot to record the post-change process set on
 the following boot.
+
+The corrected transaction installed all eight targets and the complete game,
+media, global-control, lid and shutdown functionality pass succeeded. The
+following settled snapshot verifies every replacement checksum and confirms
+that the former five-second idle scanner is no longer resident.

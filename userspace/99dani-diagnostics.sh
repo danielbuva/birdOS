@@ -1,5 +1,5 @@
 #!/bin/sh
-# DANI_FIXED_DIAGNOSTICS_COLLECTOR_V1
+# DANI_FIXED_DIAGNOSTICS_COLLECTOR_V2
 
 BOOT_TMP="/tmp/muos/boot-timing.tsv"
 BOOT_DIR="/mnt/mmc/MUOS/log/boot"
@@ -17,6 +17,9 @@ if [ -f "$BOOT_TMP" ]; then
 		"$BOOT_ID" "$NOW" >>"$BOOT_TMP"
 	[ ! -e /run/muos/dani-root-init-active ] ||
 		printf '%s\t%s\tmilestone\tinit\tstatic_pid1_active\t0\n' \
+			"$BOOT_ID" "$NOW" >>"$BOOT_TMP"
+	[ ! -e /run/muos/dani-trimmed-initramfs-v1 ] ||
+		printf '%s\t%s\tmilestone\tinit\ttrimmed_initramfs_active\t0\n' \
 			"$BOOT_ID" "$NOW" >>"$BOOT_TMP"
 	mkdir -p "$BOOT_DIR"
 	cp -f "$BOOT_TMP" "$BOOT_DIR/boot-timing-$BOOT_ID.tsv"

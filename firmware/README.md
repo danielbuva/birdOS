@@ -115,11 +115,22 @@ the rootfs, then switches to the real BusyBox init. The command line already
 contains `rootwait quiet splash`, so the one-second `autoconfig` fallback is not
 part of a normal SD boot.
 
-The initramfs includes payload unrelated to this path, led by a 2.8 MiB
-`magic.mgc` database and generic ALSA profiles. Those are credible trimming
-targets, but they must be removed from a repacked copy and timed on hardware;
-the current clean-root `e2fsck -y` should also be measured before changing its
-policy.
+The initramfs included payload unrelated to this path, led by a 2.8 MiB
+`magic.mgc` database and generic ALSA profiles. `build-trimmed-initramfs.sh`
+now removes those plus unused filesystem-creation, FAT, CIFS and serial-transfer
+tools from an exact copy of the active power-key image. The retained recovery
+closure is BusyBox, `e2fsck`, and the seven shared libraries those two binaries
+actually request.
+
+The same candidate reads four bytes at ext4 superblock offset 56 before mount:
+magic `53 ef` and state `01 00` skip the clean-root check, while error state
+`03 00`, a dirty state, a short read or unexpected magic invokes the existing
+`e2fsck -y`. A synthetic ext4 image verified both clean and forced-check byte
+patterns. The compressed ramdisk falls from 2,772,302 to 1,725,023 bytes and
+two independent builds produce SHA-256
+`ff447e7243f7031d99f3559a57868e2116cbf8508fc0654926ef66e5b4460f70`.
+The kernel, DTB, embedded launcher, static root PID 1 and stock shell fallback
+remain byte-identical to the active base.
 
 Before the critical-UI patch, BusyBox ran:
 

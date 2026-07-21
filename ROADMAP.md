@@ -66,17 +66,18 @@ application and move everything unrelated to an interactive menu behind it.
 - [x] Retain early entropy seeding and terminate haveged after the kernel's
   explicit readiness event. Hardware logs show CRNG ready at 4.07 seconds and
   haveged gone at 4.10 seconds. Storage never waits for it.
-- [ ] [corrected and restaged] Replace device startup, hotkey shell, lid
+- [x] Replace device startup, hotkey shell, lid
   watcher, low-battery watcher, charge check, idle scanner, module loader and
   user-init dispatcher with fixed RG34XX-SP policy. The first transaction
   safely refused a stale checksum before changing any target; the corrected
   batch uses the exact settled-card hash. It removes the five-second `/proc`
   scan while retaining the proven input binary, lid suspend, display idle,
-  global controls and battery warning.
+  global controls and battery warning. Hardware functionality passed and the
+  stopwatch result remained around 3.5 seconds.
 - [x] Retire the completed 1,122-line migration engine from ordinary user-init.
   A 45-line collector retains boot and service traces without old patch guards
   or delayed log-copy sleepers.
-- [ ] [staged] Remove the next set of redundant fixed-startup work: per-boot
+- [x] Remove the next set of redundant fixed-startup work: per-boot
   immutable policy/geometry writes, obsolete update-file cleanup, zero-swap
   probing and the unnecessary squashfs module request.
 - [ ] Bake changes into the image and remove the card-side development
@@ -102,10 +103,18 @@ keeping the verified menu-first boundary.
   3.8 seconds.
 - [ ] Invoke remaining compatibility applets only when their feature requests
   them, then rebuild BusyBox with only that measured command set.
-- [ ] Mount only the exact filesystems and device nodes the experience uses.
-- [ ] Replace unconditional filesystem repair with a safe dirty-state policy.
-- [ ] Remove unused magic data, generic ALSA profiles and recovery tools from
-  the initramfs.
+- [x] Mount only the exact filesystems and device nodes the experience uses.
+  The accepted static first/root init pair owns proc, sysfs, devtmpfs, ext4,
+  tmpfs, devpts and shared memory; debugfs is added only for chosen display
+  controls.
+- [ ] [staged] Replace unconditional filesystem repair with a safe dirty-state
+  policy. The static init reads the ext4 magic/state bytes directly, skips only
+  state `0x0001`, and runs the retained `e2fsck -y` for error, dirty, unreadable
+  or unexpected states.
+- [ ] [staged] Remove unused magic data, generic ALSA profiles and recovery
+  tools from the initramfs. Two byte-identical builds reduce its compressed
+  size from 2,772,302 to 1,725,023 bytes while preserving the exact repair
+  dependency closure and BusyBox shell fallback.
 - [x] Produce a byte-reproducible boot-image candidate containing this early
   path.
 

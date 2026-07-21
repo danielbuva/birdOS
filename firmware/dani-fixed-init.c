@@ -7,6 +7,7 @@
  * The previous shell init is retained as /init.stock for early recovery.
  */
 
+typedef unsigned char u8;
 typedef unsigned long u64;
 typedef signed long s64;
 
@@ -34,6 +35,7 @@ typedef signed long s64;
 #define ROOT_SUPERVISOR "/opt/muos/script/init/S03danilauncher"
 #define READY_MARKER "/mnt/run/muos/dani-first-frame-ready"
 #define FIXED_INIT_MARKER "/mnt/run/muos/dani-fixed-initramfs-v1"
+#define TRIMMED_INIT_MARKER "/mnt/run/muos/dani-trimmed-initramfs-v1"
 #ifdef DANI_STATIC_ROOT_INIT
 #define ROOT_INIT_SOURCE "/opt/dani-root-init"
 #define ROOT_INIT_TARGET "/mnt/sbin/dani-root-init"
@@ -91,6 +93,10 @@ static long sys_open(const char *path, int flags, int mode) {
 
 static long sys_close(int fd) {
     return syscall6(57, fd, 0, 0, 0, 0, 0);
+}
+
+static long sys_pread64(int fd, void *buffer, u64 size, u64 offset) {
+    return syscall6(67, fd, (long)buffer, (long)size, (long)offset, 0, 0);
 }
 
 static long sys_write(int fd, const void *buffer, u64 size) {
@@ -243,9 +249,34 @@ static int wait_for_root_device(void) {
     return -1;
 }
 
+static int root_filesystem_is_clean(void) {
+    u8 magic_and_state[4];
+    long fd = sys_open(ROOT_DEVICE, O_RDONLY | O_CLOEXEC, 0);
+    long bytes;
+    unsigned int state;
+
+    if (fd < 0) return 0;
+    /* ext4 superblock starts at byte 1024. Magic is +56, state is +58. */
+    bytes = sys_pread64((int)fd, magic_and_state, sizeof(magic_and_state),
+                        1024 + 56);
+    sys_close((int)fd);
+    if (bytes != (long)sizeof(magic_and_state)) return 0;
+    if (magic_and_state[0] != 0x53 || magic_and_state[1] != 0xef) return 0;
+
+    state = (unsigned int)magic_and_state[2] |
+            ((unsigned int)magic_and_state[3] << 8);
+    return (state & 0x0001U) && !(state & 0x0002U);
+}
+
 static void run_filesystem_check(void) {
     char *const argv[] = {"/usr/sbin/e2fsck", "-y", ROOT_DEVICE, 0};
     int status;
+
+    if (root_filesystem_is_clean()) {
+        log_stage("fsck-clean-skip");
+        return;
+    }
+
     log_stage("fsck-start");
     status = run_child(argv[0], argv);
     log_stage("fsck-end");
@@ -285,6 +316,7 @@ static int prepare_future_root(void) {
         return -2;
     make_dir("/mnt/run/muos", 0755);
     create_marker(FIXED_INIT_MARKER);
+    create_marker(TRIMMED_INIT_MARKER);
     log_stage("future-root-ready");
     return 0;
 }
