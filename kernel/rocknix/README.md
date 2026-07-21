@@ -115,6 +115,98 @@ physical unit. The next candidate keeps that proven lower chain and replaces
 the generic ROCKNIX initramfs/userspace with Bird before any kernel option is
 trimmed.
 
+## Exact source gate result
+
+The stable distribution source is cloned at commit
+`3e4ee5852e6ca5ea73a38369d2639fad2262648b`. Its Linux checkout is pinned to
+stable commit `bb532bfaf7919c7c98caab81864e9ce2646e11e3` (`7.0.11`). The
+rebuild applies the exact executed release order: five mainline patches, two
+Linux-7.0 patches and 23 H700 patches. It also copies the release H700 device
+trees and the exact panel, RTL8821CS and RTW8821C firmware payloads.
+
+`build-source-reference.sh` extracts the shipping configuration from the
+release `KERNEL`, permits only compiler-capability and initramfs-source drift,
+and fails on every other option difference. The available container uses GCC
+14.2 rather than ROCKNIX's GCC 15.2, so this gate is source/configuration and
+hardware-closure reproduction, not a claim that the complete Linux `Image` is
+byte-identical to the release. The most important board artifact is exact:
+the rebuilt 49,010-byte RG34XX-SP DTB has the shipping SHA-256
+`f3a4273986d6e4f431b110cead8aa19e8da52ff08c64c4b204ef9664d28b5c31`.
+
+The broad source baseline with no embedded initramfs is 28,239,880 bytes. No
+driver or kernel option has been removed yet.
+
+The build identity is fixed as `bird@rg34xxsp`, build number 1 and
+`2026-07-01 04:53:00 UTC`. This removes Kbuild's host container and wall-clock
+inputs. Two clean Bird-enabled builds now produce byte-identical kernel Images
+and module archives.
+
+## Bird substitution candidate
+
+`build-bird-initramfs.sh` reconstructs the accepted direct-handoff archive
+from its pinned inputs. It contains the 9,648-byte first init, 5,128-byte root
+PID 1 and the exact accepted 621,736-byte launcher. The only behavior change
+for this hardware gate is a 20-second no-first-frame watchdog; a kernel panic
+also reboots after five seconds. The uncompressed archive is 3,881,472 bytes
+with SHA-256
+`b55a0dac4518bf712010ec911464bcd4318b662ff09f86d3708e86895bb61b52`.
+
+Building the untrimmed kernel with that archive produces:
+
+| Artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Bird source-kernel `Image` | 29,943,816 | `f93cdd0008f9dae05be9192d9360fd097213cb377163d3d19cd58624c4bd5c31` |
+| embedded Bird cpio | 3,881,472 | `b55a0dac4518bf712010ec911464bcd4318b662ff09f86d3708e86895bb61b52` |
+| RG34XX-SP DTB | 49,010 | `f3a4273986d6e4f431b110cead8aa19e8da52ff08c64c4b204ef9664d28b5c31` |
+
+The builder scans the resulting kernel and proves that the embedded archive
+decompresses byte-for-byte to the input cpio. It also builds the complete
+module set even though this first gate deliberately retains shipping breadth.
+
+## Card-safe hardware gate
+
+`build-bird-prefix.sh` packages only the bytes before the existing p5 root.
+It preserves the physically proven ROCKNIX SPL, TF-A and U-Boot at 8 KiB,
+creates a deterministic 128 MiB FAT32 boot partition, and describes the
+existing p5 root and p6 data partitions through an MBR extended chain. The FAT
+contains only `KERNEL`, `dtb.img` and `extlinux/extlinux.conf`; it is populated
+without mounting, so macOS metadata cannot enter the image. Two independent
+builds are byte-identical.
+
+| Boundary | Start | Size |
+| --- | ---: | ---: |
+| boot FAT (p1) | 16 MiB | 128 MiB |
+| existing root (p5) | 156 MiB | 8 GiB |
+| existing data (p6) | 8,348 MiB | 503,320,672,768 bytes |
+
+The candidate ends exactly at byte 163,577,856, the first byte of p5. Its
+SHA-256 is
+`b88dbb35e1e33c737587fed85a2bad81f116aa91ae726c6fe12060e2abe8dbba`.
+Neither the customized root nor the media/game library is part of the write.
+The local accepted-prefix recovery oracle has SHA-256
+`0bcacc83bf7345306ef7615be1012b5c7dd0a92630cf764f34b049f88e9b9f78`.
+
+The install and restore commands are intentionally separate and require an
+explicit action token:
+
+```sh
+firmware/mac-install-rocknix-bird-prefix.sh \
+  /Volumes/dani-sp --install-bird-prefix
+
+firmware/mac-restore-bird-prefix.sh \
+  /dev/diskN --restore-bird-prefix
+```
+
+Both reject internal/non-removable disks and unexpected capacity, verify the
+fixed p5/p6 offsets, write only 156 MiB, and reread the raw prefix before
+reporting success. The installer also refuses unless the card's current raw
+prefix still matches the local accepted recovery oracle.
+
+This image remains an untested hardware candidate. Its first physical gate is:
+interactive Bird frame and controls, brightness/volume, game launch/return,
+MP3, full movie controls, favorites persistence, shutdown and repeated cold
+boots. Only after those pass do kernel trimming and timing comparisons begin.
+
 ## Fetch
 
 `download-reference-release.sh` resumes an existing prefix, fetches the rest

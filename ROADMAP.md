@@ -128,7 +128,7 @@ keeping the verified menu-first boundary.
 Build for the hardware that actually exists rather than a family of possible
 boards.
 
-- [ ] [source gap closed; first compatibility boot failed before capture]
+- [x] [source gap closed; exact-chain source baseline reproduced]
   Reproduce or replace the current vendor 4.9.170
   kernel before changing the boot kernel. The active `Image` and its embedded
   4,209-line config are pinned, as is the exact Linaro GCC 5.3.1 compiler. The
@@ -185,11 +185,20 @@ boards.
   volume and application launch; its immutable payloads remained exact after
   the test. The roughly 24-second stopwatch result belongs to generic ROCKNIX
   userspace and is not a Bird comparison. Substitute Bird one layer at a time.
-- [ ] [next] Rebuild the exact stable-tag source baseline, then replace only
-  its generic initramfs/system handoff with Bird's fixed init and launcher.
-  Preserve the proven DDR4 U-Boot, TF-A, kernel config and v1 DTB for this gate;
-  do not trim until Bird reaches an input-ready frame and the compatibility
-  matrix passes.
+- [x] [offline gate complete; physical test pending] Rebuild the exact
+  stable-tag source baseline, then replace only its generic initramfs/system
+  handoff with Bird's fixed init and launcher. The exact 30-patch order,
+  shipping broad config and byte-identical v1 DTB are pinned. The embedded Bird
+  cpio is byte-verified and protected by a 20-second first-frame watchdog. A
+  deterministic 156 MiB candidate preserves the proven DDR4 U-Boot/TF-A and
+  ends exactly where the existing root begins; checksum-gated install and
+  prefix-only recovery commands are ready. Do not trim until it reaches an
+  input-ready frame and the complete compatibility matrix passes on hardware.
+- [ ] [next physical gate] Install the untrimmed Bird/source-kernel prefix and
+  test repeated cold boot, immediate launcher input, display/brightness,
+  system volume, game launch/return and in-game controls, MP3, complete movie
+  controls, favorites persistence and shutdown. Record power-to-input timing,
+  but treat functionality—not speed—as this gate's pass condition.
 - [ ] If the trimmed source path loses a measured race, reverse-engineer only
   the corresponding accepted-kernel path (display handoff, MMC, clocks,
   regulators or fixed delay) and port the finding into controlled source. Do

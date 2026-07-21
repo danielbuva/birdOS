@@ -30,6 +30,11 @@ must serve this one device and this one experience.
 - Fixed-root-coordinator behavior test: all functionality passed with
   sub-3.8-second stopwatch boots. Its latest trace records an input-ready frame
   at 2.06 seconds, system-ready at 4.24 and audio ready at 6.02.
+- The exact ROCKNIX stable source chain now rebuilds offline with its executed
+  30-patch order and shipping broad configuration. Its RG34XX-SP DTB is
+  byte-identical to the physically accepted release. Bird's accepted init and
+  launcher are embedded and byte-verified in an untrimmed 7.0.11 kernel, but
+  this candidate has not yet been put on hardware and has no timing claim.
 
 The boot image now starts the launcher from initramfs after mounting the fixed
 root but before `switch_root`. The launcher and its input descriptors survive
@@ -192,6 +197,12 @@ card-side patches.
   comparison only and will not be put on the card. A one-boot post-menu
   inventory is staged to capture the running modules, interrupts, I/O map,
   devices and live DTB before constructing the auditable fixed-device kernel.
+- The first exact-chain Bird candidate is ready without touching the current
+  card. Its deterministic FAT contains only the source-built 7.0.11 kernel,
+  shipping-identical RG34XX-SP DTB and extlinux policy. It preserves the proven
+  ROCKNIX DDR4 SPL/U-Boot/TF-A and changes exactly the 156 MiB prefix before
+  the existing root; p5 and the 503 GB p6 library remain in place. A
+  checksum-gated installer and independent prefix-only restore path are staged.
 - The 1,122-line card-side migration engine has completed its job. The staged
   replacement is a 45-line diagnostics-only collector with no old patch guards
   or 18--25-second log-copy sleepers.
