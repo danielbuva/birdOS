@@ -16,6 +16,16 @@
 	compatible = "dani,rg34xx-sp", "anbernic,rg34xx-sp",
 		     "allwinner,sun50i-h700";
 
+	/*
+	 * The vendor Android U-Boot copies this DTB into its working buffer,
+	 * enables the mmc0 alias and writes the detected DRAM training values
+	 * into /dram before booting Linux. Mainline Linux does not consume this
+	 * node, but U-Boot aborts its handoff fixup when the path is absent.
+	 */
+	dram {
+		device_type = "dram";
+	};
+
 	adc-joystick {
 		compatible = "adc-joystick";
 		io-channels = <&adc_mux 0>, <&adc_mux 1>,
@@ -113,4 +123,3 @@
 		function = "gpio_out";
 	};
 };
-

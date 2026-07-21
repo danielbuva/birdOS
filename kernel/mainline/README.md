@@ -72,6 +72,9 @@ compatibility until a rollback-safe card test passes.
 [`BUILD_AUDIT.md`](BUILD_AUDIT.md) records the passing two-build
 reproducibility result, artifact identities, deliberate compatibility excess
 and the remaining pre-trim hardware gates.
+[`UBOOT_HANDOFF_AUDIT.md`](UBOOT_HANDOFF_AUDIT.md) records the padded FDT
+capacity, Android-DTB copy path and simulated MMC/DRAM mutations required while
+the accepted vendor U-Boot remains in place.
 
 ## DTB v1 result that led here
 

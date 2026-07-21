@@ -17,8 +17,8 @@ first-frame driver.
 - ROCKNIX evidence commit: `d88cf6393e55364ec6470d625737125fc0d32cd4`
 - `Image`: 28,043,272 bytes,
   SHA-256 `2294fca4c88834d379d063eb08c606224fea2d4eb6a77edd50b6e1b320ab3150`
-- fixed-device DTB: 35,161 bytes,
-  SHA-256 `e379cd18a88b78377a0bde3ee74f001a661e276e64544bca6e719adcef1a67ed`
+- fixed-device DTB: 35,197 bytes,
+  SHA-256 `5c695aa096d7b03a4d1acceead274e4d8571124f9edbd33b9f0363e4444cb597`
 - deterministic module archive: 889,764 bytes,
   SHA-256 `b7efeb24ba87137ff77cc9d65f9d5045394f5ca585a6116fd8df10a295a69e34`
 
@@ -41,16 +41,37 @@ image. Size and startup cost will be reduced only after the broad baseline
 passes the device compatibility test; otherwise a missing driver and a broken
 application ABI would be indistinguishable from an optimization regression.
 
+## Offline boot packaging
+
+The kernel and DTB were packed into the accepted 64 MiB Android boot v2 image.
+The repacker first reproduces the accepted image byte-for-byte when passed its
+unchanged payloads. The replacement candidate then survives a complete unpack:
+its kernel and DTB match the source artifacts, while the accepted direct-handoff
+initramfs and launcher remain byte-identical.
+
+- candidate SHA-256:
+  `d683c1b9c3f4ed8c67e337a2f1d4527a5f1391b28c8a40c14c5d57660313ea6d`
+- U-Boot bootm limit: 33,554,432 bytes; kernel: 28,043,272 bytes
+- kernel load end: `0x41b3e808`; fixed ramdisk address: `0x42000000`
+- remaining non-overlap margin: 4,986,872 bytes
+- DTB working capacity: 141,856 bytes; DTB: 35,197 bytes
+
+The known vendor DT mutations also pass the offline simulation described in
+[`UBOOT_HANDOFF_AUDIT.md`](UBOOT_HANDOFF_AUDIT.md).
+
+On 2026-07-21 the exact candidate, one-shot installer, first-boot collector and
+external recovery helper were byte-verified after staging on the test card.
+The active boot partition is intentionally unchanged until the installer runs
+after the current known-good launcher becomes interactive.
+
 ## Remaining gates before trimming
 
-1. Audit Android boot-image packaging and vendor U-Boot's `update dts`
-   mutations against the new mainline tree.
-2. Produce a checksum-gated, one-command install and restore workflow while
+1. Use the checksum-gated installer and external Mac restore workflow while
    retaining the accepted vendor boot image as the recovery anchor.
-3. Verify internal display/brightness, direct launcher input, power/charging,
+2. Verify internal display/brightness, direct launcher input, power/charging,
    lid/suspend, storage, audio/volume, shutdown and first-frame timing.
-4. Verify launcher framebuffer assumptions and input event numbering.
-5. Verify games and media on DRM/KMS/Panfrost; the current application stack
+3. Verify launcher framebuffer assumptions and input event numbering.
+4. Verify games and media on DRM/KMS/Panfrost; the current application stack
    was assembled around the vendor framebuffer/Mali ABI.
-6. Verify deferred Wi-Fi/PortMaster, then begin fixed-device config removal in
+5. Verify deferred Wi-Fi/PortMaster, then begin fixed-device config removal in
    independent measured batches.

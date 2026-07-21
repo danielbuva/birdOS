@@ -392,6 +392,35 @@ U-Boot DTB reproduces the stock package byte-for-byte with SHA-256
 No candidate should be written until both Android-boot and TOC1 no-change round
 trips pass offline verification.
 
+## Source-built Linux 7.0.11 compatibility image
+
+`repack-boot-kernel-dtb.sh` replaces both variable-sized payloads while
+preserving the accepted ramdisk and every byte outside the repacked Android
+payload area. Passing the accepted kernel and DTB reproduces the full 64 MiB
+base image byte-for-byte.
+
+`build-mainline-compat-boot.sh` admits only the hardware-verified fixed-device
+base and the checksum-audited kernel output. It rebuilds the Android SHA-1 ID,
+unpacks the result and verifies that the direct-handoff initramfs and launcher
+did not change. It also rejects a kernel over U-Boot's 32 MiB bootm limit, a
+kernel that reaches the fixed ramdisk address, or any payload beyond the boot
+partition.
+
+The first offline candidate is SHA-256
+`d683c1b9c3f4ed8c67e337a2f1d4527a5f1391b28c8a40c14c5d57660313ea6d`.
+It is not installed by the build. `stage-mainline-compat.sh` places a one-shot
+checksum-gated installer and first-boot collector on the ROM partition. The
+installer creates a verified copy of the accepted 64 MiB boot partition before
+writing anything. `mac-restore-mainline-compat.sh` is the external recovery
+path: with the card connected to macOS, it accepts only the known external
+partition layout, candidate hash and device-created backup before restoring raw
+partition 4.
+
+That exact set is staged on the test card as of 2026-07-21. The next device boot
+still uses the accepted vendor kernel and installs/verifies the candidate only
+after the menu is available. The following cold boot is the first source-built
+Linux 7.0.11 hardware test.
+
 ## Installed DTB experiment
 
 The hidden card workspace contains:

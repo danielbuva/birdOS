@@ -148,10 +148,14 @@ boards.
   Linux 7.0.11 RG34XX-SP compatibility baseline. Two clean container builds
   produced byte-identical artifacts. The exact internal panel stream, DT and
   built-in first-frame driver closure pass the automated audit.
-- [ ] Package and hardware-test that broad baseline with a checksum-gated,
-  one-command restore path. This output remains non-deploying until U-Boot DT
-  mutation, framebuffer/input numbering, DRM/Panfrost application ABI and the
-  complete device acceptance sequence are covered.
+- [ ] [card staged; two-boot hardware test pending] Package and
+  hardware-test that broad baseline with a checksum-gated, one-command restore
+  path. The Android image round-trips, fits U-Boot/kernel/ramdisk limits, passes
+  the known MMC/DRAM mutation simulation and has an external Mac restore path.
+  Candidate `d683c1b9...ea6d` and its guarded installer/collector are staged on
+  the test card. It remains unaccepted until the second cold boot proves
+  framebuffer/input numbering, DRM/Panfrost application ABI and the complete
+  device sequence on hardware.
 - [ ] Remove unused drivers, protocols, filesystems and alternate-board paths.
 - [ ] [DTB v1 could not survive U-Boot] Disable or defer unused USB hosts, HDMI,
   Bluetooth, Wi-Fi and extra SDIO in the compiled source. Bluetooth is already

@@ -81,10 +81,15 @@ grep -Fq 'compatible = "adc-joystick"' "$DTS" \
 	|| fail 'standard analog input node missing from DTB'
 grep -Fq 'nxp,pcf8563' "$DTS" \
 	|| fail 'external RTC node missing from DTB'
+grep -Eq '^\s*dram \{' "$DTS" \
+	|| fail 'vendor U-Boot DRAM handoff node missing from DTB'
 
 (
 	cd "$OUTPUT"
 	shasum -a 256 -c sha256sums.txt
 )
+
+"$ROOT/kernel/audit-mainline-uboot-handoff.sh" \
+	"$OUTPUT/sun50i-h700-anbernic-rg34xx-sp-dani.dtb"
 
 printf 'Compatibility audit passed: %s\n' "$OUTPUT"
