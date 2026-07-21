@@ -88,6 +88,33 @@ only if the final fixed-device build beats the accepted vendor-kernel Bird
 baseline on the same card and experience. A merely functional or equal result
 does not replace stock.
 
+## Physical reference result
+
+The guarded reference booted this DDR4 RG34XX-SP successfully. The display and
+controls worked; brightness and volume changed normally; system applications,
+including the media player, opened. No audio file was available for an actual
+playback test. The one bundled Pico-8 title crashed on launch, which is retained
+as an application/content compatibility result rather than evidence against
+the kernel handoff.
+
+One stopwatch observation was approximately 24 seconds to the stock ROCKNIX
+interface. That is a measurement of its complete generic initramfs, systemd
+and distribution frontend, not a source-kernel result for Bird. It is not
+compared with Bird's roughly 3.5-second accepted path.
+
+After the physical boot, all immutable FAT payloads still matched the pinned
+release identities exactly:
+
+- `KERNEL`: `af4e75cb30b097ee5764764eb056d686bc00c6bd03fefece26b0ebbaa7fbb673`;
+- `SYSTEM`: `6e2112fc9dc81d5fee944f2534346a8f20674f40e23a0a85bb795218d31eadac`;
+- `dtb.img`: `f3a4273986d6e4f431b110cead8aa19e8da52ff08c64c4b204ef9664d28b5c31`.
+
+This closes the key uncertainty left by the two failed hybrid attempts: the
+public DDR4 SPL/U-Boot/TF-A/Linux/DT chain itself is compatible with this
+physical unit. The next candidate keeps that proven lower chain and replaces
+the generic ROCKNIX initramfs/userspace with Bird before any kernel option is
+trimmed.
+
 ## Fetch
 
 `download-reference-release.sh` resumes an existing prefix, fetches the rest

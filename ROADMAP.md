@@ -175,13 +175,21 @@ boards.
   promote it only after it beats accepted 4.9.170 on physical power-to-input,
   kernel-to-first-frame, interaction latency and efficiency. Keep the accepted
   kernel as default and oracle until every required gate passes.
-- [ ] [release acquired, verified and RG34XX-SP-provisioned; hardware boot next]
+- [x] [exact public DDR4 chain booted on physical hardware]
   Reproduce the exact working ROCKNIX H700 boot chain before modifying it.
   The rejected candidates mixed Anbernic's vendor U-Boot/TF-A and Android
   handoff with a ROCKNIX-derived kernel; that unproven hybrid is no longer the
   baseline. Stable tag `20260701`, DDR4 U-Boot v2026.01, TF-A v2.12.0, Linux
-  7.0.11 and the v1 RG34XX-SP DTB are checksum-pinned. After exact hardware
-  bring-up, substitute Bird one layer at a time.
+  7.0.11 and the v1 RG34XX-SP DTB are checksum-pinned. The guarded reference
+  reached the ROCKNIX interface with working display, controls, brightness,
+  volume and application launch; its immutable payloads remained exact after
+  the test. The roughly 24-second stopwatch result belongs to generic ROCKNIX
+  userspace and is not a Bird comparison. Substitute Bird one layer at a time.
+- [ ] [next] Rebuild the exact stable-tag source baseline, then replace only
+  its generic initramfs/system handoff with Bird's fixed init and launcher.
+  Preserve the proven DDR4 U-Boot, TF-A, kernel config and v1 DTB for this gate;
+  do not trim until Bird reaches an input-ready frame and the compatibility
+  matrix passes.
 - [ ] If the trimmed source path loses a measured race, reverse-engineer only
   the corresponding accepted-kernel path (display handoff, MMC, clocks,
   regulators or fixed delay) and port the finding into controlled source. Do
