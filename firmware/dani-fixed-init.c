@@ -30,7 +30,14 @@ typedef signed long s64;
 #define MS_MOVE 8192
 
 #define SIGCHLD 17
+#define SIGKILL 9
 #define CLOCK_BOOTTIME 7
+
+#ifdef DANI_BOOT_TIMEOUT_SECONDS
+#define LINUX_REBOOT_MAGIC1 0xfee1dead
+#define LINUX_REBOOT_MAGIC2 672274793
+#define LINUX_REBOOT_CMD_RESTART 0x01234567
+#endif
 
 #define ROOT_DEVICE "/dev/mmcblk0p5"
 #define ROOT_MOUNT "/mnt"
@@ -167,6 +174,17 @@ static long sys_wait4(long pid, int *status) {
     return syscall6(260, pid, (long)status, 0, 0, 0, 0);
 }
 
+#ifdef DANI_BOOT_TIMEOUT_SECONDS
+static long sys_kill(long pid, int signal) {
+    return syscall6(129, pid, signal, 0, 0, 0, 0);
+}
+
+static long sys_reboot(void) {
+    return syscall6(142, LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2,
+                    LINUX_REBOOT_CMD_RESTART, 0, 0, 0);
+}
+#endif
+
 static long sys_clock_gettime(struct timespec *value) {
     return syscall6(113, CLOCK_BOOTTIME, (long)value, 0, 0, 0, 0);
 }
@@ -282,6 +300,30 @@ static void diagnostic_led_solid(void) {}
 static void diagnostic_led_fast(void) {}
 static void diagnostic_led_slow(void) {}
 static void diagnostic_led_off(void) {}
+#endif
+
+#ifdef DANI_BOOT_TIMEOUT_SECONDS
+static long start_boot_watchdog(void) {
+    long pid = sys_clone();
+
+    if (pid != 0) return pid;
+    sys_nanosleep((s64)DANI_BOOT_TIMEOUT_SECONDS * 1000000000L);
+    log_stage("watchdog-reboot");
+    sys_reboot();
+    for (;;) sys_nanosleep(1000000000L);
+}
+
+static void cancel_boot_watchdog(long pid) {
+    int status = 0;
+
+    if (pid <= 0) return;
+    sys_kill(pid, SIGKILL);
+    sys_wait4(pid, &status);
+    log_stage("watchdog-cancelled");
+}
+#else
+static long start_boot_watchdog(void) { return -1; }
+static void cancel_boot_watchdog(long pid) { (void)pid; }
 #endif
 
 static int run_child(const char *path, char *const argv[]) {
@@ -448,16 +490,17 @@ static void bind_static_root_init(void) {
 }
 #endif
 
-static void wait_for_first_frame(void) {
+static int wait_for_first_frame(void) {
     int count;
     for (count = 0; count < 500; count++) {
         if (path_exists(READY_MARKER)) {
             log_stage("first-frame-ready");
-            return;
+            return 1;
         }
         sys_nanosleep(1000000L);
     }
     log_stage("first-frame-timeout");
+    return 0;
 }
 
 static int same_name(const char *left, const char *right) {
@@ -574,6 +617,7 @@ __attribute__((noreturn)) static void handoff_root_init(void) {
 static void application(void) {
     int root_status;
     int supervisor_status;
+    long watchdog_pid = start_boot_watchdog();
 
     if (sys_mount("proc", "/proc", "proc", 0, 0) < 0)
         stock_init_fallback("mount-proc");
@@ -605,7 +649,8 @@ static void application(void) {
     log_number((u64)(unsigned int)supervisor_status);
     log_text("\n");
     diagnostic_led_off();
-    if (supervisor_status >= 0) wait_for_first_frame();
+    if (supervisor_status >= 0 && wait_for_first_frame())
+        cancel_boot_watchdog(watchdog_pid);
     handoff_root_init();
 }
 

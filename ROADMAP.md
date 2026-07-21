@@ -158,10 +158,30 @@ boards.
   collector are disabled on-card. The next candidate must expose progress
   before the normal display and `/mnt/mmc` paths so we can distinguish U-Boot
   handoff, early-kernel, initramfs/storage and display-only failures.
-- [ ] [diagnostic staged] Run candidate `8b9ba424...9078`. Its red status LED
-  independently reports kernel LED-driver probe, initramfs PID 1, root-device
-  discovery, root mount/launcher dispatch and panic. Its kernel is byte-for-byte
-  the first candidate; only the diagnostic DTB and `/init` differ.
+- [x] [second candidate failed; recovery proven again] Candidate
+  `8b9ba424...9078` also remained on the U-Boot logo and produced no capture.
+  The RG34XX-SP has no exposed red status LED, invalidating that diagnostic
+  channel. The accepted image `872a3d0d...7764f` was restored and reread; all
+  failed installers are disabled.
+- [ ] Build the next kernel experiment as a fail-safe one-shot U-Boot target:
+  keep accepted partition 4 untouched, load a compact candidate file from the
+  FAT boot-resource once, and persist the normal partition-4 boot command
+  before jumping to it. Add an initramfs watchdog that resets if Linux starts
+  but the first-frame-ready marker does not arrive. A forced reset must return
+  to the accepted kernel even when failure occurs before Linux can run.
+- [ ] [hard acceptance gate] Treat the source kernel as a challenger, not an
+  automatic replacement. Run it with the same Bird initramfs/userspace and
+  promote it only after it beats accepted 4.9.170 on physical power-to-input,
+  kernel-to-first-frame, interaction latency and efficiency. Keep the accepted
+  kernel as default and oracle until every required gate passes.
+- [ ] Reproduce the exact working ROCKNIX H700 boot chain before modifying it.
+  The rejected candidates mixed Anbernic's vendor U-Boot/TF-A and Android
+  handoff with a ROCKNIX-derived kernel; that unproven hybrid is no longer the
+  baseline. After exact hardware bring-up, substitute Bird one layer at a time.
+- [ ] If the trimmed source path loses a measured race, reverse-engineer only
+  the corresponding accepted-kernel path (display handoff, MMC, clocks,
+  regulators or fixed delay) and port the finding into controlled source. Do
+  not attempt wholesale decompilation of the 4.9.170 binary.
 - [ ] Remove the installed-runtime assumption that modules always live below
   `/lib/modules/4.9.170`. The fixed networking profile currently names the
   vendor `8821cs.ko` there, while an old depmod migration guard also embeds the

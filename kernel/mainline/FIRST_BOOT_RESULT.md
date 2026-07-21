@@ -81,4 +81,25 @@ Interpret the second cold boot as follows:
 
 The diagnostic `/init` and full 64 MiB image each reproduced byte-for-byte in
 two clean host builds. Its one-shot installer, success collector and exact-hash
-external recovery helper are staged on the test card.
+external recovery helper were staged on the test card.
+
+## Diagnostic derivative result
+
+The diagnostic derivative also remained on the U-Boot logo and produced no
+capture. Its installer had first verified candidate SHA-256 `8b9ba424...9078`
+on the raw partition. External recovery again restored and reread the complete
+accepted image as `872a3d0d...7764f`; the diagnostic installer and collector
+are disabled on-card.
+
+The RG34XX-SP does not expose the red status LED assumed from the broader
+RG35XX-family device tree, so the LED scheme supplied no observable evidence.
+The table above is retained only as a record of the rejected diagnostic design,
+not as a valid test procedure for this device.
+
+No further experimental kernel will replace the only boot target. The next
+test path keeps partition 4 permanently accepted and asks U-Boot to load a
+compact candidate file from the FAT boot-resource exactly once. The one-shot
+command first saves the normal partition-4 command for the following reset.
+An initramfs watchdog will additionally reboot a candidate that reaches Linux
+but fails to publish the first-frame-ready marker. A pre-Linux hang cannot be
+timed out by Linux; in that case a forced reset still returns to partition 4.

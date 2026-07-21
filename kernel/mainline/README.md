@@ -3,6 +3,13 @@
 This is the first source-level kernel workstream. It does **not** replace the
 accepted 4.9.170 boot image yet.
 
+The accepted kernel is a hard performance gate, not merely a recovery
+artifact. A trimmed source kernel is promoted only if the same Bird
+initramfs/userspace beats it on power-to-input, kernel-to-first-frame,
+interaction latency and efficiency. Stock reverse engineering is deliberately
+targeted: when the source path loses a measured boundary, recover only that
+vendor behavior and implement it in controlled source.
+
 ## Pinned source
 
 - Linux stable `v7.0.11`, commit
@@ -30,6 +37,13 @@ final kernel. It exists to prove display, controls, root storage, power,
 charging, lid/suspend, internal audio, GPU, games and media before removals.
 Only after that baseline passes do HDMI, Bluetooth and Wi-Fi become explicit
 on-demand module closures and unused drivers disappear.
+
+The first two hardware attempts mixed this source kernel with Anbernic's
+vendor U-Boot/TF-A and Android boot handoff. Both retained the U-Boot logo and
+provided no Linux evidence. The next bring-up baseline therefore reproduces
+ROCKNIX's exact working H700 boot chain first; Bird replaces its initramfs and
+userspace only after that unmodified source-based boundary boots this exact
+hardware revision.
 
 ## Build
 

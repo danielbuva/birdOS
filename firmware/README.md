@@ -431,6 +431,34 @@ DTB. Two builds produced the same 64 MiB image, SHA-256
 collector and matching external restore helper. It is a failure-localization
 image, not a performance candidate.
 
+The diagnostic was hardware-tested and also remained on the retained U-Boot
+logo without producing its userspace capture. The RG34XX-SP has no exposed red
+status LED; that assumption came from the broader device-family description
+and made this diagnostic channel invalid. Exact-hash external recovery again
+restored and reread accepted partition 4, and both failed candidate installers
+are disabled.
+
+Future kernel experiments must not replace the sole normal boot target.
+`stage-one-shot-boot-state-capture.sh` first stages a read-only collector for
+the exact active 32 MiB FAT boot-resource partition and 16 MiB U-Boot
+environment partition. The same harmless boot captures the accepted kernel's
+live kallsyms, configuration, DTB, modules, interrupts and memory map as a
+targeted performance oracle. Those captures are inputs to a one-shot scheme
+that keeps accepted partition 4 intact, restores/saves U-Boot's normal command
+before loading a compact candidate file from FAT, and therefore returns to the
+accepted kernel after a reset. An opt-in initramfs watchdog will cover the
+narrower case where Linux starts but no first-frame-ready marker arrives; it
+cannot execute during a pre-kernel hang.
+
+The watchdog code in `dani-fixed-init.c` is absent unless a candidate is built
+with `DANI_BOOT_TIMEOUT_SECONDS`. It forks before the first mount attempt,
+issues the Linux restart syscall when the deadline expires, and is killed and
+reaped only after `dani-first-frame-ready` is observed. Production builds do
+not arm it. `fat16-file.py add` is similarly constrained: it accepts only the
+exact physical 32 MiB image, a root-level 8.3 name and one contiguous run that
+is free in every FAT copy, then performs an exact readback before emitting the
+new image. This avoids trusting the misleading 128 MiB size in the FAT BPB.
+
 ## Installed DTB experiment
 
 The hidden card workspace contains:

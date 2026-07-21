@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Extract or replace a fixed-size file in the muOS FAT16 boot resource.
+"""Extract, replace, or add a file in the muOS FAT16 boot resource.
 
 The boot-resource BPB declares a 128 MiB volume even though the GPT partition
 contains only its first 32 MiB.  This tool follows the FAT cluster chain
 directly, so it can safely operate on the exact 32 MiB partition payload.  A
-replacement never rewrites allocation tables, directory entries or timestamps.
+same-size replacement never rewrites allocation tables, directory entries or
+timestamps. Addition is root-only and deliberately constrained to a strict 8.3
+name and clusters that physically exist in the supplied 32 MiB payload.
 """
 
 from __future__ import annotations
@@ -73,10 +75,28 @@ class Fat16:
             yield position, entry
 
     def _fat_next(self, cluster: int) -> int:
-        position = self.fat_offset + cluster * 2
+        return self._fat_value(0, cluster)
+
+    def _fat_value(self, copy: int, cluster: int) -> int:
+        position = (
+            self.fat_offset
+            + copy * self.sectors_per_fat * self.bytes_per_sector
+            + cluster * 2
+        )
         if position + 2 > len(self.image):
             raise FatError("cluster FAT entry is outside the supplied partition payload")
         return struct.unpack_from("<H", self.image, position)[0]
+
+    def _set_fat_value(self, cluster: int, value: int) -> None:
+        for copy in range(self.fat_count):
+            position = (
+                self.fat_offset
+                + copy * self.sectors_per_fat * self.bytes_per_sector
+                + cluster * 2
+            )
+            if position + 2 > len(self.image):
+                raise FatError("cluster FAT entry is outside the supplied partition payload")
+            struct.pack_into("<H", self.image, position, value)
 
     def _chain(self, first_cluster: int):
         if first_cluster < 2:
@@ -181,6 +201,93 @@ class Fat16:
             raise FatError("cluster chain ended before the replacement was complete")
         return changed
 
+    @staticmethod
+    def _encode_root_short_name(pathname: str) -> bytes:
+        if "/" in pathname or "\\" in pathname or pathname in ("", ".", ".."):
+            raise FatError("added file must use one root-level 8.3 name")
+        parts = pathname.upper().split(".")
+        if len(parts) > 2 or not parts[0] or len(parts[0]) > 8:
+            raise FatError("added file must use a valid root-level 8.3 name")
+        extension = parts[1] if len(parts) == 2 else ""
+        if len(extension) > 3:
+            raise FatError("added file must use a valid root-level 8.3 name")
+        allowed = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"
+        if any(character not in allowed for part in parts for character in part):
+            raise FatError("added file name contains an unsupported character")
+        return (parts[0].ljust(8) + extension.ljust(3)).encode("ascii")
+
+    def _free_root_slot(self, short_name: bytes) -> int:
+        free_slot = None
+        end = self.root_offset + self.root_size
+        if end > len(self.image):
+            raise FatError("root directory extends beyond the supplied partition payload")
+        for position in range(self.root_offset, end, 32):
+            entry = self.image[position : position + 32]
+            if entry[0] in (0x00, 0xE5):
+                if free_slot is None:
+                    free_slot = position
+                if entry[0] == 0x00:
+                    break
+                continue
+            if entry[11] != 0x0F and entry[0:11] == short_name:
+                raise FatError("FAT root file already exists")
+        if free_slot is None:
+            raise FatError("FAT root directory has no free entry")
+        return free_slot
+
+    def _accessible_cluster_count(self) -> int:
+        return (len(self.image) - self.data_offset) // self.cluster_size
+
+    def _allocate_contiguous_clusters(self, count: int) -> list[int]:
+        if count == 0:
+            return []
+        maximum = self._accessible_cluster_count() + 1
+        run_start = 0
+        run_length = 0
+        for cluster in range(2, maximum + 1):
+            is_free = all(
+                self._fat_value(copy, cluster) == 0
+                for copy in range(self.fat_count)
+            )
+            if is_free:
+                if not run_length:
+                    run_start = cluster
+                run_length += 1
+                if run_length == count:
+                    return list(range(run_start, run_start + count))
+            else:
+                run_length = 0
+        raise FatError(
+            f"no physically accessible contiguous run of {count} free clusters"
+        )
+
+    def add_root_file(self, pathname: str, payload: bytes) -> tuple[int, int]:
+        short_name = self._encode_root_short_name(pathname)
+        directory_offset = self._free_root_slot(short_name)
+        cluster_count = (len(payload) + self.cluster_size - 1) // self.cluster_size
+        clusters = self._allocate_contiguous_clusters(cluster_count)
+
+        for index, cluster in enumerate(clusters):
+            following = clusters[index + 1] if index + 1 < len(clusters) else 0xFFFF
+            self._set_fat_value(cluster, following)
+            image_offset = self._cluster_offset(cluster)
+            payload_offset = index * self.cluster_size
+            chunk = payload[payload_offset : payload_offset + self.cluster_size]
+            self.image[image_offset : image_offset + self.cluster_size] = \
+                chunk.ljust(self.cluster_size, b"\0")
+
+        entry = bytearray(32)
+        entry[0:11] = short_name
+        entry[11] = 0x20
+        first_cluster = clusters[0] if clusters else 0
+        struct.pack_into("<H", entry, 26, first_cluster)
+        struct.pack_into("<I", entry, 28, len(payload))
+        self.image[directory_offset : directory_offset + 32] = entry
+
+        if self.read_file(pathname) != payload:
+            raise FatError("new FAT file failed exact readback verification")
+        return first_cluster, cluster_count
+
 
 def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
@@ -201,6 +308,12 @@ def main() -> None:
     replace.add_argument("replacement", type=Path)
     replace.add_argument("output", type=Path)
 
+    add = subparsers.add_parser("add", help="add one root-level 8.3 FAT16 file")
+    add.add_argument("image", type=Path)
+    add.add_argument("fat_path")
+    add.add_argument("payload", type=Path)
+    add.add_argument("output", type=Path)
+
     arguments = parser.parse_args()
     raw = bytearray(arguments.image.read_bytes())
     filesystem = Fat16(raw)
@@ -214,12 +327,30 @@ def main() -> None:
         )
         return
 
-    replacement = arguments.replacement.read_bytes()
-    changed = filesystem.replace_file(arguments.fat_path, replacement)
+    if arguments.command == "replace":
+        replacement = arguments.replacement.read_bytes()
+        changed = filesystem.replace_file(arguments.fat_path, replacement)
+        arguments.output.parent.mkdir(parents=True, exist_ok=True)
+        arguments.output.write_bytes(raw)
+        print(
+            f"replaced {arguments.fat_path}: changed_bytes={changed} "
+            f"image_sha256={sha256(raw)}"
+        )
+        return
+
+    payload = arguments.payload.read_bytes()
+    if len(raw) != 32 * 1024 * 1024:
+        raise FatError(
+            "addition requires the exact physical 32 MiB boot-resource payload"
+        )
+    first_cluster, cluster_count = filesystem.add_root_file(
+        arguments.fat_path, payload
+    )
     arguments.output.parent.mkdir(parents=True, exist_ok=True)
     arguments.output.write_bytes(raw)
     print(
-        f"replaced {arguments.fat_path}: changed_bytes={changed} "
+        f"added {arguments.fat_path}: bytes={len(payload)} "
+        f"first_cluster={first_cluster} clusters={cluster_count} "
         f"image_sha256={sha256(raw)}"
     )
 
