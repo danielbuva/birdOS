@@ -39,6 +39,12 @@ The accepted vendor `Image` remains the bootable fallback until an auditable
 kernel passes display, input, power, storage, audio, suspend, content and
 shutdown acceptance.
 
+[`SOURCE_AUDIT.md`](SOURCE_AUDIT.md) records the public trees checked and the
+evidence for this boundary. Notably, current KNULLI has an exact RG34XX-SP
+target but still selects the same Orange Pi 4.9 branch; its published H700
+config differs from the active muOS config in 52 records and does not supply
+the later downstream additions.
+
 The build deliberately uses an amd64 Linux container.  The vendor tree has
 source filenames that differ only by case, so building from a normal
 case-insensitive macOS checkout silently corrupts it.  The container also runs
