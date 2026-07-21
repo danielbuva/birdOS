@@ -101,20 +101,25 @@ keeping the verified menu-first boundary.
 - [x] Replace the generic root startup coordinator with the fixed RG34XX-SP
   sequence. Hardware functionality passed and stopwatch boots remain below
   3.8 seconds.
-- [ ] Invoke remaining compatibility applets only when their feature requests
-  them, then rebuild BusyBox with only that measured command set.
+- [ ] [direct initramfs handoff staged] Invoke remaining compatibility applets
+  only when their feature requests them, then rebuild BusyBox with only that
+  measured command set. The successful early-root path no longer executes the
+  `switch_root` applet; BusyBox remains as the early recovery shell and rootfs
+  scripts still use its applets.
 - [x] Mount only the exact filesystems and device nodes the experience uses.
   The accepted static first/root init pair owns proc, sysfs, devtmpfs, ext4,
   tmpfs, devpts and shared memory; debugfs is added only for chosen display
   controls.
-- [ ] [staged] Replace unconditional filesystem repair with a safe dirty-state
+- [x] Replace unconditional filesystem repair with a safe dirty-state
   policy. The static init reads the ext4 magic/state bytes directly, skips only
   state `0x0001`, and runs the retained `e2fsck -y` for error, dirty, unreadable
-  or unexpected states.
-- [ ] [staged] Remove unused magic data, generic ALSA profiles and recovery
+  or unexpected states. Hardware boot and functionality passed; the next
+  candidate adds explicit branch evidence to ordinary diagnostics.
+- [x] Remove unused magic data, generic ALSA profiles and recovery
   tools from the initramfs. Two byte-identical builds reduce its compressed
   size from 2,772,302 to 1,725,023 bytes while preserving the exact repair
-  dependency closure and BusyBox shell fallback.
+  dependency closure and BusyBox shell fallback. Hardware functionality passed
+  with an ordinary first-frame marker at 1.98 seconds.
 - [x] Produce a byte-reproducible boot-image candidate containing this early
   path.
 

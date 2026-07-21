@@ -17,8 +17,8 @@ runtime scripts passed hardware acceptance, the latest ordinary frame is again
 | Time | Work | Cost | Decision |
 | ---: | --- | ---: | --- |
 | 0--1.809 s | kernel built-in driver initialization | 1.809 s | Fixed-device kernel/DT target. Input is registered at 1.726 s and ALSA finishes at 1.808 s. |
-| 0.755--0.905 s | unpack 2.6 MiB compressed initramfs | 150 ms, overlapping kernel init | A byte-reproducible 1.65 MiB candidate removes the magic database, generic ALSA profiles and unused recovery tools; hardware timing is staged. |
-| 1.809--1.852 s | initramfs filesystem check and root mount | ~43 ms on a clean boot | The staged static policy skips only ext4 state `0x0001`; dirty/error/unreadable roots still run the retained `e2fsck -y`. |
+| 0.755--0.905 s | unpack 2.6 MiB compressed initramfs | 150 ms, overlapping kernel init | Accepted 1.65 MiB image: measured decompression is now about 95 ms and freed initrd memory is 1,684 KiB. |
+| 1.809--1.852 s | initramfs filesystem check and root mount | ~43 ms on a clean boot | Accepted static policy skips only ext4 state `0x0001`; dirty/error/unreadable roots still run the retained `e2fsck -y`. |
 | 1.852--2.20 s | fixed early-root handoff, then root BusyBox setup | menu cost is now 105--128 ms | The launcher draws at 1.957--1.980 s before root dispatch begins at 2.18--2.20 s. |
 | 2.08 s | `S01entropy` starts `haveged` | ~10 ms to dispatch; CRNG ready at 4.07 s and generator stopped at 4.10 s | Retain early and concurrent. Deferral caused CRNG/audio stalls; the revised service now exits after readiness. |
 | 2.18--2.22 s | `S02rgb` | ~40 ms, `rc=1` | Remove. This fixed device has no requested RGB experience and the hook fails. |
@@ -100,6 +100,13 @@ settled snapshot records fixed startup at 3.72 seconds, storage priority-ready
 at 4.60, system-ready at 4.61 and full audio at 6.17. The idle scanner,
 haveged and both UnionFS workers are absent; udevd remains intentionally for
 the verified RetroArch/MPV compatibility boundary.
+
+The trimmed boot image also passed the complete functionality check. Compared
+with the immediately preceding logs, initramfs decompression falls from about
+159 to 95 ms, freed initrd memory from 2,704 to 1,684 KiB, and the ordinary
+interactive marker from 2.06 to 1.98 seconds. The next candidate removes the
+successful-path BusyBox `switch_root` exec while preserving that binary and
+the shell fallback for failures before handoff.
 
 ## Persistent userspace after startup
 

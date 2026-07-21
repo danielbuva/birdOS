@@ -23,7 +23,8 @@ must serve this one device and this one experience.
   produced input-ready frames at 2.032--2.103 seconds, launched content and
   shut down normally. As expected for post-frame work, stopwatch boot time
   remained approximately 3.8 seconds.
-- Current LED-on stopwatch range: approximately 3.5--3.8 seconds.
+- Current LED-on stopwatch range: approximately 3.5--3.8 seconds. The accepted
+  trimmed-initramfs boot records an ordinary interactive marker at 1.98 seconds.
 - Fixed-root-coordinator behavior test: all functionality passed with
   sub-3.8-second stopwatch boots. Its latest trace records an input-ready frame
   at 2.06 seconds, system-ready at 4.24 and audio ready at 6.02.
@@ -164,7 +165,16 @@ card-side patches.
   database, 100 generic ALSA profiles, filesystem-creation/FAT/CIFS/serial
   utilities and their unused libraries. A direct ext4-superblock test skips
   `e2fsck` only for a clean filesystem; dirty, error-marked or unreadable roots
-  retain the existing automatic repair path. Two clean builds are byte-exact.
+  retain the existing automatic repair path. Hardware functionality passed;
+  decompression fell from roughly 159 to 95 ms and initrd memory from 2,704 to
+  1,684 KiB.
+- The following staged candidate replaces the successful-path BusyBox
+  `switch_root` execution with 1,672 bytes of fixed direct-syscall code in the
+  static first init. It deletes only the old initramfs filesystem, preserves
+  the mounted `/mnt` root, moves/chroots it and executes the static PID 1.
+  BusyBox and `/init.stock` remain solely for pre-handoff recovery. Three
+  independent builds—incremental and single-pass—produce exact SHA-256
+  `da5549e1cdad5b9f445f4634dacc0254fd468148182175a06b43346dc1dddbc7`.
 - The 1,122-line card-side migration engine has completed its job. The staged
   replacement is a 45-line diagnostics-only collector with no old patch guards
   or 18--25-second log-copy sleepers.

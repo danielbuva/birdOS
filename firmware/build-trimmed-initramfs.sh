@@ -8,7 +8,8 @@ REMOVE_LIST="$ROOT/firmware/trimmed-initramfs-remove.list"
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
 LLD=${LLD:-/opt/homebrew/opt/lld/bin/ld.lld}
 READELF=${READELF:-/opt/homebrew/opt/llvm/bin/llvm-readelf}
-BASE_SHA="a6bafa83add62af92a27450594f6da4e8dfacdbcc0c247c08c512a7b1495b6b5"
+POWER_BASE_SHA="a6bafa83add62af92a27450594f6da4e8dfacdbcc0c247c08c512a7b1495b6b5"
+TRIMMED_BASE_SHA="ff447e7243f7031d99f3559a57868e2116cbf8508fc0654926ef66e5b4460f70"
 BOOT_BYTES=67108864
 
 case "$OUTPUT_DIR" in
@@ -58,8 +59,11 @@ compile_static() {
 [ -x "$LLD" ] || fail "LLVM lld is required"
 [ -x "$READELF" ] || fail "llvm-readelf is required"
 [ ! -e "$OUTPUT_DIR" ] || fail "output already exists: $OUTPUT_DIR"
-[ "$(shasum -a 256 "$BASE_BOOT" | awk '{print $1}')" = "$BASE_SHA" ] ||
-	fail "base is not the hardware-verified power-key image"
+ACTUAL_BASE_SHA=$(shasum -a 256 "$BASE_BOOT" | awk '{print $1}')
+case "$ACTUAL_BASE_SHA" in
+"$POWER_BASE_SHA" | "$TRIMMED_BASE_SHA") ;;
+*) fail "base is not a hardware-verified fixed initramfs: $ACTUAL_BASE_SHA" ;;
+esac
 [ "$(stat -f %z "$BASE_BOOT")" -eq "$BOOT_BYTES" ] ||
 	fail "base boot image is not exactly 64 MiB"
 
@@ -154,8 +158,8 @@ strings "$VERIFY/ramdisk/init" | grep -q 'fsck-clean-skip' ||
 	fail "clean-filesystem policy missing"
 strings "$VERIFY/ramdisk/init" | grep -q 'dani-trimmed-initramfs-v1' ||
 	fail "trimmed-initramfs marker missing"
-strings "$VERIFY/ramdisk/init" | grep -q 'switch-root-static-pid1' ||
-	fail "static PID 1 handoff missing"
+strings "$VERIFY/ramdisk/init" | grep -q 'direct-handoff-static-pid1' ||
+	fail "direct static PID 1 handoff missing"
 strings "$VERIFY/ramdisk/opt/dani-root-init" | grep -q 'dani-root-init-active' ||
 	fail "static root PID 1 marker missing"
 

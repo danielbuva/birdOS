@@ -132,6 +132,26 @@ two independent builds produce SHA-256
 The kernel, DTB, embedded launcher, static root PID 1 and stock shell fallback
 remain byte-identical to the active base.
 
+Hardware acceptance confirms the trimmed marker, normal controls/content and
+the raw candidate checksum. Two preceding boots spent about 159 ms expanding a
+2,704 KiB initrd; two trimmed boots spend about 95 ms and free 1,684 KiB. The
+latest ordinary interactive marker is 1.98 seconds versus 2.06 immediately
+before this change.
+
+`build-direct-handoff-initramfs.sh` removes the last BusyBox invocation from
+the successful first-stage path. The 9,312-byte static init implements the
+kernel-documented switch-root sequence directly: retain the mounted `/mnt`
+filesystem, delete only the old rootfs contents, move `/mnt` over `/`, chroot,
+and execute the already-proven static root PID 1. Its deletion walk never
+descends into `/mnt` and repeats directory passes so changing offsets cannot
+leave initramfs payload resident. BusyBox and `/init.stock` remain untouched
+for failures before this boundary.
+
+Two direct builds from the accepted trimmed image and a single-pass build from
+the earlier power-key image all produce the same complete 64 MiB SHA-256:
+`da5549e1cdad5b9f445f4634dacc0254fd468148182175a06b43346dc1dddbc7`.
+The staged diagnostics separately record direct-handoff and clean-fs markers.
+
 Before the critical-UI patch, BusyBox ran:
 
 `S00chrony -> S01entropy -> S02rgb -> S10udev -> S30dbus -> S99muos`

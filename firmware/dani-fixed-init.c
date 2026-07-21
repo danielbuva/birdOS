@@ -16,7 +16,11 @@ typedef signed long s64;
 #define O_WRONLY 1
 #define O_RDWR 2
 #define O_CREAT 0100
+#define O_DIRECTORY 00200000
 #define O_CLOEXEC 02000000
+
+#define AT_REMOVEDIR 0x200
+#define SEEK_SET 0
 
 #define MS_NOSUID 2
 #define MS_NODEV 4
@@ -36,6 +40,8 @@ typedef signed long s64;
 #define READY_MARKER "/mnt/run/muos/dani-first-frame-ready"
 #define FIXED_INIT_MARKER "/mnt/run/muos/dani-fixed-initramfs-v1"
 #define TRIMMED_INIT_MARKER "/mnt/run/muos/dani-trimmed-initramfs-v1"
+#define DIRECT_HANDOFF_MARKER "/mnt/run/muos/dani-direct-handoff-v1"
+#define CLEAN_FS_MARKER "/mnt/run/muos/dani-fsck-clean-skip"
 #ifdef DANI_STATIC_ROOT_INIT
 #define ROOT_INIT_SOURCE "/opt/dani-root-init"
 #define ROOT_INIT_TARGET "/mnt/sbin/dani-root-init"
@@ -44,6 +50,14 @@ typedef signed long s64;
 struct timespec {
     s64 sec;
     s64 nsec;
+};
+
+struct linux_dirent64 {
+    u64 ino;
+    s64 offset;
+    unsigned short record_length;
+    u8 type;
+    char name[];
 };
 
 static char *const fixed_env[] = {
@@ -59,6 +73,7 @@ static char *const fixed_env[] = {
 #ifdef DANI_STATIC_ROOT_INIT
 static int root_init_bound;
 #endif
+static int clean_root_skipped;
 
 static long syscall6(long number, long a0, long a1, long a2, long a3, long a4,
                      long a5) {
@@ -91,12 +106,29 @@ static long sys_open(const char *path, int flags, int mode) {
     return syscall6(56, AT_FDCWD, (long)path, flags, mode, 0, 0);
 }
 
+static long sys_openat(int directory_fd, const char *path, int flags,
+                       int mode) {
+    return syscall6(56, directory_fd, (long)path, flags, mode, 0, 0);
+}
+
+static long sys_unlinkat(int directory_fd, const char *path, int flags) {
+    return syscall6(35, directory_fd, (long)path, flags, 0, 0, 0);
+}
+
 static long sys_close(int fd) {
     return syscall6(57, fd, 0, 0, 0, 0, 0);
 }
 
 static long sys_pread64(int fd, void *buffer, u64 size, u64 offset) {
     return syscall6(67, fd, (long)buffer, (long)size, (long)offset, 0, 0);
+}
+
+static long sys_getdents64(int fd, void *buffer, u64 size) {
+    return syscall6(61, fd, (long)buffer, (long)size, 0, 0, 0);
+}
+
+static long sys_lseek(int fd, s64 offset, int whence) {
+    return syscall6(62, fd, (long)offset, whence, 0, 0, 0);
 }
 
 static long sys_write(int fd, const void *buffer, u64 size) {
@@ -273,6 +305,7 @@ static void run_filesystem_check(void) {
     int status;
 
     if (root_filesystem_is_clean()) {
+        clean_root_skipped = 1;
         log_stage("fsck-clean-skip");
         return;
     }
@@ -317,6 +350,8 @@ static int prepare_future_root(void) {
     make_dir("/mnt/run/muos", 0755);
     create_marker(FIXED_INIT_MARKER);
     create_marker(TRIMMED_INIT_MARKER);
+    create_marker(DIRECT_HANDOFF_MARKER);
+    if (clean_root_skipped) create_marker(CLEAN_FS_MARKER);
     log_stage("future-root-ready");
     return 0;
 }
@@ -382,38 +417,114 @@ static void wait_for_first_frame(void) {
     log_stage("first-frame-timeout");
 }
 
-__attribute__((noreturn)) static void handoff_root_init(void) {
-    char *const stock_switch_argv[] = {"/sbin/switch_root", "/mnt", "/init", 0};
+static int same_name(const char *left, const char *right) {
+    while (*left && *left == *right) {
+        left++;
+        right++;
+    }
+    return *left == *right;
+}
+
+static int dot_entry(const char *name) {
+    return same_name(name, ".") || same_name(name, "..");
+}
+
+/*
+ * Match switch_root's memory behavior without starting its BusyBox applet:
+ * remove only the known initramfs tree and never descend into /mnt, which is
+ * the already-mounted ext4 future root. Multiple passes make deletion robust
+ * while directory offsets change underneath getdents64.
+ */
+static void delete_old_root_contents(int directory_fd, int preserve_mnt) {
+    u8 buffer[1024];
+    int pass;
+
+    for (pass = 0; pass < 32; pass++) {
+        long bytes;
+        int removed = 0;
+
+        sys_lseek(directory_fd, 0, SEEK_SET);
+        while ((bytes = sys_getdents64(directory_fd, buffer,
+                                       sizeof(buffer))) > 0) {
+            long position = 0;
+            while (position < bytes) {
+                struct linux_dirent64 *entry =
+                    (struct linux_dirent64 *)(buffer + position);
+                int child_fd;
+
+                if (entry->record_length < 20 ||
+                    position + entry->record_length > bytes)
+                    return;
+                position += entry->record_length;
+                if (dot_entry(entry->name)) continue;
+                if (preserve_mnt && same_name(entry->name, "mnt")) continue;
+
+                if (sys_unlinkat(directory_fd, entry->name, 0) == 0) {
+                    removed++;
+                    continue;
+                }
+                child_fd = (int)sys_openat(
+                    directory_fd, entry->name,
+                    O_RDONLY | O_DIRECTORY | O_CLOEXEC, 0);
+                if (child_fd < 0) continue;
+                delete_old_root_contents(child_fd, 0);
+                sys_close(child_fd);
+                if (sys_unlinkat(directory_fd, entry->name,
+                                 AT_REMOVEDIR) == 0)
+                    removed++;
+            }
+        }
+        if (!removed) return;
+    }
+}
+
+__attribute__((noreturn)) static void busybox_handoff_fallback(
+    const char *reason) {
+    char *const stock_argv[] = {"/sbin/switch_root", "/mnt", "/init", 0};
 #ifdef DANI_STATIC_ROOT_INIT
-    char *const fixed_switch_argv[] = {
+    char *const fixed_argv[] = {
         "/sbin/switch_root", "/mnt", "/sbin/dani-root-init", 0};
 #endif
-    char *const init_argv[] = {"/init", 0};
-    char *const shell_argv[] = {"/bin/sh", 0};
 
+    log_text("fixed-init direct-handoff-fallback=");
+    log_text(reason);
+    log_text("\n");
+#ifdef DANI_STATIC_ROOT_INIT
+    if (root_init_bound) sys_execve(fixed_argv[0], fixed_argv, fixed_env);
+#endif
+    sys_execve(stock_argv[0], stock_argv, fixed_env);
+    for (;;) sys_nanosleep(1000000000L);
+}
+
+__attribute__((noreturn)) static void handoff_root_init(void) {
+    int old_root_fd;
+    char *const stock_init_argv[] = {"/init", 0};
+#ifdef DANI_STATIC_ROOT_INIT
+    char *const fixed_init_argv[] = {"/sbin/dani-root-init", 0};
+#endif
+
+    old_root_fd = (int)sys_open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC, 0);
+    if (old_root_fd < 0 || sys_chdir(ROOT_MOUNT) < 0) {
+        if (old_root_fd >= 0) sys_close(old_root_fd);
+        busybox_handoff_fallback("prepare");
+    }
+    log_stage("direct-handoff-delete-old-root");
+    delete_old_root_contents(old_root_fd, 1);
+    sys_close(old_root_fd);
+    if (sys_mount(".", "/", 0, MS_MOVE, 0) < 0 ||
+        sys_chroot(".") < 0 || sys_chdir("/") < 0) {
+        log_stage("direct-handoff-root-failed");
+        for (;;) sys_nanosleep(1000000000L);
+    }
 #ifdef DANI_STATIC_ROOT_INIT
     if (root_init_bound) {
-        log_stage("switch-root-static-pid1");
-        sys_execve(fixed_switch_argv[0], fixed_switch_argv, fixed_env);
+        log_stage("direct-handoff-static-pid1");
+        sys_execve(fixed_init_argv[0], fixed_init_argv, fixed_env);
     }
-    log_stage("switch-root-stock-pid1");
-#else
-    log_stage("switch-root");
 #endif
-    sys_execve(stock_switch_argv[0], stock_switch_argv, fixed_env);
-
-    /* Emergency functional handoff if the compatibility applet cannot exec. */
-    log_stage("switch-root-exec-failed");
-    if (sys_chroot(ROOT_MOUNT) >= 0 && sys_chdir("/") >= 0) {
-#ifdef DANI_STATIC_ROOT_INIT
-        if (root_init_bound) {
-            char *const fixed_init_argv[] = {"/sbin/dani-root-init", 0};
-            sys_execve(fixed_init_argv[0], fixed_init_argv, fixed_env);
-        }
-#endif
-        sys_execve(init_argv[0], init_argv, fixed_env);
-        sys_execve(shell_argv[0], shell_argv, fixed_env);
-    }
+    log_stage("direct-handoff-stock-pid1");
+    sys_execve(stock_init_argv[0], stock_init_argv, fixed_env);
+    log_stage("direct-handoff-exec-failed");
     for (;;) sys_nanosleep(1000000000L);
 }
 
