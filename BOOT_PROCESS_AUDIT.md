@@ -79,14 +79,19 @@ and is not included in these timestamps.
 | 2.24--4.49 s | dynamic ROM-storage mount path | latest storage ready at 3.75 s; no first-frame dependency | Exact kernel binds are verified with no FUSE PIDs. Direct `/dev/mmcblk0p6` mounting, no SD/USB probing, no boot/configfs startup mounts and a fixed bind map are staged together with separate logs. |
 | 3.60--6.31 s | post-menu D-Bus/PipeWire/WirePlumber warm-up | system-ready 3.95 s; D-Bus 4.22 s; full audio 6.31 s | Verified outside the menu path. Fixed ALSA-only WirePlumber monitor overrides are staged next. |
 | 4.61 s | boot partition and storage bind setup | no first-frame dependency | Defer or delete any bind/boot mounts unused by the fixed launcher and launch wrappers. |
-| 3.43 s onward | hotkey/device workers | system shortcuts, lid and battery policy | Six fixed RG34XX-SP scripts are staged; the five-second PID-scanning idle daemon is removed. |
-| 4.26 s | user-init | 1,122-line completed migration engine still audits old transforms | Replaced in the staged batch by a 45-line diagnostics-only collector with no delayed sleepers. |
+| 3.43 s onward | hotkey/device workers | system shortcuts, lid and battery policy | Eight fixed RG34XX-SP scripts are staged; the five-second PID-scanning idle daemon is removed and the module/user-init wrappers become exact paths. |
+| 4.26 s | user-init | fixed user-script directory dispatch | The 1,122-line migration engine has already been replaced by a 45-line diagnostics-only collector; the next stage removes generic helper/config parsing from its dispatcher. |
 | 6.60 s | backlight probe ends | diagnostic only | Removed from ordinary boot; restore only as an explicitly armed firmware-test probe. |
 | 33.37 s | generic boot probe ends | scanned `/proc` every 200 ms and kept a logger alive | Removed from ordinary boot together with its 60-second background copy schedule. |
 
 The stock frontend appearing at 18.64 seconds in this trace is not ordinary
 boot work. B was pressed at 18.55 seconds, deliberately invoking the stock
 recovery frontend.
+
+The first fixed-runtime installer made no rootfs changes: its all-target
+preflight correctly refused an unexpected device-start checksum. The following
+settled snapshot identified the active checksum, and the corrected eight-target
+batch retains the same validate-everything-before-writing transaction.
 
 ## Persistent userspace after startup
 

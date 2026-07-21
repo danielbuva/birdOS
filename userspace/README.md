@@ -123,13 +123,15 @@ installation retained games, media, controls and shutdown.
 
 `startup-rg34xxsp.sh` is the next fixed-root step. It replaces the generic
 startup coordinator with the exact internal-display RG34XX-SP path: no factory
-reset, first-boot, HDMI, rumble-probe or alternate-board branches; Mali remains
-owned by the earlier fixed hardware service and only squashfs is dispatched
-here. Device setup, fixed storage and session-warm audio remain separate
-workers. The global hotkey daemon starts before the storage wait so system
-controls can become usable as early as possible, while game/media execution
-still waits for the fixed mount-ready marker. Its small TSV trace preserves
-substage evidence during development.
+reset, first-boot, HDMI, rumble-probe or alternate-board branches. Device
+setup, fixed storage and session-warm audio remain separate workers. The global
+hotkey daemon starts before the storage wait so system controls can become
+usable as early as possible, while game/media execution still waits for the
+fixed mount-ready marker. Its small TSV trace preserves substage evidence
+during development. Startup v2 additionally moves immutable policy and screen
+geometry writes to its one-time installer, removes the zero-swap probe and
+drops the redundant squashfs module request (the filesystem is already
+available without it).
 
 The first `S98dani-stable-snapshot` incorrectly checked its card-side arm file
 before `/mnt/mmc` had mounted. The revised explicitly armed hook waits for the
@@ -147,7 +149,11 @@ At 24.08 seconds, `haveged` and both UnionFS workers are absent. The remaining
 shell workers are the generic hotkey wrapper plus its five-second all-PID idle
 scanner, lid polling and low-battery polling.
 
-`stage-fixed-runtime-batch.sh` stages six checksum-gated replacements:
+`stage-fixed-runtime-batch.sh` stages eight checksum-gated replacements. Every
+source and active target is validated before any target is written. The first
+six-target attempt therefore refused safely when its expected device-start
+checksum was stale; the corrected value comes from the following settled
+snapshot:
 
 - `device-start-rg34xxsp.sh` mounts the display debug interface, applies the
   fixed normal stereo map and starts only the SP lid worker. It performs no
@@ -162,8 +168,13 @@ scanner, lid polling and low-battery polling.
   factory-reset, board or device-path discovery.
 - `idle-disabled-rg34xxsp.sh` makes obsolete calls harmless; the fixed hotkey
   shell owns display idle, idle sleep is disabled and no `/proc` scan remains.
+- `module-rg34xxsp.sh` handles only Mali suspend/resume; built-in SquashFS,
+  Wi-Fi, alternate-board GPU and depmod branches are gone.
+- `user-init-fixed.sh` dispatches the single fixed card-side init directory
+  without loading muOS configuration and formatting helpers.
 
-The same stage replaces the completed 48,714-byte migration engine in ordinary
-user-init with `99dani-diagnostics.sh`, a 1,504-byte collector for the boot,
-fixed-startup and minimal-udev traces. A rearmed self-removing snapshot records
-the post-change process set on the following boot.
+The migration engine has already been replaced in ordinary user-init by
+`99dani-diagnostics.sh`, a 1,504-byte collector for the boot, fixed-startup and
+minimal-udev traces. This stage preserves that collector, installs startup v2,
+and rearms a self-removing snapshot to record the post-change process set on
+the following boot.

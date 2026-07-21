@@ -66,13 +66,19 @@ application and move everything unrelated to an interactive menu behind it.
 - [x] Retain early entropy seeding and terminate haveged after the kernel's
   explicit readiness event. Hardware logs show CRNG ready at 4.07 seconds and
   haveged gone at 4.10 seconds. Storage never waits for it.
-- [ ] [staged] Replace device startup, hotkey shell, lid watcher, low-battery
-  watcher, charge check and idle scanner with fixed RG34XX-SP policy. This
-  removes the five-second `/proc` scan while retaining the proven input binary,
-  lid suspend, display idle, global controls and battery warning.
-- [ ] [staged] Retire the completed 1,122-line migration engine from ordinary
-  user-init. A 45-line collector retains boot and service traces without old
-  patch guards or delayed log-copy sleepers.
+- [ ] [corrected and restaged] Replace device startup, hotkey shell, lid
+  watcher, low-battery watcher, charge check, idle scanner, module loader and
+  user-init dispatcher with fixed RG34XX-SP policy. The first transaction
+  safely refused a stale checksum before changing any target; the corrected
+  batch uses the exact settled-card hash. It removes the five-second `/proc`
+  scan while retaining the proven input binary, lid suspend, display idle,
+  global controls and battery warning.
+- [x] Retire the completed 1,122-line migration engine from ordinary user-init.
+  A 45-line collector retains boot and service traces without old patch guards
+  or delayed log-copy sleepers.
+- [ ] [staged] Remove the next set of redundant fixed-startup work: per-boot
+  immutable policy/geometry writes, obsolete update-file cleanup, zero-swap
+  probing and the unnecessary squashfs module request.
 - [ ] Bake changes into the image and remove the card-side development
   user-init delivery path.
 

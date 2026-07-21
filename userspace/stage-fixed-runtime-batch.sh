@@ -33,11 +33,18 @@ for FILE in \
 	lid-rg34xxsp.sh \
 	lowpower-rg34xxsp.sh \
 	charge-rg34xxsp.sh \
-	idle-disabled-rg34xxsp.sh; do
+	idle-disabled-rg34xxsp.sh \
+	module-rg34xxsp.sh \
+	user-init-fixed.sh; do
 	stage_file "$ROOT/userspace/$FILE" "$WORK/$FILE"
 done
 stage_file "$ROOT/userspace/device-install-fixed-runtime-services.sh" \
 	"$INIT/62-install-fixed-runtime-services.sh"
+
+stage_file "$ROOT/userspace/startup-rg34xxsp.sh" \
+	"$CARD/MUOS/boot-timing/fixed-startup/startup-rg34xxsp.sh"
+stage_file "$ROOT/userspace/device-update-fixed-startup-v2.sh" \
+	"$INIT/60-install-fixed-startup-v2.sh"
 
 stage_file "$ROOT/userspace/S98dani-stable-snapshot" \
 	"$SNAPSHOT/S98dani-stable-snapshot"
@@ -70,6 +77,7 @@ find "$WORK" "$SNAPSHOT" "$DIAGNOSTICS" "$INIT" \
 sync
 
 printf 'staged fixed runtime batch on %s\n' "$CARD"
+printf '  60: remove redundant fixed-startup probes and persistent writes\n'
 printf '  61: one-shot post-change process/service snapshot\n'
-printf '  62: six fixed RG34XX-SP runtime scripts\n'
+printf '  62: eight fixed RG34XX-SP runtime scripts\n'
 printf '  99: diagnostics-only collector (migration engine retired)\n'

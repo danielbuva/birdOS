@@ -7,7 +7,7 @@ SOURCE="$WORK_DIR/S98dani-stable-snapshot"
 TARGET="/opt/muos/script/init/async/S98dani-stable-snapshot"
 LOG_FILE="$WORK_DIR/rearm.log"
 CARD_INSTALLER="$ROM_MOUNT/MUOS/init/61-install-runtime-snapshot.sh"
-SOURCE_SHA="aa93203d68f2298ee457a37b0eda5826b64d1a8f44e0a024f3196e3e7b4bb125"
+SOURCE_SHA="2970f4077db1a75ab45509b3ffa8c66ecd014d59ba716ad151b512ae4a35c4ba"
 TEMP="$TARGET.dani-new"
 
 mkdir -p "${TARGET%/*}" "$WORK_DIR"

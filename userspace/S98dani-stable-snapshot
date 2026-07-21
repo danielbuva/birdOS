@@ -61,9 +61,11 @@ sha256sum \
 	/opt/muos/script/device/start.sh \
 	/opt/muos/script/device/charge.sh \
 	/opt/muos/script/device/lid.sh \
+	/opt/muos/script/device/module.sh \
 	/opt/muos/script/mux/hotkey.sh \
 	/opt/muos/script/mux/idle.sh \
 	/opt/muos/script/system/lowpower.sh \
+	/opt/muos/script/system/user_init.sh \
 	/usr/share/wireplumber/main.lua.d/89-dani-fixed-device.lua \
 	/usr/share/wireplumber/bluetooth.lua.d/89-dani-fixed-device.lua \
 	>"$DEST/active-sha256sums.txt" 2>/dev/null || :

@@ -1,5 +1,5 @@
 #!/bin/sh
-# DANI_FIXED_RG34XXSP_STARTUP_V1
+# DANI_FIXED_RG34XXSP_STARTUP_V2
 # Fixed startup contract for Dani's RG34XX-SP.  The initramfs launcher is
 # already interactive when this runs; this script prepares only the services
 # needed by that one device and publishes runtime readiness for content.
@@ -17,7 +17,7 @@ TRACE="/tmp/muos/fixed-startup.tsv"
 ROM_MOUNT="/mnt/mmc"
 
 mkdir -p /tmp/muos "$RUN_DIR"
-rm -f "$TRACE" /opt/update.sh
+rm -f "$TRACE"
 rm -rf /opt/muxtmp
 
 mark() {
@@ -30,8 +30,6 @@ mark startup-begin
 # Session state used by suspend, launch and stock-fallback paths.
 read -r MU_UPTIME _ </proc/uptime
 SET_VAR system resume_uptime "$MU_UPTIME"
-SET_VAR system idle_inhibit 0
-SET_VAR config boot/device_mode 0
 SET_VAR device audio/ready 0
 rm -f /opt/muos/device/config/screen/s_rotate \
 	/opt/muos/device/config/screen/s_zoom &
@@ -42,11 +40,9 @@ GOVERNOR=$(GET_VAR device cpu/governor)
 printf '%s\n' performance >"$GOVERNOR"
 mark core-state-ready
 
-# Audio warms only after the system-ready marker.  Mali is already loaded by
-# the fixed early hardware service; squashfs is the only remaining RG module
-# required by packaged applications.
+# Audio warms only after the system-ready marker. Mali is already loaded by
+# fixed early hardware setup and SquashFS is built in on this kernel.
 /opt/muos/script/system/pipewire.sh start &
-modprobe -q squashfs &
 ifconfig lo up &
 
 # These independent fixed-device workers must never hold the visible menu.
@@ -59,15 +55,8 @@ mark device-and-storage-dispatched
 HOTKEY start
 mark hotkeys-ready
 
-# RG34XX-SP internal display geometry is invariant.  There is no HDMI branch.
-SET_VAR device screen/width 720 &
-SET_VAR device screen/height 480 &
-SET_VAR device mux/width 720 &
-SET_VAR device mux/height 480 &
-
 echo 1 >"$MUOS_RUN_DIR/work_led_state"
 : >"$MUOS_RUN_DIR/net_start"
-/opt/muos/script/system/swap.sh &
 
 # Content launchers may proceed only after the fixed storage service publishes
 # its readiness marker.  Menu drawing and direct input remain independent.

@@ -72,6 +72,8 @@ LID_SOURCE="$WORK_DIR/lid-rg34xxsp.sh"
 LOWPOWER_SOURCE="$WORK_DIR/lowpower-rg34xxsp.sh"
 CHARGE_SOURCE="$WORK_DIR/charge-rg34xxsp.sh"
 IDLE_SOURCE="$WORK_DIR/idle-disabled-rg34xxsp.sh"
+MODULE_SOURCE="$WORK_DIR/module-rg34xxsp.sh"
+USER_INIT_SOURCE="$WORK_DIR/user-init-fixed.sh"
 
 DEVICE_TARGET="/opt/muos/script/device/start.sh"
 HOTKEY_TARGET="/opt/muos/script/mux/hotkey.sh"
@@ -79,13 +81,17 @@ LID_TARGET="/opt/muos/script/device/lid.sh"
 LOWPOWER_TARGET="/opt/muos/script/system/lowpower.sh"
 CHARGE_TARGET="/opt/muos/script/device/charge.sh"
 IDLE_TARGET="/opt/muos/script/mux/idle.sh"
+MODULE_TARGET="/opt/muos/script/device/module.sh"
+USER_INIT_TARGET="/opt/muos/script/system/user_init.sh"
 
-DEVICE_OLD="7c0a79dd8455d64bf4b0258bf1adc43bd9209bdf0061b6eb30d074dd70233f4c"
+DEVICE_OLD="3b285ad48e60339742239cf0d65811277f80f6e5fd3f3f2c53d0b5ec60b36507"
 HOTKEY_OLD="40c32e47721f473d4a13d385cb2430f84f5ba863cc4861bb34c60051ca57574c"
 LID_OLD="c27b59365902dbfbecda3b837e73b87f1d0cb9f096cc18eb0e515ff1c47e72cb"
 LOWPOWER_OLD="4ad4df3a63dce8a918ad52e2e5dcf23d248bc15e73457c2fb4901ef7e976bc65"
 CHARGE_OLD="ab94f6d1368d0736d9426dd3ee5edc6fff2adfe499a8e12b654e43c9ff73c0f1"
 IDLE_OLD="8a79101adeeb6cc41731fac38550627bebeb1bca2f32929c783da4b2b9e88458"
+MODULE_OLD="e99c6b9ef73e141e14c62b528df3d8c9a71e3930dd755d14e2dab40e17423c6e"
+USER_INIT_OLD="783b546ca8c990954c419a9b6196ba83ac09426a34a56a5738e23b41087e7c87"
 
 DEVICE_NEW="945cd4245cbfb93c1aa3a99ec34df844c0219c3549c52c2a9f5fd6dc3ce5fcad"
 HOTKEY_NEW="65037e01be457c4225ed1d22747e0a2626f8a92eee042d939cb01790bc4ff5c2"
@@ -93,6 +99,8 @@ LID_NEW="2e0b19d11d6ed348d5bd6a5d57a0e1b87efadb593cafbea64e6305f8cb1e1bd1"
 LOWPOWER_NEW="5b5bcec46b6568841f786ecfb010d56c4b3f78a930c3b1cb5699c2cb9a9d2abb"
 CHARGE_NEW="75481180f04a688c00fb68a09334d8bd11f0ab4772dbd16160cbc793358e9574"
 IDLE_NEW="03bd33dacb0a1ad187397fd1ee76677932162b9ff5890efd41df40acbba81152"
+MODULE_NEW="98dc9e2474c7abc34d4bf2a606ce28b3f4f3ff5df91cb275c6d2f222ef5b40e4"
+USER_INIT_NEW="9d6a2c57c6144d14270c75e71d053d013bb19cd45a76bc7190f577137763d13b"
 
 printf 'fixed RG34XX-SP runtime service installer start\n'
 
@@ -103,6 +111,8 @@ check_one lid "$LID_SOURCE" "$LID_TARGET" "$LID_OLD" "$LID_NEW"
 check_one lowpower "$LOWPOWER_SOURCE" "$LOWPOWER_TARGET" "$LOWPOWER_OLD" "$LOWPOWER_NEW"
 check_one charge "$CHARGE_SOURCE" "$CHARGE_TARGET" "$CHARGE_OLD" "$CHARGE_NEW"
 check_one idle "$IDLE_SOURCE" "$IDLE_TARGET" "$IDLE_OLD" "$IDLE_NEW"
+check_one module "$MODULE_SOURCE" "$MODULE_TARGET" "$MODULE_OLD" "$MODULE_NEW"
+check_one user-init "$USER_INIT_SOURCE" "$USER_INIT_TARGET" "$USER_INIT_OLD" "$USER_INIT_NEW"
 
 install_one device-start "$DEVICE_SOURCE" "$DEVICE_TARGET" "$DEVICE_OLD" "$DEVICE_NEW"
 install_one hotkey "$HOTKEY_SOURCE" "$HOTKEY_TARGET" "$HOTKEY_OLD" "$HOTKEY_NEW"
@@ -110,6 +120,8 @@ install_one lid "$LID_SOURCE" "$LID_TARGET" "$LID_OLD" "$LID_NEW"
 install_one lowpower "$LOWPOWER_SOURCE" "$LOWPOWER_TARGET" "$LOWPOWER_OLD" "$LOWPOWER_NEW"
 install_one charge "$CHARGE_SOURCE" "$CHARGE_TARGET" "$CHARGE_OLD" "$CHARGE_NEW"
 install_one idle "$IDLE_SOURCE" "$IDLE_TARGET" "$IDLE_OLD" "$IDLE_NEW"
+install_one module "$MODULE_SOURCE" "$MODULE_TARGET" "$MODULE_OLD" "$MODULE_NEW"
+install_one user-init "$USER_INIT_SOURCE" "$USER_INIT_TARGET" "$USER_INIT_OLD" "$USER_INIT_NEW"
 
 # This is persistent policy, not per-boot work.  Set it once during migration.
 printf '%s' 100 >/opt/muos/device/config/audio/max
@@ -117,4 +129,4 @@ printf '%s' 100 >/opt/muos/device/config/audio/max
 sync
 printf '%s\n' installed >"$MARKER"
 [ ! -f "$CARD_INSTALLER" ] || mv -f "$CARD_INSTALLER" "$CARD_INSTALLER.done"
-printf 'SUCCESS: six fixed RG34XX-SP runtime services installed; active next boot\n'
+printf 'SUCCESS: eight fixed RG34XX-SP runtime services installed; active next boot\n'
