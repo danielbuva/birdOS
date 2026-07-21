@@ -137,9 +137,15 @@ boards.
   captures the live module, device and DT closure after the menu is interactive;
   keep the accepted vendor kernel as fallback while the fixed-device kernel is
   made reproducible and hardware-complete.
-- [ ] Record and hardcode the exact board hardware, buses and device IDs.
+- [ ] [profile captured; DTB v1 staged] Record and hardcode the exact board
+  hardware, buses and device IDs. The live DTB, modules, interrupts, I/O map and
+  measured kernel timeline are pinned; the first candidate disables 20 unused
+  hardware nodes without changing the accepted kernel or initramfs.
 - [ ] Remove unused drivers, protocols, filesystems and alternate-board paths.
-- [ ] Disable or defer unused USB hosts, HDMI, Bluetooth, Wi-Fi and extra SDIO.
+- [ ] [DTB v1 staged] Disable or defer unused USB hosts, HDMI, Bluetooth, Wi-Fi
+  and extra SDIO. V1 disables host controllers 1–3, HDMI/audio, Bluetooth/UART1,
+  camera/deinterlace and the empty second SD slot. USB controller 0 and Wi-Fi
+  remain available; Wi-Fi moves on demand only with a source-complete kernel.
 - [ ] Remove known failed probes and generic discovery paths.
 - [ ] Measure kernel and initramfs compression choices on real hardware.
 

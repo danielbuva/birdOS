@@ -156,6 +156,22 @@ stopwatch. The corresponding internal trace reaches an input-ready frame at
 1.98 seconds, records direct handoff and clean-filesystem skip, and starts the
 remaining root sysinit only after that frame.
 
+## Fixed-device DTB v1
+
+`build-fixed-device-dtb-v1.sh` repacks the accepted direct-handoff image with
+exactly 20 device-tree status changes. It disables unused USB host controllers
+1–3, the empty second SD slot, HDMI/HDMI-audio/TV, video input/deinterlace and
+Bluetooth/UART1. It preserves USB controller 0, main SD, Wi-Fi, internal audio,
+display/input, PMIC/RTC and GPU. Kernel and initramfs comparisons must remain
+byte-for-byte identical.
+
+The verified 64 MiB candidate SHA-256 is
+`872a3d0d99ad6883942632f7adde9ffaa7c99eb922dca11f5efa2e89b8e7764f`.
+The guarded installer accepts only the hardware-verified direct-handoff image,
+backs it up, writes and rereads the candidate, and restores automatically on a
+write mismatch. A marker-gated collector stays armed during the installation
+boot and records the following candidate boot.
+
 Before the critical-UI patch, BusyBox ran:
 
 `S00chrony -> S01entropy -> S02rgb -> S10udev -> S30dbus -> S99muos`

@@ -71,7 +71,12 @@ checksum-gated kernel candidate, and no configuration option may be removed
 until that unmodified candidate passes the full hardware and application
 acceptance test.
 
-The staged `57-capture-kernel-baseline.sh` is a one-boot, post-menu collector.
-It saves the running `/proc/config.gz`, loaded modules, interrupts, I/O map,
-input devices, live DTB and kernel log.  This tells later config work what the
-fixed device actually uses; it does not delay the first interactive frame.
+The accepted `57-capture-kernel-baseline.sh` run saved the running
+`/proc/config.gz`, loaded modules, interrupts, I/O map, input devices, live DTB
+and kernel log without delaying the first interactive frame. The complete
+capture and decompiled DTB are pinned under `baseline/live/`.
+
+[`FIXED_DEVICE_PROFILE.md`](FIXED_DEVICE_PROFILE.md) turns that capture into the
+measured pre-init timeline and exact hardware closure. Its first DTB-only
+candidate preserves the accepted kernel and initramfs while disabling 20 unused
+nodes; this tests the largest safe probe removals before a source kernel exists.
