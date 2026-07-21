@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+/* Visible boot-boundary derivative; never use as the final device tree. */
+
+#include "sun50i-h700-anbernic-rg34xx-sp-dani.dts"
+
+/ {
+	model = "Anbernic RG34XX-SP (Dani boot diagnostic)";
+
+	leds {
+		led-1 {
+			linux,default-trigger = "heartbeat";
+			panic-indicator;
+		};
+	};
+};

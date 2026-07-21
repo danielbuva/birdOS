@@ -42,6 +42,13 @@ typedef signed long s64;
 #define TRIMMED_INIT_MARKER "/mnt/run/muos/dani-trimmed-initramfs-v1"
 #define DIRECT_HANDOFF_MARKER "/mnt/run/muos/dani-direct-handoff-v1"
 #define CLEAN_FS_MARKER "/mnt/run/muos/dani-fsck-clean-skip"
+#ifdef DANI_BOOT_DIAGNOSTICS
+#define STATUS_LED "/sys/class/leds/red:status"
+#define STATUS_TRIGGER STATUS_LED "/trigger"
+#define STATUS_BRIGHTNESS STATUS_LED "/brightness"
+#define STATUS_DELAY_ON STATUS_LED "/delay_on"
+#define STATUS_DELAY_OFF STATUS_LED "/delay_off"
+#endif
 #ifdef DANI_STATIC_ROOT_INIT
 #define ROOT_INIT_SOURCE "/opt/dani-root-init"
 #define ROOT_INIT_TARGET "/mnt/sbin/dani-root-init"
@@ -240,6 +247,42 @@ static int create_marker(const char *path) {
     sys_close((int)fd);
     return 0;
 }
+
+#ifdef DANI_BOOT_DIAGNOSTICS
+static void diagnostic_write(const char *path, const char *value) {
+    long fd = sys_open(path, O_WRONLY | O_CLOEXEC, 0);
+    if (fd < 0) return;
+    write_all((int)fd, value, string_length(value));
+    sys_close((int)fd);
+}
+
+static void diagnostic_led_solid(void) {
+    diagnostic_write(STATUS_TRIGGER, "none\n");
+    diagnostic_write(STATUS_BRIGHTNESS, "1\n");
+}
+
+static void diagnostic_led_fast(void) {
+    diagnostic_write(STATUS_TRIGGER, "timer\n");
+    diagnostic_write(STATUS_DELAY_ON, "100\n");
+    diagnostic_write(STATUS_DELAY_OFF, "100\n");
+}
+
+static void diagnostic_led_slow(void) {
+    diagnostic_write(STATUS_TRIGGER, "timer\n");
+    diagnostic_write(STATUS_DELAY_ON, "700\n");
+    diagnostic_write(STATUS_DELAY_OFF, "300\n");
+}
+
+static void diagnostic_led_off(void) {
+    diagnostic_write(STATUS_TRIGGER, "none\n");
+    diagnostic_write(STATUS_BRIGHTNESS, "0\n");
+}
+#else
+static void diagnostic_led_solid(void) {}
+static void diagnostic_led_fast(void) {}
+static void diagnostic_led_slow(void) {}
+static void diagnostic_led_off(void) {}
+#endif
 
 static int run_child(const char *path, char *const argv[]) {
     long pid = sys_clone();
@@ -539,9 +582,11 @@ static void application(void) {
     if (sys_mount("none", "/dev", "devtmpfs", 0, 0) < 0)
         stock_init_fallback("mount-dev");
     attach_console();
+    diagnostic_led_solid();
     log_stage("start");
 
     if (wait_for_root_device() < 0) stock_init_fallback("root-device-timeout");
+    diagnostic_led_fast();
     run_filesystem_check();
     root_status = prepare_future_root();
     if (root_status == -1) stock_init_fallback("mount-root");
@@ -549,6 +594,7 @@ static void application(void) {
         log_stage("future-root-partial-fallback");
         handoff_root_init();
     }
+    diagnostic_led_slow();
 
 #ifdef DANI_STATIC_ROOT_INIT
     bind_static_root_init();
@@ -558,6 +604,7 @@ static void application(void) {
     log_text("fixed-init supervisor_wait_status=");
     log_number((u64)(unsigned int)supervisor_status);
     log_text("\n");
+    diagnostic_led_off();
     if (supervisor_status >= 0) wait_for_first_frame();
     handoff_root_init();
 }

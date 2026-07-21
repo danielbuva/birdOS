@@ -416,10 +416,20 @@ path: with the card connected to macOS, it accepts only the known external
 partition layout, candidate hash and device-created backup before restoring raw
 partition 4.
 
-That exact set is staged on the test card as of 2026-07-21. The next device boot
-still uses the accepted vendor kernel and installs/verifies the candidate only
-after the menu is available. The following cold boot is the first source-built
-Linux 7.0.11 hardware test.
+That exact set was hardware-tested on 2026-07-21. The install boot successfully
+backed up, wrote and reread the candidate, but the following cold boot remained
+on the U-Boot logo and produced no userspace capture. The external workflow was
+then exercised: it restored and reread all 64 MiB as accepted image
+`872a3d0d...7764f`. The on-card installer and collector were disabled; the
+candidate and recovery image remain only as evidence.
+
+`build-mainline-diagnostic-boot.sh` keeps that candidate's exact kernel but
+rebuilds `/init` with opt-in red-LED boundaries and substitutes the diagnostic
+DTB. Two builds produced the same 64 MiB image, SHA-256
+`8b9ba42467b9879b94a7f61241fc5065c31206b71da1f29c21c6c13e993f9078`.
+`stage-mainline-diagnostic.sh` stages its fixed-hash installer, success
+collector and matching external restore helper. It is a failure-localization
+image, not a performance candidate.
 
 ## Installed DTB experiment
 

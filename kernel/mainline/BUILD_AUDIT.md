@@ -2,8 +2,8 @@
 
 Audit date: 2026-07-21.
 
-This is a source, configuration, DT and reproducibility milestone. It is not a
-claim that the replacement kernel has booted the RG34XX-SP.
+This is a source, configuration, DT and reproducibility milestone. The first
+hardware candidate did not reach a visible launcher or userspace capture.
 
 ## Result
 
@@ -61,8 +61,11 @@ The known vendor DT mutations also pass the offline simulation described in
 
 On 2026-07-21 the exact candidate, one-shot installer, first-boot collector and
 external recovery helper were byte-verified after staging on the test card.
-The active boot partition is intentionally unchanged until the installer runs
-after the current known-good launcher becomes interactive.
+The installer successfully backed up, wrote and reread the candidate. On the
+following cold boot the device remained indefinitely on the U-Boot logo and no
+collector directory was created. The guarded external restore then rewrote and
+reread all 64 MiB as accepted image `872a3d0d...7764f`. See
+[`FIRST_BOOT_RESULT.md`](FIRST_BOOT_RESULT.md).
 
 ## Remaining gates before trimming
 

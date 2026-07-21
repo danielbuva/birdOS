@@ -75,9 +75,12 @@ RUN mkdir -p /src/panel-firmware/panels \
 
 COPY kernel/mainline/sun50i-h700-anbernic-rg34xx-sp-dani.dts \
 	/src/linux/arch/arm64/boot/dts/allwinner/
+COPY kernel/mainline/sun50i-h700-anbernic-rg34xx-sp-dani-diagnostic.dts \
+	/src/linux/arch/arm64/boot/dts/allwinner/
 
 RUN printf '%s\n' \
 	'dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h700-anbernic-rg34xx-sp-dani.dtb' \
+	'dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h700-anbernic-rg34xx-sp-dani-diagnostic.dtb' \
 	>> /src/linux/arch/arm64/boot/dts/allwinner/Makefile \
 	&& cp /src/rocknix/projects/ROCKNIX/devices/H700/linux/linux.aarch64.conf \
 		/src/linux/.config \

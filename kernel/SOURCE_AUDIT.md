@@ -28,6 +28,15 @@ No source-complete match was located in the public trees audited above. The
 accepted vendor `Image` therefore remains the only boot kernel and rollback
 anchor. It must not be replaced by the public lineage build.
 
+The installed userspace does contain literal `4.9.170` assumptions. The active
+network profile names
+`/lib/modules/4.9.170/kernel/drivers/net/wireless/rtl8821cs/8821cs.ko`, and an
+older depmod migration guard tests `/lib/modules/4.9.170/modules.dep`. These are
+runtime paths, not evidence that the matching downstream source ships on the
+card. Vanilla `linux-4.9.170` can build some compatible add-on modules when
+paired with a close config/toolchain, but it still lacks the private vendor
+tree that produced this PMIC/audio/exFAT-enabled `Image`.
+
 Work continues in two non-destructive tracks:
 
 1. Capture the running DTB, modules, devices, interrupts and memory map from the

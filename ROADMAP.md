@@ -128,7 +128,7 @@ keeping the verified menu-first boundary.
 Build for the hardware that actually exists rather than a family of possible
 boards.
 
-- [ ] [source gap closed; hardware compatibility pending]
+- [ ] [source gap closed; first compatibility boot failed before capture]
   Reproduce or replace the current vendor 4.9.170
   kernel before changing the boot kernel. The active `Image` and its embedded
   4,209-line config are pinned, as is the exact Linaro GCC 5.3.1 compiler. The
@@ -148,14 +148,27 @@ boards.
   Linux 7.0.11 RG34XX-SP compatibility baseline. Two clean container builds
   produced byte-identical artifacts. The exact internal panel stream, DT and
   built-in first-frame driver closure pass the automated audit.
-- [ ] [card staged; two-boot hardware test pending] Package and
+- [ ] [first candidate failed; recovery proven] Package and
   hardware-test that broad baseline with a checksum-gated, one-command restore
   path. The Android image round-trips, fits U-Boot/kernel/ramdisk limits, passes
   the known MMC/DRAM mutation simulation and has an external Mac restore path.
-  Candidate `d683c1b9...ea6d` and its guarded installer/collector are staged on
-  the test card. It remains unaccepted until the second cold boot proves
-  framebuffer/input numbering, DRM/Panfrost application ABI and the complete
-  device sequence on hardware.
+  Candidate `d683c1b9...ea6d` remained indefinitely on the U-Boot logo and
+  produced no userspace capture. The external restore then rewrote and reread
+  all 64 MiB as accepted image `872a3d0d...7764f`; the failed installer and
+  collector are disabled on-card. The next candidate must expose progress
+  before the normal display and `/mnt/mmc` paths so we can distinguish U-Boot
+  handoff, early-kernel, initramfs/storage and display-only failures.
+- [ ] [diagnostic staged] Run candidate `8b9ba424...9078`. Its red status LED
+  independently reports kernel LED-driver probe, initramfs PID 1, root-device
+  discovery, root mount/launcher dispatch and panic. Its kernel is byte-for-byte
+  the first candidate; only the diagnostic DTB and `/init` differ.
+- [ ] Remove the installed-runtime assumption that modules always live below
+  `/lib/modules/4.9.170`. The fixed networking profile currently names the
+  vendor `8821cs.ko` there, while an old depmod migration guard also embeds the
+  release. This cannot explain a failure before the initramfs launcher, but it
+  must be resolved before Wi-Fi or any modular driver can pass on a replacement
+  kernel. Prefer eliminating unnecessary modules; give every retained module
+  one fixed final-kernel path.
 - [ ] Remove unused drivers, protocols, filesystems and alternate-board paths.
 - [ ] [DTB v1 could not survive U-Boot] Disable or defer unused USB hosts, HDMI,
   Bluetooth, Wi-Fi and extra SDIO in the compiled source. Bluetooth is already

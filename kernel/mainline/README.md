@@ -75,6 +75,8 @@ and the remaining pre-trim hardware gates.
 [`UBOOT_HANDOFF_AUDIT.md`](UBOOT_HANDOFF_AUDIT.md) records the padded FDT
 capacity, Android-DTB copy path and simulated MMC/DRAM mutations required while
 the accepted vendor U-Boot remains in place.
+[`FIRST_BOOT_RESULT.md`](FIRST_BOOT_RESULT.md) records the rejected first boot,
+verified recovery and the staged red-LED boot-boundary derivative.
 
 ## DTB v1 result that led here
 
