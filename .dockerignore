@@ -1,0 +1,6 @@
+.git
+.DS_Store
+._*
+firmware/work
+kernel/work
+

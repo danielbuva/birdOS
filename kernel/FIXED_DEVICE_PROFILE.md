@@ -39,7 +39,7 @@ Only one loadable module is active: `mali_kbase`. Everything else in the table
 is built into the vendor kernel, which is why userspace service ordering cannot
 remove its pre-`/init` cost.
 
-## DTB v1 experiment
+## DTB v1 experiment — rejected as a performance change
 
 The first fixed-device candidate keeps the accepted kernel and initramfs
 byte-for-byte unchanged. It disables exactly 20 device-tree nodes:
@@ -62,14 +62,32 @@ It deliberately retains:
 Candidate SHA-256:
 `872a3d0d99ad6883942632f7adde9ffaa7c99eb922dca11f5efa2e89b8e7764f`.
 
-Expected internal gain is approximately 0.2–0.35 seconds, mostly from removing
-serial USB host initialization. A first-candidate-boot collector verifies which
-probes actually disappeared; the device stopwatch remains the acceptance
-measurement.
+The image installed, booted and passed the full functionality test at about
+3.5 seconds by stopwatch. The internal result was nevertheless a no-op:
+
+- all 20 targeted nodes were `okay` in the captured live tree;
+- the decompiled candidate live tree is identical to the original live tree;
+- USB hosts, the empty second SD controller, HDMI, camera/deinterlace and
+  Bluetooth still probed;
+- `/init` moved from 1.829244 to 1.816965 seconds, a 12.279 ms difference well
+  inside ordinary boot jitter.
+
+Vendor U-Boot's `update dts` path therefore restores or regenerates these
+properties before starting Linux. The raw candidate remains checksum-distinct,
+so installation did occur; its intended state simply did not survive the
+bootloader handoff. The complete result is pinned under
+`baseline/fixed-device-dtb-v1/95953775-8ed2-44e9-aae1-e3d289b8629c/`.
+Reliable removal now moves to the compiled kernel/config, with bootloader DT
+work retained for the later U-Boot layer.
 
 ## Source-kernel removal queue
 
-Once a source-complete kernel exists, the high-value removal/defer queue is:
+The source-complete Linux 7.0.11 compatibility workstream now exists under
+`mainline/`. Its intentionally broad baseline now compiles byte-reproducibly
+and passes the static DT/config audit. Before trimming, it must still pass the
+rollback-safe packaging, hardware and application ABI gates in
+`mainline/BUILD_AUDIT.md`. Once that baseline is proven on-device, the
+high-value removal/defer queue is:
 
 1. Make Wi-Fi SDIO/radio initialization feature-triggered after the menu.
 2. Remove unused USB host, USB network/storage/audio and alternate gamepad

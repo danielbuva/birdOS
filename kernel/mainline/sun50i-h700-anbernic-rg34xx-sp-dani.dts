@@ -1,0 +1,116 @@
+// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+/*
+ * Fixed-device RG34XX-SP description for Dani's launcher OS.
+ *
+ * The board, lid, RTC, PMIC, digital buttons and wireless hardware inherit
+ * from the upstream RG35XX-SP description.  The RG34XX-SP-specific panel
+ * identity comes from the hardware-tested ROCKNIX H700 support.  Analog
+ * controls use the upstream adc-joystick/io-channel-mux binding rather than
+ * the out-of-tree polling driver used by a general-purpose distribution.
+ */
+
+#include "sun50i-h700-anbernic-rg35xx-sp.dts"
+
+/ {
+	model = "Anbernic RG34XX-SP (Dani fixed device)";
+	compatible = "dani,rg34xx-sp", "anbernic,rg34xx-sp",
+		     "allwinner,sun50i-h700";
+
+	adc-joystick {
+		compatible = "adc-joystick";
+		io-channels = <&adc_mux 0>, <&adc_mux 1>,
+			      <&adc_mux 2>, <&adc_mux 3>;
+		pinctrl-0 = <&joy_mux_pin>;
+		pinctrl-names = "default";
+		poll-interval = <10>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		axis@0 {
+			reg = <0>;
+			abs-flat = <32>;
+			abs-fuzz = <32>;
+			abs-range = <4096 0>;
+			linux,code = <ABS_X>;
+		};
+
+		axis@1 {
+			reg = <1>;
+			abs-flat = <32>;
+			abs-fuzz = <32>;
+			abs-range = <0 4096>;
+			linux,code = <ABS_Y>;
+		};
+
+		axis@2 {
+			reg = <2>;
+			abs-flat = <32>;
+			abs-fuzz = <32>;
+			abs-range = <0 4096>;
+			linux,code = <ABS_RX>;
+		};
+
+		axis@3 {
+			reg = <3>;
+			abs-flat = <32>;
+			abs-fuzz = <32>;
+			abs-range = <4096 0>;
+			linux,code = <ABS_RY>;
+		};
+	};
+
+	adc_mux: adc-mux {
+		compatible = "io-channel-mux";
+		channels = "left_x", "left_y", "right_x", "right_y";
+		#io-channel-cells = <1>;
+		io-channels = <&gpadc 0>;
+		io-channel-names = "parent";
+		mux-controls = <&gpio_mux>;
+		settle-time-us = <100>;
+	};
+
+	gpio_mux: mux-controller {
+		compatible = "gpio-mux";
+		mux-gpios = <&pio 8 1 GPIO_ACTIVE_LOW>,
+			    <&pio 8 2 GPIO_ACTIVE_LOW>;
+		#mux-control-cells = <0>;
+	};
+};
+
+&gpadc {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "okay";
+
+	channel@0 {
+		reg = <0>;
+	};
+};
+
+&gpio_keys_gamepad {
+	button-thumbl {
+		label = "GPIO Thumb Left";
+		gpios = <&pio 4 8 GPIO_ACTIVE_LOW>; /* PE8 */
+		linux,input-type = <EV_KEY>;
+		linux,code = <BTN_THUMBL>;
+	};
+
+	button-thumbr {
+		label = "GPIO Thumb Right";
+		gpios = <&pio 4 9 GPIO_ACTIVE_LOW>; /* PE9 */
+		linux,input-type = <EV_KEY>;
+		linux,code = <BTN_THUMBR>;
+	};
+};
+
+&panel {
+	compatible = "anbernic,rg34xx-sp-panel", "panel-mipi-dpi-spi";
+};
+
+&pio {
+	joy_mux_pin: joy-mux-pin {
+		pins = "PI0";
+		function = "gpio_out";
+	};
+};
+

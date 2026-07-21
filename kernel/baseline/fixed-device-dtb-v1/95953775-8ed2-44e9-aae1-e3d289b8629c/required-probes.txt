@@ -1,0 +1,9 @@
+[    0.563190] [DISP]disp_module_init finish
+[    0.715572] axp20x-i2c 5-0034: AXP20X driver loaded
+[    1.513833] mmc0: new high speed SDXC card at address 59b4
+[    1.737358] input: muOS-Keys as /devices/platform/soc/soc@03000000:gpio_keys/input/input1
+[    1.815691] ALSA device list:
+[    1.815693]   #0: audiocodec
+[    1.822495] EXT4-fs (mmcblk0p5): barriers disabled
+[    1.834975] EXT4-fs (mmcblk0p5): mounted filesystem with ordered data mode. Opts: noauto_da_alloc,barrier=0,data=ordered
+[    4.096651] [EXFAT] mounted successfully

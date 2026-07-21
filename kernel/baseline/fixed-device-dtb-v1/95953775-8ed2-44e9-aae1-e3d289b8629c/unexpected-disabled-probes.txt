@@ -1,0 +1,67 @@
+[    0.716432] [TC358743]init_sensor!
+[    0.722128] [VIN_WARN]Get isp clk failed!
+[    0.722156] [VIN_WARN]Get mipi clk failed!
+[    0.932876] uart uart1: get regulator failed
+[    0.937818] uart1: ttyS1 at MMIO 0x5000400 (irq = 280, base_baud = 1500000) is a SUNXI
+[    0.939370] deinterlace 1420000.deinterlace: version[1.0.0], ip=0x300100
+[    0.966017] sunxi-bt soc@03000000:bt: Missing bt_power.
+[    0.966026] sunxi-bt soc@03000000:bt: bt_power_name ((null))
+[    0.966034] sunxi-bt soc@03000000:bt: Missing bt_io_regulator.
+[    0.966042] sunxi-bt soc@03000000:bt: io_regulator_name ((null))
+[    0.966096] sunxi-bt soc@03000000:bt: bt_rst gpio=211  mul-sel=1  pull=-1  drv_level=-1  data=0
+[    0.966173] sunxi-bt soc@03000000:bt: devm_pinctrl_get() failed!
+[    0.986117] [sunxi-ehci0]: probe, pdev->name: 5101000.ehci0-controller, sunxi_ehci: 0xffffff80091d1218, 0x:ffffff8009c20000, irq_no:11c
+[    0.986357] [sunxi-ehci1]: probe, pdev->name: 5200000.ehci1-controller, sunxi_ehci: 0xffffff80091d1568, 0x:ffffff8009c24000, irq_no:11e
+[    0.986517] sunxi-ehci 5200000.ehci1-controller: SW USB2.0 'Enhanced' Host Controller (EHCI) Driver
+[    0.986544] sunxi-ehci 5200000.ehci1-controller: new USB bus registered, assigned bus number 1
+[    0.987025] sunxi-ehci 5200000.ehci1-controller: irq 286, io mem 0x3ac7de36
+[    1.014154] sunxi-ehci 5200000.ehci1-controller: USB 0.0 started, EHCI 1.00
+[    1.015898] [sunxi-ehci2]: probe, pdev->name: 5310000.ehci2-controller, sunxi_ehci: 0xffffff80091d18b8, 0x:ffffff8009c2e000, irq_no:120
+[    1.016039] sunxi-ehci 5310000.ehci2-controller: SW USB2.0 'Enhanced' Host Controller (EHCI) Driver
+[    1.016063] sunxi-ehci 5310000.ehci2-controller: new USB bus registered, assigned bus number 2
+[    1.016251] sunxi-ehci 5310000.ehci2-controller: irq 288, io mem 0x3c8a2823
+[    1.044177] sunxi-ehci 5310000.ehci2-controller: USB 0.0 started, EHCI 1.00
+[    1.045618] [sunxi-ehci3]: probe, pdev->name: 5311000.ehci3-controller, sunxi_ehci: 0xffffff80091d1c08, 0x:ffffff8009c38000, irq_no:122
+[    1.045763] sunxi-ehci 5311000.ehci3-controller: SW USB2.0 'Enhanced' Host Controller (EHCI) Driver
+[    1.045785] sunxi-ehci 5311000.ehci3-controller: new USB bus registered, assigned bus number 3
+[    1.045944] sunxi-ehci 5311000.ehci3-controller: irq 290, io mem 0x3e502f6b
+[    1.074158] sunxi-ehci 5311000.ehci3-controller: USB 0.0 started, EHCI 1.00
+[    1.081776] [sunxi-ohci0]: probe, pdev->name: 5101000.ohci0-controller, sunxi_ohci: 0xffffff80091d04d8
+[    1.087486] [sunxi-ohci1]: probe, pdev->name: 5200000.ohci1-controller, sunxi_ohci: 0xffffff80091d0828
+[    1.087604] sunxi-ohci 5200000.ohci1-controller: SW USB2.0 'Open' Host Controller (OHCI) Driver
+[    1.087630] sunxi-ohci 5200000.ohci1-controller: new USB bus registered, assigned bus number 4
+[    1.087686] sunxi-ohci 5200000.ohci1-controller: irq 287, io mem 0x407b7a87
+[    1.159777] [sunxi-ohci2]: probe, pdev->name: 5310000.ohci2-controller, sunxi_ohci: 0xffffff80091d0b78
+[    1.159893] sunxi-ohci 5310000.ohci2-controller: SW USB2.0 'Open' Host Controller (OHCI) Driver
+[    1.159915] sunxi-ohci 5310000.ohci2-controller: new USB bus registered, assigned bus number 5
+[    1.159976] sunxi-ohci 5310000.ohci2-controller: irq 289, io mem 0x451d2232
+[    1.229648] [sunxi-ohci3]: probe, pdev->name: 5311000.ohci3-controller, sunxi_ohci: 0xffffff80091d0ec8
+[    1.229769] sunxi-ohci 5311000.ohci3-controller: SW USB2.0 'Open' Host Controller (OHCI) Driver
+[    1.229791] sunxi-ohci 5311000.ohci3-controller: new USB bus registered, assigned bus number 6
+[    1.229848] sunxi-ohci 5311000.ohci3-controller: irq 291, io mem 0x49473d5f
+[    1.477933] sunxi-mmc sdc2: SD/MMC/SDIO Host Controller Driver(v3.35 2019-12-11 14:29)
+[    1.477986] sunxi-mmc sdc2: ***ctl-spec-caps*** 608
+[    1.478247] sunxi-mmc sdc2: No vmmc regulator found
+[    1.478255] sunxi-mmc sdc2: No vdmmc regulator found
+[    1.478262] sunxi-mmc sdc2: No vd33sw regulator found
+[    1.478269] sunxi-mmc sdc2: No vd18sw regulator found
+[    1.478276] sunxi-mmc sdc2: No vq33sw regulator found
+[    1.478283] sunxi-mmc sdc2: No vq18sw regulator found
+[    1.479963] sunxi-mmc sdc2: set host busy
+[    1.480025] sunxi-mmc sdc2: Got CD GPIO
+[    1.482437] sunxi-mmc sdc2: sdc set ios:clk 0Hz bm PP pm UP vdd 21 width 1 timing LEGACY(SDR12) dt B
+[    1.504222] sunxi-mmc sdc2: sdc set ios:clk 400000Hz bm PP pm ON vdd 21 width 1 timing LEGACY(SDR12) dt B
+[    1.534175] sunxi-mmc sdc2: detmode:gpio polling
+[    1.535291] sunxi-mmc sdc2: sdc set ios:clk 0Hz bm PP pm OFF vdd 0 width 1 timing LEGACY(SDR12) dt B
+[    1.665619] HDMI 2.0 driver init start!
+[    1.665632] boot_hdmi=false
+[    1.666351] ERROR: pinctrl_get for HDMI2.0 DDC fail
+[    1.671923] Get hdmi_power0:vcc-hdmi
+[    1.671971] 6000000.hdmi supply vcc-hdmi not found, using dummy regulator
+[    1.672038] Get hdmi_power1:vdd-hdmi
+[    1.672063] 6000000.hdmi supply vdd-hdmi not found, using dummy regulator
+[    1.673525] hdmi_cec_init
+[    1.674263] HDMI2.0 module init end
+[    1.783930] [sound  402][CODEC-HDMI sunxi_codec_dev_probe] register codec-hdmi success
+[    1.812392] sunxi-snd-mach soc@03000000:ahub1_mach: soc@03000000:hdmi_codec <-> soc@03000000:ahub1_plat mapping ok
+[    1.815697]   #2: ahubhdmi

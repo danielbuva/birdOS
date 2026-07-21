@@ -128,24 +128,36 @@ keeping the verified menu-first boundary.
 Build for the hardware that actually exists rather than a family of possible
 boards.
 
-- [ ] [source gap documented] Reproduce or replace the current vendor 4.9.170
+- [ ] [source gap closed; hardware compatibility pending]
+  Reproduce or replace the current vendor 4.9.170
   kernel before changing the boot kernel. The active `Image` and its embedded
   4,209-line config are pinned, as is the exact Linaro GCC 5.3.1 compiler. The
   closest public Orange Pi `sun50iw9` source is only lineage: config
   normalization proves it lacks the active AXP2202 power, newer sunxi audio and
   exFAT code. Never deploy that comparison build. The next hardware run
-  captures the live module, device and DT closure after the menu is interactive;
-  keep the accepted vendor kernel as fallback while the fixed-device kernel is
-  made reproducible and hardware-complete.
-- [ ] [profile captured; DTB v1 staged] Record and hardcode the exact board
-  hardware, buses and device IDs. The live DTB, modules, interrupts, I/O map and
-  measured kernel timeline are pinned; the first candidate disables 20 unused
-  hardware nodes without changing the accepted kernel or initramfs.
+  captured live module, device and DT closure is now pinned. Linux 7.0.11 plus
+  the exact public ROCKNIX H700 hardware patch base is the chosen source-complete
+  replacement path. Keep the accepted vendor kernel as fallback until the broad
+  replacement build passes every compatibility gate.
+- [x] [profile captured; DTB v1 rejected] Record the exact live board hardware,
+  buses and device IDs. The live DTB, modules, interrupts, I/O map and measured
+  kernel timeline are pinned. The first raw-DTB candidate booted and passed
+  functionality, but vendor U-Boot restored all 20 disabled nodes; targeted
+  probes still ran and the 12.279 ms `/init` movement was only jitter.
+- [x] [static/reproducibility gates passed] Build and audit the source-complete
+  Linux 7.0.11 RG34XX-SP compatibility baseline. Two clean container builds
+  produced byte-identical artifacts. The exact internal panel stream, DT and
+  built-in first-frame driver closure pass the automated audit.
+- [ ] Package and hardware-test that broad baseline with a checksum-gated,
+  one-command restore path. This output remains non-deploying until U-Boot DT
+  mutation, framebuffer/input numbering, DRM/Panfrost application ABI and the
+  complete device acceptance sequence are covered.
 - [ ] Remove unused drivers, protocols, filesystems and alternate-board paths.
-- [ ] [DTB v1 staged] Disable or defer unused USB hosts, HDMI, Bluetooth, Wi-Fi
-  and extra SDIO. V1 disables host controllers 1–3, HDMI/audio, Bluetooth/UART1,
-  camera/deinterlace and the empty second SD slot. USB controller 0 and Wi-Fi
-  remain available; Wi-Fi moves on demand only with a source-complete kernel.
+- [ ] [DTB v1 could not survive U-Boot] Disable or defer unused USB hosts, HDMI,
+  Bluetooth, Wi-Fi and extra SDIO in the compiled source. Bluetooth is already
+  modular in the broad replacement config; Wi-Fi, HDMI and their firmware/DT
+  activation become explicit feature-triggered closures only after baseline
+  compatibility is proven.
 - [ ] Remove known failed probes and generic discovery paths.
 - [ ] Measure kernel and initramfs compression choices on real hardware.
 
@@ -228,7 +240,8 @@ savings; it is not forgotten.
 
 Verified interactive milestone: the record input-ready frame remains 1.957
 seconds of kernel uptime; the latest fixed-startup trace records 2.06 seconds.
-LED-on to an immediately usable menu is now below 3.8 seconds by stopwatch.
+LED-on to an immediately usable menu is now about 3.5 seconds by stopwatch,
+with the latest complete functionality pass accepted at that level.
 All three emulator/Port paths are playable with audio and return to a redrawn
 launcher in 27--29 ms.
 

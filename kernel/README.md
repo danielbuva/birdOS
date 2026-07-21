@@ -77,6 +77,18 @@ and kernel log without delaying the first interactive frame. The complete
 capture and decompiled DTB are pinned under `baseline/live/`.
 
 [`FIXED_DEVICE_PROFILE.md`](FIXED_DEVICE_PROFILE.md) turns that capture into the
-measured pre-init timeline and exact hardware closure. Its first DTB-only
-candidate preserves the accepted kernel and initramfs while disabling 20 unused
-nodes; this tests the largest safe probe removals before a source kernel exists.
+measured pre-init timeline and exact hardware closure. The DTB-only candidate
+booted and passed functionality, but the captured live tree proved that vendor
+U-Boot restored all 20 disabled nodes before Linux. Every targeted probe still
+ran and `/init` moved only 12.279 ms, which is ordinary jitter. That candidate
+is retained as negative evidence, not as an optimization.
+
+The replacement track is now under [`mainline/`](mainline/). It pins Linux
+7.0.11 to the exact base of the public ROCKNIX H700 display/panel patches,
+defines this RG34XX-SP with standard upstream input bindings, embeds only the
+fixed internal-panel command stream and produces a non-deploying compatibility
+build in a digest-pinned ARM64 container. The first output is deliberately
+broad: it must prove the entire hardware/application closure before trimming.
+Two clean builds are now byte-identical and pass the automated static audit;
+[`mainline/BUILD_AUDIT.md`](mainline/BUILD_AUDIT.md) records the exact outputs
+and the remaining rollback-safe hardware gates.
