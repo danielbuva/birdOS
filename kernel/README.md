@@ -83,12 +83,16 @@ U-Boot restored all 20 disabled nodes before Linux. Every targeted probe still
 ran and `/init` moved only 12.279 ms, which is ordinary jitter. That candidate
 is retained as negative evidence, not as an optimization.
 
-The replacement track is now under [`mainline/`](mainline/). It pins Linux
-7.0.11 to the exact base of the public ROCKNIX H700 display/panel patches,
-defines this RG34XX-SP with standard upstream input bindings, embeds only the
-fixed internal-panel command stream and produces a non-deploying compatibility
-build in a digest-pinned ARM64 container. The first output is deliberately
-broad: it must prove the entire hardware/application closure before trimming.
-Two clean builds are now byte-identical and pass the automated static audit;
-[`mainline/BUILD_AUDIT.md`](mainline/BUILD_AUDIT.md) records the exact outputs
-and the remaining rollback-safe hardware gates.
+The first replacement implementation remains under [`mainline/`](mainline/).
+It produced a reproducible Linux 7.0.11 compatibility build, but two hardware
+attempts combined that kernel with the vendor Android boot path and stopped
+before any Linux capture. Those attempts proved packaging reproducibility and
+external recovery, not hardware compatibility.
+
+The active replacement track is now [`rocknix/`](rocknix/). It starts from the
+verified stable `20260701` DDR4 release and its exact public SPL, TF-A, U-Boot,
+kernel, patch set and RG34XX-SP DTB. The generic release was provisioned only
+with its documented `/dtb.img` copy. The first hardware gate is to boot that
+unchanged known-working chain; Bird is substituted only after that proof.
+The final source build remains a challenger and is promoted only after it
+beats the accepted 4.9.170 Bird baseline.

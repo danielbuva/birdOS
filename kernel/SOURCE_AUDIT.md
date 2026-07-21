@@ -13,7 +13,7 @@ baseline.
 | [KNULLI RG34XX-SP target](https://github.com/knulli-cfw/knulli-linux/tree/knulli-main/board/allwinner/h700/rg34xx-sp) at `099125a6e2c669b6f1287c7a193cebd3857ce630` | Exact device target, public H700 config and prebuilt device boot partitions | Still selects the Orange Pi 4.9 branch; its config differs from the active muOS config in 52 config records and lacks the later active power/audio/exFAT additions |
 | Public mustardroot external tree | H700 config and binary device assets | No matching downstream kernel source located |
 | [Linux stable v7.0.11](https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/tag/?h=v7.0.11) at `bb532bfaf7919c7c98caab81864e9ce2646e11e3` | Source-complete upstream H700/RG35XX-SP, AXP717 power, H616 audio, Panfrost, RTC and fixed-button support | Chosen replacement base; the RG34XX-SP panel/display and analog controls still need an exact device layer |
-| [ROCKNIX H700 support](https://github.com/ROCKNIX/distribution/tree/next/projects/ROCKNIX/devices/H700) at `d88cf6393e55364ec6470d625737125fc0d32cd4` | Current RG34XX-SP panel identifier, panel command data and H700 display/PWM/USB patches used by a shipping distribution | Chosen hardware-evidence layer; legacy polling joypad, RGB and distro-specific policy are deliberately excluded |
+| [ROCKNIX H700 stable release](https://github.com/ROCKNIX/distribution/tree/20260701/projects/ROCKNIX/devices/H700) at `3e4ee5852e6ca5ea73a38369d2639fad2262648b` | Exact public source tag for the verified `20260701` DDR4 artifact, including RG34XX-SP DTB, Linux 7.0.11 patches, U-Boot v2026.01 and TF-A v2.12.0 | Chosen complete boot-chain baseline; the shipping chain is reproduced before Bird or any trimming is introduced |
 
 The Orange Pi audit is checksum-pinned under ignored
 `kernel/work/vendor-baseline/`. A forced compile with normalized defaults also
@@ -66,10 +66,13 @@ uses DRM/KMS and Panfrost. Compilation, DT validation, module-closure review,
 boot packaging and a rollback-safe hardware acceptance sequence are separate
 gates. The accepted vendor image remains the recovery anchor throughout.
 
-The compilation, static DT/config and reproducibility gates now pass. Two
+The first compilation, static DT/config and reproducibility gates pass. Two
 clean container builds produced byte-identical artifact manifests; the kernel
 is exactly `7.0.11-dani-compat` and its `Image` SHA-256 is
 `2294fca4c88834d379d063eb08c606224fea2d4eb6a77edd50b6e1b320ab3150`.
-This closes the source-build gate, not the hardware-compatibility gate. The
-full result and next acceptance boundary are recorded in
+Both attempts to boot it through the vendor U-Boot/Android handoff stopped
+before Linux left any capture. This closes only the source-build gate and is
+negative evidence against that hybrid handoff. The exact shipping chain is now
+pinned under [`rocknix/`](rocknix/); its unmodified hardware proof precedes a
+new source rebuild. The full first-build result remains in
 [`mainline/BUILD_AUDIT.md`](mainline/BUILD_AUDIT.md).

@@ -163,21 +163,25 @@ boards.
   The RG34XX-SP has no exposed red status LED, invalidating that diagnostic
   channel. The accepted image `872a3d0d...7764f` was restored and reread; all
   failed installers are disabled.
-- [ ] Build the next kernel experiment as a fail-safe one-shot U-Boot target:
-  keep accepted partition 4 untouched, load a compact candidate file from the
-  FAT boot-resource once, and persist the normal partition-4 boot command
-  before jumping to it. Add an initramfs watchdog that resets if Linux starts
-  but the first-frame-ready marker does not arrive. A forced reset must return
-  to the accepted kernel even when failure occurs before Linux can run.
+- [x] [vendor one-shot path evaluated; superseded by exact-chain checkpoint]
+  Prove that a compact Android candidate fits as a contiguous FAT file and add
+  an opt-in first-frame watchdog to the fixed initramfs. Do not use that route
+  for the baseline: it would retain the same unproven vendor U-Boot/Android
+  hybrid that failed twice. The exact-chain trial instead checkpoints the full
+  customized rootfs plus every byte through partition 4 before changing the
+  card layout; Mac recovery does not depend on candidate Linux starting.
 - [ ] [hard acceptance gate] Treat the source kernel as a challenger, not an
   automatic replacement. Run it with the same Bird initramfs/userspace and
   promote it only after it beats accepted 4.9.170 on physical power-to-input,
   kernel-to-first-frame, interaction latency and efficiency. Keep the accepted
   kernel as default and oracle until every required gate passes.
-- [ ] Reproduce the exact working ROCKNIX H700 boot chain before modifying it.
+- [ ] [release acquired, verified and RG34XX-SP-provisioned; hardware boot next]
+  Reproduce the exact working ROCKNIX H700 boot chain before modifying it.
   The rejected candidates mixed Anbernic's vendor U-Boot/TF-A and Android
   handoff with a ROCKNIX-derived kernel; that unproven hybrid is no longer the
-  baseline. After exact hardware bring-up, substitute Bird one layer at a time.
+  baseline. Stable tag `20260701`, DDR4 U-Boot v2026.01, TF-A v2.12.0, Linux
+  7.0.11 and the v1 RG34XX-SP DTB are checksum-pinned. After exact hardware
+  bring-up, substitute Bird one layer at a time.
 - [ ] If the trimmed source path loses a measured race, reverse-engineer only
   the corresponding accepted-kernel path (display handoff, MMC, clocks,
   regulators or fixed delay) and port the finding into controlled source. Do
