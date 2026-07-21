@@ -138,3 +138,32 @@ and deletes itself from the rootfs. It does not become a permanent service.
 
 Run `stage-fixed-init-orchestrator.sh /Volumes/dani-sp` to stage the fixed
 startup and repaired one-shot snapshot as independent installers.
+
+## Fixed runtime policy
+
+The settled snapshot after that coordinator records the menu at 2.06 seconds,
+storage priority-ready at 4.20, system-ready at 4.24 and complete audio at 6.02.
+At 24.08 seconds, `haveged` and both UnionFS workers are absent. The remaining
+shell workers are the generic hotkey wrapper plus its five-second all-PID idle
+scanner, lid polling and low-battery polling.
+
+`stage-fixed-runtime-batch.sh` stages six checksum-gated replacements:
+
+- `device-start-rg34xxsp.sh` mounts the display debug interface, applies the
+  fixed normal stereo map and starts only the SP lid worker. It performs no
+  post-menu brightness or colour write.
+- `hotkey-rg34xxsp.sh` retains the proven compiled `muhotkey` event source and
+  only the chosen display-idle, explicit suspend and closed-lid policies.
+- `lid-rg34xxsp.sh` hardcodes the enabled AXP2202 hall path instead of rereading
+  configuration every five seconds.
+- `lowpower-rg34xxsp.sh` checks the exact charger/capacity/LED paths once per
+  minute, retains the 25 percent warning and removes all RGB/config discovery.
+- `charge-rg34xxsp.sh` retains the exact cold-charge frontend path without
+  factory-reset, board or device-path discovery.
+- `idle-disabled-rg34xxsp.sh` makes obsolete calls harmless; the fixed hotkey
+  shell owns display idle, idle sleep is disabled and no `/proc` scan remains.
+
+The same stage replaces the completed 48,714-byte migration engine in ordinary
+user-init with `99dani-diagnostics.sh`, a 1,504-byte collector for the boot,
+fixed-startup and minimal-udev traces. A rearmed self-removing snapshot records
+the post-change process set on the following boot.

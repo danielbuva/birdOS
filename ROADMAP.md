@@ -45,9 +45,10 @@ application and move everything unrelated to an interactive menu behind it.
 - [x] Remove proof animation and audio from the critical interaction path.
 - [x] Retire completed high-frequency observers and their 60-second log sync.
 - [x] Replace launcher idle polling and raw-event logs with blocking evdev.
-- [ ] Inventory every remaining boot process, fork, file read and idle wake-up.
-  A one-shot stable 12-second process/memory/wakeup snapshot is staged for the
-  next behavior boot.
+- [x] Inventory every remaining boot process, fork, file read and idle wake-up.
+  The settled 24-second snapshot confirms no UnionFS or haveged process, about
+  61 MiB in use beyond `MemAvailable`, session-warm audio and the remaining
+  udev, hotkey, lid, idle and low-battery workers.
 - [x] Replace dynamic
   multi-storage discovery and UnionFS with exact card paths. Kernel binds now
   preserve both union compatibility paths with zero resident FUSE processes.
@@ -57,16 +58,23 @@ application and move everything unrelated to an interactive menu behind it.
   them for the session. Hardware verification recorded 3.97-second dispatch,
   4.22-second D-Bus readiness and 6.31-second audio completion; immediate
   selections join the same locked initialization and functionality passed.
-- [ ] [staged] Disable WirePlumber camera, V4L2, MIDI, Bluetooth and logind
+- [x] Disable WirePlumber camera, V4L2, MIDI, Bluetooth and logind
   discovery while retaining the exact built-in ALSA graph and routing policy.
-- [ ] [staged] Remove delayed generic startup jobs for unused USB, catalogue,
+- [x] Remove delayed generic startup jobs for unused USB, catalogue,
   sound preparation, log cleanup, SSH permission repair and fixed controller
-  rewrites. Retain low-battery monitoring, diagnostics and user-init.
+  rewrites. Hardware functionality passed afterward.
 - [x] Retain early entropy seeding and terminate haveged after the kernel's
   explicit readiness event. Hardware logs show CRNG ready at 4.07 seconds and
   haveged gone at 4.10 seconds. Storage never waits for it.
-- [ ] Absorb fixed controls and hardware policy into build-time state.
-- [ ] Bake changes into the image and disable the development user-init path.
+- [ ] [staged] Replace device startup, hotkey shell, lid watcher, low-battery
+  watcher, charge check and idle scanner with fixed RG34XX-SP policy. This
+  removes the five-second `/proc` scan while retaining the proven input binary,
+  lid suspend, display idle, global controls and battery warning.
+- [ ] [staged] Retire the completed 1,122-line migration engine from ordinary
+  user-init. A 45-line collector retains boot and service traces without old
+  patch guards or delayed log-copy sleepers.
+- [ ] Bake changes into the image and remove the card-side development
+  user-init delivery path.
 
 ### Layer 2 — early userspace and init
 
@@ -83,6 +91,9 @@ keeping the verified menu-first boundary.
   while retaining the existing root PID 1 as the fallback second phase.
 - [x] Replace the root BusyBox PID 1 with a blocking 5,128-byte static init;
   three boots verified the marker, content round trips and normal shutdown.
+- [x] Replace the generic root startup coordinator with the fixed RG34XX-SP
+  sequence. Hardware functionality passed and stopwatch boots remain below
+  3.8 seconds.
 - [ ] Invoke remaining compatibility applets only when their feature requests
   them, then rebuild BusyBox with only that measured command set.
 - [ ] Mount only the exact filesystems and device nodes the experience uses.
@@ -181,10 +192,9 @@ savings; it is not forgotten.
 - [ ] Remove superseded muOS components and produce a reproducible firmware image.
 - [ ] Optimize kernel and U-Boot last.
 
-Verified interactive milestone: the latest three static-`/init` boots entered
-the launcher at 1.943 seconds average kernel uptime and drew an input-ready
-first frame at 1.967 seconds average (1.957--1.980 seconds). LED-on to an
-immediately usable menu is now approximately 3.5--3.8 seconds by stopwatch.
+Verified interactive milestone: the record input-ready frame remains 1.957
+seconds of kernel uptime; the latest fixed-startup trace records 2.06 seconds.
+LED-on to an immediately usable menu is now below 3.8 seconds by stopwatch.
 All three emulator/Port paths are playable with audio and return to a redrawn
 launcher in 27--29 ms.
 
@@ -542,13 +552,12 @@ Your next concrete milestones should be:
 5. [done] Mount storage in parallel
 6. [done] Launch games and return directly to the menu
 7. [in progress] Remove/defer every remaining nonessential userspace task;
-   the fixed root startup coordinator is staged for its hardware proof
+   fixed device/power/control workers are staged for their hardware proof
 8. [in progress] Replace dynamic storage, audio and device discovery with fixed
-   paths; storage is fixed, audio policy is narrowed and device startup remains
+   paths; storage is fixed, audio policy is narrowed and device policy is staged
 9. [done] Launch the same static menu before `switch_root`
-10. [in progress] Replace the two generic init layers with a tiny fixed-device
-    PID 1; both PID 1 binaries are fixed and the remaining root coordinator is
-    staged
+10. [done] Replace both generic PID 1 layers and the root startup coordinator
+    with fixed-device implementations
 11. Bake and reproduce the complete custom image
 12. Build the fixed RG34XX-SP kernel
 13. Reduce U-Boot only after the final boundary measurement

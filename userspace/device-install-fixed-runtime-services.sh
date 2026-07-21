@@ -1,0 +1,120 @@
+#!/bin/sh
+set -eu
+
+ROM_MOUNT="/mnt/mmc"
+WORK_DIR="$ROM_MOUNT/MUOS/boot-timing/fixed-runtime-services"
+BACKUP_DIR="$WORK_DIR/backup"
+LOG_FILE="$WORK_DIR/install.log"
+MARKER="$WORK_DIR/fixed-runtime-services-installed"
+CARD_INSTALLER="$ROM_MOUNT/MUOS/init/62-install-fixed-runtime-services.sh"
+
+mkdir -p "$BACKUP_DIR"
+exec >>"$LOG_FILE" 2>&1
+
+sha_file() {
+	sha256sum "$1" | awk '{print $1}'
+}
+
+fail() {
+	printf 'FAILED: %s\n' "$*"
+	exit 1
+}
+
+check_one() {
+	NAME=$1
+	SOURCE=$2
+	TARGET=$3
+	OLD_SHA=$4
+	NEW_SHA=$5
+
+	[ -f "$SOURCE" ] || fail "$NAME source missing"
+	[ "$(sha_file "$SOURCE")" = "$NEW_SHA" ] || fail "$NAME source mismatch"
+	[ -f "$TARGET" ] || fail "$NAME target missing"
+	CURRENT_SHA=$(sha_file "$TARGET")
+	[ "$CURRENT_SHA" = "$OLD_SHA" ] || [ "$CURRENT_SHA" = "$NEW_SHA" ] ||
+		fail "refusing unknown $NAME target $CURRENT_SHA"
+}
+
+install_one() {
+	NAME=$1
+	SOURCE=$2
+	TARGET=$3
+	OLD_SHA=$4
+	NEW_SHA=$5
+	BACKUP="$BACKUP_DIR/$NAME.pre-fixed"
+	TEMP="$TARGET.dani-new"
+
+	CURRENT_SHA=$(sha_file "$TARGET")
+	if [ "$CURRENT_SHA" = "$NEW_SHA" ]; then
+		printf '%s already fixed\n' "$NAME"
+		return 0
+	fi
+
+	if [ -f "$BACKUP" ]; then
+		[ "$(sha_file "$BACKUP")" = "$OLD_SHA" ] || fail "$NAME backup mismatch"
+	else
+		cp "$TARGET" "$BACKUP"
+	fi
+
+	rm -f "$TEMP"
+	cp "$SOURCE" "$TEMP"
+	chmod 755 "$TEMP"
+	sh -n "$TEMP" || fail "$NAME syntax check failed"
+	[ "$(sha_file "$TEMP")" = "$NEW_SHA" ] || fail "$NAME temporary mismatch"
+	mv -f "$TEMP" "$TARGET"
+	[ "$(sha_file "$TARGET")" = "$NEW_SHA" ] || fail "$NAME installed mismatch"
+	printf '%s installed\n' "$NAME"
+}
+
+DEVICE_SOURCE="$WORK_DIR/device-start-rg34xxsp.sh"
+HOTKEY_SOURCE="$WORK_DIR/hotkey-rg34xxsp.sh"
+LID_SOURCE="$WORK_DIR/lid-rg34xxsp.sh"
+LOWPOWER_SOURCE="$WORK_DIR/lowpower-rg34xxsp.sh"
+CHARGE_SOURCE="$WORK_DIR/charge-rg34xxsp.sh"
+IDLE_SOURCE="$WORK_DIR/idle-disabled-rg34xxsp.sh"
+
+DEVICE_TARGET="/opt/muos/script/device/start.sh"
+HOTKEY_TARGET="/opt/muos/script/mux/hotkey.sh"
+LID_TARGET="/opt/muos/script/device/lid.sh"
+LOWPOWER_TARGET="/opt/muos/script/system/lowpower.sh"
+CHARGE_TARGET="/opt/muos/script/device/charge.sh"
+IDLE_TARGET="/opt/muos/script/mux/idle.sh"
+
+DEVICE_OLD="7c0a79dd8455d64bf4b0258bf1adc43bd9209bdf0061b6eb30d074dd70233f4c"
+HOTKEY_OLD="40c32e47721f473d4a13d385cb2430f84f5ba863cc4861bb34c60051ca57574c"
+LID_OLD="c27b59365902dbfbecda3b837e73b87f1d0cb9f096cc18eb0e515ff1c47e72cb"
+LOWPOWER_OLD="4ad4df3a63dce8a918ad52e2e5dcf23d248bc15e73457c2fb4901ef7e976bc65"
+CHARGE_OLD="ab94f6d1368d0736d9426dd3ee5edc6fff2adfe499a8e12b654e43c9ff73c0f1"
+IDLE_OLD="8a79101adeeb6cc41731fac38550627bebeb1bca2f32929c783da4b2b9e88458"
+
+DEVICE_NEW="945cd4245cbfb93c1aa3a99ec34df844c0219c3549c52c2a9f5fd6dc3ce5fcad"
+HOTKEY_NEW="65037e01be457c4225ed1d22747e0a2626f8a92eee042d939cb01790bc4ff5c2"
+LID_NEW="2e0b19d11d6ed348d5bd6a5d57a0e1b87efadb593cafbea64e6305f8cb1e1bd1"
+LOWPOWER_NEW="5b5bcec46b6568841f786ecfb010d56c4b3f78a930c3b1cb5699c2cb9a9d2abb"
+CHARGE_NEW="75481180f04a688c00fb68a09334d8bd11f0ab4772dbd16160cbc793358e9574"
+IDLE_NEW="03bd33dacb0a1ad187397fd1ee76677932162b9ff5890efd41df40acbba81152"
+
+printf 'fixed RG34XX-SP runtime service installer start\n'
+
+# Validate every payload and active target before modifying any target.
+check_one device-start "$DEVICE_SOURCE" "$DEVICE_TARGET" "$DEVICE_OLD" "$DEVICE_NEW"
+check_one hotkey "$HOTKEY_SOURCE" "$HOTKEY_TARGET" "$HOTKEY_OLD" "$HOTKEY_NEW"
+check_one lid "$LID_SOURCE" "$LID_TARGET" "$LID_OLD" "$LID_NEW"
+check_one lowpower "$LOWPOWER_SOURCE" "$LOWPOWER_TARGET" "$LOWPOWER_OLD" "$LOWPOWER_NEW"
+check_one charge "$CHARGE_SOURCE" "$CHARGE_TARGET" "$CHARGE_OLD" "$CHARGE_NEW"
+check_one idle "$IDLE_SOURCE" "$IDLE_TARGET" "$IDLE_OLD" "$IDLE_NEW"
+
+install_one device-start "$DEVICE_SOURCE" "$DEVICE_TARGET" "$DEVICE_OLD" "$DEVICE_NEW"
+install_one hotkey "$HOTKEY_SOURCE" "$HOTKEY_TARGET" "$HOTKEY_OLD" "$HOTKEY_NEW"
+install_one lid "$LID_SOURCE" "$LID_TARGET" "$LID_OLD" "$LID_NEW"
+install_one lowpower "$LOWPOWER_SOURCE" "$LOWPOWER_TARGET" "$LOWPOWER_OLD" "$LOWPOWER_NEW"
+install_one charge "$CHARGE_SOURCE" "$CHARGE_TARGET" "$CHARGE_OLD" "$CHARGE_NEW"
+install_one idle "$IDLE_SOURCE" "$IDLE_TARGET" "$IDLE_OLD" "$IDLE_NEW"
+
+# This is persistent policy, not per-boot work.  Set it once during migration.
+printf '%s' 100 >/opt/muos/device/config/audio/max
+
+sync
+printf '%s\n' installed >"$MARKER"
+[ ! -f "$CARD_INSTALLER" ] || mv -f "$CARD_INSTALLER" "$CARD_INSTALLER.done"
+printf 'SUCCESS: six fixed RG34XX-SP runtime services installed; active next boot\n'

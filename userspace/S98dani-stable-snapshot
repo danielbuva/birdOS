@@ -58,10 +58,17 @@ sha256sum \
 	/opt/muos/script/system/startup.sh \
 	/opt/muos/script/system/pipewire.sh \
 	/opt/muos/script/init/sysinit \
+	/opt/muos/script/device/start.sh \
+	/opt/muos/script/device/charge.sh \
+	/opt/muos/script/device/lid.sh \
+	/opt/muos/script/mux/hotkey.sh \
+	/opt/muos/script/mux/idle.sh \
+	/opt/muos/script/system/lowpower.sh \
 	/usr/share/wireplumber/main.lua.d/89-dani-fixed-device.lua \
 	/usr/share/wireplumber/bluetooth.lua.d/89-dani-fixed-device.lua \
 	>"$DEST/active-sha256sums.txt" 2>/dev/null || :
 
+[ ! -f /tmp/muos/fixed-startup.tsv ] || cp -f /tmp/muos/fixed-startup.tsv "$DEST/startup.tsv"
 [ ! -f /tmp/muos/audio-on-demand.tsv ] || cp -f /tmp/muos/audio-on-demand.tsv "$DEST/audio.tsv"
 [ ! -f /tmp/muos/fixed-bind.tsv ] || cp -f /tmp/muos/fixed-bind.tsv "$DEST/storage-bind.tsv"
 [ ! -f /tmp/muos/entropy-once.tsv ] || cp -f /tmp/muos/entropy-once.tsv "$DEST/entropy.tsv"

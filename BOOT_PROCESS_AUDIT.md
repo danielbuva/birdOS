@@ -6,7 +6,9 @@ stopwatch time. The static-`/init` first frames are at 1.957, 1.980 and 1.964
 seconds of kernel uptime, while current LED-on stopwatch timing is approximately
 3.5--3.8 seconds. Three later boots with the static root PID 1 recorded
 input-ready frames at 2.032--2.103 seconds and retained approximately
-3.8-second stopwatch timing.
+3.8-second stopwatch timing. The first settled-runtime snapshot after the fixed
+root coordinator recorded a 2.06-second input-ready frame, system-ready at 4.24
+seconds and full audio at 6.02 seconds; stopwatch boots remain sub-3.8 seconds.
 
 ## Work before the usable menu
 
@@ -73,12 +75,12 @@ and is not included in these timestamps.
 | ---: | --- | --- | --- |
 | 2.26--3.77 s | full udev daemon, cold replay and settle | 1.51 s; gates the stock startup sequence, not the menu | The 1.35-second input/sound-only replay is functional and current. The rejected one-shot proof broke MPV's rich controls and timed out stopping udevd. |
 | 3.49 s | D-Bus boot entry skipped | zero daemon work on the dispatcher path | Verified migration hides the preserved stock implementation and starts D-Bus only in the post-menu audio worker. |
-| 3.85--3.86 s | dispatch stock startup | 10 ms | Keep only as a temporary compatibility supervisor while dependencies are extracted. |
+| 3.42--3.43 s | dispatch fixed root startup | 10 ms | Hardware-verified RG34XX-SP coordinator; alternate boards, HDMI, first-boot and factory-reset branches are gone. |
 | 2.24--4.49 s | dynamic ROM-storage mount path | latest storage ready at 3.75 s; no first-frame dependency | Exact kernel binds are verified with no FUSE PIDs. Direct `/dev/mmcblk0p6` mounting, no SD/USB probing, no boot/configfs startup mounts and a fixed bind map are staged together with separate logs. |
 | 3.60--6.31 s | post-menu D-Bus/PipeWire/WirePlumber warm-up | system-ready 3.95 s; D-Bus 4.22 s; full audio 6.31 s | Verified outside the menu path. Fixed ALSA-only WirePlumber monitor overrides are staged next. |
 | 4.61 s | boot partition and storage bind setup | no first-frame dependency | Defer or delete any bind/boot mounts unused by the fixed launcher and launch wrappers. |
-| 4.84 s | stock hotkey service | volume/system shortcuts become ready later | Keep during compatibility phase; later integrate the exact desired shortcuts into the launcher. |
-| 4.94 s | user-init | development installers and patch guards run | Keep while developing. Bake all changes into the final image, then disable it in production. |
+| 3.43 s onward | hotkey/device workers | system shortcuts, lid and battery policy | Six fixed RG34XX-SP scripts are staged; the five-second PID-scanning idle daemon is removed. |
+| 4.26 s | user-init | 1,122-line completed migration engine still audits old transforms | Replaced in the staged batch by a 45-line diagnostics-only collector with no delayed sleepers. |
 | 6.60 s | backlight probe ends | diagnostic only | Removed from ordinary boot; restore only as an explicitly armed firmware-test probe. |
 | 33.37 s | generic boot probe ends | scanned `/proc` every 200 ms and kept a logger alive | Removed from ordinary boot together with its 60-second background copy schedule. |
 
@@ -88,12 +90,12 @@ recovery frontend.
 
 ## Persistent userspace after startup
 
-The current compatibility system retains `udevd`, the lid listener, hotkey
-listener, D-Bus, PipeWire and WirePlumber in addition to the custom launcher.
-The latest entropy proof removes `haveged`, fixed binds removed both UnionFS
-workers, and audio now becomes intentionally session-resident only after the
-menu. None is required to draw or operate the main menu. The intended reduction
-is:
+The settled snapshot uses roughly 61 MiB beyond `MemAvailable` and retains the
+udevd parent/worker, lid listener, hotkey listener, low-battery watcher, D-Bus,
+PipeWire and WirePlumber in addition to the custom launcher. `haveged` exits
+after CRNG readiness, both UnionFS workers are gone and audio becomes
+intentionally session-resident only after the menu. None is required to draw
+or operate the main menu. The intended reduction is:
 
 1. Stop `haveged` once the CRNG is ready rather than leaving it resident.
 2. Replace generic udev cold discovery with fixed-device setup; retain hotplug
@@ -102,8 +104,9 @@ is:
    the catalogue and launch wrappers.
 4. Profile the session-warm PipeWire/WirePlumber/D-Bus configuration, replace
    its generic graph with the fixed device profile, then evaluate direct ALSA.
-5. Absorb the exact lid and volume behavior into the permanent launcher before
-   removing their general-purpose services.
+5. Replace the generic hotkey shell, lid configuration polling, low-battery
+   discovery and five-second idle PID scan with fixed device policy. The first
+   combined candidate is staged; the proven `muhotkey` event binary remains.
 
 ## Efficiency rules
 
@@ -149,9 +152,13 @@ is:
    mounts and generic source selection are gone; hardware verification passed.
 8. [done] Warm the general audio stack asynchronously after the menu, with
    locked first-selection joining and no launcher/storage wait.
-9. [staged] Remove unused delayed startup jobs and disable non-ALSA WirePlumber
-   discovery, then inspect the armed stable-runtime snapshot.
-10. Bake successful card-side changes into rootfs, delete production user-init
+9. [done] Remove unused delayed startup jobs and disable non-ALSA WirePlumber
+   discovery. The armed stable snapshot verified the fixed startup checksum,
+   exact bind mounts, no UnionFS/haveged process and full audio readiness.
+10. [staged] Replace device, hotkey, lid, low-power, charge and idle scripts
+    with fixed RG34XX-SP policy; replace the completed migration engine with a
+    diagnostics-only user-init collector and inspect one more armed snapshot.
+11. Bake successful card-side changes into rootfs, delete production user-init
    and generic maintenance jobs, then profile the smaller image.
-11. Trim the initramfs, then build the fixed kernel and optimize U-Boot last;
+12. Trim the initramfs, then build the fixed kernel and optimize U-Boot last;
    this is where most of the remaining power-on-to-menu interval lives.

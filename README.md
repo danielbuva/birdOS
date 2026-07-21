@@ -24,6 +24,9 @@ must serve this one device and this one experience.
   shut down normally. As expected for post-frame work, stopwatch boot time
   remained approximately 3.8 seconds.
 - Current LED-on stopwatch range: approximately 3.5--3.8 seconds.
+- Fixed-root-coordinator behavior test: all functionality passed with
+  sub-3.8-second stopwatch boots. Its latest trace records an input-ready frame
+  at 2.06 seconds, system-ready at 4.24 and audio ready at 6.02.
 
 The boot image now starts the launcher from initramfs after mounting the fixed
 root but before `switch_root`. The launcher and its input descriptors survive
@@ -139,6 +142,17 @@ card-side patches.
 - The accompanying explicitly armed process snapshot now waits until the ROM
   mount exposes its arm file, captures once after the system settles, and
   removes its own rootfs hook after success.
+- That snapshot completed at 24.08 seconds. It confirms exact exFAT bind mounts,
+  no UnionFS or haveged process, roughly 61 MiB used beyond `MemAvailable`, and
+  the remaining udev, hotkey, lid, idle, battery and session-audio workers.
+- The next combined candidate replaces six independent generic runtime scripts
+  with fixed RG34XX-SP policy. The compiled `muhotkey` event source remains,
+  while its shell wrapper loses RGB/network/alternate-board logic; lid and
+  battery checks lose repeated configuration discovery; the five-second
+  all-process idle scan is eliminated.
+- The 1,122-line card-side migration engine has completed its job. The staged
+  replacement is a 45-line diagnostics-only collector with no old patch guards
+  or 18--25-second log-copy sleepers.
 - Early entropy retained: deferring haveged delayed kernel CRNG readiness and
   caused PipeWire/SDL audio to block the frontend until 12-14 seconds.
 - Storage has no CRNG dependency. Entropy, fixed storage and post-menu audio
