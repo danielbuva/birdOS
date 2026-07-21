@@ -1,0 +1,40 @@
+FROM ubuntu:18.04
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        bc \
+        bison \
+        build-essential \
+        ca-certificates \
+        cpio \
+        curl \
+        flex \
+        git \
+        libelf-dev \
+        libssl-dev \
+        make \
+        rsync \
+        xz-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG TOOLCHAIN_URL=https://sources.buildroot.net/gcc-linaro-5.3.1-2016.05-x86_64_aarch64-linux-gnu.tar.xz
+ARG TOOLCHAIN_SHA256=1941dcf6229d6706bcb89b7976d5d43d170efdd17c27d5fe1738e7ecf22adc37
+RUN curl -fsSL "$TOOLCHAIN_URL" -o /tmp/toolchain.tar.xz \
+    && echo "$TOOLCHAIN_SHA256  /tmp/toolchain.tar.xz" | sha256sum -c - \
+    && mkdir -p /opt/linaro \
+    && tar -xJf /tmp/toolchain.tar.xz -C /opt/linaro --strip-components=1 \
+    && rm -f /tmp/toolchain.tar.xz \
+    && /opt/linaro/bin/aarch64-linux-gnu-gcc --version
+
+ARG KERNEL_COMMIT=0cd0547ea405b84b5b60fbc92978ac1bc2b68055
+RUN git init /src/linux \
+    && cd /src/linux \
+    && git remote add origin https://github.com/orangepi-xunlong/linux-orangepi.git \
+    && git fetch --depth 1 origin "$KERNEL_COMMIT" \
+    && git checkout --detach FETCH_HEAD \
+    && test "$(git rev-parse HEAD)" = "$KERNEL_COMMIT"
+
+ENV ARCH=arm64
+ENV CROSS_COMPILE=/opt/linaro/bin/aarch64-linux-gnu-
+WORKDIR /src/linux

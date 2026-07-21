@@ -101,11 +101,11 @@ keeping the verified menu-first boundary.
 - [x] Replace the generic root startup coordinator with the fixed RG34XX-SP
   sequence. Hardware functionality passed and stopwatch boots remain below
   3.8 seconds.
-- [ ] [direct initramfs handoff staged] Invoke remaining compatibility applets
-  only when their feature requests them, then rebuild BusyBox with only that
-  measured command set. The successful early-root path no longer executes the
-  `switch_root` applet; BusyBox remains as the early recovery shell and rootfs
-  scripts still use its applets.
+- [x] Remove BusyBox from both successful PID 1 roles. The accepted early-root
+  path implements handoff directly, and the normal root PID 1 is static.
+- [ ] Rebuild the remaining compatibility BusyBox with only its measured applet
+  set. It remains the early recovery shell and interprets some post-frame root
+  scripts; feature-specific applets should be invoked only when requested.
 - [x] Mount only the exact filesystems and device nodes the experience uses.
   The accepted static first/root init pair owns proc, sysfs, devtmpfs, ext4,
   tmpfs, devpts and shared memory; debugfs is added only for chosen display
@@ -128,7 +128,15 @@ keeping the verified menu-first boundary.
 Build for the hardware that actually exists rather than a family of possible
 boards.
 
-- [ ] Reproduce the current vendor 4.9.170 kernel before changing its config.
+- [ ] [source gap documented] Reproduce or replace the current vendor 4.9.170
+  kernel before changing the boot kernel. The active `Image` and its embedded
+  4,209-line config are pinned, as is the exact Linaro GCC 5.3.1 compiler. The
+  closest public Orange Pi `sun50iw9` source is only lineage: config
+  normalization proves it lacks the active AXP2202 power, newer sunxi audio and
+  exFAT code. Never deploy that comparison build. The next hardware run
+  captures the live module, device and DT closure after the menu is interactive;
+  keep the accepted vendor kernel as fallback while the fixed-device kernel is
+  made reproducible and hardware-complete.
 - [ ] Record and hardcode the exact board hardware, buses and device IDs.
 - [ ] Remove unused drivers, protocols, filesystems and alternate-board paths.
 - [ ] Disable or defer unused USB hosts, HDMI, Bluetooth, Wi-Fi and extra SDIO.

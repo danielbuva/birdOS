@@ -17,14 +17,16 @@ must serve this one device and this one experience.
 - English-only-font internal input-ready average: 9.60 seconds.
 - Optimized-stock internal input-ready average: 8.43 seconds.
 - The static-`/init` launcher record remains 1.957 seconds to an input-ready
-  frame. The latest verified behavior boot produced its frame at 1.997 seconds,
-  with permanent-root sysinit beginning later at 2.03 seconds.
+  frame. The accepted direct-handoff boot produced its frame at 1.98 seconds,
+  while permanent-root sysinit begins concurrently at 1.97 seconds and remains
+  outside the first-frame dependency path.
 - Three static-root-PID-1 boots explicitly recorded the new init marker,
   produced input-ready frames at 2.032--2.103 seconds, launched content and
   shut down normally. As expected for post-frame work, stopwatch boot time
   remained approximately 3.8 seconds.
 - Current LED-on stopwatch range: approximately 3.5--3.8 seconds. The accepted
-  trimmed-initramfs boot records an ordinary interactive marker at 1.98 seconds.
+  direct-handoff boot records an ordinary interactive marker at 1.98 seconds;
+  the latest hardware pass was approximately 3.8 seconds by stopwatch.
 - Fixed-root-coordinator behavior test: all functionality passed with
   sub-3.8-second stopwatch boots. Its latest trace records an input-ready frame
   at 2.06 seconds, system-ready at 4.24 and audio ready at 6.02.
@@ -37,6 +39,9 @@ not start a duplicate. The generic initramfs shell is now replaced by a
 `/init.stock`. The remaining root BusyBox PID 1 is also replaced by a
 hardware-verified 5,128-byte blocking static init; BusyBox remains available
 only as feature-triggered applets and as the automatic root-init fallback.
+The accepted first init now performs the successful `switch_root` sequence by
+direct system calls as well, so BusyBox is no longer PID 1 in either normal
+boot phase.
 The long-term target is a reproducible fixed-device image, not a collection of
 card-side patches.
 
@@ -168,13 +173,25 @@ card-side patches.
   retain the existing automatic repair path. Hardware functionality passed;
   decompression fell from roughly 159 to 95 ms and initrd memory from 2,704 to
   1,684 KiB.
-- The following staged candidate replaces the successful-path BusyBox
+- The accepted direct-handoff candidate replaces the successful-path BusyBox
   `switch_root` execution with 1,672 bytes of fixed direct-syscall code in the
   static first init. It deletes only the old initramfs filesystem, preserves
   the mounted `/mnt` root, moves/chroots it and executes the static PID 1.
   BusyBox and `/init.stock` remain solely for pre-handoff recovery. Three
   independent builds—incremental and single-pass—produce exact SHA-256
   `da5549e1cdad5b9f445f4634dacc0254fd468148182175a06b43346dc1dddbc7`.
+  Hardware acceptance passed the launcher, controls, content and shutdown;
+  diagnostics recorded both direct-handoff and clean-root-skip markers.
+- Kernel specialization has begun from evidence, not a generic defconfig. The
+  active 17,686,536-byte Linux 4.9.170 `Image` contains its complete 4,209-line
+  config, now extracted and checksum-pinned. A case-sensitive amd64 Linux build
+  environment uses the closest public Orange Pi `sun50iw9` lineage and exact
+  Linaro GCC 5.3.1 release. That public tree is not the complete downstream
+  source: normalizing the active config removes the AXP2202 power driver, newer
+  sunxi audio stack and exFAT implementation. Its output is therefore a source
+  comparison only and will not be put on the card. A one-boot post-menu
+  inventory is staged to capture the running modules, interrupts, I/O map,
+  devices and live DTB before constructing the auditable fixed-device kernel.
 - The 1,122-line card-side migration engine has completed its job. The staged
   replacement is a 45-line diagnostics-only collector with no old patch guards
   or 18--25-second log-copy sleepers.
@@ -225,6 +242,8 @@ writes a content revision that user-init installs on the next boot.
 - `launcher/`: dependency-free direct-framebuffer launcher proof.
 - `firmware/`: exact stock partition map, checksums and reproducible offline
   image inspection tools.
+- `kernel/`: extracted active config, pinned vendor source/toolchain build and
+  the fixed-device kernel acceptance workflow.
 - `generate-boot-sound.py`: archived deterministic source for the completed
   chime proof; it is not staged on the active boot path.
 

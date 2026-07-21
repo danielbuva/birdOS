@@ -151,6 +151,10 @@ Two direct builds from the accepted trimmed image and a single-pass build from
 the earlier power-key image all produce the same complete 64 MiB SHA-256:
 `da5549e1cdad5b9f445f4634dacc0254fd468148182175a06b43346dc1dddbc7`.
 The staged diagnostics separately record direct-handoff and clean-fs markers.
+Hardware acceptance passed all tested functionality at about 3.8 seconds by
+stopwatch. The corresponding internal trace reaches an input-ready frame at
+1.98 seconds, records direct handoff and clean-filesystem skip, and starts the
+remaining root sysinit only after that frame.
 
 Before the critical-UI patch, BusyBox ran:
 

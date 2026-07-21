@@ -4,3 +4,4 @@ __pycache__/
 firmware/work/
 firmware/*.img
 firmware/*.ext4
+kernel/work/
