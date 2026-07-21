@@ -93,3 +93,8 @@ does not replace stock.
 `download-reference-release.sh` resumes an existing prefix, fetches the rest
 as eight independent HTTP ranges and accepts the output only when both its
 published byte count and SHA-256 match.
+
+The guarded raw candidate is generated under `/Users/dani`, outside the
+Downloads folder. macOS provenance scanning was observed blocking new opens of
+the otherwise verified multi-gigabyte image inside Downloads; an APFS clone at
+the fixed location opened and rehashed immediately with identical bytes.

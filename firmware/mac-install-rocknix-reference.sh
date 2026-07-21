@@ -8,7 +8,7 @@ set -eu
 CARD=${1:-/Volumes/dani-sp}
 ACTION=${2:-}
 GDD=${GDD:-/opt/homebrew/bin/gdd}
-IMAGE=${IMAGE:-/Users/dani/Downloads/ROCKNIX-H700.aarch64-20260701-DDR4-rg34xxsp-safe.img}
+IMAGE=${IMAGE:-/Users/dani/ROCKNIX-H700.aarch64-20260701-DDR4-rg34xxsp-safe.img}
 LOCAL_PREFIX=${LOCAL_PREFIX:-/Users/dani/Downloads/dani-sp-before-rocknix-prefix.img}
 IMAGE_BYTES=2432696320
 IMAGE_SHA=4d5c16452c7e45970f60bb4897c45a4e10f0e4fb10957927fb02405810b45dc7

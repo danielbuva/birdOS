@@ -8,7 +8,9 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 SOURCE=${SOURCE:-/Users/dani/Downloads/ROCKNIX-H700.aarch64-20260701-DDR4.img}
-OUTPUT=${OUTPUT:-/Users/dani/Downloads/ROCKNIX-H700.aarch64-20260701-DDR4-rg34xxsp-safe.img}
+# Keep the generated raw image outside Downloads. macOS provenance scanning can
+# block raw-image opens there for minutes even after its checksum was proven.
+OUTPUT=${OUTPUT:-/Users/dani/ROCKNIX-H700.aarch64-20260701-DDR4-rg34xxsp-safe.img}
 SOURCE_BYTES=2198863872
 SOURCE_SHA=fce3fe81be706be795311b361db7b98eb1316befc5d543a1ad6ca184aedcc3d6
 FIXED_STORAGE_BYTES=268435456
