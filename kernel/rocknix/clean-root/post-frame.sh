@@ -50,6 +50,11 @@ mounted_at "$DATA_ROOT" || \
 	}
 mark data-ready
 
+# Global controls consume raw fixed-device events and are useful immediately;
+# they do not depend on GPU or application-runtime readiness.
+/opt/bird/controls >>/tmp/bird-controls.log 2>&1 &
+printf '%s\n' "$!" >/run/bird/controls.pid
+
 # Panfrost is not needed to paint or operate Bird. Warm it now so a selection
 # can use native Mesa without making the launcher own GPU initialization.
 if [ ! -e /dev/dri/renderD128 ]; then
@@ -98,18 +103,28 @@ bind_once /dev "$RUNTIME_ROOT/dev" || exit 1
 bind_once /proc "$RUNTIME_ROOT/proc" || exit 1
 bind_once /sys "$RUNTIME_ROOT/sys" || exit 1
 bind_once /run "$RUNTIME_ROOT/run" || exit 1
+bind_once /tmp "$RUNTIME_ROOT/tmp" || exit 1
 bind_once "$DATA_ROOT" "$RUNTIME_ROOT/storage" || exit 1
 
 mkdir -p "$DATA_ROOT/MUOS/Bird/log" \
 	"$DATA_ROOT/MUOS/Bird/save/files" \
-	"$DATA_ROOT/MUOS/Bird/save/states"
+	"$DATA_ROOT/MUOS/Bird/save/states" \
+	/run/bird/joypads
 cp -f /opt/bird/retroarch-append.cfg /run/bird/retroarch-append.cfg
+cp -f /opt/bird/h700-gamepad.cfg "/run/bird/joypads/H700 Gamepad.cfg"
+cp -f /opt/bird/h700-sdl-gamecontrollerdb.txt \
+	/run/bird/h700-sdl-gamecontrollerdb.txt
+cp -f /opt/bird/mpv-input.conf /run/bird/mpv-input.conf
+
+# Native libudev clients need one fixed record, not a generic boot dependency.
+# Publish it only after Bird is usable and keep this outside the launcher.
+/opt/bird/input-metadata.sh || {
+	mark native-device-metadata-failed
+	exit 1
+}
+mark native-device-metadata-ready
 mark runtime-ready
 : >"$READY"
-
-# System-global controls remain a separate blocking process. They neither run
-# in nor add branches to the launcher.
-/opt/bird/controls >>/tmp/bird-controls.log 2>&1 &
 
 if [ -x "$RUNTIME_ROOT/usr/bin/amixer" ]; then
 	/usr/sbin/chroot "$RUNTIME_ROOT" /usr/bin/amixer -c 0 scontrols \

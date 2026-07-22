@@ -9,9 +9,12 @@ The boot split is:
    input module and starts the static launcher supervisor.
 2. The launcher paints and opens direct input. This is the usability gate.
 3. The permanent static PID 1 starts `post-frame.sh` independently.
-4. Post-frame work mounts p6, warms Panfrost, mounts the pinned ROCKNIX SYSTEM
-   image read-only and starts the separate global-controls process.
-5. `run-content.sh` consumes only the launcher's four-line request and runs a
+4. Post-frame work mounts p6, starts the separate global-controls process,
+   warms Panfrost and mounts the pinned ROCKNIX SYSTEM image read-only.
+5. Bird bind-mounts only live kernel interfaces, writable `/tmp` and p6 into
+   that runtime. It publishes one fixed H700 libudev record; no udev daemon,
+   rule scan, hardware replay or hotplug worker is started.
+6. `run-content.sh` consumes only the launcher's four-line request and runs a
    native application with its matching core, configuration baseline, loader
    and libraries inside the read-only runtime.
 
@@ -21,7 +24,19 @@ Files:
 - `post-frame.sh`: prepares storage, GPU, runtime and controls after usability.
 - `run-content.sh`: Bird-owned native application/core policy.
 - `retroarch-append.cfg`: the small fixed RG34XX-SP override to native defaults.
+- `h700-gamepad.cfg`: the one exact RetroArch map, with Select+Start as exit.
+- `h700-sdl-gamecontrollerdb.txt`: the one exact SDL controller record.
+- `input-metadata.sh`: publishes `ID_INPUT_JOYSTICK=1` for the built-in pad.
+- `mpv-input.conf`: fixed movie controls; dedicated volume keys remain global.
+- `exit-content.sh`: one Bird-owned Select+Start termination contract.
 - `volume.sh`, `suspend.sh`, `shutdown.sh`: fixed device lifecycle operations.
+
+Native RetroArch inherits its matching ROCKNIX configuration but overrides the
+fixed 720x480 panel mode, input profile, save paths and ALSA endpoint. MPV uses
+its compiled direct DRM software output for the first correctness gate; it does
+not require a compositor or session daemon. Every launch receives a distinct
+persistent log and dmesg snapshot so a later attempt cannot erase the prior
+failure evidence.
 
 ROCKNIX is currently a pinned application/runtime provider and the source of
 the open kernel/driver chain. It is not Bird's frontend, init system or booted

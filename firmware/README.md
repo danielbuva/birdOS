@@ -644,3 +644,19 @@ The active card was evidently provisioned after flashing, so the archived FAT
 asset cannot yet be assumed to own its normal splash. The failed installer is
 disabled and this investigation is shelved until after first interaction is
 optimized.
+
+## Bird clean-root application gate
+
+Clean-root v5.0 physically proved that Bird can remain in its embedded root:
+the static menu painted and accepted H700 input before p6, Panfrost or the
+immutable ROCKNIX application runtime were ready. It also localized the next
+failures to the post-frame application session rather than boot or launcher
+ownership.
+
+`mac-update-bird-clean-root-v5-1.sh` advances only p1 `KERNEL`. It preserves
+the accepted v5.0 kernel on p6, verifies the exact card geometry, DTB and
+runtime image, stages through a temporary FAT file and rereads the installed
+checksum. P5 and the game/media library remain untouched. The candidate gives
+native applications writable scratch space, one fixed H700 libudev record and
+controller map, direct DRM MPV output, Bird-owned system volume and a global
+Select+Start exit contract. None of that work enters the first-frame path.

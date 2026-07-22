@@ -80,11 +80,13 @@ application and move everything unrelated to an interactive menu behind it.
 - [x] Remove the next set of redundant fixed-startup work: per-boot
   immutable policy/geometry writes, obsolete update-file cleanup, zero-swap
   probing and the unnecessary squashfs module request.
-- [ ] [clean-root v5.0 staged; hardware gate pending] Bake changes into the
-  image and remove the card-side development user-init delivery path. The new
-  successful path is entirely embedded and does not enter p5; after physical
-  acceptance, delete the retained recovery-only muOS partition and obsolete
-  migration payloads from the reproducible image.
+- [ ] [clean-root v5.0 boot gate passed; v5.1 application gate staged] Bake
+  changes into the image and remove the card-side development user-init
+  delivery path. The successful path is entirely embedded and does not enter
+  p5. V5.0 physically proved the menu at 1.135 seconds, H700 input at 1.290 and
+  the post-frame runtime at 2.08; v5.1 now isolates the native application
+  session. Delete the retained recovery-only muOS partition and obsolete
+  migration payloads only after that application gate passes.
 
 ### Layer 2 — early userspace and init
 
@@ -125,11 +127,14 @@ removes the handoff entirely while keeping the verified menu-first boundary.
   with an ordinary first-frame marker at 1.98 seconds.
 - [x] Produce a byte-reproducible boot-image candidate containing this early
   path.
-- [ ] [clean-root v5.0 staged] Prove Bird as the permanent root. The static
-  launcher becomes usable first; storage, Panfrost, the immutable application
-  runtime and global controls start independently afterward. The success path
-  never mounts or switches into the old p5 root, and the application boundary
-  no longer mixes muOS wrappers/configuration/cores with ROCKNIX binaries.
+- [x] [clean-root v5.0 physically proved] Run Bird as the permanent root. The
+  static launcher becomes usable first; storage, Panfrost, the immutable
+  application runtime and global controls start independently afterward. The
+  success path never mounts or switches into old p5.
+- [ ] [clean-root v5.1 staged] Pass the coherent native-application boundary:
+  fixed H700 metadata and mappings, exact 720x480 KMS policy, writable runtime
+  scratch space, direct DRM MPV, system-owned volume and one Select+Start exit
+  contract. No muOS wrapper/configuration/core/library enters this path.
 
 ### Layer 3 — fixed RG34XX-SP kernel
 
@@ -365,21 +370,26 @@ savings; it is not forgotten.
   The kernel/DRM topology passed; native RetroArch still failed when combined
   with muOS policy and assets, so the clean-root candidate now pairs each
   application with its own native configuration, cores and libraries.
-- [ ] [clean-root v5.0 first hardware gate] Verify menu/input, a simple native
-  libretro title and return, direct brightness/volume, native MPV and shutdown.
-  Ports, OpenBOR, PortMaster networking and final media controls follow only
-  after this coherent application boundary passes.
+- [ ] [clean-root v5.1 native-session gate] V5.0 verified menu/input,
+  brightness and shutdown but exposed missing libudev controller metadata,
+  mismatched RetroArch KMS policy, read-only runtime scratch space and an
+  incomplete MPV session. Verify a simple native libretro title and return,
+  visible MPV movie, MP3, Select+Start exit and dedicated system volume on
+  v5.1. Ports, OpenBOR, PortMaster networking and final media optimization
+  follow only after this boundary passes.
 - [ ] Move the final animation and audio to the earlier firmware layer.
 - [ ] Complete the final visual, animation and audio identity.
 - [ ] Remove superseded muOS components and produce a reproducible firmware image.
 - [ ] Optimize kernel and U-Boot last.
 
-Verified interactive milestone: the record input-ready frame remains 1.957
-seconds of kernel uptime; the latest fixed-startup trace records 2.06 seconds.
-LED-on to an immediately usable menu is now about 3.5 seconds by stopwatch,
-with the latest complete functionality pass accepted at that level.
-All three emulator/Port paths are playable with audio and return to a redrawn
-launcher in 27--29 ms.
+Verified interactive milestone: the clean-root source-kernel record is a
+visible frame at 1.135 seconds and input-ready at 1.290 seconds of kernel
+uptime. LED-on to an immediately usable menu was about 3.5 seconds by
+stopwatch on the last complete vendor-root functionality pass; a new clean-root
+stopwatch series remains pending.
+At the last accepted vendor-root checkpoint, all three emulator/Port paths were
+playable with audio and returned to a redrawn launcher in 27--29 ms. The
+clean-root native-session gate is tracked separately above.
 
 ## Original feature-oriented checklist
 

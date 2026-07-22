@@ -458,8 +458,52 @@ Two clean cpio builds are byte-identical. The full kernel build passes the
 pinned Linux 7.0.11 source/patch/config gate, contains that exact cpio, retains
 the shipping-identical DTB and uses byte-identical H700 input and deferred GPU
 modules. The guarded updater changes only p1 `KERNEL`; p5 is untouched and the
-v4.5 kernel is copied to p6 recovery. The first physical v5.0 gate is pending.
-Ports/OpenBOR and PortMaster are deliberately outside this first proof.
+v4.5 kernel is copied to p6 recovery. The physical v5.0 gate painted Bird at
+1.135 seconds, opened direct H700 input at 1.290, mounted p6 at 1.40, prepared
+Panfrost at 1.42 and published the immutable runtime at 2.08. Menu controls,
+improved brightness and shutdown passed. Native applications exposed a
+post-frame session-policy failure: absent controller properties, an inherited
+640x480/invalid graphics context, read-only runtime scratch space and MPV
+without a direct-display/control policy.
+
+## Bird clean-root v5.1
+
+V5.1 retains the physically accepted v5.0 kernel, DTB, first-frame sequence and
+application/runtime boundary. It changes the embedded post-frame policy only:
+
+- bind writable `/tmp` into the read-only native runtime;
+- publish the built-in H700 pad's three fixed libudev properties without
+  starting udevd or replaying hardware;
+- use exact single-entry RetroArch and SDL controller profiles, with
+  Select+Start as Bird's global application-exit contract;
+- inherit native RetroArch's automatic direct-KMS context at the exact 720x480
+  panel mode instead of forcing the nonexistent `kmsdrm` context;
+- run MPV through its compiled direct DRM output and fixed gamepad map;
+- exclusively grab the dedicated volume-key node for direct ALSA `DAC` control,
+  while shoulder buttons remain player-relative media volume; and
+- preserve a separate content log and dmesg snapshot for every launch.
+
+All of this begins after the input-ready menu. The steady idle path still has
+no udevd, D-Bus, PipeWire, network, entropy or media daemon. Direct MPV DRM uses
+software presentation for this correctness gate; Panfrost/video optimization
+follows only after visible playback and input pass.
+
+| Bird clean-root v5.1 | Bytes | SHA-256 |
+| --- | ---: | --- |
+| source-built Linux `Image` | 29,939,720 | `5f1238b5f3010f88ac142505097064264c2a6090d0e19a809a0c1a97da6bde5c` |
+| embedded clean-root cpio | 4,198,912 | `d4ab202c99090c76ac86cde5490ea51b765b282ec9eb6ac5783167348b5647d0` |
+| fixed first init | 5,432 | embedded in cpio |
+| fixed permanent PID 1 | 5,112 | embedded in cpio |
+| static launcher | 623,064 | embedded in cpio |
+| separate controls service | 5,880 | embedded in cpio |
+
+Two independent cpio builds and two independent full kernel builds are
+byte-identical. The build audit re-extracted the exact input archive from the
+kernel, retained the shipping-identical 49,010-byte DTB and reproduced the
+same H700 and deferred Panfrost modules. The guarded v5.1 updater accepts only
+v5.0 or v5.1 on this exact removable card, preserves v5.0 on p6 and changes
+only p1 `KERNEL`. Its native game/movie/MP3 hardware gate is pending.
+Ports/OpenBOR and PortMaster remain deliberately outside this proof.
 
 ## Card-safe hardware gate
 

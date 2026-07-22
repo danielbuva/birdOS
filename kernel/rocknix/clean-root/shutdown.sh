@@ -10,6 +10,7 @@ for POINT in \
 	/run/bird-runtime/sys \
 	/run/bird-runtime/proc \
 	/run/bird-runtime/dev \
+	/run/bird-runtime/tmp \
 	/run/bird-runtime \
 	/mnt/mmc; do
 	umount "$POINT" 2>/dev/null || :

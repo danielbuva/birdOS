@@ -3,8 +3,9 @@
  *
  * This deliberately is not part of the launcher. It blocks in ppoll after
  * opening the three known input devices and owns only system-global actions:
- * volume, Menu+volume brightness, and power-button suspend. It never grabs an
- * input device, so games and media players continue to receive their controls.
+ * volume, Menu+volume brightness, application exit, and power-button suspend.
+ * Only the dedicated volume-key node is grabbed; applications continue to
+ * receive the H700 gamepad directly but cannot reinterpret system volume keys.
  */
 
 typedef unsigned short u16;
@@ -25,8 +26,11 @@ typedef signed long s64;
 #define KEY_VOLUMEDOWN 114
 #define KEY_VOLUMEUP 115
 #define KEY_POWER 116
+#define BTN_SELECT 314
+#define BTN_START 315
 #define BTN_MODE 316
 #define EVIOCGNAME_128 0x80804506UL
+#define EVIOCGRAB 0x40044590UL
 
 #define GAMEPAD_NAME "H700 Gamepad"
 #define VOLUME_NAME "gpio-keys-volume"
@@ -38,6 +42,8 @@ typedef signed long s64;
 #ifdef DANI_CLEAN_ROOT
 #define VOLUME_SCRIPT "/opt/bird/volume.sh"
 #define SUSPEND_SCRIPT "/opt/bird/suspend.sh"
+#define EXIT_CONTENT_SCRIPT "/opt/bird/exit-content.sh"
+#define CONTENT_ACTIVE "/run/bird/content-active"
 #else
 #define BRIGHT_CURRENT "/opt/muos/config/settings/general/brightness"
 #define BRIGHT_INCREMENT "/opt/muos/config/settings/advanced/incbright"
@@ -369,6 +375,11 @@ static void discover_inputs(struct input_source *sources, int count) {
                 sources[source].fd = (int)fd;
                 fd = -1;
                 missing--;
+#ifdef DANI_CLEAN_ROOT
+                if (source == 1 &&
+                    sys_ioctl(sources[source].fd, EVIOCGRAB, (void *)1) < 0)
+                    log_kernel("<3>bird-controls: volume-grab-failed\n");
+#endif
                 if (source == 0)
                     log_kernel("<6>bird-controls: gamepad-ready\n");
                 else if (source == 1)
@@ -383,7 +394,9 @@ static void discover_inputs(struct input_source *sources, int count) {
     }
 }
 
-static void handle_gamepad(const struct input_event *event, int *menu_held) {
+static void handle_gamepad(const struct input_event *event, int *menu_held,
+                           int *select_held, int *start_held,
+                           int *exit_latched) {
     if (event->type == EV_KEY && event->code == BTN_MODE) {
         *menu_held = event->value != 0;
         if (event->value == 1)
@@ -391,6 +404,28 @@ static void handle_gamepad(const struct input_event *event, int *menu_held) {
         else if (event->value == 0)
             log_kernel("<6>bird-controls: menu-released\n");
     }
+#ifdef DANI_CLEAN_ROOT
+    if (event->type != EV_KEY) return;
+    if (event->code == BTN_SELECT)
+        *select_held = event->value != 0;
+    else if (event->code == BTN_START)
+        *start_held = event->value != 0;
+    else
+        return;
+
+    if (*select_held && *start_held && !*exit_latched &&
+        sys_faccessat(CONTENT_ACTIVE) == 0) {
+        *exit_latched = 1;
+        log_kernel("<6>bird-controls: select-start-exit\n");
+        run_action(EXIT_CONTENT_SCRIPT, 0);
+    } else if (!*select_held || !*start_held) {
+        *exit_latched = 0;
+    }
+#else
+    (void)select_held;
+    (void)start_held;
+    (void)exit_latched;
+#endif
 }
 
 static void handle_volume(const struct input_event *event, int menu_held) {
@@ -433,7 +468,9 @@ static void handle_power(const struct input_event *event,
 }
 
 static void process_source(struct input_source *source, int source_index,
-                           int *menu_held, int *power_pressed) {
+                           int *menu_held, int *power_pressed,
+                           int *select_held, int *start_held,
+                           int *exit_latched) {
     struct input_event events[16];
     long bytes;
     int count;
@@ -443,7 +480,8 @@ static void process_source(struct input_source *source, int source_index,
         count = (int)(bytes / (long)sizeof(events[0]));
         for (index = 0; index < count; index++) {
             if (source_index == 0)
-                handle_gamepad(&events[index], menu_held);
+                handle_gamepad(&events[index], menu_held, select_held,
+                               start_held, exit_latched);
             else if (source_index == 1)
                 handle_volume(&events[index], *menu_held);
             else
@@ -465,6 +503,9 @@ static void application(void) {
     struct pollfd polls[3];
     int menu_held = 0;
     int power_pressed = 0;
+    int select_held = 0;
+    int start_held = 0;
+    int exit_latched = 0;
     int index;
 
     kmsg_fd = (int)sys_open(KMSG_DEVICE, O_WRONLY | O_CLOEXEC);
@@ -485,7 +526,8 @@ static void application(void) {
         for (index = 0; index < 3; index++) {
             if (sources[index].fd >= 0 && (polls[index].revents & POLLIN))
                 process_source(&sources[index], index, &menu_held,
-                               &power_pressed);
+                               &power_pressed, &select_held, &start_held,
+                               &exit_latched);
         }
     }
 }

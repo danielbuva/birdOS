@@ -5,7 +5,10 @@
 
 REQUEST=${1:-/run/muos/dani-launch-request}
 RUNTIME=/run/bird-runtime
-LOG=/mnt/mmc/MUOS/Bird/log/content-latest.log
+LOG_DIR=/mnt/mmc/MUOS/Bird/log
+LATEST=$LOG_DIR/content-latest.log
+ACTIVE=/run/bird/content-active
+ACTIVE_PID=/run/bird/content.pid
 
 [ -s "$REQUEST" ] || exit 1
 {
@@ -18,8 +21,12 @@ rm -f "$REQUEST"
 
 case "$HOST_PATH" in
 	/mnt/mmc/*) CONTENT=/storage/${HOST_PATH#/mnt/mmc/} ;;
-	*) printf 'Bird rejected non-storage content path: %s\n' "$HOST_PATH" >"$LOG"; exit 1 ;;
+	*) printf 'Bird rejected non-storage content path: %s\n' "$HOST_PATH" >"$LATEST"; exit 1 ;;
 esac
+
+mkdir -p "$LOG_DIR"
+BOOT_TAG=$(cut -d ' ' -f 1 /proc/uptime | tr -d .)
+LOG=$LOG_DIR/content-${BOOT_TAG}-kind${KIND}.log
 
 native_core() {
 	case "$1" in
@@ -43,8 +50,6 @@ run_retroarch() {
 		HOME=/storage/MUOS/Bird \
 		USER=root LANG=C \
 		PATH=/usr/bin:/usr/sbin:/bin:/sbin \
-		SDL_VIDEODRIVER=kmsdrm \
-		SDL_KMSDRM_DEVICE_INDEX=0 \
 		LIBGL_DRIVERS_PATH=/usr/lib/dri \
 		GBM_BACKENDS_PATH=/usr/lib/gbm \
 		__EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json \
@@ -55,7 +60,34 @@ run_retroarch() {
 		-L "/usr/lib/libretro/$CORE" "$CONTENT"
 }
 
-mkdir -p "${LOG%/*}"
+run_mpv() {
+	case "$CONTENT" in
+		*.mp3|*.MP3|*.flac|*.FLAC|*.ogg|*.OGG|*.opus|*.OPUS|*.wav|*.WAV|*.m4a|*.M4A)
+			VIDEO_OPTIONS='--vid=no --force-window=no'
+			;;
+		*)
+			# Direct DRM is the compositor-free correctness path. Replace the
+			# software VO with the measured Panfrost GPU path after it is proven.
+			VIDEO_OPTIONS='--vo=drm --drm-device=/dev/dri/card0'
+			;;
+	esac
+	/usr/sbin/chroot "$RUNTIME" /usr/bin/env -i \
+		HOME=/storage/MUOS/Bird USER=root LANG=C \
+		PATH=/usr/bin:/usr/sbin:/bin:/sbin \
+		SDL_GAMECONTROLLERCONFIG_FILE=/run/bird/h700-sdl-gamecontrollerdb.txt \
+		/usr/bin/mpv --no-config --hwdec=no --ao=alsa --fullscreen \
+		--input-gamepad=yes \
+		--audio-device=alsa/hw:0,0 \
+		--input-conf=/run/bird/mpv-input.conf $VIDEO_OPTIONS "$CONTENT"
+}
+
+cleanup_content() {
+	rm -f "$ACTIVE" "$ACTIVE_PID"
+}
+
+: >"$ACTIVE"
+printf '%s\n' "$$" >"$ACTIVE_PID"
+trap cleanup_content EXIT INT TERM
 {
 	printf 'Bird native content start uptime: '
 	cut -d ' ' -f 1 /proc/uptime
@@ -65,17 +97,7 @@ mkdir -p "${LOG%/*}"
 		1) run_retroarch "$REQUESTED_CORE" ;;
 		2) run_retroarch ext-ppsspp ;;
 		4) run_retroarch ext-drastic ;;
-		6)
-			/usr/sbin/chroot "$RUNTIME" /usr/bin/env -i \
-				HOME=/storage/MUOS/Bird USER=root LANG=C \
-				PATH=/usr/bin:/usr/sbin:/bin:/sbin \
-				LIBGL_DRIVERS_PATH=/usr/lib/dri \
-				GBM_BACKENDS_PATH=/usr/lib/gbm \
-				__EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json \
-				MESA_LOADER_DRIVER_OVERRIDE=panfrost \
-				/usr/bin/mpv --fullscreen --audio-device=alsa/hw:0,0 \
-				--input-conf=/usr/config/mpv/input.conf "$CONTENT"
-			;;
+		6) run_mpv ;;
 		*)
 			printf 'Bird native launch kind not implemented yet: %s\n' "$KIND"
 			false
@@ -84,5 +106,9 @@ mkdir -p "${LOG%/*}"
 	RESULT=$?
 	printf 'Bird native content result=%s uptime=' "$RESULT"
 	cut -d ' ' -f 1 /proc/uptime
-	exit "$RESULT"
 } >"$LOG" 2>&1
+cp -f "$LOG" "$LATEST"
+dmesg >"$LOG.dmesg" 2>&1 || :
+cleanup_content
+trap - EXIT INT TERM
+exit "$RESULT"

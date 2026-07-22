@@ -9,8 +9,5 @@ case "${1-}" in
 	*) exit 1 ;;
 esac
 
-for CONTROL in Headphone 'Headphone Playback Volume' DAC; do
-	/usr/sbin/chroot /run/bird-runtime /usr/bin/amixer -q -c 0 \
-		sset "$CONTROL" "$CHANGE" 2>/dev/null && exit 0
-done
-exit 1
+/usr/sbin/chroot /run/bird-runtime /usr/bin/amixer -q -c 0 \
+	sset DAC "$CHANGE"

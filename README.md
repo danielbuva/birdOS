@@ -59,11 +59,15 @@ must serve this one device and this one experience.
   finally proved the boundary: native RetroArch loaded content, then failed its
   SDL KMSDRM context while MPV decoded without restoring the required user
   experience. That hybrid route is closed.
-- Bird clean-root v5.0 is staged for its first hardware gate. It never mounts
-  or switches into p5 on the successful path. The launcher, fixed PID 1,
-  post-frame storage/GPU preparation and global controls live in the embedded
-  root; native RetroArch, MPV, libretro cores and their libraries all come from
-  one checksum-pinned ROCKNIX runtime mounted read-only after first frame.
+- Bird clean-root v5.0 passed its boot architecture gate: the menu painted at
+  1.135 seconds, direct H700 input opened at 1.290, p6 mounted at 1.40,
+  Panfrost was ready at 1.42 and the immutable application runtime was ready at
+  2.08 seconds. Menu controls, improved brightness and shutdown work. Its
+  native application gate failed because the runtime had a read-only `/tmp`,
+  RetroArch lacked its required fixed libudev property and inherited the wrong
+  graphics policy, while MPV lacked a direct-display and Bird input policy.
+  These are measured post-menu session defects, not a regression in the fast
+  permanent-root boot.
 
 The accepted vendor-root checkpoint started the launcher from initramfs after
 mounting p5 and carried it across `switch_root`. Clean-root v5.0 removes that
@@ -78,11 +82,16 @@ card-side patches.
 
 ## Current changes
 
-- The active experiment is clean-root v5.0. Bird owns boot, UI, launch policy,
+- The active experiment is clean-root v5.1. Bird owns boot, UI, launch policy,
   storage timing and global controls. It does not import a muOS wrapper,
   executable, core, configuration or shared library. ROCKNIX is an immutable
   application/runtime provider and the source of the open kernel/driver chain,
   not Bird's userspace or frontend.
+- V5.1 keeps that accepted fast path and changes only post-frame application
+  policy: writable runtime `/tmp`; a three-line H700 libudev record instead of
+  a daemon; exact RetroArch and SDL maps; 720x480 native KMS policy; direct DRM
+  MPV; system-owned volume keys; Bird-owned Select+Start exit; and one log per
+  launch. No udev, audio or application daemon moved into the launcher path.
 - Early ROM mount.
 - Frontend/audio readiness gate removed. The session-warm stage is verified:
   menu input was ready at 2.11 seconds, audio started at 3.97, D-Bus completed
@@ -289,8 +298,8 @@ card-side patches.
 
 The cached-module test reported `cached`, and the complete post-change
 functionality test passed. The optimized-stock checkpoint remains in Git. The
-card currently contains the experimental clean-root v5.0 kernel for its first
-physical application-boundary test; the v4.5 kernel is preserved on p6.
+card currently contains the clean-root v5.1 application-boundary candidate;
+the v5.0 and v4.5 kernels are preserved on p6.
 
 ## Font payload
 

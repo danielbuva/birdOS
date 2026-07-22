@@ -1,5 +1,5 @@
 #!/bin/sh
-# Build Bird clean-root v5.0. Unlike the earlier compatibility archives this
+# Build Bird clean-root v5.1. Unlike the earlier compatibility archives this
 # one never mounts or switches into p5: the initramfs is Bird's permanent root.
 
 set -eu
@@ -8,7 +8,7 @@ ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 BASE=${BASE:-$ROOT/firmware/work/direct-handoff-from-power/dani-trimmed-initramfs.cpio}
 MODULE_DIR=${MODULE_DIR:-$ROOT/kernel/work/rocknix-bird-kernel-compat-v4-5-native-ra-deploy/build}
 JOYPAD=${JOYPAD:-$ROOT/kernel/work/rocknix-bird-kernel-v2-joypad/build/rocknix-singleadc-joypad.ko}
-OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-clean-root-v5-initramfs}
+OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-clean-root-v5-1-initramfs}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
 LLD=${LLD:-/opt/homebrew/opt/lld/bin/ld.lld}
 READELF=${READELF:-/opt/homebrew/opt/llvm/bin/llvm-readelf}
@@ -62,7 +62,7 @@ done
 
 RAMDISK=$OUTPUT/ramdisk
 BIRD=$RAMDISK/opt/bird
-CPIO=$OUTPUT/bird-clean-root-v5.cpio
+CPIO=$OUTPUT/bird-clean-root-v5-1.cpio
 mkdir -p "$RAMDISK"
 (
 	cd "$RAMDISK"
@@ -91,7 +91,9 @@ cp -fp "$MODULE_DIR/drm_shmem_helper.ko" "$BIRD/drm_shmem_helper.ko"
 cp -fp "$MODULE_DIR/gpu-sched.ko" "$BIRD/gpu-sched.ko"
 cp -fp "$MODULE_DIR/panfrost.ko" "$BIRD/panfrost.ko"
 for FILE in supervisor.sh post-frame.sh run-content.sh shutdown.sh \
-	volume.sh suspend.sh retroarch-append.cfg; do
+	volume.sh suspend.sh input-metadata.sh exit-content.sh \
+	retroarch-append.cfg h700-gamepad.cfg h700-sdl-gamecontrollerdb.txt \
+	mpv-input.conf; do
 	cp -fp "$ROOT/kernel/rocknix/clean-root/$FILE" "$BIRD/$FILE"
 done
 chmod 755 "$BIRD"/*.sh
@@ -112,6 +114,38 @@ grep -q 'complete interface between UI and application policy' \
 	fail 'clean supervisor identity missing'
 grep -q 'same mounted ROCKNIX runtime' "$BIRD/run-content.sh" || \
 	fail 'native application boundary missing'
+grep -q 'ID_INPUT_JOYSTICK=1' "$BIRD/input-metadata.sh" || \
+	fail 'fixed native input metadata missing'
+grep -q 'input_device = "H700 Gamepad"' "$BIRD/h700-gamepad.cfg" || \
+	fail 'fixed H700 native controller policy missing'
+grep -q '^input_y_btn = "2"$' "$BIRD/h700-gamepad.cfg" || \
+	fail 'fixed H700 Y mapping missing'
+grep -q '^input_x_btn = "3"$' "$BIRD/h700-gamepad.cfg" || \
+	fail 'fixed H700 X mapping missing'
+grep -q 'H700 Gamepad' "$BIRD/h700-sdl-gamecontrollerdb.txt" || \
+	fail 'fixed H700 SDL controller policy missing'
+grep -q '^VOLUME_UP ignore$' "$BIRD/mpv-input.conf" || \
+	fail 'Bird MPV system-volume ownership missing'
+grep -q '^GAMEPAD_LEFT_TRIGGER multiply speed 0.9090909$' \
+	"$BIRD/mpv-input.conf" || fail 'Bird MPV slow-play control missing'
+grep -q '^GAMEPAD_RIGHT_TRIGGER multiply speed 1.1$' \
+	"$BIRD/mpv-input.conf" || fail 'Bird MPV fast-play control missing'
+grep -q -- '--vo=drm --drm-device=/dev/dri/card0' \
+	"$BIRD/run-content.sh" || fail 'direct DRM movie policy missing'
+grep -q -- '--input-gamepad=yes' "$BIRD/run-content.sh" || \
+	fail 'native MPV gamepad input missing'
+if grep -q -- '--drm-mode=preferred' "$BIRD/run-content.sh"; then
+	fail 'unsupported MPV DRM mode policy present'
+fi
+if grep -q 'systemd-udevd' "$BIRD/input-metadata.sh"; then
+	fail 'generic udev daemon reintroduced into fixed metadata path'
+fi
+grep -q '^/bin/usleep 150000$' "$BIRD/exit-content.sh" || \
+	fail 'deterministic content-exit grace period missing'
+grep -q '^video_fullscreen_x = "720"$' "$BIRD/retroarch-append.cfg" || \
+	fail 'fixed 720-pixel panel width missing'
+grep -q '^video_fullscreen_y = "480"$' "$BIRD/retroarch-append.cfg" || \
+	fail 'fixed 480-pixel panel height missing'
 
 find "$RAMDISK" -type d -exec touch -t 202601010000 {} +
 find "$RAMDISK" -type f -exec touch -t 202601010000 {} +
@@ -131,6 +165,11 @@ for FILE in \
 	./opt/bird/supervisor.sh \
 	./opt/bird/post-frame.sh \
 	./opt/bird/run-content.sh \
+	./opt/bird/input-metadata.sh \
+	./opt/bird/exit-content.sh \
+	./opt/bird/h700-gamepad.cfg \
+	./opt/bird/h700-sdl-gamecontrollerdb.txt \
+	./opt/bird/mpv-input.conf \
 	./opt/bird/controls \
 	./opt/bird/rocknix-singleadc-joypad.ko \
 	./opt/bird/panfrost.ko; do
@@ -139,12 +178,12 @@ done
 
 (
 	cd "$OUTPUT"
-	wc -c bird-clean-root-v5.cpio ramdisk/init ramdisk/opt/dani-root-init \
+	wc -c bird-clean-root-v5-1.cpio ramdisk/init ramdisk/opt/dani-root-init \
 		ramdisk/opt/dani-launcher ramdisk/opt/bird/controls >sizes.txt
-	shasum -a 256 bird-clean-root-v5.cpio ramdisk/init \
+	shasum -a 256 bird-clean-root-v5-1.cpio ramdisk/init \
 		ramdisk/opt/dani-root-init ramdisk/opt/dani-launcher \
 		ramdisk/opt/bird/* >sha256sums.txt
 )
 
-printf 'Bird clean-root v5.0 initramfs built: %s\n' "$CPIO"
+printf 'Bird clean-root v5.1 initramfs built: %s\n' "$CPIO"
 cat "$OUTPUT/sizes.txt"
