@@ -485,6 +485,22 @@ controls service. `mac-update-rocknix-bird-compat-v4-2.sh` accepts only the
 verified v4.1 or v4.2 kernel, rechecks the same complete card geometry and
 artifact identities, and still writes only p1 plus the unchanged p6 policy.
 
+The v4.2 physical pass verified standard backlight control but left the shared
+graphics failure unchanged, so v4.3 changes registration order instead of
+adding another launcher or selection-time workaround. Sun4i-drm stays built in
+and owns display `card0`. The 46,280-byte DRM shmem helper, 62,440-byte GPU
+scheduler and 152,432-byte Panfrost module are embedded with the kernel and
+bind-preserved into `/run/muos` before the old initramfs is deleted. S10udev,
+already dispatched after Bird's first frame, loads that fixed chain while its
+input/sound replays proceed. The content bridge only waits for `renderD128` if
+warm-up has not finished; it never initializes the GPU on demand.
+
+`mac-update-rocknix-bird-compat-v4-3.sh` staged kernel
+`9772446def037d134761ba9b135347bb1037ff5e90a59c11a7df12a6c0fa6672`
+after verifying the full removable-card geometry, v4.2 predecessor, unchanged
+DTB/runtime/policy hashes and temporary copies. It updated p1 plus the same p6
+PortMaster policy and did not write p5.
+
 The original one-shot plan required preserving an automatic normal boot target.
 This card is now explicitly disposable experimental media, so a candidate may
 replace BIRD p1 only after exact layout, old-hash and readback gates pass. The

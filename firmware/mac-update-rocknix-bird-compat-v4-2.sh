@@ -1,21 +1,40 @@
 #!/bin/sh
-# Stage Bird source-kernel compatibility v4.2. SDL content is pinned to the
-# fixed RG34XX-SP display DRM node, while the separate controls service writes
-# action diagnostics into the persistent delayed dmesg capture.
+# Guarded p1/p6 compatibility updater. Its default profile reproduces v4.2
+# exactly; a wrapper may select another hardcoded profile without duplicating
+# the complete card-geometry gate.
 
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 BIRD=${BIRD:-/Volumes/BIRD}
 DATA=${DATA:-/Volumes/dani-sp}
-KERNEL=${KERNEL:-$ROOT/kernel/work/rocknix-bird-kernel-compat-v4-2-final-deploy-b/build/Image}
 CONFIG=${CONFIG:-$ROOT/kernel/rocknix/extlinux-bird.conf}
 PORT_POLICY=${PORT_POLICY:-$ROOT/kernel/rocknix/root-overrides/portmaster-libgl-mainline.sh}
 RUNTIME_TARGET="$DATA/MUOS/runtime/ROCKNIX-SYSTEM"
 PORT_POLICY_TARGET="$DATA/MUOS/PortMaster/libgl_muOS.txt"
 
-OLD_KERNEL_SHA=dd2a9dd38e33d4625ac774458d13401d90f6f35513c43e63c405eb76a746f47a
-NEW_KERNEL_SHA=2ef4a12f4f56942722be4426739cab2802b0c6d0973e2abe4fc3b6f17c3217f4
+case "${COMPAT_PROFILE:-v4.2}" in
+	v4.2)
+		RELEASE=v4.2
+		DEFAULT_KERNEL="$ROOT/kernel/work/rocknix-bird-kernel-compat-v4-2-final-deploy-b/build/Image"
+		OLD_KERNEL_SHA=dd2a9dd38e33d4625ac774458d13401d90f6f35513c43e63c405eb76a746f47a
+		NEW_KERNEL_SHA=2ef4a12f4f56942722be4426739cab2802b0c6d0973e2abe4fc3b6f17c3217f4
+		NEXT_TEST='brightness, volume, MP3, movie, RetroArch, PSP, NDS and a port'
+		;;
+	v4.3)
+		RELEASE=v4.3
+		DEFAULT_KERNEL="$ROOT/kernel/work/rocknix-bird-kernel-compat-v4-3-final-deploy/build/Image"
+		OLD_KERNEL_SHA=2ef4a12f4f56942722be4426739cab2802b0c6d0973e2abe4fc3b6f17c3217f4
+		NEW_KERNEL_SHA=9772446def037d134761ba9b135347bb1037ff5e90a59c11a7df12a6c0fa6672
+		NEXT_TEST='brightness, volume, MP3, movie, RetroArch, PSP, a port and suspend/wake'
+		;;
+	*)
+		printf 'error: unknown compatibility profile: %s\n' \
+			"$COMPAT_PROFILE" >&2
+		exit 1
+		;;
+esac
+KERNEL=${KERNEL:-$DEFAULT_KERNEL}
 DTB_SHA=f3a4273986d6e4f431b110cead8aa19e8da52ff08c64c4b204ef9664d28b5c31
 RUNTIME_SHA=6e2112fc9dc81d5fee944f2534346a8f20674f40e23a0a85bb795218d31eadac
 PORT_POLICY_SHA=9d65f67c706d23a3b651659c11c6771da039a199b5f03d4e7a8d0d8e689a2e36
@@ -98,27 +117,27 @@ DATA_WHOLE=$(field "$DATA" 'Part of Whole')
 CURRENT_KERNEL_SHA=$(sha256 "$BIRD/KERNEL")
 case "$CURRENT_KERNEL_SHA" in
 	"$OLD_KERNEL_SHA" | "$NEW_KERNEL_SHA") ;;
-	*) fail "card kernel is not an accepted v4.1/v4.2 candidate: $CURRENT_KERNEL_SHA" ;;
+	*) fail "card kernel is not an accepted predecessor/$RELEASE candidate: $CURRENT_KERNEL_SHA" ;;
 esac
 
 mkdir -p "$DATA/MUOS/PortMaster" "$BIRD/extlinux"
 COPYFILE_DISABLE=1 cp -f "$PORT_POLICY" \
-	"$DATA/MUOS/PortMaster/.libgl_muOS.txt.bird-v4-2.new"
-COPYFILE_DISABLE=1 cp -f "$KERNEL" "$BIRD/.KERNEL.bird-v4-2.new"
+	"$DATA/MUOS/PortMaster/.libgl_muOS.txt.bird-$RELEASE.new"
+COPYFILE_DISABLE=1 cp -f "$KERNEL" "$BIRD/.KERNEL.bird-$RELEASE.new"
 COPYFILE_DISABLE=1 cp -f "$CONFIG" \
-	"$BIRD/extlinux/.extlinux.conf.bird-v4-2.new"
+	"$BIRD/extlinux/.extlinux.conf.bird-$RELEASE.new"
 
-[ "$(sha256 "$DATA/MUOS/PortMaster/.libgl_muOS.txt.bird-v4-2.new")" = \
+[ "$(sha256 "$DATA/MUOS/PortMaster/.libgl_muOS.txt.bird-$RELEASE.new")" = \
 	"$PORT_POLICY_SHA" ] || fail 'temporary PortMaster policy verification failed'
-[ "$(sha256 "$BIRD/.KERNEL.bird-v4-2.new")" = "$NEW_KERNEL_SHA" ] || \
+[ "$(sha256 "$BIRD/.KERNEL.bird-$RELEASE.new")" = "$NEW_KERNEL_SHA" ] || \
 	fail 'temporary card kernel verification failed'
-cmp "$CONFIG" "$BIRD/extlinux/.extlinux.conf.bird-v4-2.new" || \
+cmp "$CONFIG" "$BIRD/extlinux/.extlinux.conf.bird-$RELEASE.new" || \
 	fail 'temporary extlinux verification failed'
 
-mv -f "$DATA/MUOS/PortMaster/.libgl_muOS.txt.bird-v4-2.new" \
+mv -f "$DATA/MUOS/PortMaster/.libgl_muOS.txt.bird-$RELEASE.new" \
 	"$PORT_POLICY_TARGET"
-mv -f "$BIRD/.KERNEL.bird-v4-2.new" "$BIRD/KERNEL"
-mv -f "$BIRD/extlinux/.extlinux.conf.bird-v4-2.new" \
+mv -f "$BIRD/.KERNEL.bird-$RELEASE.new" "$BIRD/KERNEL"
+mv -f "$BIRD/extlinux/.extlinux.conf.bird-$RELEASE.new" \
 	"$BIRD/extlinux/extlinux.conf"
 sync
 
@@ -129,8 +148,9 @@ sync
 cmp "$CONFIG" "$BIRD/extlinux/extlinux.conf" || \
 	fail 'installed extlinux verification failed'
 
-printf 'Bird/source-kernel compatibility v4.2 staged on /dev/%s.\n' "$BIRD_WHOLE"
+printf 'Bird/source-kernel compatibility %s staged on /dev/%s.\n' \
+	"$RELEASE" "$BIRD_WHOLE"
 printf 'p1 kernel and p6 PortMaster policy were updated; p5 root was not written.\n'
 printf 'Kernel:      %s\n' "$NEW_KERNEL_SHA"
 printf 'Port policy: %s\n' "$PORT_POLICY_SHA"
-printf 'Next test: brightness, volume, MP3, movie, RetroArch, PSP, NDS and a port.\n'
+printf 'Next test: %s.\n' "$NEXT_TEST"

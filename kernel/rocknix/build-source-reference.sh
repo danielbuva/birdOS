@@ -15,6 +15,7 @@ OUTPUT=${OUTPUT:-$ROOT/kernel/work/rocknix-source-reference}
 BUILD_OUTPUT="$OUTPUT/build"
 SHIPPING_KERNEL=${SHIPPING_KERNEL:-$OUTPUT/shipping-KERNEL}
 INITRAMFS_ARCHIVE=${INITRAMFS_ARCHIVE:-}
+DEFER_PANFROST=${DEFER_PANFROST:-0}
 JOBS=${JOBS:-4}
 
 ROCKNIX_COMMIT=3e4ee5852e6ca5ea73a38369d2639fad2262648b
@@ -32,6 +33,10 @@ fail() {
 
 command -v docker >/dev/null 2>&1 || fail 'docker is required'
 command -v python3 >/dev/null 2>&1 || fail 'python3 is required'
+case "$DEFER_PANFROST" in
+	0 | 1) ;;
+	*) fail 'DEFER_PANFROST must be 0 or 1' ;;
+esac
 [ -d "$ROCKNIX_SOURCE/.git" ] || fail "ROCKNIX source missing: $ROCKNIX_SOURCE"
 [ "$(git -C "$ROCKNIX_SOURCE" rev-parse HEAD)" = "$ROCKNIX_COMMIT" ] || \
 	fail 'ROCKNIX source commit mismatch'
@@ -75,6 +80,7 @@ set -- docker run --rm --platform linux/arm64 \
 	-e LINUX_COMMIT="$LINUX_COMMIT" \
 	-e JOYPAD_COMMIT="$JOYPAD_COMMIT" \
 	-e INITRAMFS_CONFIG="$INITRAMFS_CONFIG" \
+	-e DEFER_PANFROST="$DEFER_PANFROST" \
 	-e LOCALVERSION= \
 	-v "$ROCKNIX_SOURCE:/rocknix:ro" \
 	-v "$JOYPAD_SOURCE:/rocknix-joypad:ro" \
@@ -132,6 +138,9 @@ set -- "$@" "$IMAGE" sh -eu -c '
 			"$INITRAMFS_CONFIG"
 		scripts/config --file .config --set-str CONFIG_EXTRA_FIRMWARE_DIR \
 			"external-firmware"
+		if [ "$DEFER_PANFROST" = 1 ]; then
+			scripts/config --file .config --module CONFIG_DRM_PANFROST
+		fi
 		make ARCH=arm64 olddefconfig >/dev/null
 		cp .config /out/built.config
 		gcc --version | head -1 > /out/compiler.txt
@@ -147,6 +156,13 @@ set -- "$@" "$IMAGE" sh -eu -c '
 
 		make -j"$JOBS" ARCH=arm64 DTC_FLAGS=-@ Image modules
 		cp arch/arm64/boot/Image /out/Image
+		if [ "$DEFER_PANFROST" = 1 ]; then
+			cp drivers/gpu/drm/drm_shmem_helper.ko \
+				/out/drm_shmem_helper.ko
+			cp drivers/gpu/drm/scheduler/gpu-sched.ko \
+				/out/gpu-sched.ko
+			cp drivers/gpu/drm/panfrost/panfrost.ko /out/panfrost.ko
+		fi
 		cp System.map Module.symvers /out/
 		mkdir -p /tmp/rocknix-joypad
 		cp /rocknix-joypad/Makefile /rocknix-joypad/*.c \
@@ -186,11 +202,12 @@ strings "$JOYPAD_MODULE" | grep -Fqx \
 	fail 'H700 joypad module DT alias missing'
 
 python3 - "$BUILD_OUTPUT/shipping.config" "$BUILD_OUTPUT/built.config" \
-	"$BUILD_OUTPUT/config-diff.txt" <<'PY'
+	"$BUILD_OUTPUT/config-diff.txt" "$DEFER_PANFROST" <<'PY'
 import re
 import sys
 
-oracle_path, built_path, report_path = sys.argv[1:]
+oracle_path, built_path, report_path, defer_panfrost_arg = sys.argv[1:]
+defer_panfrost = defer_panfrost_arg == "1"
 
 def symbols(path):
     result = {}
@@ -219,11 +236,20 @@ allowed = re.compile(
     r"PAHOLE_VERSION|CC_HAS_.*|AS_HAS_.*|LD_CAN_.*|TOOLS_SUPPORT_.*|"
     r"KSTACK_ERASE|RANDSTRUCT_.*)$"
 )
-unexpected = [entry for entry in changed if not allowed.match(entry[0])]
+def is_allowed(name):
+    return bool(allowed.match(name)) or (
+        defer_panfrost and name in {
+            "CONFIG_DRM_GEM_SHMEM_HELPER",
+            "CONFIG_DRM_PANFROST",
+            "CONFIG_DRM_SCHED",
+        }
+    )
+
+unexpected = [entry for entry in changed if not is_allowed(entry[0])]
 
 with open(report_path, "w", encoding="utf-8") as report:
     for name, old, new in changed:
-        status = "allowed-toolchain-or-initramfs" if allowed.match(name) else "UNEXPECTED"
+        status = "allowed-fixed-profile-change" if is_allowed(name) else "UNEXPECTED"
         report.write(f"{status}: {name}\n  shipping: {old}\n  rebuilt:  {new}\n")
 
 if unexpected:
@@ -231,6 +257,29 @@ if unexpected:
         print(f"unexpected config drift: {name}\n  shipping: {old}\n  rebuilt:  {new}", file=sys.stderr)
     raise SystemExit(1)
 PY
+
+PANFROST_ARTIFACT=
+if [ "$DEFER_PANFROST" = 1 ]; then
+	PANFROST_MODULE="$BUILD_OUTPUT/panfrost.ko"
+	DRM_SHMEM_MODULE="$BUILD_OUTPUT/drm_shmem_helper.ko"
+	GPU_SCHED_MODULE="$BUILD_OUTPUT/gpu-sched.ko"
+	grep -qx 'CONFIG_DRM_PANFROST=m' "$BUILD_OUTPUT/built.config" || \
+		fail 'Panfrost was not made a deferred module'
+	for MODULE in "$DRM_SHMEM_MODULE" "$GPU_SCHED_MODULE" \
+		"$PANFROST_MODULE"; do
+		[ -f "$MODULE" ] || fail "deferred GPU module is missing: $MODULE"
+		strings "$MODULE" | grep -Fqx \
+			'vermagic=7.0.11 SMP preempt mod_unload modversions aarch64' || \
+			fail "deferred GPU module vermagic mismatch: $MODULE"
+	done
+	strings "$PANFROST_MODULE" | grep -Fqx \
+		'depends=gpu-sched,drm_shmem_helper' || \
+		fail 'deferred Panfrost dependency set changed'
+	PANFROST_ARTIFACT='drm_shmem_helper.ko gpu-sched.ko panfrost.ko'
+else
+	grep -qx 'CONFIG_DRM_PANFROST=y' "$BUILD_OUTPUT/built.config" || \
+		fail 'shipping Panfrost configuration changed'
+fi
 
 if [ -n "$INITRAMFS_ARCHIVE" ]; then
 	python3 - "$BUILD_OUTPUT/Image" "$INITRAMFS_ARCHIVE" \
@@ -277,7 +326,7 @@ fi
 (
 	cd "$BUILD_OUTPUT"
 	wc -c Image sun50i-h700-anbernic-rg34xx-sp.dtb modules.tar.xz \
-		rocknix-singleadc-joypad.ko >sizes.txt
+		rocknix-singleadc-joypad.ko $PANFROST_ARTIFACT >sizes.txt
 )
 (
 	cd "$BUILD_OUTPUT"
@@ -292,6 +341,7 @@ fi
 		System.map \
 		Module.symvers \
 		rocknix-singleadc-joypad.ko \
+		$PANFROST_ARTIFACT \
 		joypad.commit \
 		modules.list \
 		modules.tar.xz \

@@ -79,6 +79,12 @@ typedef signed long s64;
 #define MAINLINE_CONTROLS_TARGET "/mnt/run/muos/bird-controls"
 #define MAINLINE_MALI_STUB_SOURCE "/opt/bird-mainline/libmali-bird-stub.so"
 #define MAINLINE_MALI_STUB_TARGET "/mnt/run/muos/libmali-bird-stub.so"
+#define MAINLINE_DRM_SHMEM_SOURCE "/opt/bird-mainline/drm_shmem_helper.ko"
+#define MAINLINE_DRM_SHMEM_TARGET "/mnt/run/muos/drm_shmem_helper.ko"
+#define MAINLINE_GPU_SCHED_SOURCE "/opt/bird-mainline/gpu-sched.ko"
+#define MAINLINE_GPU_SCHED_TARGET "/mnt/run/muos/gpu-sched.ko"
+#define MAINLINE_PANFROST_SOURCE "/opt/bird-mainline/panfrost.ko"
+#define MAINLINE_PANFROST_TARGET "/mnt/run/muos/panfrost.ko"
 #define MAINLINE_OVERRIDE_MARKER "/mnt/run/muos/dani-mainline-overrides-v1"
 #endif
 #ifdef DANI_MAINLINE_INPUT_MODULE
@@ -548,7 +554,13 @@ static void bind_mainline_root_overrides(void) {
         !bind_root_override(MAINLINE_CONTROLS_SOURCE,
                             MAINLINE_CONTROLS_TARGET) ||
         !bind_root_override(MAINLINE_MALI_STUB_SOURCE,
-                            MAINLINE_MALI_STUB_TARGET)) {
+                            MAINLINE_MALI_STUB_TARGET) ||
+        !bind_root_override(MAINLINE_DRM_SHMEM_SOURCE,
+                            MAINLINE_DRM_SHMEM_TARGET) ||
+        !bind_root_override(MAINLINE_GPU_SCHED_SOURCE,
+                            MAINLINE_GPU_SCHED_TARGET) ||
+        !bind_root_override(MAINLINE_PANFROST_SOURCE,
+                            MAINLINE_PANFROST_TARGET)) {
         log_stage("mainline-overrides-failed");
         return;
     }

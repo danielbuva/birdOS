@@ -330,6 +330,35 @@ Two independent v4.2 initramfs builds are byte-identical. The kernel build
 again retains the shipping-identical DTB
 `f3a4273986d6e4f431b110cead8aa19e8da52ff08c64c4b204ef9664d28b5c31`.
 
+The v4.2 physical pass proved the direct standard-backlight path: brightness
+up/down worked and its `bird-controls` action markers were persisted. The
+graphics result did not change. RetroArch still rejected KMSDRM, while MPV
+decoded and advanced audio/video but produced no visible application surface.
+The remaining issue is therefore corrected at DRM registration rather than by
+another userspace card hint.
+
+V4.3 leaves the sun4i display driver built in so it registers the panel as
+`/dev/dri/card0`. Panfrost and the two helpers selected with it are exact
+matching modules. Early init only bind-preserves them into the future root;
+the existing post-first-frame S10 stage loads the two dependency-free helpers
+and Panfrost while udev replays input and sound. The launcher neither contains
+nor waits for this work. A content request performs only a bounded render-node
+readiness check, covering a selection made unusually soon after first frame.
+
+| Compatibility v4.3 artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Bird source-kernel v4.3 `Image` | 29,939,720 | `9772446def037d134761ba9b135347bb1037ff5e90a59c11a7df12a6c0fa6672` |
+| embedded Bird v4.3 cpio | 4,217,344 | `8f200dc0531691e554be4b3960b42bb634acdf8c72c7863f0e234023b8d89089` |
+| fixed `/init` | 13,592 | `29fbb6546f633b672bb4c2dbddd3e0022f814fb27868f6b7c19584224aaadb85` |
+| `drm_shmem_helper.ko` | 46,280 | `ccf22e0f100a6bb09cfba0906c5dab77ff2eb5ef38b0dc37727446e08e69d8a0` |
+| `gpu-sched.ko` | 62,440 | `f2b2cf8f52bbd92f7169a86c2337da1af967d9d5b608469f17de3fe79799a8c6` |
+| `panfrost.ko` | 152,432 | `238a5314869aa6e8d6b691c93d15e91340bfee10faa13077e329cd69a23e1991` |
+
+Two independent v4.3 initramfs builds reproduce byte-for-byte. The bootstrap
+and final builds also reproduce all three module hashes despite embedding
+different cpio inputs, proving that the preserved modules match the final
+kernel ABI. The DTB remains shipping-identical.
+
 ## Card-safe hardware gate
 
 `build-bird-prefix.sh` packages only the bytes before the existing p5 root.

@@ -236,17 +236,26 @@ boards.
   input and 2.010-second storage boundary. Runtime mounting began only after a
   selection, but a transient optional PortMaster bind failed and returned every
   request before `exec`; therefore none of the application ABI was retested.
-- [ ] [compatibility v4.2 staged; next physical gate] V4.1 proved that the
+- [x] [compatibility v4.2 physical gate; userspace card selection insufficient]
+  V4.1 proved that the
   shared preparation and application `exec` path now works, but all SDL users
   selected Panfrost's render-only DRM `card0` instead of sun4i-drm's display
   `card1`. RetroArch reported `kmsdrm not available`; MPV, PPSSPP and SDL-linked
   FRT ports stayed alive with blank output until the user exited. Pin the fixed
   display as `SDL_KMSDRM_DEVICE_INDEX=1` in the on-demand content environment.
   Persist direct controls-service discovery and action results through kmsg so
-  brightness and volume failures are observable. Test brightness up/down,
-  volume, MP3, movies plus rich controls, one RetroArch game, PSP, NDS, a native
-  port, exit-to-exact-row, power and lid suspend/wake and shutdown. Reduce the
-  full SquashFS only after this gate passes.
+  brightness and volume failures are observable. Brightness passed physically,
+  but application behavior was otherwise unchanged; SDL still failed KMSDRM
+  and decoded video remained invisible. The hint alone did not repair the
+  legacy applications' shared display path.
+- [ ] [compatibility v4.3 staged; next physical gate] Make Panfrost and its
+  exact DRM helpers modules so built-in sun4i-drm owns display `card0`. Preserve
+  the three matching modules through `switch_root`, then warm them
+  automatically in parallel with the post-frame input/sound replay. The
+  launcher never owns GPU initialization and content selection only performs a
+  bounded readiness wait for `renderD128`. Retest brightness, volume, MP3,
+  movies plus rich controls, RetroArch, PSP, NDS, a native port, exact return,
+  power/lid suspend and shutdown. Reduce the SquashFS only after this gate.
 - [ ] If the trimmed source path loses a measured race, reverse-engineer only
   the corresponding accepted-kernel path (display handoff, MMC, clocks,
   regulators or fixed delay) and port the finding into controlled source. Do
@@ -339,11 +348,11 @@ savings; it is not forgotten.
   controls and the other libudev clients have fixed direct-event replacements.
   The one-shot proof broke rich movie controls and did not terminate cleanly.
   PortMaster/network remains a deferred home-network acceptance check.
-- [ ] [source-kernel v4.2 physical gate] Prove fixed display `card1` selection
-  across MPV, RetroArch, PPSSPP and an SDL/FRT port. Prove the separate direct
-  `bird-controls` replacement for volume, Menu+volume brightness and power
-  suspend from its persistent kmsg markers. It starts after the usable menu and
-  blocks in `ppoll`; it is not part of the launcher or first-frame path.
+- [ ] [source-kernel v4.3 physical gate] Prove conventional display `card0`
+  plus asynchronously warmed Panfrost `renderD128` across MPV, RetroArch,
+  PPSSPP and an SDL/FRT port. Direct brightness passed in v4.2; prove volume and
+  power/lid suspend from the separate `bird-controls` kmsg markers. Both the
+  controls service and GPU warm-up remain post-frame and outside the launcher.
 - [ ] Move the final animation and audio to the earlier firmware layer.
 - [ ] Complete the final visual, animation and audio identity.
 - [ ] Remove superseded muOS components and produce a reproducible firmware image.

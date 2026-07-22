@@ -9,6 +9,9 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 BASE=${BASE:-$ROOT/firmware/work/direct-handoff-from-power/dani-trimmed-initramfs.cpio}
 JOYPAD_MODULE=${JOYPAD_MODULE:-$ROOT/kernel/work/rocknix-bird-kernel-v2-joypad/build/rocknix-singleadc-joypad.ko}
+DRM_SHMEM_MODULE=${DRM_SHMEM_MODULE:-}
+GPU_SCHED_MODULE=${GPU_SCHED_MODULE:-}
+PANFROST_MODULE=${PANFROST_MODULE:-}
 OUTPUT=${OUTPUT:-$ROOT/kernel/work/rocknix-bird-initramfs}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
 LLD=${LLD:-/opt/homebrew/opt/lld/bin/ld.lld}
@@ -88,6 +91,17 @@ compile_mali_stub() {
 [ -f "$JOYPAD_MODULE" ] || fail "H700 joypad module missing: $JOYPAD_MODULE"
 [ "$(shasum -a 256 "$JOYPAD_MODULE" | awk '{print $1}')" = \
 	"$JOYPAD_MODULE_SHA" ] || fail 'H700 joypad module checksum mismatch'
+for MODULE_VARIABLE in DRM_SHMEM_MODULE GPU_SCHED_MODULE PANFROST_MODULE; do
+	eval "MODULE_PATH=\${$MODULE_VARIABLE-}"
+	[ -n "$MODULE_PATH" ] || fail "$MODULE_VARIABLE is required"
+	[ -f "$MODULE_PATH" ] || fail "GPU module missing: $MODULE_PATH"
+	strings "$MODULE_PATH" | grep -Fqx \
+		'vermagic=7.0.11 SMP preempt mod_unload modversions aarch64' || \
+		fail "GPU module vermagic mismatch: $MODULE_PATH"
+done
+strings "$PANFROST_MODULE" | grep -Fqx \
+	'depends=gpu-sched,drm_shmem_helper' || \
+	fail 'Panfrost dependency set changed'
 [ -x "$CLANG" ] || fail 'LLVM clang is required'
 [ -x "$LLD" ] || fail 'LLVM lld is required'
 [ -x "$READELF" ] || fail 'llvm-readelf is required'
@@ -131,6 +145,9 @@ chmod 755 "$RAMDISK/opt/dani-launcher"
 
 cp -fp "$JOYPAD_MODULE" \
 	"$MAINLINE_OVERRIDE_DIR/rocknix-singleadc-joypad.ko"
+cp -fp "$DRM_SHMEM_MODULE" "$MAINLINE_OVERRIDE_DIR/drm_shmem_helper.ko"
+cp -fp "$GPU_SCHED_MODULE" "$MAINLINE_OVERRIDE_DIR/gpu-sched.ko"
+cp -fp "$PANFROST_MODULE" "$MAINLINE_OVERRIDE_DIR/panfrost.ko"
 cp -fp "$ROOT/kernel/rocknix/root-overrides/S10udev" \
 	"$MAINLINE_OVERRIDE_DIR/S10udev"
 cp -fp "$ROOT/kernel/rocknix/root-overrides/module.sh" \
@@ -158,9 +175,17 @@ strings "$RAMDISK/init" | grep -q 'direct-handoff-static-pid1' || \
 	fail 'direct static PID 1 handoff is missing'
 strings "$RAMDISK/init" | grep -q 'mainline-input-ready' || \
 	fail 'early H700 input load is missing'
-grep -q '^[[:space:]]*export SDL_KMSDRM_DEVICE_INDEX=1$' \
+grep -q '^[[:space:]]*export SDL_KMSDRM_DEVICE_INDEX=0$' \
 	"$MAINLINE_OVERRIDE_DIR/bird-mainline-env.sh" || \
 	fail 'fixed sun4i display-card selection is missing'
+grep -q '/run/muos/panfrost\.ko' "$MAINLINE_OVERRIDE_DIR/S10udev" || \
+	fail 'asynchronous Panfrost warm-up is missing'
+grep -q 'BIRD_MAINLINE_WAIT_GPU' \
+	"$MAINLINE_OVERRIDE_DIR/bird-mainline-env.sh" || \
+	fail 'Panfrost readiness wait is missing'
+grep -q '^[[:space:]]*export SDL_LOGGING=video=debug$' \
+	"$MAINLINE_OVERRIDE_DIR/bird-mainline-env.sh" || \
+	fail 'SDL graphics diagnostics are missing'
 strings "$MAINLINE_OVERRIDE_DIR/bird-controls" | \
 	grep -q 'bird-controls: brightness-write-failed' || \
 	fail 'persistent mainline controls diagnostics are missing'
@@ -171,6 +196,9 @@ touch -t 202601010000 \
 	"$RAMDISK/opt/dani-root-init" \
 	"$RAMDISK/opt/dani-launcher" \
 	"$MAINLINE_OVERRIDE_DIR/rocknix-singleadc-joypad.ko" \
+	"$MAINLINE_OVERRIDE_DIR/drm_shmem_helper.ko" \
+	"$MAINLINE_OVERRIDE_DIR/gpu-sched.ko" \
+	"$MAINLINE_OVERRIDE_DIR/panfrost.ko" \
 	"$MAINLINE_OVERRIDE_DIR/S10udev" \
 	"$MAINLINE_OVERRIDE_DIR/module.sh" \
 	"$MAINLINE_OVERRIDE_DIR/S03danilauncher" \
@@ -209,12 +237,21 @@ for PAYLOAD in \
 done
 grep -qx './opt/bird-mainline/rocknix-singleadc-joypad.ko' \
 	"$OUTPUT/payload.txt" || fail 'H700 joypad module missing from archive'
+grep -qx './opt/bird-mainline/drm_shmem_helper.ko' \
+	"$OUTPUT/payload.txt" || fail 'DRM shmem helper missing from archive'
+grep -qx './opt/bird-mainline/gpu-sched.ko' \
+	"$OUTPUT/payload.txt" || fail 'GPU scheduler missing from archive'
+grep -qx './opt/bird-mainline/panfrost.ko' \
+	"$OUTPUT/payload.txt" || fail 'Panfrost module missing from archive'
 
 (
 	cd "$OUTPUT"
 	wc -c bird-initramfs.cpio bird-initramfs.cpio.gz ramdisk/init \
 		ramdisk/opt/dani-root-init ramdisk/opt/dani-launcher \
 		ramdisk/opt/bird-mainline/rocknix-singleadc-joypad.ko \
+		ramdisk/opt/bird-mainline/drm_shmem_helper.ko \
+		ramdisk/opt/bird-mainline/gpu-sched.ko \
+		ramdisk/opt/bird-mainline/panfrost.ko \
 		ramdisk/opt/bird-mainline/S10udev \
 		ramdisk/opt/bird-mainline/module.sh \
 		ramdisk/opt/bird-mainline/S03danilauncher \

@@ -166,6 +166,16 @@ card-side patches.
   also writes the separate controls service's device discoveries and applied
   brightness, volume and suspend actions to the delayed persistent dmesg
   capture. Neither operation joins the launcher or first-frame dependency path.
+- The v4.2 device pass confirmed direct brightness control, but selecting
+  `card1` in userspace did not repair the shared application display path:
+  RetroArch still reported KMSDRM unavailable and MPV continued decoding into
+  an invisible software-converted surface. V4.3 fixes the topology instead.
+  Sun4i remains built in and claims display `card0`; the exact Panfrost module
+  plus its two DRM helpers are preserved across `switch_root` and warmed
+  automatically by the existing post-frame device stage. This work overlaps
+  input/sound replay after the menu is usable. Content selection only waits for
+  `renderD128` if the user gets there before warm-up finishes; it never loads
+  the GPU. One diagnostic cycle keeps SDL video and loader tracing enabled.
 - The fixed-storage path is hardware-verified. It replaces the two resident
   UnionFS-FUSE processes with kernel bind mounts from this card at the same
   `/mnt/union/ROMS` and `/mnt/union/ports` compatibility paths; diagnostics

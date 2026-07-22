@@ -7,6 +7,7 @@ BIRD_RUNTIME_IMAGE="/mnt/mmc/MUOS/runtime/ROCKNIX-SYSTEM"
 BIRD_RUNTIME_ROOT="/run/bird-rocknix"
 BIRD_COMPAT_LIB="/run/bird-mainline-lib"
 BIRD_MALI_STUB="/run/muos/libmali-bird-stub.so"
+BIRD_DRM_DIAG_MARKER="/run/muos/bird-drm-diagnosed"
 
 BIRD_MAINLINE_MOUNTED() {
 	while IFS=' ' read -r _ MOUNT_POINT _; do
@@ -20,6 +21,19 @@ BIRD_MAINLINE_LINK() {
 	LINK_TARGET=$2
 	[ -e "$LINK_TARGET" ] || return 1
 	ln -sf "$LINK_TARGET" "$BIRD_COMPAT_LIB/$LINK_NAME"
+}
+
+BIRD_MAINLINE_WAIT_GPU() {
+	# S10udev starts Panfrost automatically after Bird's first frame. A content
+	# selection made unusually early waits for that warm-up; it never owns or
+	# initiates GPU setup itself.
+	GPU_WAIT=0
+	while [ ! -e /dev/dri/renderD128 ]; do
+		GPU_WAIT=$((GPU_WAIT + 1))
+		[ "$GPU_WAIT" -lt 200 ] || return 1
+		sleep 0.01
+	done
+	printf 'mainline gpu ready: display=/dev/dri/card0 render=/dev/dri/renderD128\n'
 }
 
 BIRD_MAINLINE_REASSERT() {
@@ -41,14 +55,40 @@ BIRD_MAINLINE_REASSERT() {
 	unset LD_PRELOAD
 	export LD_LIBRARY_PATH
 	export SDL_VIDEODRIVER=kmsdrm
-	# On this fixed H700 profile card0 is Panfrost's render-only DRM node;
-	# sun4i-drm owns the panel and is enumerated as display card1.  SDL's
-	# default card0 probe therefore cannot find a connector.
-	export SDL_KMSDRM_DEVICE_INDEX=1
+	# Bird registers the fixed sun4i panel before asynchronously warming
+	# Panfrost, so the display is card0 and the later GPU supplies renderD128.
+	export SDL_KMSDRM_DEVICE_INDEX=0
+	# Keep one compatibility cycle verbose enough to expose SDL's exact device,
+	# connector, DRM-master and GBM decisions in the preserved content log.
+	export SDL_LOGGING=video=debug
 	export LIBGL_DRIVERS_PATH="$BIRD_RUNTIME_ROOT/usr/lib/dri"
 	export GBM_BACKENDS_PATH="$BIRD_RUNTIME_ROOT/usr/lib/gbm"
 	export __EGL_VENDOR_LIBRARY_FILENAMES="$BIRD_RUNTIME_ROOT/usr/share/glvnd/egl_vendor.d/50_mesa.json"
 	export MESA_LOADER_DRIVER_OVERRIDE=panfrost
+}
+
+BIRD_MAINLINE_DIAGNOSE() {
+	[ -e "$BIRD_DRM_DIAG_MARKER" ] && return 0
+	: >"$BIRD_DRM_DIAG_MARKER"
+	printf 'mainline graphics env: SDL_VIDEODRIVER=%s SDL_KMSDRM_DEVICE_INDEX=%s\n' \
+		"${SDL_VIDEODRIVER-}" "${SDL_KMSDRM_DEVICE_INDEX-}"
+	printf '%s\n' 'mainline DRM nodes:'
+	ls -l /dev/dri/card* /dev/dri/render* 2>&1 || :
+	printf '%s\n' 'mainline card0 connectors:'
+	for CONNECTOR_STATUS in /sys/class/drm/card0-*/status; do
+		[ -r "$CONNECTOR_STATUS" ] || continue
+		printf '%s=' "${CONNECTOR_STATUS%/status}"
+		cat "$CONNECTOR_STATUS"
+	done
+	if [ -x "$BIRD_RUNTIME_ROOT/usr/bin/modetest" ]; then
+		printf '%s\n' 'mainline modetest card0:'
+		"$BIRD_RUNTIME_ROOT/usr/bin/modetest" -D /dev/dri/card0 -c 2>&1 || :
+	fi
+	if command -v retroarch >/dev/null 2>&1; then
+		printf '%s\n' 'mainline RetroArch loader trace:'
+		LD_TRACE_LOADED_OBJECTS=1 retroarch 2>&1 | \
+			grep -E 'SDL|EGL|GLES|gbm|drm|mali' || :
+	fi
 }
 
 BIRD_MAINLINE_PREPARE() {
@@ -58,6 +98,10 @@ BIRD_MAINLINE_PREPARE() {
 	}
 	[ -r "$BIRD_MALI_STUB" ] || {
 		printf 'Bird Mali ABI stub missing: %s\n' "$BIRD_MALI_STUB" >&2
+		return 1
+	}
+	BIRD_MAINLINE_WAIT_GPU || {
+		printf '%s\n' 'Bird asynchronous Panfrost warm-up timed out' >&2
 		return 1
 	}
 
@@ -107,5 +151,6 @@ BIRD_MAINLINE_PREPARE() {
 	ln -sf "$BIRD_MALI_STUB" "$BIRD_COMPAT_LIB/libmali.so.0"
 
 	BIRD_MAINLINE_REASSERT
+	BIRD_MAINLINE_DIAGNOSE
 	return 0
 }

@@ -72,6 +72,34 @@ case "${1-}" in
 		}
 		mark udevd-ready
 
+		# The sun4i panel has already registered as DRM card0 before Bird's
+		# first frame. Warm Panfrost in parallel with the post-frame udev
+		# replays so applications get renderD128 without delaying the menu.
+		(
+			if [ ! -e /dev/dri/renderD128 ]; then
+				for MODULE in \
+					/run/muos/drm_shmem_helper.ko \
+					/run/muos/gpu-sched.ko \
+					/run/muos/panfrost.ko; do
+					[ -r "$MODULE" ] || exit 1
+				done
+				[ -d /sys/module/drm_shmem_helper ] || \
+					/sbin/insmod /run/muos/drm_shmem_helper.ko || exit 1
+				[ -d /sys/module/gpu_sched ] || \
+					/sbin/insmod /run/muos/gpu-sched.ko || exit 1
+				/sbin/insmod /run/muos/panfrost.ko || \
+					[ -e /dev/dri/renderD128 ] || exit 1
+			fi
+			GPU_WAIT=0
+			while [ ! -e /dev/dri/renderD128 ]; do
+				GPU_WAIT=$((GPU_WAIT + 1))
+				[ "$GPU_WAIT" -lt 200 ] || exit 1
+				sleep 0.01
+			done
+		) &
+		PANFROST_PID=$!
+		mark panfrost-warmup-dispatched
+
 		udevadm trigger --type=devices --subsystem-match=input --action=add || {
 			echo 'FAIL (input replay)'
 			exit 1
@@ -82,13 +110,23 @@ case "${1-}" in
 			exit 1
 		}
 		mark sound-replay-complete
+		wait "$PANFROST_PID" || {
+			echo 'FAIL (asynchronous Panfrost warm-up)'
+			exit 1
+		}
+		mark panfrost-ready
+		udevadm trigger --type=devices --subsystem-match=drm --action=add || {
+			echo 'FAIL (DRM replay)'
+			exit 1
+		}
+		mark drm-replay-complete
 		udevadm settle --timeout=5 || {
 			echo 'FAIL (minimal settle)'
 			exit 1
 		}
 		mark minimal-settle-complete
 
-		for NODE in /dev/dri/card0 /dev/dri/renderD128; do
+		for NODE in /dev/dri/card0 /dev/dri/card1 /dev/dri/renderD128; do
 			[ -e "$NODE" ] && chmod 0666 "$NODE"
 		done
 		[ -e /dev/rtc0 ] && ln -sf rtc0 /dev/rtc
