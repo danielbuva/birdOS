@@ -419,6 +419,48 @@ Two clean v4.5 initramfs builds reproduce exactly. The full source gate again
 passes with the shipping-identical RG34XX-SP DTB and unchanged deferred GPU
 modules.
 
+The physical v4.5 run reached the native ROCKNIX RetroArch 1.22.2 executable,
+loaded the requested core and Stella content, and then failed with
+`kmsdrm not available` / `Cannot open video driver`. MPV decoded content, but
+the visible and input behavior was still not the required experience. This is
+the final hybrid result: replacing only the executable while retaining muOS
+wrappers, configuration, cores, paths and policy does not create a coherent
+application environment.
+
+## Bird clean-root v5.0
+
+V5.0 removes the mixed root rather than adding another compatibility shim.
+Bird remains on the initramfs as the permanent root and never mounts p5 during
+a successful boot. Its static launcher and direct H700 input are the visible
+critical path. After the input-ready marker, an independent post-frame script
+mounts p6, warms the exact Panfrost modules, mounts the checksum-pinned ROCKNIX
+SYSTEM image read-only and publishes runtime readiness. A separate fixed input
+service owns global brightness, volume and suspend policy.
+
+Content launches through a narrow four-line request. Native RetroArch, MPV,
+libretro cores, configuration baseline, dynamic loader and libraries all come
+from the same runtime. Bird contributes only its fixed core mapping, save paths,
+input policy and return contract. No muOS wrapper, application, core,
+configuration or shared library is used. ROCKNIX is therefore a native
+application/runtime provider and kernel source, not the booted operating
+system.
+
+| Bird clean-root v5.0 | Bytes | SHA-256 |
+| --- | ---: | --- |
+| source-built Linux `Image` | 29,874,184 | `b585d2b59ffd735e16cfefe1fcafeaf4d2d56831d0d4bd937819a87440a4be64` |
+| embedded clean-root cpio | 4,193,792 | `4b5a6e2c5b029b808b672d13107f0cf98801349adaf03c2b082edc6a1caedd2d` |
+| fixed first init | 5,432 | embedded in cpio |
+| fixed permanent PID 1 | 5,112 | embedded in cpio |
+| static launcher | 623,064 | embedded in cpio |
+| separate controls service | 5,240 | embedded in cpio |
+
+Two clean cpio builds are byte-identical. The full kernel build passes the
+pinned Linux 7.0.11 source/patch/config gate, contains that exact cpio, retains
+the shipping-identical DTB and uses byte-identical H700 input and deferred GPU
+modules. The guarded updater changes only p1 `KERNEL`; p5 is untouched and the
+v4.5 kernel is copied to p6 recovery. The first physical v5.0 gate is pending.
+Ports/OpenBOR and PortMaster are deliberately outside this first proof.
+
 ## Card-safe hardware gate
 
 `build-bird-prefix.sh` packages only the bytes before the existing p5 root.

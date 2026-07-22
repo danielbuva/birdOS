@@ -1,8 +1,10 @@
 # Dani's fixed RG34XX-SP operating system
 
-This repository contains the host-side sources and installation hooks used to
-profile and convert muOS 2601.1 into a fixed-purpose RG34XX-SP operating
-system. muOS is now the compatibility foundation, not the product boundary.
+This repository contains the host-side sources and installation hooks that
+began by profiling and converting muOS 2601.1 into a fixed-purpose RG34XX-SP
+operating system. The current clean-root candidate no longer boots muOS: Bird
+is the permanent initramfs root, while a pinned, read-only ROCKNIX image supplies
+native applications and their matching libraries after the menu is usable.
 
 The governing priority is: boot latency, interaction latency, battery
 efficiency, memory efficiency, then exact user features. Generality is a cost,
@@ -51,25 +53,36 @@ must serve this one device and this one experience.
   or the source kernel's DRM, sound or storage devices. V4 retained the fast
   path (frame visible at 1.400 seconds, correct input at 1.553 and storage at
   2.010) but its optional PortMaster policy bind aborted every selected item
-  before application `exec`. V4.1 removes that shared pre-exec failure and is
-  staged for the next physical content gate.
+  before application `exec`. Later compatibility candidates reached native
+  RetroArch and MPV, but their mixture of muOS launch policy, configuration,
+  cores and libraries with newer applications remained incoherent. V4.5
+  finally proved the boundary: native RetroArch loaded content, then failed its
+  SDL KMSDRM context while MPV decoded without restoring the required user
+  experience. That hybrid route is closed.
+- Bird clean-root v5.0 is staged for its first hardware gate. It never mounts
+  or switches into p5 on the successful path. The launcher, fixed PID 1,
+  post-frame storage/GPU preparation and global controls live in the embedded
+  root; native RetroArch, MPV, libretro cores and their libraries all come from
+  one checksum-pinned ROCKNIX runtime mounted read-only after first frame.
 
-The boot image now starts the launcher from initramfs after mounting the fixed
-root but before `switch_root`. The launcher and its input descriptors survive
-the handoff, while the later root startup sees the existing supervisor and does
-not start a duplicate. The generic initramfs shell is now replaced by a
-6,424-byte static fixed-device init, with the verified shell retained as
-`/init.stock`. The remaining root BusyBox PID 1 is also replaced by a
-hardware-verified 5,128-byte blocking static init; BusyBox remains available
-only as feature-triggered applets and as the automatic root-init fallback.
-The accepted first init now performs the successful `switch_root` sequence by
-direct system calls as well, so BusyBox is no longer PID 1 in either normal
-boot phase.
+The accepted vendor-root checkpoint started the launcher from initramfs after
+mounting p5 and carried it across `switch_root`. Clean-root v5.0 removes that
+handoff: the initramfs is Bird's permanent root. A 5,432-byte static first init
+starts the launcher, then becomes a 5,112-byte static permanent PID 1 after the
+input-ready frame. BusyBox remains an interpreter and utility provider for
+post-frame scripts and explicit recovery; it is not PID 1 or a prerequisite for
+the usable menu. The verified old shell remains `/init.stock` for deliberate
+recovery builds while this hardware gate is open.
 The long-term target is a reproducible fixed-device image, not a collection of
 card-side patches.
 
 ## Current changes
 
+- The active experiment is clean-root v5.0. Bird owns boot, UI, launch policy,
+  storage timing and global controls. It does not import a muOS wrapper,
+  executable, core, configuration or shared library. ROCKNIX is an immutable
+  application/runtime provider and the source of the open kernel/driver chain,
+  not Bird's userspace or frontend.
 - Early ROM mount.
 - Frontend/audio readiness gate removed. The session-warm stage is verified:
   menu input was ready at 2.11 seconds, audio started at 3.97, D-Bus completed
@@ -90,13 +103,13 @@ card-side patches.
 - The custom launcher supervisor loads the network only around PortMaster.
 - The fixed launcher starts before udev, renders directly to both framebuffer
   pages, and reads the built-in evdev device without SDL or joystick services.
-- The staged early-root proof starts it before `rcS`; duplicate-start protection
+- The historical early-root proof started it before `rcS`; duplicate-start protection
   lets the existing sysinit entry remain as a fallback during hardware testing.
 - The boot-image candidate is hardware-verified with sub-four-second stopwatch
   results. It embeds the freestanding executable in initramfs, starts it after
   the fixed root mount, and crosses `switch_root` only after the interactive
   frame.
-- The active boot image hardcodes the exact SD root and mount sequence in a
+- The accepted vendor-root image hardcoded the exact SD root and mount sequence in a
   freestanding C `/init`. Its full 64 MiB image rebuilds byte-for-byte and is
   hardware-verified with no recovery activation.
 - A two-byte U-Boot package change is installed and raw-verified, making
@@ -138,7 +151,7 @@ card-side patches.
   resident minimal bridge is restored; it remains fully outside and after the
   interactive launcher. PortMaster/network remains a deferred check at the
   configured home network.
-- Source-kernel compatibility v4.1 keeps that post-frame udev bridge separate
+- Historical source-kernel compatibility v4.1 kept that post-frame udev bridge separate
   from the launcher and adds no work to the interactive-menu path. Only after
   a content selection, the supervisor mounts a checksum-pinned ROCKNIX
   SquashFS read-only and exposes the narrow SDL2 KMSDRM plus Mesa/Panfrost ABI
@@ -201,7 +214,7 @@ card-side patches.
 - Fixed WirePlumber overrides now disable camera, V4L2, MIDI, Bluetooth and
   logind discovery while retaining ALSA and normal policy/routing. Their full
   functionality test passed.
-- The current card batch replaces the remaining generic root startup
+- The accepted vendor-root batch replaced the remaining generic root startup
   coordinator with a fixed RG34XX-SP script. It removes factory-reset,
   first-boot, HDMI and alternate-board branches, dispatches only the proven
   device/storage/audio workers and starts global hotkeys before storage binding
@@ -243,8 +256,8 @@ card-side patches.
   `da5549e1cdad5b9f445f4634dacc0254fd468148182175a06b43346dc1dddbc7`.
   Hardware acceptance passed the launcher, controls, content and shutdown;
   diagnostics recorded both direct-handoff and clean-root-skip markers.
-- Kernel specialization has begun from evidence, not a generic defconfig. The
-  active 17,686,536-byte Linux 4.9.170 `Image` contains its complete 4,209-line
+- Kernel specialization began from evidence, not a generic defconfig. The
+  vendor-oracle 17,686,536-byte Linux 4.9.170 `Image` contains its complete 4,209-line
   config, now extracted and checksum-pinned. A case-sensitive amd64 Linux build
   environment uses the closest public Orange Pi `sun50iw9` lineage and exact
   Linaro GCC 5.3.1 release. That public tree is not the complete downstream
@@ -275,8 +288,9 @@ card-side patches.
   traces identify U-Boot's separate raw-50 DTB value as the actual handoff owner.
 
 The cached-module test reported `cached`, and the complete post-change
-functionality test passed. The optimized-stock checkpoint remains in Git; the
-active card now boots the custom launcher as its normal frontend.
+functionality test passed. The optimized-stock checkpoint remains in Git. The
+card currently contains the experimental clean-root v5.0 kernel for its first
+physical application-boundary test; the v4.5 kernel is preserved on p6.
 
 ## Font payload
 

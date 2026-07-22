@@ -38,9 +38,15 @@ typedef signed long s64;
 #define REBOOT_HALT 0xcdef0123UL
 #define REBOOT_POWER_OFF 0x4321fedcUL
 
+#ifdef DANI_CLEAN_ROOT
+#define ROOT_INIT_MARKER "/run/bird/clean-root-v1"
+#define SYSINIT_SCRIPT "/opt/bird/post-frame.sh"
+#define SHUTDOWN_SCRIPT "/opt/bird/shutdown.sh"
+#else
 #define ROOT_INIT_MARKER "/run/muos/dani-root-init-active"
 #define SYSINIT_SCRIPT "/opt/muos/script/init/sysinit"
 #define SHUTDOWN_SCRIPT "/opt/muos/script/init/shutdown"
+#endif
 
 struct timespec {
     s64 sec;
@@ -273,7 +279,11 @@ static int setup_exact_root(void) {
     replace_symlink("/proc/self/fd/0", "/dev/stdin");
     replace_symlink("/proc/self/fd/1", "/dev/stdout");
     replace_symlink("/proc/self/fd/2", "/dev/stderr");
+#ifdef DANI_CLEAN_ROOT
+    if (sys_sethostname("bird", 4) < 0) return -1;
+#else
     if (sys_sethostname("muos", 4) < 0) return -1;
+#endif
     if (create_marker(ROOT_INIT_MARKER) < 0) return -1;
     return 0;
 }

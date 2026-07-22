@@ -32,12 +32,16 @@ typedef signed long s64;
 #define VOLUME_NAME "gpio-keys-volume"
 #define POWER_NAME "axp20x-pek"
 #define KMSG_DEVICE "/dev/kmsg"
+#define BRIGHT_RAW_MAX "/sys/class/backlight/backlight/max_brightness"
+#define BRIGHT_RAW_CURRENT "/sys/class/backlight/backlight/brightness"
 
+#ifdef DANI_CLEAN_ROOT
+#define VOLUME_SCRIPT "/opt/bird/volume.sh"
+#define SUSPEND_SCRIPT "/opt/bird/suspend.sh"
+#else
 #define BRIGHT_CURRENT "/opt/muos/config/settings/general/brightness"
 #define BRIGHT_INCREMENT "/opt/muos/config/settings/advanced/incbright"
 #define BRIGHT_DEVICE_MAX "/opt/muos/device/config/screen/bright"
-#define BRIGHT_RAW_MAX "/sys/class/backlight/backlight/max_brightness"
-#define BRIGHT_RAW_CURRENT "/sys/class/backlight/backlight/brightness"
 #define VOLUME_CURRENT "/opt/muos/config/settings/general/volume"
 #define VOLUME_INCREMENT "/opt/muos/config/settings/advanced/incvolume"
 #define VOLUME_MIN "/opt/muos/device/config/audio/min"
@@ -46,6 +50,7 @@ typedef signed long s64;
 #define AUDIO_SOCKET "/run/pipewire-0"
 #define AUDIO_SCRIPT "/opt/muos/script/device/audio.sh"
 #define SUSPEND_SCRIPT "/opt/muos/script/system/suspend.sh"
+#endif
 
 struct timespec {
     s64 sec;
@@ -81,6 +86,9 @@ static char *const fixed_env[] = {
 };
 
 static int kmsg_fd = -1;
+#ifdef DANI_CLEAN_ROOT
+static int clean_brightness = -1;
+#endif
 
 static long syscall6(long number, long a0, long a1, long a2, long a3, long a4,
                      long a5) {
@@ -242,6 +250,20 @@ static int clamp(int value, int minimum, int maximum) {
 }
 
 static int adjust_brightness(int direction) {
+#ifdef DANI_CLEAN_ROOT
+    int raw_max = read_integer(BRIGHT_RAW_MAX, 255);
+    int raw_current = read_integer(BRIGHT_RAW_CURRENT, 1);
+    int raw;
+
+    if (raw_max <= 0) raw_max = 255;
+    if (clean_brightness < 0)
+        clean_brightness = clamp((raw_current * 100 + raw_max / 2) / raw_max,
+                                 1, 100);
+    clean_brightness = clamp(clean_brightness + direction * 5, 1, 100);
+    raw = (clean_brightness * raw_max + 50) / 100;
+    if (raw < 1) raw = 1;
+    return write_integer(BRIGHT_RAW_CURRENT, raw);
+#else
     int current = read_integer(BRIGHT_CURRENT, 1);
     int increment = read_integer(BRIGHT_INCREMENT, 16);
     int device_max = read_integer(BRIGHT_DEVICE_MAX, 255);
@@ -258,6 +280,7 @@ static int adjust_brightness(int direction) {
     if (!write_integer(BRIGHT_RAW_CURRENT, raw)) return 0;
     write_integer(BRIGHT_CURRENT, level);
     return 1;
+#endif
 }
 
 static int run_action(const char *path, const char *argument) {
@@ -280,6 +303,9 @@ static int run_action(const char *path, const char *argument) {
 }
 
 static int adjust_volume(int direction) {
+#ifdef DANI_CLEAN_ROOT
+    return run_action(VOLUME_SCRIPT, direction > 0 ? "U" : "D") == 0;
+#else
     int current = read_integer(VOLUME_CURRENT, 45);
     int increment = read_integer(VOLUME_INCREMENT, 8);
     int minimum = read_integer(VOLUME_MIN, 0);
@@ -294,6 +320,7 @@ static int adjust_volume(int direction) {
     return write_integer(
         VOLUME_CURRENT,
         clamp(current + direction * increment, minimum, maximum));
+#endif
 }
 
 static void event_path(char *path, int index) {

@@ -43,8 +43,14 @@ typedef signed long s64;
 #define ROOT_MOUNT "/mnt"
 #define LAUNCHER_SOURCE "/opt/dani-launcher"
 #define LAUNCHER_TARGET "/mnt/opt/muos/bin/dani-launcher"
+#ifdef DANI_CLEAN_ROOT
+#define ROOT_SUPERVISOR "/opt/bird/supervisor.sh"
+#define CLEAN_ROOT_INIT "/opt/dani-root-init"
+#define READY_MARKER "/run/muos/dani-first-frame-ready"
+#else
 #define ROOT_SUPERVISOR "/opt/muos/script/init/S03danilauncher"
 #define READY_MARKER "/mnt/run/muos/dani-first-frame-ready"
+#endif
 #define FIXED_INIT_MARKER "/mnt/run/muos/dani-fixed-initramfs-v1"
 #define TRIMMED_INIT_MARKER "/mnt/run/muos/dani-trimmed-initramfs-v1"
 #define DIRECT_HANDOFF_MARKER "/mnt/run/muos/dani-direct-handoff-v1"
@@ -90,7 +96,11 @@ typedef signed long s64;
 #define MAINLINE_OVERRIDE_MARKER "/mnt/run/muos/dani-mainline-overrides-v1"
 #endif
 #ifdef DANI_MAINLINE_INPUT_MODULE
+#ifdef DANI_CLEAN_ROOT
+#define MAINLINE_INPUT_SOURCE "/opt/bird/rocknix-singleadc-joypad.ko"
+#else
 #define MAINLINE_INPUT_SOURCE "/opt/bird-mainline/rocknix-singleadc-joypad.ko"
+#endif
 #endif
 
 struct timespec {
@@ -498,6 +508,39 @@ static int start_launcher_supervisor(void) {
     return status;
 }
 
+#ifdef DANI_CLEAN_ROOT
+static int prepare_clean_root(void) {
+    make_dir("/run", 0755);
+    make_dir("/tmp", 01777);
+    make_dir("/mnt", 0755);
+    make_dir("/mnt/mmc", 0755);
+    if (sys_mount("tmpfs", "/run", "tmpfs", MS_NOSUID | MS_NODEV,
+                  "mode=0755") < 0)
+        return -1;
+    if (sys_mount("tmpfs", "/tmp", "tmpfs", 0, "mode=1777") < 0)
+        return -1;
+    make_dir("/run/muos", 0755);
+    make_dir("/run/bird", 0755);
+    log_stage("clean-root-ready");
+    return 0;
+}
+
+static int start_clean_supervisor(void) {
+    char *const argv[] = {ROOT_SUPERVISOR, "start", 0};
+    int status = run_child(ROOT_SUPERVISOR, argv);
+    log_stage("clean-supervisor-dispatched");
+    return status;
+}
+
+__attribute__((noreturn)) static void handoff_clean_root_init(void) {
+    char *const argv[] = {CLEAN_ROOT_INIT, 0};
+    log_stage("clean-root-pid1");
+    sys_execve(CLEAN_ROOT_INIT, argv, fixed_env);
+    log_stage("clean-root-pid1-exec-failed");
+    for (;;) sys_nanosleep(1000000000L);
+}
+#endif
+
 #ifdef DANI_STATIC_ROOT_INIT
 static void bind_static_root_init(void) {
     long target_fd;
@@ -716,6 +759,31 @@ __attribute__((noreturn)) static void handoff_root_init(void) {
 }
 
 static void application(void) {
+#ifdef DANI_CLEAN_ROOT
+    int supervisor_status;
+    long watchdog_pid = start_boot_watchdog();
+
+    if (sys_mount("proc", "/proc", "proc", 0, 0) < 0)
+        stock_init_fallback("mount-proc");
+    if (sys_mount("sysfs", "/sys", "sysfs", 0, 0) < 0)
+        stock_init_fallback("mount-sys");
+    if (sys_mount("none", "/dev", "devtmpfs", 0, 0) < 0)
+        stock_init_fallback("mount-dev");
+    attach_console();
+    log_stage("clean-start");
+    if (prepare_clean_root() < 0)
+        stock_init_fallback("clean-root-setup");
+#ifdef DANI_MAINLINE_INPUT_MODULE
+    load_mainline_input_module();
+#endif
+    supervisor_status = start_clean_supervisor();
+    log_text("fixed-init clean_supervisor_wait_status=");
+    log_number((u64)(unsigned int)supervisor_status);
+    log_text("\n");
+    if (supervisor_status >= 0 && wait_for_first_frame())
+        cancel_boot_watchdog(watchdog_pid);
+    handoff_clean_root_init();
+#else
     int root_status;
     int supervisor_status;
     long watchdog_pid = start_boot_watchdog();
@@ -759,6 +827,7 @@ static void application(void) {
     if (supervisor_status >= 0 && wait_for_first_frame())
         cancel_boot_watchdog(watchdog_pid);
     handoff_root_init();
+#endif
 }
 
 __attribute__((noreturn, visibility("default"))) void _start(void) {

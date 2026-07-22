@@ -80,14 +80,17 @@ application and move everything unrelated to an interactive menu behind it.
 - [x] Remove the next set of redundant fixed-startup work: per-boot
   immutable policy/geometry writes, obsolete update-file cleanup, zero-swap
   probing and the unnecessary squashfs module request.
-- [ ] Bake changes into the image and remove the card-side development
-  user-init delivery path.
+- [ ] [clean-root v5.0 staged; hardware gate pending] Bake changes into the
+  image and remove the card-side development user-init delivery path. The new
+  successful path is entirely embedded and does not enter p5; after physical
+  acceptance, delete the retained recovery-only muOS partition and obsolete
+  migration payloads from the reproducible image.
 
 ### Layer 2 — early userspace and init
 
 Replace generic startup with a minimal fixed-device init. The static launcher
-now draws before `switch_root`; next, replace each generic init layer while
-keeping the verified menu-first boundary.
+first proved that it could draw before `switch_root`; clean-root v5.0 now
+removes the handoff entirely while keeping the verified menu-first boundary.
 
 - [x] Build and hardware-test a minimal fixed init with a stock-init recovery
   route.
@@ -122,6 +125,11 @@ keeping the verified menu-first boundary.
   with an ordinary first-frame marker at 1.98 seconds.
 - [x] Produce a byte-reproducible boot-image candidate containing this early
   path.
+- [ ] [clean-root v5.0 staged] Prove Bird as the permanent root. The static
+  launcher becomes usable first; storage, Panfrost, the immutable application
+  runtime and global controls start independently afterward. The success path
+  never mounts or switches into the old p5 root, and the application boundary
+  no longer mixes muOS wrappers/configuration/cores with ROCKNIX binaries.
 
 ### Layer 3 — fixed RG34XX-SP kernel
 
@@ -342,17 +350,25 @@ savings; it is not forgotten.
 - [x] Remove the RGB call and dispatch the interactive launcher before entropy,
   storage mounting and diagnostic observers.
 - [x] Remove the proof animation and chime from the active critical-UI path.
-- [ ] [minimal replay verified; daemon removal deferred] Replace the all-device
+- [x] [historical vendor-root bridge; superseded by clean root] Replace the all-device
   replay with input/sound-only metadata while Mali loads concurrently. Keep
   udevd resident outside and after the launcher until MPV's `gptokeyb2`/SDL
   controls and the other libudev clients have fixed direct-event replacements.
   The one-shot proof broke rich movie controls and did not terminate cleanly.
-  PortMaster/network remains a deferred home-network acceptance check.
-- [ ] [source-kernel v4.3 physical gate] Prove conventional display `card0`
+  PortMaster/network remains a deferred home-network acceptance check. Clean
+  root removes this muOS compatibility requirement instead of extending it.
+- [x] [hybrid application route rejected after v4.5] Prove conventional display `card0`
   plus asynchronously warmed Panfrost `renderD128` across MPV, RetroArch,
   PPSSPP and an SDL/FRT port. Direct brightness passed in v4.2; prove volume and
   power/lid suspend from the separate `bird-controls` kmsg markers. Both the
   controls service and GPU warm-up remain post-frame and outside the launcher.
+  The kernel/DRM topology passed; native RetroArch still failed when combined
+  with muOS policy and assets, so the clean-root candidate now pairs each
+  application with its own native configuration, cores and libraries.
+- [ ] [clean-root v5.0 first hardware gate] Verify menu/input, a simple native
+  libretro title and return, direct brightness/volume, native MPV and shutdown.
+  Ports, OpenBOR, PortMaster networking and final media controls follow only
+  after this coherent application boundary passes.
 - [ ] Move the final animation and audio to the earlier firmware layer.
 - [ ] Complete the final visual, animation and audio identity.
 - [ ] Remove superseded muOS components and produce a reproducible firmware image.
