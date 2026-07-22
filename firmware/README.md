@@ -438,6 +438,15 @@ and made this diagnostic channel invalid. Exact-hash external recovery again
 restored and reread accepted partition 4, and both failed candidate installers
 are disabled.
 
+Those failures belonged to the hybrid vendor-Android handoff, not to the
+source kernel itself. The later exact ROCKNIX DDR4 chain booted, and the first
+Bird-enabled source kernel reached its frame at 1.547 seconds. Compatibility v2
+is now staged by `mac-update-rocknix-bird-compat-v2.sh`; it updates only the
+mounted BIRD p1 payload and leaves the customized root and data partitions
+untouched. It prevents fbcon from reclaiming the display, discovers the
+mainline H700 input by name, and replaces the root's obsolete `mali_kbase`
+startup request with a separate post-frame mainline device bridge.
+
 Future kernel experiments must not replace the sole normal boot target.
 `stage-one-shot-boot-state-capture.sh` first stages a read-only collector for
 the exact active 32 MiB FAT boot-resource partition and 16 MiB U-Boot

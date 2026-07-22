@@ -34,15 +34,21 @@ typedef signed long s64;
 #define BTN_SOUTH 304
 #define BTN_EAST 305
 #define BUTTON_Y 306
-#define BTN_TL 308
-#define BTN_TR 309
+#define BTN_WEST 308
+#define MUOS_BTN_TL 308
+#define MUOS_BTN_TR 309
+#define H700_BTN_TL 310
+#define H700_BTN_TR 311
+#define BTN_DPAD_UP 544
+#define BTN_DPAD_DOWN 545
+#define BTN_DPAD_LEFT 546
+#define BTN_DPAD_RIGHT 547
 #define ABS_HAT0X 16
 #define ABS_HAT0Y 17
 #define POLLIN 0x0001
 
 #define CLOCK_BOOTTIME 7
 #define DEVICE_WAIT_MS 5000UL
-#define INPUT_PATH "/dev/input/event1"
 #define ROM_ROOT "/mnt/mmc/ROMS"
 #define LAUNCH_REQUEST "/run/muos/dani-launch-request"
 #define UI_RESUME_PATH "/run/muos/dani-launcher-ui-resume"
@@ -160,6 +166,8 @@ static struct fb_fix_screeninfo fb_fix;
 static volatile u8 *fb;
 static int fb_fd = -1;
 static int input_fd = -1;
+static int h700_input;
+static char input_path[] = "/dev/input/event0";
 static u32 view;
 static u32 selection;
 static u32 active_system;
@@ -287,6 +295,14 @@ static u64 string_length(const char *text) {
     u64 length = 0;
     while (text[length]) length++;
     return length;
+}
+
+static int string_equal(const char *left, const char *right) {
+    while (*left && *left == *right) {
+        left++;
+        right++;
+    }
+    return *left == *right;
 }
 
 static void log_text(const char *text) {
@@ -1088,17 +1104,32 @@ static int handle_back(void) {
 
 static int handle_event(const struct input_event *event) {
     if (event->type == EV_KEY && event->value == 1) {
-        if (event->code == BTN_SOUTH) {
+        u16 select_button = h700_input ? BTN_EAST : BTN_SOUTH;
+        u16 back_button = h700_input ? BTN_SOUTH : BTN_EAST;
+        u16 favorite_button = h700_input ? BTN_WEST : BUTTON_Y;
+        u16 page_up_button = h700_input ? H700_BTN_TL : MUOS_BTN_TL;
+        u16 page_down_button = h700_input ? H700_BTN_TR : MUOS_BTN_TR;
+
+        if (event->code == select_button) {
             return select_current();
         }
-        if (event->code == BTN_EAST) return handle_back();
-        if ((view == VIEW_GAMES || view == VIEW_FAVORITES) && event->code == BUTTON_Y) {
+        if (event->code == back_button) return handle_back();
+        if (h700_input && (event->code == BTN_DPAD_UP ||
+                           event->code == BTN_DPAD_LEFT)) {
+            return handle_direction(-1);
+        }
+        if (h700_input && (event->code == BTN_DPAD_DOWN ||
+                           event->code == BTN_DPAD_RIGHT)) {
+            return handle_direction(1);
+        }
+        if ((view == VIEW_GAMES || view == VIEW_FAVORITES) &&
+            event->code == favorite_button) {
             toggle_current_favorite();
             return 0;
         }
         if ((view == VIEW_SYSTEMS || view == VIEW_GAMES || view == VIEW_FAVORITES ||
              view == VIEW_MEDIA_CATEGORIES || view == VIEW_MEDIA_ENTRIES) &&
-            event->code == BTN_TL) {
+            event->code == page_up_button) {
             move_selection(-1,
                            view == VIEW_SYSTEMS || view == VIEW_MEDIA_CATEGORIES
                                ? SYSTEM_ROWS
@@ -1107,7 +1138,7 @@ static int handle_event(const struct input_event *event) {
         }
         if ((view == VIEW_SYSTEMS || view == VIEW_GAMES || view == VIEW_FAVORITES ||
              view == VIEW_MEDIA_CATEGORIES || view == VIEW_MEDIA_ENTRIES) &&
-            event->code == BTN_TR) {
+            event->code == page_down_button) {
             move_selection(1,
                            view == VIEW_SYSTEMS || view == VIEW_MEDIA_CATEGORIES
                                ? SYSTEM_ROWS
@@ -1151,22 +1182,42 @@ static void probe_storage(void) {
 static int open_fixed_input(void) {
     char name[128];
     u64 deadline = boot_ms() + DEVICE_WAIT_MS;
+    int index;
 
     while (boot_ms() < deadline) {
-        input_fd = (int)sys_open(INPUT_PATH, O_RDONLY | O_NONBLOCK);
-        if (input_fd >= 0) break;
+        for (index = 0; index < 8; index++) {
+            input_path[16] = (char)('0' + index);
+            input_fd = (int)sys_open(input_path, O_RDONLY | O_NONBLOCK);
+            if (input_fd < 0) continue;
+
+            name[0] = 0;
+            sys_ioctl(input_fd, EVIOCGNAME_128, name);
+            name[127] = 0;
+            if (string_equal(name, "muOS-Keys")) {
+                h700_input = 0;
+                goto found;
+            }
+            if (string_equal(name, "H700 Gamepad")) {
+                h700_input = 1;
+                goto found;
+            }
+            sys_close(input_fd);
+            input_fd = -1;
+        }
         sys_nanosleep(1000000L);
     }
     if (input_fd < 0) {
-        log_text("error wait " INPUT_PATH "\n");
+        log_text("error wait fixed RG34XX-SP input\n");
         return -1;
     }
 
-    name[0] = 0;
-    sys_ioctl(input_fd, EVIOCGNAME_128, name);
-    name[127] = 0;
-    log_text("input " INPUT_PATH " name=");
+found:
+    log_text("input ");
+    log_text(input_path);
+    log_text(" name=");
     log_text(name[0] ? name : "unknown");
+    log_text(" map=");
+    log_text(h700_input ? "mainline-h700" : "vendor-muos");
     log_text(" ready_boot_ms=");
     log_number(boot_ms());
     log_text("\n");

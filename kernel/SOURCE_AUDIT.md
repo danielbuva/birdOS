@@ -76,3 +76,26 @@ negative evidence against that hybrid handoff. The exact shipping chain is now
 pinned under [`rocknix/`](rocknix/); its unmodified hardware proof precedes a
 new source rebuild. The full first-build result remains in
 [`mainline/BUILD_AUDIT.md`](mainline/BUILD_AUDIT.md).
+
+## Why clean 4.9.170 remains a fallback
+
+Nothing prevents Bird from extending vanilla Linux 4.9.170 with new
+RG34XX-SP-specific code. ROCKNIX is also a valuable public reference for the
+required panel sequence, device-tree topology, gamepad mapping, PMIC behavior,
+audio graph and suspend path. The difficulty is not permission or conceptual
+feasibility; it is the backport boundary. ROCKNIX's implementations target
+modern DRM, regulator, clock, input, audio and power-management APIs. Copying
+them into 4.9 usually requires translating those APIs and their dependencies,
+then validating the interactions the unpublished vendor tree previously
+handled.
+
+The physically tested 7.0.11 route has already crossed the stronger gate: the
+exact public boot chain reached Bird's first frame at 1.547 seconds, mounted
+the customized root and suspended/woke. Its first failures are narrow
+4.9-oriented userspace assumptions, not missing early hardware support.
+Therefore the current order is to finish that source-kernel compatibility
+matrix, trim it for this single device, and compare it against the accepted
+vendor kernel. A targeted 4.9 backport remains justified if the modern path
+later loses a measured latency, power or compatibility race; ROCKNIX and the
+accepted kernel traces would then serve as behavioral references rather than
+code copied without adaptation.

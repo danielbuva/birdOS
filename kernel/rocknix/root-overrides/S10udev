@@ -1,0 +1,99 @@
+#!/bin/sh
+# Minimal mainline compatibility bridge after Bird is already interactive.
+
+STAGES=/tmp/muos/mainline-udev.tsv
+
+mkdir -p /tmp/muos
+printf 'uptime_s\tevent\n' >"$STAGES"
+
+mark() {
+	IFS=' ' read -r NOW _ </proc/uptime
+	printf '%s\t%s\n' "$NOW" "$1" >>"$STAGES"
+}
+
+collect_hardware() {
+	(
+		COUNT=0
+		while [ ! -d /mnt/mmc/MUOS ] && [ "$COUNT" -lt 200 ]; do
+			COUNT=$((COUNT + 1))
+			sleep 0.05
+		done
+		[ -d /mnt/mmc/MUOS ] || exit 0
+
+		BOOT_ID=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null)
+		[ -n "$BOOT_ID" ] || BOOT_ID=unknown
+		OUT=/mnt/mmc/MUOS/log/source-kernel/$BOOT_ID
+		mkdir -p "$OUT"
+		cp -f "$STAGES" "$OUT/udev.tsv"
+		uname -a >"$OUT/uname.txt"
+		cat /proc/cmdline >"$OUT/cmdline.txt"
+		cat /proc/bus/input/devices >"$OUT/input-devices.txt"
+		cat /proc/asound/cards >"$OUT/asound-cards.txt" 2>/dev/null || :
+		cat /proc/fb >"$OUT/framebuffers.txt" 2>/dev/null || :
+		cat /proc/mounts >"$OUT/mounts.txt"
+		dmesg >"$OUT/dmesg.txt"
+		{
+			for EVENT in /sys/class/input/event*; do
+				[ -e "$EVENT" ] || continue
+				printf '%s\t' "${EVENT##*/}"
+				cat "$EVENT/device/name" 2>/dev/null || printf 'unknown\n'
+			done
+		} >"$OUT/input-names.tsv"
+		{
+			ls -l /dev/input 2>/dev/null || :
+			ls -l /dev/dri 2>/dev/null || :
+			find /sys/class/backlight /sys/class/drm -maxdepth 2 \
+				\( -type f -o -type l \) 2>/dev/null || :
+		} >"$OUT/device-nodes.txt"
+	) >/dev/null 2>&1 &
+}
+
+case "${1-}" in
+	start)
+		printf 'Applying fixed mainline input/sound compatibility: '
+		mark mainline-udev-start
+		[ -e /proc/sys/kernel/hotplug ] && \
+			printf '\000\000\000\000' >/proc/sys/kernel/hotplug
+
+		/sbin/udevd -d || {
+			echo 'FAIL (udevd)'
+			exit 1
+		}
+		mark udevd-ready
+
+		udevadm trigger --type=devices --subsystem-match=input --action=add || {
+			echo 'FAIL (input replay)'
+			exit 1
+		}
+		mark input-replay-complete
+		udevadm trigger --type=devices --subsystem-match=sound --action=add || {
+			echo 'FAIL (sound replay)'
+			exit 1
+		}
+		mark sound-replay-complete
+		udevadm settle --timeout=5 || {
+			echo 'FAIL (minimal settle)'
+			exit 1
+		}
+		mark minimal-settle-complete
+
+		for NODE in /dev/dri/card0 /dev/dri/renderD128; do
+			[ -e "$NODE" ] && chmod 0666 "$NODE"
+		done
+		[ -e /dev/rtc0 ] && ln -sf rtc0 /dev/rtc
+		mark mainline-udev-complete
+		collect_hardware
+		echo 'done'
+		;;
+	stop)
+		udevadm control --stop-exec-queue 2>/dev/null || :
+		killall udevd 2>/dev/null || :
+		mark mainline-udev-stopped
+		;;
+	*)
+		printf 'Usage: %s {start|stop}\n' "$0" >&2
+		exit 1
+		;;
+esac
+
+exit 0

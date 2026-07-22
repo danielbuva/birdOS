@@ -185,20 +185,29 @@ boards.
   volume and application launch; its immutable payloads remained exact after
   the test. The roughly 24-second stopwatch result belongs to generic ROCKNIX
   userspace and is not a Bird comparison. Substitute Bird one layer at a time.
-- [x] [offline gate complete; physical test pending] Rebuild the exact
+- [x] [offline and first physical localization gates complete] Rebuild the exact
   stable-tag source baseline, then replace only its generic initramfs/system
   handoff with Bird's fixed init and launcher. The exact 30-patch order,
   shipping broad config and byte-identical v1 DTB are pinned. The embedded Bird
   cpio is byte-verified and protected by a 20-second first-frame watchdog. A
   deterministic 156 MiB candidate preserves the proven DDR4 U-Boot/TF-A and
   ends exactly where the existing root begins; checksum-gated install and
-  prefix-only recovery commands are ready. Do not trim until it reaches an
-  input-ready frame and the complete compatibility matrix passes on hardware.
-- [ ] [next physical gate] Install the untrimmed Bird/source-kernel prefix and
-  test repeated cold boot, immediate launcher input, display/brightness,
+  prefix-only recovery commands are ready. On hardware, Linux mounted the root
+  and Bird drew its first frame at 1.547 seconds. The later framebuffer console
+  reclaimed the screen, the launcher selected the wrong event node, and the
+  old root requested vendor-only `mali_kbase`; those are localized userspace
+  compatibility failures, not a failure to boot the source kernel.
+- [ ] [compatibility v2 staged; next physical gate] Retest the untrimmed
+  Bird/source-kernel candidate. V2 keeps the launcher independent, discovers
+  the fixed `H700 Gamepad` event by name, applies its mainline key map, prevents
+  fbcon from owning the internal panel, and binds a post-frame mainline
+  compatibility bridge that does not request `mali_kbase`. It also persists
+  input, audio, framebuffer, DRM, mount and dmesg evidence after p6 appears.
+  Test repeated cold boot, immediate launcher input, display/brightness,
   system volume, game launch/return and in-game controls, MP3, complete movie
   controls, favorites persistence and shutdown. Record power-to-input timing,
-  but treat functionality—not speed—as this gate's pass condition.
+  but treat functionality—not speed—as this gate's pass condition. Do not trim
+  the broad kernel until this matrix passes.
 - [ ] If the trimmed source path loses a measured race, reverse-engineer only
   the corresponding accepted-kernel path (display handoff, MMC, clocks,
   regulators or fixed delay) and port the finding into controlled source. Do

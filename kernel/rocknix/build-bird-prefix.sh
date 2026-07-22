@@ -7,13 +7,13 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 BOOT_PREFIX=${BOOT_PREFIX:-/Users/dani/rocknix-reference-result/boot-prefix-16m.bin}
-KERNEL_BUILD=${KERNEL_BUILD:-$ROOT/kernel/work/rocknix-bird-kernel/build}
-OUTPUT=${OUTPUT:-$ROOT/kernel/work/rocknix-bird-prefix}
+KERNEL_BUILD=${KERNEL_BUILD:-$ROOT/kernel/work/rocknix-bird-kernel-compat-v2/build}
+OUTPUT=${OUTPUT:-$ROOT/kernel/work/rocknix-bird-prefix-compat-v2}
 GDD=${GDD:-/opt/homebrew/bin/gdd}
 GTRUNCATE=${GTRUNCATE:-/opt/homebrew/bin/gtruncate}
 
 BOOT_PREFIX_SHA=3d06e243e26bd1a06d585fa35e53912b5742f62ca180135308740719883d65d2
-KERNEL_SHA=f93cdd0008f9dae05be9192d9360fd097213cb377163d3d19cd58624c4bd5c31
+KERNEL_SHA=0fa4d5d2d30423302bb83be86761465799b21f0fda396544e09c3e700789f597
 DTB_SHA=f3a4273986d6e4f431b110cead8aa19e8da52ff08c64c4b204ef9664d28b5c31
 FAT_BYTES=134217728
 FAT_OFFSET=16777216

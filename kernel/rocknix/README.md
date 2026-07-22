@@ -141,7 +141,7 @@ The build identity is fixed as `bird@rg34xxsp`, build number 1 and
 inputs. Two clean Bird-enabled builds now produce byte-identical kernel Images
 and module archives.
 
-## Bird substitution candidate
+## First Bird substitution candidate
 
 `build-bird-initramfs.sh` reconstructs the accepted direct-handoff archive
 from its pinned inputs. It contains the 9,648-byte first init, 5,128-byte root
@@ -162,6 +162,54 @@ Building the untrimmed kernel with that archive produces:
 The builder scans the resulting kernel and proves that the embedded archive
 decompresses byte-for-byte to the input cpio. It also builds the complete
 module set even though this first gate deliberately retains shipping breadth.
+
+## First Bird physical result and compatibility v2
+
+The first candidate booted the exact public chain and reached the following
+observable boundaries on the physical RG34XX-SP:
+
+| Boundary | Kernel boot time |
+| --- | ---: |
+| fixed init begins | 1.277 s |
+| root mounted | 1.399 s |
+| launcher supervisor dispatched | 1.523 s |
+| Bird first frame ready | 1.547 s |
+| permanent-root event loop | 3.815 s |
+
+The menu painted, but the later framebuffer console overwrote it. Suspend and
+wake worked, while input reached the console as escape sequences; the launcher
+had opened its vendor-era fixed `/dev/input/event1` rather than the mainline
+`H700 Gamepad`. The old root also printed its missing `FBCON_DISABLE` helper and
+failed a request for vendor-only `mali_kbase`. Mainline Panfrost is built in and
+correctly exposes DRM instead of `/dev/mali0`.
+
+Compatibility v2 changes only these localized boundaries:
+
+- extlinux retains the serial console but maps fbcon away from the only
+  framebuffer, so no virtual terminal can reclaim Bird's panel;
+- Bird scans the bounded event0--event7 set by device name, accepts either the
+  vendor `muOS-Keys` or mainline `H700 Gamepad`, and uses the corresponding
+  fixed button map;
+- fixed init bind-mounts a separate post-frame mainline udev/device bridge and
+  a built-in-Panfrost module no-op over the 4.9-oriented root scripts;
+- the bridge persists dmesg, input names/capabilities, ALSA, framebuffer, DRM,
+  backlight, nodes and mounts after the data partition becomes available.
+
+Two clean v2 builds are byte-identical:
+
+| Artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Bird source-kernel v2 `Image` | 29,943,816 | `0fa4d5d2d30423302bb83be86761465799b21f0fda396544e09c3e700789f597` |
+| embedded Bird v2 cpio | 3,886,080 | `75a24651e70f3e2a24df32e6d99bca24aedcf08b6ebf2b4c4bfc862c1bb33e88` |
+| v2 launcher | 622,720 | `ab82e90a822c2baa4402829be3dba8cb9db71761b970e7dbab689bf4d7f0c85e` |
+| RG34XX-SP DTB | 49,010 | `f3a4273986d6e4f431b110cead8aa19e8da52ff08c64c4b204ef9664d28b5c31` |
+
+`firmware/mac-update-rocknix-bird-compat-v2.sh` accepts only the verified
+p1/p5/p6 layout and old/new candidate hashes. It updates only the mounted p1
+kernel and extlinux file, leaving the customized p5 root and p6 library
+untouched. V2 is currently staged on the card and awaits the next physical
+functionality gate. The independently reproduced complete v2 prefix has
+SHA-256 `b9828838e6197efa9108365493275a4ebc246c2e24725b7c852d650d42bbfb38`.
 
 ## Card-safe hardware gate
 
@@ -202,10 +250,11 @@ fixed p5/p6 offsets, write only 156 MiB, and reread the raw prefix before
 reporting success. The installer also refuses unless the card's current raw
 prefix still matches the local accepted recovery oracle.
 
-This image remains an untested hardware candidate. Its first physical gate is:
-interactive Bird frame and controls, brightness/volume, game launch/return,
-MP3, full movie controls, favorites persistence, shutdown and repeated cold
-boots. Only after those pass do kernel trimming and timing comparisons begin.
+The first image completed the boot/display localization gate but not the
+functionality gate. Compatibility v2 must now retain Bird ownership and pass
+controls, brightness/volume, game launch/return, MP3, full movie controls,
+favorites persistence, suspend/wake, shutdown and repeated cold boots. Only
+after those pass do kernel trimming and timing comparisons begin.
 
 ## Fetch
 

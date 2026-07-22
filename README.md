@@ -32,9 +32,12 @@ must serve this one device and this one experience.
   at 2.06 seconds, system-ready at 4.24 and audio ready at 6.02.
 - The exact ROCKNIX stable source chain now rebuilds offline with its executed
   30-patch order and shipping broad configuration. Its RG34XX-SP DTB is
-  byte-identical to the physically accepted release. Bird's accepted init and
-  launcher are embedded and byte-verified in an untrimmed 7.0.11 kernel, but
-  this candidate has not yet been put on hardware and has no timing claim.
+  byte-identical to the physically accepted release. The first Bird-enabled
+  untrimmed 7.0.11 candidate reached a drawn frame at 1.547 seconds and mounted
+  the customized root. Its remaining failure was localized to framebuffer
+  console ownership, a hardcoded vendor input-event number and the old root's
+  `mali_kbase` request. A byte-reproducible v2 correcting those three boundaries
+  is staged on the card; it is not yet a functionality or promotion pass.
 
 The boot image now starts the launcher from initramfs after mounting the fixed
 root but before `switch_root`. The launcher and its input descriptors survive

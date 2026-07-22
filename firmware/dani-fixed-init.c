@@ -60,6 +60,13 @@ typedef signed long s64;
 #define ROOT_INIT_SOURCE "/opt/dani-root-init"
 #define ROOT_INIT_TARGET "/mnt/sbin/dani-root-init"
 #endif
+#ifdef DANI_MAINLINE_ROOT_OVERRIDES
+#define MAINLINE_UDEV_SOURCE "/opt/bird-mainline/S10udev"
+#define MAINLINE_UDEV_TARGET "/mnt/opt/muos/script/init/S10udev"
+#define MAINLINE_MODULE_SOURCE "/opt/bird-mainline/module.sh"
+#define MAINLINE_MODULE_TARGET "/mnt/opt/muos/script/device/module.sh"
+#define MAINLINE_OVERRIDE_MARKER "/mnt/run/muos/dani-mainline-overrides-v1"
+#endif
 
 struct timespec {
     s64 sec;
@@ -490,6 +497,28 @@ static void bind_static_root_init(void) {
 }
 #endif
 
+#ifdef DANI_MAINLINE_ROOT_OVERRIDES
+static int bind_root_override(const char *source, const char *target) {
+    long target_fd;
+
+    if (!path_exists(source)) return 0;
+    target_fd = sys_open(target, O_WRONLY | O_CREAT | O_CLOEXEC, 0755);
+    if (target_fd < 0) return 0;
+    sys_close((int)target_fd);
+    return sys_mount(source, target, 0, MS_BIND, 0) == 0;
+}
+
+static void bind_mainline_root_overrides(void) {
+    if (!bind_root_override(MAINLINE_UDEV_SOURCE, MAINLINE_UDEV_TARGET) ||
+        !bind_root_override(MAINLINE_MODULE_SOURCE, MAINLINE_MODULE_TARGET)) {
+        log_stage("mainline-overrides-failed");
+        return;
+    }
+    create_marker(MAINLINE_OVERRIDE_MARKER);
+    log_stage("mainline-overrides-bound");
+}
+#endif
+
 static int wait_for_first_frame(void) {
     int count;
     for (count = 0; count < 500; count++) {
@@ -642,6 +671,9 @@ static void application(void) {
 
 #ifdef DANI_STATIC_ROOT_INIT
     bind_static_root_init();
+#endif
+#ifdef DANI_MAINLINE_ROOT_OVERRIDES
+    bind_mainline_root_overrides();
 #endif
 
     supervisor_status = start_launcher_supervisor();

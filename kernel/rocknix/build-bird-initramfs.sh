@@ -13,7 +13,7 @@ LLD=${LLD:-/opt/homebrew/opt/lld/bin/ld.lld}
 READELF=${READELF:-/opt/homebrew/opt/llvm/bin/llvm-readelf}
 
 BASE_SHA=6db265a4adc75093799f3b2211b4298d001546854c3faa5015e9c0459be60cba
-LAUNCHER_SHA=14090f149284fd938a5844a16a50676fa24695c56850d2d2d914f65f95a20512
+LAUNCHER_SHA=ab82e90a822c2baa4402829be3dba8cb9db71761b970e7dbab689bf4d7f0c85e
 WATCHDOG_SECONDS=20
 
 fail() {
@@ -65,6 +65,7 @@ CPIO="$OUTPUT/bird-initramfs.cpio"
 GZIP="$OUTPUT/bird-initramfs.cpio.gz"
 FIRST_OBJECT="$OUTPUT/bird-fixed-init.o"
 ROOT_OBJECT="$OUTPUT/bird-root-init.o"
+MAINLINE_OVERRIDE_DIR="$RAMDISK/opt/bird-mainline"
 
 mkdir -p "$RAMDISK"
 (
@@ -75,12 +76,21 @@ mkdir -p "$RAMDISK"
 compile_static "$ROOT/firmware/dani-fixed-init.c" "$FIRST_OBJECT" \
 	"$RAMDISK/init" \
 	-DDANI_STATIC_ROOT_INIT=1 \
+	-DDANI_MAINLINE_ROOT_OVERRIDES=1 \
 	-DDANI_BOOT_TIMEOUT_SECONDS="$WATCHDOG_SECONDS"
 compile_static "$ROOT/firmware/dani-root-init.c" "$ROOT_OBJECT" \
 	"$RAMDISK/opt/dani-root-init"
 "$LLD" -static --build-id=none -z noexecstack -s -e _start \
 	-o "$RAMDISK/opt/dani-launcher" "$ROOT/launcher/dani-launcher.o"
 chmod 755 "$RAMDISK/opt/dani-launcher"
+
+mkdir -p "$MAINLINE_OVERRIDE_DIR"
+cp -fp "$ROOT/kernel/rocknix/root-overrides/S10udev" \
+	"$MAINLINE_OVERRIDE_DIR/S10udev"
+cp -fp "$ROOT/kernel/rocknix/root-overrides/module.sh" \
+	"$MAINLINE_OVERRIDE_DIR/module.sh"
+chmod 755 "$MAINLINE_OVERRIDE_DIR/S10udev" \
+	"$MAINLINE_OVERRIDE_DIR/module.sh"
 
 [ "$(shasum -a 256 "$RAMDISK/opt/dani-launcher" | awk '{print $1}')" = \
 	"$LAUNCHER_SHA" ] || fail 'launcher no longer reproduces accepted executable'
@@ -93,7 +103,9 @@ find "$RAMDISK" -type d -exec touch -t 202601010000 {} +
 touch -t 202601010000 \
 	"$RAMDISK/init" \
 	"$RAMDISK/opt/dani-root-init" \
-	"$RAMDISK/opt/dani-launcher"
+	"$RAMDISK/opt/dani-launcher" \
+	"$MAINLINE_OVERRIDE_DIR/S10udev" \
+	"$MAINLINE_OVERRIDE_DIR/module.sh"
 (
 	cd "$RAMDISK"
 	find . -print | LC_ALL=C sort | cpio -o --format newc --owner 0:0 \
@@ -108,9 +120,14 @@ grep -qx './opt/dani-launcher' "$OUTPUT/payload.txt" || \
 	fail 'launcher missing from archive'
 grep -qx './opt/dani-root-init' "$OUTPUT/payload.txt" || \
 	fail 'root PID 1 missing from archive'
+grep -qx './opt/bird-mainline/S10udev' "$OUTPUT/payload.txt" || \
+	fail 'mainline udev override missing from archive'
+grep -qx './opt/bird-mainline/module.sh' "$OUTPUT/payload.txt" || \
+	fail 'mainline module override missing from archive'
 
 wc -c "$CPIO" "$GZIP" "$RAMDISK/init" \
 	"$RAMDISK/opt/dani-root-init" "$RAMDISK/opt/dani-launcher" \
+	"$MAINLINE_OVERRIDE_DIR/S10udev" "$MAINLINE_OVERRIDE_DIR/module.sh" \
 	>"$OUTPUT/sizes.txt"
 (
 	cd "$OUTPUT"
@@ -120,6 +137,8 @@ wc -c "$CPIO" "$GZIP" "$RAMDISK/init" \
 		ramdisk/init \
 		ramdisk/opt/dani-root-init \
 		ramdisk/opt/dani-launcher \
+		ramdisk/opt/bird-mainline/S10udev \
+		ramdisk/opt/bird-mainline/module.sh \
 		payload.txt \
 		sizes.txt >sha256sums.txt
 )
