@@ -28,6 +28,13 @@ case "${COMPAT_PROFILE:-v4.2}" in
 		NEW_KERNEL_SHA=9772446def037d134761ba9b135347bb1037ff5e90a59c11a7df12a6c0fa6672
 		NEXT_TEST='brightness, volume, MP3, movie, RetroArch, PSP, a port and suspend/wake'
 		;;
+	v4.4)
+		RELEASE=v4.4
+		DEFAULT_KERNEL="$ROOT/kernel/work/rocknix-bird-kernel-compat-v4-4-diag-deploy/build/Image"
+		OLD_KERNEL_SHA=9772446def037d134761ba9b135347bb1037ff5e90a59c11a7df12a6c0fa6672
+		NEW_KERNEL_SHA=cc8fa96a90cd95cfca57cac514415755c70284b102fe102bd82ad107bdaba2f8
+		NEXT_TEST='boot, menu controls, brightness, and one RetroArch game to capture the exact graphics handoff'
+		;;
 	*)
 		printf 'error: unknown compatibility profile: %s\n' \
 			"$COMPAT_PROFILE" >&2

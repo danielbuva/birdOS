@@ -7,6 +7,7 @@ BIRD_RUNTIME_IMAGE="/mnt/mmc/MUOS/runtime/ROCKNIX-SYSTEM"
 BIRD_RUNTIME_ROOT="/run/bird-rocknix"
 BIRD_COMPAT_LIB="/run/bird-mainline-lib"
 BIRD_MALI_STUB="/run/muos/libmali-bird-stub.so"
+BIRD_GRAPHICS_PROBE="/run/muos/bird-graphics-probe"
 BIRD_DRM_DIAG_MARKER="/run/muos/bird-drm-diagnosed"
 
 BIRD_MAINLINE_MOUNTED() {
@@ -67,9 +68,7 @@ BIRD_MAINLINE_REASSERT() {
 	export MESA_LOADER_DRIVER_OVERRIDE=panfrost
 }
 
-BIRD_MAINLINE_DIAGNOSE() {
-	[ -e "$BIRD_DRM_DIAG_MARKER" ] && return 0
-	: >"$BIRD_DRM_DIAG_MARKER"
+BIRD_MAINLINE_DIAGNOSE_BODY() {
 	printf 'mainline graphics env: SDL_VIDEODRIVER=%s SDL_KMSDRM_DEVICE_INDEX=%s\n' \
 		"${SDL_VIDEODRIVER-}" "${SDL_KMSDRM_DEVICE_INDEX-}"
 	printf '%s\n' 'mainline DRM nodes:'
@@ -88,6 +87,44 @@ BIRD_MAINLINE_DIAGNOSE() {
 		printf '%s\n' 'mainline RetroArch loader trace:'
 		LD_TRACE_LOADED_OBJECTS=1 retroarch 2>&1 | \
 			grep -E 'SDL|EGL|GLES|gbm|drm|mali' || :
+	fi
+	printf '%s\n' 'mainline DRM process owners:'
+	for PROCESS in /proc/[0-9]*; do
+		[ -r "$PROCESS/comm" ] || continue
+		for PROCESS_FD in "$PROCESS"/fd/*; do
+			[ -e "$PROCESS_FD" ] || continue
+			PROCESS_TARGET=$(readlink "$PROCESS_FD" 2>/dev/null) || continue
+			case "$PROCESS_TARGET" in
+			/dev/dri/*)
+				printf 'pid=%s comm=' "${PROCESS##*/}"
+				cat "$PROCESS/comm"
+				printf ' fd=%s target=%s\n' "${PROCESS_FD##*/}" \
+					"$PROCESS_TARGET"
+				;;
+			esac
+		done
+	done
+	if [ -x "$BIRD_GRAPHICS_PROBE" ]; then
+		printf '%s\n' 'mainline exact graphics probe:'
+		"$BIRD_GRAPHICS_PROBE" 2>&1 || :
+	else
+		printf 'mainline graphics probe missing: %s\n' \
+			"$BIRD_GRAPHICS_PROBE"
+	fi
+}
+
+BIRD_MAINLINE_DIAGNOSE() {
+	[ -e "$BIRD_DRM_DIAG_MARKER" ] && return 0
+	: >"$BIRD_DRM_DIAG_MARKER"
+	BOOT_ID=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null)
+	[ -n "$BOOT_ID" ] || BOOT_ID=unknown
+	DIAG_DIRECTORY="/mnt/mmc/MUOS/log/source-kernel/$BOOT_ID"
+	DIAG_OUTPUT="$DIAG_DIRECTORY/content-graphics.txt"
+	if mkdir -p "$DIAG_DIRECTORY"; then
+		BIRD_MAINLINE_DIAGNOSE_BODY >"$DIAG_OUTPUT" 2>&1
+		cat "$DIAG_OUTPUT"
+	else
+		BIRD_MAINLINE_DIAGNOSE_BODY
 	fi
 }
 

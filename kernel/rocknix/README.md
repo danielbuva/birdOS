@@ -359,6 +359,37 @@ and final builds also reproduce all three module hashes despite embedding
 different cpio inputs, proving that the preserved modules match the final
 kernel ABI. The DTB remains shipping-identical.
 
+The physical v4.3 result proves that topology and ordering. Sun4i registered
+the DSI/HDMI display as `card0` at 0.904 seconds and retained `fb0`; Panfrost
+then registered as render-only `card1` plus `renderD128` at 3.68--3.98 seconds.
+Bird's usable input frame remained at 1.78 seconds or earlier, so none of that
+GPU warm-up returned to the visible path. Application behavior did not change:
+RetroArch still loaded its core and content, then reported `kmsdrm not
+available`, selected a null GL context and rejected the video driver. This
+localizes the next failure above kernel registration, in the selected
+SDL/library/DRM-master handoff.
+
+V4.4 retains the physically proven kernel topology and adds no boot service.
+A 67,600-byte diagnostic executable is bind-preserved from the initramfs but
+remains dormant until the first content request, after Bird has released the
+framebuffer. In the exact compatibility environment it reports the loaded SDL
+and libdrm paths, available SDL video backends, KMS resource counts, direct
+`drmSetMaster`/authentication results, dynamic GBM/EGL loading and any process
+that already has a DRM node open. Its output is written directly to the
+boot-ID-specific p6 source-kernel log before the application is launched.
+
+| Compatibility v4.4 diagnostic | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Bird source-kernel v4.4 `Image` | 29,939,720 | `cc8fa96a90cd95cfca57cac514415755c70284b102fe102bd82ad107bdaba2f8` |
+| embedded Bird v4.4 cpio | 4,286,464 | `59479b1225dfe20b2e3612f5ebc05fbaf2c9cd749b22ad488a68596b55871683` |
+| fixed `/init` | 13,688 | `d1b87c0bb289d5eafb9d2f1044f3a3a42e235cd79995a9ca609861961ac4918b` |
+| `bird-graphics-probe` | 67,600 | `be77ada538fa916ebec4b9503faec5d7c02f7d0276d735f1355924f64a2b6190` |
+
+Two clean v4.4 initramfs builds reproduce both the cpio and probe exactly. The
+probe needs only GLIBC 2.34; the preserved muOS RetroArch already needs GLIBC
+2.38. The full source gate passes with the shipping-identical DTB and unchanged
+deferred Panfrost modules.
+
 ## Card-safe hardware gate
 
 `build-bird-prefix.sh` packages only the bytes before the existing p5 root.

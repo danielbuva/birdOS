@@ -77,6 +77,8 @@ typedef signed long s64;
 #define MAINLINE_BRIGHT_TARGET "/mnt/opt/muos/script/device/bright.sh"
 #define MAINLINE_CONTROLS_SOURCE "/opt/bird-mainline/bird-controls"
 #define MAINLINE_CONTROLS_TARGET "/mnt/run/muos/bird-controls"
+#define MAINLINE_GRAPHICS_PROBE_SOURCE "/opt/bird-mainline/bird-graphics-probe"
+#define MAINLINE_GRAPHICS_PROBE_TARGET "/mnt/run/muos/bird-graphics-probe"
 #define MAINLINE_MALI_STUB_SOURCE "/opt/bird-mainline/libmali-bird-stub.so"
 #define MAINLINE_MALI_STUB_TARGET "/mnt/run/muos/libmali-bird-stub.so"
 #define MAINLINE_DRM_SHMEM_SOURCE "/opt/bird-mainline/drm_shmem_helper.ko"
@@ -553,6 +555,8 @@ static void bind_mainline_root_overrides(void) {
         !bind_root_override(MAINLINE_BRIGHT_SOURCE, MAINLINE_BRIGHT_TARGET) ||
         !bind_root_override(MAINLINE_CONTROLS_SOURCE,
                             MAINLINE_CONTROLS_TARGET) ||
+        !bind_root_override(MAINLINE_GRAPHICS_PROBE_SOURCE,
+                            MAINLINE_GRAPHICS_PROBE_TARGET) ||
         !bind_root_override(MAINLINE_MALI_STUB_SOURCE,
                             MAINLINE_MALI_STUB_TARGET) ||
         !bind_root_override(MAINLINE_DRM_SHMEM_SOURCE,

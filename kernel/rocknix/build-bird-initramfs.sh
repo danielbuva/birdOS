@@ -16,6 +16,7 @@ OUTPUT=${OUTPUT:-$ROOT/kernel/work/rocknix-bird-initramfs}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
 LLD=${LLD:-/opt/homebrew/opt/lld/bin/ld.lld}
 READELF=${READELF:-/opt/homebrew/opt/llvm/bin/llvm-readelf}
+PROBE_IMAGE=${PROBE_IMAGE:-dani-rg34xxsp-kernel-build:7.0.11}
 
 BASE_SHA=6db265a4adc75093799f3b2211b4298d001546854c3faa5015e9c0459be60cba
 LAUNCHER_SHA=840ab4cfd967f18687e624a3dd916ea6cb852a23db84f554d81e1b7c2bcecf2c
@@ -85,6 +86,30 @@ compile_mali_stub() {
 		fail 'Mali compatibility stub SONAME is missing'
 }
 
+compile_graphics_probe() {
+	SOURCE=$1
+	TARGET=$2
+	TARGET_DIR=${TARGET%/*}
+	TARGET_NAME=${TARGET##*/}
+	docker run --rm --platform linux/arm64 \
+		-v "$SOURCE:/src/bird-graphics-probe.c:ro" \
+		-v "$TARGET_DIR:/out" \
+		"$PROBE_IMAGE" sh -eu -c '
+			umask 022
+			gcc -O2 -fno-ident -fno-stack-protector \
+				-Wall -Wextra -Werror -Wl,--build-id=none \
+				/src/bird-graphics-probe.c -ldl \
+				-o "/out/$1"
+			strip -s "/out/$1"
+	' sh "$TARGET_NAME"
+	chmod 755 "$TARGET"
+	file "$TARGET" | grep -q 'ARM aarch64.*dynamically linked' ||
+		fail "not a dynamic AArch64 executable: $TARGET"
+	"$READELF" -l "$TARGET" | \
+		grep -q 'Requesting program interpreter: /lib/ld-linux-aarch64.so.1' ||
+		fail 'graphics probe has an unexpected program interpreter'
+}
+
 [ -f "$BASE" ] || fail "accepted Bird initramfs missing: $BASE"
 [ "$(shasum -a 256 "$BASE" | awk '{print $1}')" = "$BASE_SHA" ] ||
 	fail 'accepted Bird initramfs checksum mismatch'
@@ -105,6 +130,7 @@ strings "$PANFROST_MODULE" | grep -Fqx \
 [ -x "$CLANG" ] || fail 'LLVM clang is required'
 [ -x "$LLD" ] || fail 'LLVM lld is required'
 [ -x "$READELF" ] || fail 'llvm-readelf is required'
+command -v docker >/dev/null 2>&1 || fail 'Docker is required'
 [ ! -e "$OUTPUT" ] || fail "output already exists: $OUTPUT"
 
 RAMDISK="$OUTPUT/ramdisk"
@@ -139,6 +165,9 @@ compile_static \
 	"$ROOT/kernel/rocknix/root-overrides/bird-controls.c" \
 	"$CONTROLS_OBJECT" \
 	"$MAINLINE_OVERRIDE_DIR/bird-controls"
+compile_graphics_probe \
+	"$ROOT/kernel/rocknix/root-overrides/bird-graphics-probe.c" \
+	"$MAINLINE_OVERRIDE_DIR/bird-graphics-probe"
 "$LLD" -static --build-id=none -z noexecstack -s -e _start \
 	-o "$RAMDISK/opt/dani-launcher" "$ROOT/launcher/dani-launcher.o"
 chmod 755 "$RAMDISK/opt/dani-launcher"
@@ -165,7 +194,8 @@ chmod 755 "$MAINLINE_OVERRIDE_DIR/S10udev" \
 	"$MAINLINE_OVERRIDE_DIR/S03danilauncher" \
 	"$MAINLINE_OVERRIDE_DIR/bird-mainline-env.sh" \
 	"$MAINLINE_OVERRIDE_DIR/func-mainline.sh" \
-	"$MAINLINE_OVERRIDE_DIR/bright-mainline.sh"
+	"$MAINLINE_OVERRIDE_DIR/bright-mainline.sh" \
+	"$MAINLINE_OVERRIDE_DIR/bird-graphics-probe"
 
 [ "$(shasum -a 256 "$RAMDISK/opt/dani-launcher" | awk '{print $1}')" = \
 	"$LAUNCHER_SHA" ] || fail 'launcher no longer reproduces pinned executable'
@@ -189,6 +219,9 @@ grep -q '^[[:space:]]*export SDL_LOGGING=video=debug$' \
 strings "$MAINLINE_OVERRIDE_DIR/bird-controls" | \
 	grep -q 'bird-controls: brightness-write-failed' || \
 	fail 'persistent mainline controls diagnostics are missing'
+strings "$MAINLINE_OVERRIDE_DIR/bird-graphics-probe" | \
+	grep -q 'bird graphics probe v1' || \
+	fail 'exact graphics probe diagnostics are missing'
 
 find "$RAMDISK" -type d -exec touch -t 202601010000 {} +
 touch -t 202601010000 \
@@ -206,6 +239,7 @@ touch -t 202601010000 \
 	"$MAINLINE_OVERRIDE_DIR/func-mainline.sh" \
 	"$MAINLINE_OVERRIDE_DIR/bright-mainline.sh" \
 	"$MAINLINE_OVERRIDE_DIR/bird-controls" \
+	"$MAINLINE_OVERRIDE_DIR/bird-graphics-probe" \
 	"$MAINLINE_OVERRIDE_DIR/libmali-bird-stub.so"
 (
 	cd "$RAMDISK"
@@ -231,6 +265,7 @@ for PAYLOAD in \
 	func-mainline.sh \
 	bright-mainline.sh \
 	bird-controls \
+	bird-graphics-probe \
 	libmali-bird-stub.so; do
 	grep -qx "./opt/bird-mainline/$PAYLOAD" "$OUTPUT/payload.txt" || \
 		fail "mainline compatibility payload missing: $PAYLOAD"
@@ -259,6 +294,7 @@ grep -qx './opt/bird-mainline/panfrost.ko' \
 		ramdisk/opt/bird-mainline/func-mainline.sh \
 		ramdisk/opt/bird-mainline/bright-mainline.sh \
 		ramdisk/opt/bird-mainline/bird-controls \
+		ramdisk/opt/bird-mainline/bird-graphics-probe \
 		ramdisk/opt/bird-mainline/libmali-bird-stub.so >sizes.txt
 )
 (
@@ -277,6 +313,7 @@ grep -qx './opt/bird-mainline/panfrost.ko' \
 		ramdisk/opt/bird-mainline/func-mainline.sh \
 		ramdisk/opt/bird-mainline/bright-mainline.sh \
 		ramdisk/opt/bird-mainline/bird-controls \
+		ramdisk/opt/bird-mainline/bird-graphics-probe \
 		ramdisk/opt/bird-mainline/libmali-bird-stub.so \
 		payload.txt \
 		sizes.txt >sha256sums.txt
