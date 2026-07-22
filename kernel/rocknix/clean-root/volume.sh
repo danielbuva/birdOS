@@ -10,4 +10,4 @@ case "${1-}" in
 esac
 
 /usr/sbin/chroot /run/bird-runtime /usr/bin/amixer -q -c 0 \
-	sset DAC "$CHANGE"
+	sset "Line Out" "$CHANGE"

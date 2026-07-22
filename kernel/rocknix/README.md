@@ -502,8 +502,51 @@ byte-identical. The build audit re-extracted the exact input archive from the
 kernel, retained the shipping-identical 49,010-byte DTB and reproduced the
 same H700 and deferred Panfrost modules. The guarded v5.1 updater accepts only
 v5.0 or v5.1 on this exact removable card, preserves v5.0 on p6 and changes
-only p1 `KERNEL`. Its native game/movie/MP3 hardware gate is pending.
-Ports/OpenBOR and PortMaster remain deliberately outside this proof.
+only p1 `KERNEL`. Its physical gate passed menu input, brightness, application
+entry and Bird's exit contract. Atari, FBNeo and Flycast all ran in slow motion
+and without audio; every RetroArch log named Mesa `softpipe`, while ALSA
+accepted the requested direct format and failed only when writing. MPV decoded
+and accepted its controls but did not advance normally until a seek/play event,
+and SDL trigger events repeated a speed change without a matching release.
+Those results localize the defects to post-frame graphics, audio and media
+policy rather than Bird's permanent-root architecture.
+
+## Bird clean-root v5.2
+
+V5.2 corrects the measured v5.1 session defects without changing the
+input-ready path:
+
+- delete the forced `panfrost` loader override so Mesa's native sun4i KMSRO
+  driver pairs display `card0` with Panfrost `renderD128`;
+- inherit the native H700 threaded-video policy and core-options file;
+- initialize the one fixed H616 DAC, stereo Line Out and RG34XX-SP speaker
+  route after the menu, without UCM, PipeWire or an audio daemon;
+- retain the already-proven direct `hw:0,0` endpoint and move user volume from
+  the fixed DAC level to `Line Out`;
+- remove MPV's unreliable SDL trigger-speed bindings;
+- replace the fixed 150 ms content-exit sleep with bounded 10 ms readiness
+  polling, allowing up to one second before a forced kill; and
+- create the fixed core scratch, screenshot and native core-options paths and
+  disable the unused GameMode client attempt.
+
+| Bird clean-root v5.2 | Bytes | SHA-256 |
+| --- | ---: | --- |
+| source-built Linux `Image` | 29,939,720 | `bb7e320b084a5b643f9c8015ff8986f7fd81a86a7aa76b0789ec3fc9f517646a` |
+| embedded clean-root cpio | 4,200,960 | `936d3f9408b822e042670dd3538ccac3a80ca593022fe3d0fe9af39f3fc681c7` |
+| fixed first init | 5,432 | embedded in cpio |
+| fixed permanent PID 1 | 5,112 | embedded in cpio |
+| static launcher | 623,064 | embedded in cpio |
+| separate controls service | 5,880 | embedded in cpio |
+
+Three clean cpio builds are byte-identical. Two independent complete kernel
+builds are byte-identical, embed that exact archive at the same offset, retain
+the shipping-identical 49,010-byte DTB and reproduce the same H700 input and
+deferred Panfrost modules. The guarded v5.2 updater accepts only v5.1 or v5.2
+on this exact removable card, verifies the retained v5.0 recovery kernel,
+preserves v5.1 on p6 and changes only p1 `KERNEL`. Its built-in-speaker,
+normal-speed game/Dreamcast, MP3 and immediately advancing movie hardware gate
+is pending. Headphone amplifier switching, Ports/OpenBOR and PortMaster remain
+deliberately outside this proof.
 
 ## Card-safe hardware gate
 

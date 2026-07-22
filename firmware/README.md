@@ -660,3 +660,12 @@ checksum. P5 and the game/media library remain untouched. The candidate gives
 native applications writable scratch space, one fixed H700 libudev record and
 controller map, direct DRM MPV output, Bird-owned system volume and a global
 Select+Start exit contract. None of that work enters the first-frame path.
+
+The v5.1 physical gate proved application entry and controls, then localized
+slow RetroArch/Flycast playback to a forced Mesa `softpipe` path and silent
+RetroArch/MPV playback to the untouched reset-state H616 mixer route.
+`mac-update-bird-clean-root-v5-2.sh` preserves v5.1 as an additional recovery
+kernel and changes only p1 `KERNEL`. V5.2 restores Mesa's native sun4i
+KMSRO/Panfrost pairing, applies the fixed six-control speaker route after the
+menu, retains direct hardware ALSA for native clients and removes MPV's broken
+repeating trigger-speed bindings. It still starts no generic session daemon.

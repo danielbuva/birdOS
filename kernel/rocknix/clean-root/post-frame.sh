@@ -109,8 +109,12 @@ bind_once "$DATA_ROOT" "$RUNTIME_ROOT/storage" || exit 1
 mkdir -p "$DATA_ROOT/MUOS/Bird/log" \
 	"$DATA_ROOT/MUOS/Bird/save/files" \
 	"$DATA_ROOT/MUOS/Bird/save/states" \
-	/run/bird/joypads
+	"$DATA_ROOT/MUOS/Bird/screenshots" \
+	/run/bird/joypads \
+	/tmp/cores
 cp -f /opt/bird/retroarch-append.cfg /run/bird/retroarch-append.cfg
+cp -f "$RUNTIME_ROOT/usr/config/retroarch/retroarch-core-options.cfg" \
+	/run/bird/retroarch-core-options.cfg
 cp -f /opt/bird/h700-gamepad.cfg "/run/bird/joypads/H700 Gamepad.cfg"
 cp -f /opt/bird/h700-sdl-gamecontrollerdb.txt \
 	/run/bird/h700-sdl-gamecontrollerdb.txt
@@ -123,12 +127,15 @@ cp -f /opt/bird/mpv-input.conf /run/bird/mpv-input.conf
 	exit 1
 }
 mark native-device-metadata-ready
+
+# Direct ALSA clients need only the fixed H616 codec route. This is a tiny
+# deterministic post-menu initializer, not a daemon or launcher dependency.
+/opt/bird/audio-init.sh || {
+	mark fixed-audio-route-failed
+	exit 1
+}
+mark fixed-audio-route-ready
 mark runtime-ready
 : >"$READY"
-
-if [ -x "$RUNTIME_ROOT/usr/bin/amixer" ]; then
-	/usr/sbin/chroot "$RUNTIME_ROOT" /usr/bin/amixer -c 0 scontrols \
-		>"$DATA_ROOT/MUOS/Bird/log/alsa-controls.txt" 2>&1 || :
-fi
 cp -f "$LOG" "$DATA_ROOT/MUOS/Bird/log/post-frame-latest.log"
 exit 0

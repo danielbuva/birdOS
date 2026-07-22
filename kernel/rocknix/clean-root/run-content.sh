@@ -53,7 +53,7 @@ run_retroarch() {
 		LIBGL_DRIVERS_PATH=/usr/lib/dri \
 		GBM_BACKENDS_PATH=/usr/lib/gbm \
 		__EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json \
-		MESA_LOADER_DRIVER_OVERRIDE=panfrost \
+		LIBGL_DEBUG=verbose \
 		/usr/bin/retroarch --verbose --fullscreen \
 		--config /usr/config/retroarch/retroarch.cfg \
 		--appendconfig /run/bird/retroarch-append.cfg \

@@ -68,6 +68,14 @@ must serve this one device and this one experience.
   graphics policy, while MPV lacked a direct-display and Bird input policy.
   These are measured post-menu session defects, not a regression in the fast
   permanent-root boot.
+- Clean-root v5.1 passed the launcher and application-entry boundary, but its
+  physical content test exposed two shared session defects. RetroArch and
+  Flycast ran in slow motion because a forced Mesa driver bypassed the H700's
+  native sun4i-KMS/Panfrost render-node pairing and selected CPU `softpipe`.
+  RetroArch and MPV both opened ALSA but produced no sound because Bird had not
+  yet programmed the fixed H616 DAC/Line-Out/speaker route. MPV's first frame
+  could advance after seeking, confirming that decode and direct DRM output
+  were alive; its SDL trigger-up events were also proven unreliable.
 
 The accepted vendor-root checkpoint started the launcher from initramfs after
 mounting p5 and carried it across `switch_root`. Clean-root v5.0 removes that
@@ -82,16 +90,19 @@ card-side patches.
 
 ## Current changes
 
-- The active experiment is clean-root v5.1. Bird owns boot, UI, launch policy,
+- The active experiment is clean-root v5.2. Bird owns boot, UI, launch policy,
   storage timing and global controls. It does not import a muOS wrapper,
   executable, core, configuration or shared library. ROCKNIX is an immutable
   application/runtime provider and the source of the open kernel/driver chain,
   not Bird's userspace or frontend.
-- V5.1 keeps that accepted fast path and changes only post-frame application
-  policy: writable runtime `/tmp`; a three-line H700 libudev record instead of
-  a daemon; exact RetroArch and SDL maps; 720x480 native KMS policy; direct DRM
-  MPV; system-owned volume keys; Bird-owned Select+Start exit; and one log per
-  launch. No udev, audio or application daemon moved into the launcher path.
+- V5.2 keeps the accepted fast path and corrects only measured post-frame
+  application policy: Mesa again performs its native sun4i KMSRO/Panfrost
+  pairing; a six-control fixed audio initializer replaces a generic session
+  manager; RetroArch and MPV keep the already-proven direct `hw:0,0` endpoint;
+  native H700 frame pacing and core options are retained; unreliable MPV
+  trigger-speed bindings are removed; and content exit uses bounded readiness
+  polling rather than a fixed delay. No udev, audio or application daemon
+  moved into the launcher path.
 - Early ROM mount.
 - Frontend/audio readiness gate removed. The session-warm stage is verified:
   menu input was ready at 2.11 seconds, audio started at 3.97, D-Bus completed
@@ -298,8 +309,8 @@ card-side patches.
 
 The cached-module test reported `cached`, and the complete post-change
 functionality test passed. The optimized-stock checkpoint remains in Git. The
-card currently contains the clean-root v5.1 application-boundary candidate;
-the v5.0 and v4.5 kernels are preserved on p6.
+card currently contains the clean-root v5.2 session-correction candidate; the
+v5.1, v5.0 and v4.5 kernels are preserved on p6.
 
 ## Font payload
 

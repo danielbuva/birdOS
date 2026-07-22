@@ -1,5 +1,5 @@
 #!/bin/sh
-# Build Bird clean-root v5.1. Unlike the earlier compatibility archives this
+# Build Bird clean-root v5.2. Unlike the earlier compatibility archives this
 # one never mounts or switches into p5: the initramfs is Bird's permanent root.
 
 set -eu
@@ -8,7 +8,7 @@ ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 BASE=${BASE:-$ROOT/firmware/work/direct-handoff-from-power/dani-trimmed-initramfs.cpio}
 MODULE_DIR=${MODULE_DIR:-$ROOT/kernel/work/rocknix-bird-kernel-compat-v4-5-native-ra-deploy/build}
 JOYPAD=${JOYPAD:-$ROOT/kernel/work/rocknix-bird-kernel-v2-joypad/build/rocknix-singleadc-joypad.ko}
-OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-clean-root-v5-1-initramfs}
+OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-clean-root-v5-2-initramfs}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
 LLD=${LLD:-/opt/homebrew/opt/lld/bin/ld.lld}
 READELF=${READELF:-/opt/homebrew/opt/llvm/bin/llvm-readelf}
@@ -62,7 +62,7 @@ done
 
 RAMDISK=$OUTPUT/ramdisk
 BIRD=$RAMDISK/opt/bird
-CPIO=$OUTPUT/bird-clean-root-v5-1.cpio
+CPIO=$OUTPUT/bird-clean-root-v5-2.cpio
 mkdir -p "$RAMDISK"
 (
 	cd "$RAMDISK"
@@ -91,7 +91,7 @@ cp -fp "$MODULE_DIR/drm_shmem_helper.ko" "$BIRD/drm_shmem_helper.ko"
 cp -fp "$MODULE_DIR/gpu-sched.ko" "$BIRD/gpu-sched.ko"
 cp -fp "$MODULE_DIR/panfrost.ko" "$BIRD/panfrost.ko"
 for FILE in supervisor.sh post-frame.sh run-content.sh shutdown.sh \
-	volume.sh suspend.sh input-metadata.sh exit-content.sh \
+	volume.sh suspend.sh input-metadata.sh audio-init.sh exit-content.sh \
 	retroarch-append.cfg h700-gamepad.cfg h700-sdl-gamecontrollerdb.txt \
 	mpv-input.conf; do
 	cp -fp "$ROOT/kernel/rocknix/clean-root/$FILE" "$BIRD/$FILE"
@@ -126,10 +126,9 @@ grep -q 'H700 Gamepad' "$BIRD/h700-sdl-gamecontrollerdb.txt" || \
 	fail 'fixed H700 SDL controller policy missing'
 grep -q '^VOLUME_UP ignore$' "$BIRD/mpv-input.conf" || \
 	fail 'Bird MPV system-volume ownership missing'
-grep -q '^GAMEPAD_LEFT_TRIGGER multiply speed 0.9090909$' \
-	"$BIRD/mpv-input.conf" || fail 'Bird MPV slow-play control missing'
-grep -q '^GAMEPAD_RIGHT_TRIGGER multiply speed 1.1$' \
-	"$BIRD/mpv-input.conf" || fail 'Bird MPV fast-play control missing'
+if grep -q '^GAMEPAD_.*_TRIGGER ' "$BIRD/mpv-input.conf"; then
+	fail 'unreliable MPV trigger binding present'
+fi
 grep -q -- '--vo=drm --drm-device=/dev/dri/card0' \
 	"$BIRD/run-content.sh" || fail 'direct DRM movie policy missing'
 grep -q -- '--input-gamepad=yes' "$BIRD/run-content.sh" || \
@@ -140,12 +139,45 @@ fi
 if grep -q 'systemd-udevd' "$BIRD/input-metadata.sh"; then
 	fail 'generic udev daemon reintroduced into fixed metadata path'
 fi
-grep -q '^/bin/usleep 150000$' "$BIRD/exit-content.sh" || \
-	fail 'deterministic content-exit grace period missing'
+grep -q '^while \[ "$COUNT" -lt 100 \]; do$' "$BIRD/exit-content.sh" || \
+	fail 'bounded content-exit readiness polling missing'
+grep -q 'cset "name=DAC Playback Switch" on' "$BIRD/audio-init.sh" || \
+	fail 'fixed H616 DAC route missing'
+grep -q 'cset "name=DAC Reversed Playback Switch" off' \
+	"$BIRD/audio-init.sh" || fail 'fixed H616 reversed DAC route missing'
+grep -q 'cset "name=Line Out Source Playback Route" Stereo' \
+	"$BIRD/audio-init.sh" || fail 'fixed stereo Line Out route missing'
+grep -q 'cset "name=DAC Playback Volume" 63' "$BIRD/audio-init.sh" || \
+	fail 'fixed H616 DAC level missing'
+grep -q 'cset "name=Speaker Switch" on' "$BIRD/audio-init.sh" || \
+	fail 'fixed RG34XX-SP speaker route missing'
+grep -q 'sset "Line Out" 60% unmute' "$BIRD/audio-init.sh" || \
+	fail 'fixed default Line Out level missing'
+grep -q 'sset "Line Out" "$CHANGE"' "$BIRD/volume.sh" || \
+	fail 'Bird Line Out volume ownership missing'
+if grep -q 'MESA_LOADER_DRIVER_OVERRIDE' "$BIRD/run-content.sh"; then
+	fail 'Mesa split-DRM auto-selection overridden'
+fi
+grep -q 'LIBGL_DEBUG=verbose' "$BIRD/run-content.sh" || \
+	fail 'one-cycle Mesa loader diagnostic missing'
+grep -q -- '--audio-device=alsa/hw:0,0' "$BIRD/run-content.sh" || \
+	fail 'MPV direct hardware ALSA endpoint missing'
 grep -q '^video_fullscreen_x = "720"$' "$BIRD/retroarch-append.cfg" || \
 	fail 'fixed 720-pixel panel width missing'
 grep -q '^video_fullscreen_y = "480"$' "$BIRD/retroarch-append.cfg" || \
 	fail 'fixed 480-pixel panel height missing'
+if grep -q '^video_threaded = ' "$BIRD/retroarch-append.cfg"; then
+	fail 'native H700 frame-pacing policy overridden'
+fi
+grep -q '^gamemode_enable = "false"$' "$BIRD/retroarch-append.cfg" || \
+	fail 'unused GameMode client path not disabled'
+grep -q '^audio_device = "hw:0,0"$' "$BIRD/retroarch-append.cfg" || \
+	fail 'RetroArch direct hardware ALSA endpoint missing'
+grep -q '^audio_latency = "64"$' "$BIRD/retroarch-append.cfg" || \
+	fail 'fixed H700 audio latency missing'
+grep -q '^core_options_path = "/run/bird/retroarch-core-options.cfg"$' \
+	"$BIRD/retroarch-append.cfg" || \
+	fail 'native fixed-device core options path missing'
 
 find "$RAMDISK" -type d -exec touch -t 202601010000 {} +
 find "$RAMDISK" -type f -exec touch -t 202601010000 {} +
@@ -166,6 +198,7 @@ for FILE in \
 	./opt/bird/post-frame.sh \
 	./opt/bird/run-content.sh \
 	./opt/bird/input-metadata.sh \
+	./opt/bird/audio-init.sh \
 	./opt/bird/exit-content.sh \
 	./opt/bird/h700-gamepad.cfg \
 	./opt/bird/h700-sdl-gamecontrollerdb.txt \
@@ -178,12 +211,12 @@ done
 
 (
 	cd "$OUTPUT"
-	wc -c bird-clean-root-v5-1.cpio ramdisk/init ramdisk/opt/dani-root-init \
+	wc -c bird-clean-root-v5-2.cpio ramdisk/init ramdisk/opt/dani-root-init \
 		ramdisk/opt/dani-launcher ramdisk/opt/bird/controls >sizes.txt
-	shasum -a 256 bird-clean-root-v5-1.cpio ramdisk/init \
+	shasum -a 256 bird-clean-root-v5-2.cpio ramdisk/init \
 		ramdisk/opt/dani-root-init ramdisk/opt/dani-launcher \
 		ramdisk/opt/bird/* >sha256sums.txt
 )
 
-printf 'Bird clean-root v5.1 initramfs built: %s\n' "$CPIO"
+printf 'Bird clean-root v5.2 initramfs built: %s\n' "$CPIO"
 cat "$OUTPUT/sizes.txt"

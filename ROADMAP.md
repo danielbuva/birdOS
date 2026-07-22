@@ -80,12 +80,13 @@ application and move everything unrelated to an interactive menu behind it.
 - [x] Remove the next set of redundant fixed-startup work: per-boot
   immutable policy/geometry writes, obsolete update-file cleanup, zero-swap
   probing and the unnecessary squashfs module request.
-- [ ] [clean-root v5.0 boot gate passed; v5.1 application gate staged] Bake
+- [ ] [clean-root v5.0 boot gate passed; v5.2 session gate staged] Bake
   changes into the image and remove the card-side development user-init
   delivery path. The successful path is entirely embedded and does not enter
   p5. V5.0 physically proved the menu at 1.135 seconds, H700 input at 1.290 and
-  the post-frame runtime at 2.08; v5.1 now isolates the native application
-  session. Delete the retained recovery-only muOS partition and obsolete
+  the post-frame runtime at 2.08. V5.1 isolated CPU `softpipe` selection and an
+  unprogrammed H616 speaker route; v5.2 corrects those measured post-frame
+  defects. Delete the retained recovery-only muOS partition and obsolete
   migration payloads only after that application gate passes.
 
 ### Layer 2 — early userspace and init
@@ -131,9 +132,10 @@ removes the handoff entirely while keeping the verified menu-first boundary.
   static launcher becomes usable first; storage, Panfrost, the immutable
   application runtime and global controls start independently afterward. The
   success path never mounts or switches into old p5.
-- [ ] [clean-root v5.1 staged] Pass the coherent native-application boundary:
+- [ ] [clean-root v5.2 staged] Pass the coherent native-application boundary:
   fixed H700 metadata and mappings, exact 720x480 KMS policy, writable runtime
-  scratch space, direct DRM MPV, system-owned volume and one Select+Start exit
+  scratch space, native sun4i-KMS/Panfrost pairing, a deterministic H616
+  speaker route, direct DRM MPV, system-owned volume and one Select+Start exit
   contract. No muOS wrapper/configuration/core/library enters this path.
 
 ### Layer 3 — fixed RG34XX-SP kernel
@@ -370,13 +372,21 @@ savings; it is not forgotten.
   The kernel/DRM topology passed; native RetroArch still failed when combined
   with muOS policy and assets, so the clean-root candidate now pairs each
   application with its own native configuration, cores and libraries.
-- [ ] [clean-root v5.1 native-session gate] V5.0 verified menu/input,
-  brightness and shutdown but exposed missing libudev controller metadata,
-  mismatched RetroArch KMS policy, read-only runtime scratch space and an
-  incomplete MPV session. Verify a simple native libretro title and return,
-  visible MPV movie, MP3, Select+Start exit and dedicated system volume on
-  v5.1. Ports, OpenBOR, PortMaster networking and final media optimization
-  follow only after this boundary passes.
+- [ ] [clean-root v5.2 native-session gate] V5.0 verified menu/input,
+  brightness and shutdown. V5.1 then verified application entry, controls and
+  direct DRM decode while exposing forced CPU rendering, an unprogrammed H616
+  speaker route and repeating MPV trigger events. V5.2 removes the Mesa
+  override, applies only the six fixed speaker controls after the menu, keeps
+  the proven direct hardware ALSA endpoint and restores native H700 frame
+  pacing. Verify a normal-speed libretro title and Dreamcast title with audio
+  and return, an
+  immediately advancing movie with audio, MP3, Select+Start exit and dedicated
+  system volume. Ports, OpenBOR, PortMaster networking and final media
+  optimization follow only after this boundary passes.
+- [ ] After built-in-speaker audio passes, add a fixed headphone-jack policy
+  that uses the existing H700 detect GPIO to mute the external speaker
+  amplifier. Do not introduce a UCM or PipeWire session daemon for this one
+  binary device state.
 - [ ] Move the final animation and audio to the earlier firmware layer.
 - [ ] Complete the final visual, animation and audio identity.
 - [ ] Remove superseded muOS components and produce a reproducible firmware image.

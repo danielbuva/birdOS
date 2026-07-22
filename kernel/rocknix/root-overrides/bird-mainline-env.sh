@@ -65,7 +65,9 @@ BIRD_MAINLINE_REASSERT() {
 	export LIBGL_DRIVERS_PATH="$BIRD_RUNTIME_ROOT/usr/lib/dri"
 	export GBM_BACKENDS_PATH="$BIRD_RUNTIME_ROOT/usr/lib/gbm"
 	export __EGL_VENDOR_LIBRARY_FILENAMES="$BIRD_RUNTIME_ROOT/usr/share/glvnd/egl_vendor.d/50_mesa.json"
-	export MESA_LOADER_DRIVER_OVERRIDE=panfrost
+	# Do not force Panfrost against display-only card0. Mesa's native sun4i
+	# kmsro loader pairs that KMS device with Panfrost's renderD128.
+	unset MESA_LOADER_DRIVER_OVERRIDE
 }
 
 BIRD_MAINLINE_DIAGNOSE_BODY() {
