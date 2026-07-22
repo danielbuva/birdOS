@@ -390,6 +390,35 @@ probe needs only GLIBC 2.34; the preserved muOS RetroArch already needs GLIBC
 2.38. The full source gate passes with the shipping-identical DTB and unchanged
 deferred Panfrost modules.
 
+The physical v4.4 capture closes the generic graphics-stack investigation.
+The private view loaded SDL 2.32.10, libdrm, GBM and EGL successfully. Card0
+reported two CRTCs, two connectors and two encoders; direct DRM-master
+acquisition succeeded; no other process held a DRM node; and SDL initialized
+its KMSDRM backend successfully. MPV then followed the same route, opened
+card0 and created 720x480 DRM framebuffers. The preserved muOS RetroArch alone
+continued to reject its SDL graphics context with `kmsdrm not available`.
+Kernel ordering, permissions, card selection and DRM ownership are therefore
+not the remaining RetroArch fault.
+
+V4.5 changes only the process used for libretro sessions. The existing muOS
+launch script, arguments, content paths, cores, configurations, controller
+policy and return-to-launcher contract remain in place, but its `retroarch`
+command is resolved to a shell function that invokes the checksum-pinned
+ROCKNIX executable through ROCKNIX's matching dynamic loader and `/usr/lib`.
+Using the matching loader deliberately avoids combining a newer libc with the
+preserved root's loader. MPV, PPSSPP, ports and every visible boot component
+remain unchanged.
+
+| Compatibility v4.5 native RetroArch | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Bird source-kernel v4.5 `Image` | 29,939,720 | `771c4bbb9696775fb135c6d21166106b84939873fd416956d95760f9d4596cf6` |
+| embedded Bird v4.5 cpio | 4,287,488 | `d0d0d1ef7d99b752be87c337de9f5dcace4f58635713f7b889634566be7b7ae0` |
+| mainline function bridge | 2,175 | `6c5628e34dcf72b7252c2915e2cdcb030467eedb26c3e75eb2df3c2d5bb3a8c1` |
+
+Two clean v4.5 initramfs builds reproduce exactly. The full source gate again
+passes with the shipping-identical RG34XX-SP DTB and unchanged deferred GPU
+modules.
+
 ## Card-safe hardware gate
 
 `build-bird-prefix.sh` packages only the bytes before the existing p5 root.

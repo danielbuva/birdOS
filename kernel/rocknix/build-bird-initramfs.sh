@@ -216,6 +216,9 @@ grep -q 'BIRD_MAINLINE_WAIT_GPU' \
 grep -q '^[[:space:]]*export SDL_LOGGING=video=debug$' \
 	"$MAINLINE_OVERRIDE_DIR/bird-mainline-env.sh" || \
 	fail 'SDL graphics diagnostics are missing'
+grep -q 'Bird native RetroArch exec' \
+	"$MAINLINE_OVERRIDE_DIR/func-mainline.sh" || \
+	fail 'native mainline RetroArch handoff is missing'
 strings "$MAINLINE_OVERRIDE_DIR/bird-controls" | \
 	grep -q 'bird-controls: brightness-write-failed' || \
 	fail 'persistent mainline controls diagnostics are missing'

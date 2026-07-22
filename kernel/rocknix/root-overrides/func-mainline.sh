@@ -46,4 +46,24 @@ if [ "${BIRD_MAINLINE_CONTENT-}" = 1 ] && \
 	SETUP_GL4ES() {
 		BIRD_MAINLINE_REASSERT
 	}
+
+	# The preserved muOS RetroArch process still rejects its SDL graphics
+	# context after the same modern SDL library independently completes KMSDRM
+	# initialization. Run libretro sessions in ROCKNIX's native mainline
+	# RetroArch process instead. The stable libretro ABI keeps Bird's existing
+	# cores, configs, content paths and launch policy unchanged.
+	retroarch() {
+		NATIVE_RETROARCH="$BIRD_RUNTIME_ROOT/usr/bin/retroarch"
+		NATIVE_LOADER="$BIRD_RUNTIME_ROOT/usr/lib/ld-linux-aarch64.so.1"
+		NATIVE_LIBRARY_PATH="$BIRD_RUNTIME_ROOT/usr/lib"
+		[ -x "$NATIVE_RETROARCH" ] && [ -x "$NATIVE_LOADER" ] || {
+			printf 'Bird native RetroArch runtime incomplete: %s %s\n' \
+				"$NATIVE_LOADER" "$NATIVE_RETROARCH" >&2
+			return 127
+		}
+		printf 'Bird native RetroArch exec: %s\n' "$NATIVE_RETROARCH" >&2
+		LD_LIBRARY_PATH="$NATIVE_LIBRARY_PATH" \
+			"$NATIVE_LOADER" --library-path "$NATIVE_LIBRARY_PATH" \
+			"$NATIVE_RETROARCH" "$@"
+	}
 fi
