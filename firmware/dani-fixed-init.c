@@ -67,6 +67,9 @@ typedef signed long s64;
 #define MAINLINE_MODULE_TARGET "/mnt/opt/muos/script/device/module.sh"
 #define MAINLINE_OVERRIDE_MARKER "/mnt/run/muos/dani-mainline-overrides-v1"
 #endif
+#ifdef DANI_MAINLINE_INPUT_MODULE
+#define MAINLINE_INPUT_SOURCE "/opt/bird-mainline/rocknix-singleadc-joypad.ko"
+#endif
 
 struct timespec {
     s64 sec;
@@ -519,6 +522,24 @@ static void bind_mainline_root_overrides(void) {
 }
 #endif
 
+#ifdef DANI_MAINLINE_INPUT_MODULE
+static void load_mainline_input_module(void) {
+    char *const argv[] = {"/sbin/insmod", MAINLINE_INPUT_SOURCE, 0};
+    int status;
+
+    if (!path_exists(MAINLINE_INPUT_SOURCE)) {
+        log_stage("mainline-input-module-missing");
+        return;
+    }
+    status = run_child(argv[0], argv);
+    log_text("fixed-init mainline_input_wait_status=");
+    log_number((u64)(unsigned int)status);
+    log_text("\n");
+    log_stage(status == 0 ? "mainline-input-ready" :
+                            "mainline-input-load-failed");
+}
+#endif
+
 static int wait_for_first_frame(void) {
     int count;
     for (count = 0; count < 500; count++) {
@@ -674,6 +695,9 @@ static void application(void) {
 #endif
 #ifdef DANI_MAINLINE_ROOT_OVERRIDES
     bind_mainline_root_overrides();
+#endif
+#ifdef DANI_MAINLINE_INPUT_MODULE
+    load_mainline_input_module();
 #endif
 
     supervisor_status = start_launcher_supervisor();

@@ -440,15 +440,25 @@ are disabled.
 
 Those failures belonged to the hybrid vendor-Android handoff, not to the
 source kernel itself. The later exact ROCKNIX DDR4 chain booted, and the first
-Bird-enabled source kernel reached its frame at 1.547 seconds. Compatibility v2
-is now staged by `mac-update-rocknix-bird-compat-v2.sh`; it updates only the
-mounted BIRD p1 payload and leaves the customized root and data partitions
-untouched. It prevents fbcon from reclaiming the display, discovers the
-mainline H700 input by name, and replaces the root's obsolete `mali_kbase`
-startup request with a separate post-frame mainline device bridge.
+Bird-enabled source kernel reached its frame at 1.547 seconds. Compatibility
+v2 prevented fbcon from reclaiming the display and rejected the wrong input
+node, but never found `H700 Gamepad`: that device is created by a separately
+packaged ROCKNIX driver that the initial Linux-only source gate omitted. Its
+watchdog therefore rebooted the sole Bird label rather than entering a second
+fallback image. Compatibility v3 embeds the exact pinned GPL module, loads it
+from fixed init before launcher dispatch, and keeps the obsolete `mali_kbase`
+request behind the separate post-frame mainline device bridge. The guarded Mac
+v3 updater changes only mounted BIRD p1 and leaves the customized root and data
+partitions untouched. It has staged kernel
+`82f1a2ed941b55f5bb3a79421962f78029fa0559379c0651a4d4c82bd46d8653`
+for the next physical gate.
 
-Future kernel experiments must not replace the sole normal boot target.
-`stage-one-shot-boot-state-capture.sh` first stages a read-only collector for
+The original one-shot plan required preserving an automatic normal boot target.
+This card is now explicitly disposable experimental media, so a candidate may
+replace BIRD p1 only after exact layout, old-hash and readback gates pass. The
+20-second Linux watchdog restarts the selected candidate; it is not an
+automatic alternate-kernel fallback. The earlier
+`stage-one-shot-boot-state-capture.sh` first staged a read-only collector for
 the exact active 32 MiB FAT boot-resource partition and 16 MiB U-Boot
 environment partition. The same harmless boot captures the accepted kernel's
 live kallsyms, configuration, DTB, modules, interrupts and memory map as a

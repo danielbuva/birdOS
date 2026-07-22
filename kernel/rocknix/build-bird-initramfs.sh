@@ -1,19 +1,22 @@
 #!/bin/sh
 # Rebuild Bird's accepted fixed initramfs as a standalone archive suitable for
 # direct embedding in the source kernel. The normal path is unchanged except
-# for a 20-second first-frame watchdog, which reboots a failed experiment.
+# for a 20-second first-frame watchdog and the pinned H700 input module needed
+# before the launcher can become interactive.
 
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 BASE=${BASE:-$ROOT/firmware/work/direct-handoff-from-power/dani-trimmed-initramfs.cpio}
+JOYPAD_MODULE=${JOYPAD_MODULE:-$ROOT/kernel/work/rocknix-bird-kernel-v2-joypad/build/rocknix-singleadc-joypad.ko}
 OUTPUT=${OUTPUT:-$ROOT/kernel/work/rocknix-bird-initramfs}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
 LLD=${LLD:-/opt/homebrew/opt/lld/bin/ld.lld}
 READELF=${READELF:-/opt/homebrew/opt/llvm/bin/llvm-readelf}
 
 BASE_SHA=6db265a4adc75093799f3b2211b4298d001546854c3faa5015e9c0459be60cba
-LAUNCHER_SHA=ab82e90a822c2baa4402829be3dba8cb9db71761b970e7dbab689bf4d7f0c85e
+LAUNCHER_SHA=840ab4cfd967f18687e624a3dd916ea6cb852a23db84f554d81e1b7c2bcecf2c
+JOYPAD_MODULE_SHA=fd2ceb95f0b3bdc1d68e7182a8ac5239b5286cc277a04980e53f65e0f73d3a05
 WATCHDOG_SECONDS=20
 
 fail() {
@@ -55,6 +58,9 @@ compile_static() {
 [ -f "$BASE" ] || fail "accepted Bird initramfs missing: $BASE"
 [ "$(shasum -a 256 "$BASE" | awk '{print $1}')" = "$BASE_SHA" ] ||
 	fail 'accepted Bird initramfs checksum mismatch'
+[ -f "$JOYPAD_MODULE" ] || fail "H700 joypad module missing: $JOYPAD_MODULE"
+[ "$(shasum -a 256 "$JOYPAD_MODULE" | awk '{print $1}')" = \
+	"$JOYPAD_MODULE_SHA" ] || fail 'H700 joypad module checksum mismatch'
 [ -x "$CLANG" ] || fail 'LLVM clang is required'
 [ -x "$LLD" ] || fail 'LLVM lld is required'
 [ -x "$READELF" ] || fail 'llvm-readelf is required'
@@ -77,6 +83,7 @@ compile_static "$ROOT/firmware/dani-fixed-init.c" "$FIRST_OBJECT" \
 	"$RAMDISK/init" \
 	-DDANI_STATIC_ROOT_INIT=1 \
 	-DDANI_MAINLINE_ROOT_OVERRIDES=1 \
+	-DDANI_MAINLINE_INPUT_MODULE=1 \
 	-DDANI_BOOT_TIMEOUT_SECONDS="$WATCHDOG_SECONDS"
 compile_static "$ROOT/firmware/dani-root-init.c" "$ROOT_OBJECT" \
 	"$RAMDISK/opt/dani-root-init"
@@ -85,6 +92,8 @@ compile_static "$ROOT/firmware/dani-root-init.c" "$ROOT_OBJECT" \
 chmod 755 "$RAMDISK/opt/dani-launcher"
 
 mkdir -p "$MAINLINE_OVERRIDE_DIR"
+cp -fp "$JOYPAD_MODULE" \
+	"$MAINLINE_OVERRIDE_DIR/rocknix-singleadc-joypad.ko"
 cp -fp "$ROOT/kernel/rocknix/root-overrides/S10udev" \
 	"$MAINLINE_OVERRIDE_DIR/S10udev"
 cp -fp "$ROOT/kernel/rocknix/root-overrides/module.sh" \
@@ -93,17 +102,20 @@ chmod 755 "$MAINLINE_OVERRIDE_DIR/S10udev" \
 	"$MAINLINE_OVERRIDE_DIR/module.sh"
 
 [ "$(shasum -a 256 "$RAMDISK/opt/dani-launcher" | awk '{print $1}')" = \
-	"$LAUNCHER_SHA" ] || fail 'launcher no longer reproduces accepted executable'
+	"$LAUNCHER_SHA" ] || fail 'launcher no longer reproduces pinned executable'
 strings "$RAMDISK/init" | grep -q 'watchdog-reboot' || \
 	fail 'first-frame watchdog is missing'
 strings "$RAMDISK/init" | grep -q 'direct-handoff-static-pid1' || \
 	fail 'direct static PID 1 handoff is missing'
+strings "$RAMDISK/init" | grep -q 'mainline-input-ready' || \
+	fail 'early H700 input load is missing'
 
 find "$RAMDISK" -type d -exec touch -t 202601010000 {} +
 touch -t 202601010000 \
 	"$RAMDISK/init" \
 	"$RAMDISK/opt/dani-root-init" \
 	"$RAMDISK/opt/dani-launcher" \
+	"$MAINLINE_OVERRIDE_DIR/rocknix-singleadc-joypad.ko" \
 	"$MAINLINE_OVERRIDE_DIR/S10udev" \
 	"$MAINLINE_OVERRIDE_DIR/module.sh"
 (
@@ -124,11 +136,17 @@ grep -qx './opt/bird-mainline/S10udev' "$OUTPUT/payload.txt" || \
 	fail 'mainline udev override missing from archive'
 grep -qx './opt/bird-mainline/module.sh' "$OUTPUT/payload.txt" || \
 	fail 'mainline module override missing from archive'
+grep -qx './opt/bird-mainline/rocknix-singleadc-joypad.ko' \
+	"$OUTPUT/payload.txt" || fail 'H700 joypad module missing from archive'
 
-wc -c "$CPIO" "$GZIP" "$RAMDISK/init" \
-	"$RAMDISK/opt/dani-root-init" "$RAMDISK/opt/dani-launcher" \
-	"$MAINLINE_OVERRIDE_DIR/S10udev" "$MAINLINE_OVERRIDE_DIR/module.sh" \
-	>"$OUTPUT/sizes.txt"
+(
+	cd "$OUTPUT"
+	wc -c bird-initramfs.cpio bird-initramfs.cpio.gz ramdisk/init \
+		ramdisk/opt/dani-root-init ramdisk/opt/dani-launcher \
+		ramdisk/opt/bird-mainline/rocknix-singleadc-joypad.ko \
+		ramdisk/opt/bird-mainline/S10udev \
+		ramdisk/opt/bird-mainline/module.sh >sizes.txt
+)
 (
 	cd "$OUTPUT"
 	shasum -a 256 \
@@ -137,6 +155,7 @@ wc -c "$CPIO" "$GZIP" "$RAMDISK/init" \
 		ramdisk/init \
 		ramdisk/opt/dani-root-init \
 		ramdisk/opt/dani-launcher \
+		ramdisk/opt/bird-mainline/rocknix-singleadc-joypad.ko \
 		ramdisk/opt/bird-mainline/S10udev \
 		ramdisk/opt/bird-mainline/module.sh \
 		payload.txt \

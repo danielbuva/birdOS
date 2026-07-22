@@ -7,13 +7,13 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 BOOT_PREFIX=${BOOT_PREFIX:-/Users/dani/rocknix-reference-result/boot-prefix-16m.bin}
-KERNEL_BUILD=${KERNEL_BUILD:-$ROOT/kernel/work/rocknix-bird-kernel-compat-v2/build}
-OUTPUT=${OUTPUT:-$ROOT/kernel/work/rocknix-bird-prefix-compat-v2}
+KERNEL_BUILD=${KERNEL_BUILD:-$ROOT/kernel/work/rocknix-bird-kernel-compat-v3/build}
+OUTPUT=${OUTPUT:-$ROOT/kernel/work/rocknix-bird-prefix-compat-v3}
 GDD=${GDD:-/opt/homebrew/bin/gdd}
 GTRUNCATE=${GTRUNCATE:-/opt/homebrew/bin/gtruncate}
 
 BOOT_PREFIX_SHA=3d06e243e26bd1a06d585fa35e53912b5742f62ca180135308740719883d65d2
-KERNEL_SHA=0fa4d5d2d30423302bb83be86761465799b21f0fda396544e09c3e700789f597
+KERNEL_SHA=82f1a2ed941b55f5bb3a79421962f78029fa0559379c0651a4d4c82bd46d8653
 DTB_SHA=f3a4273986d6e4f431b110cead8aa19e8da52ff08c64c4b204ef9664d28b5c31
 FAT_BYTES=134217728
 FAT_OFFSET=16777216
@@ -81,8 +81,11 @@ python3 "$ROOT/kernel/rocknix/build-bird-layout.py" "$PREFIX" \
 	iflag=skip_bytes,count_bytes status=none
 cmp "$FAT" "$OUTPUT/verified-fat.img" || fail 'embedded FAT differs'
 
-wc -c "$PREFIX" "$FAT" "$PAYLOAD/KERNEL" "$PAYLOAD/dtb.img" \
-	>"$OUTPUT/sizes.txt"
+(
+	cd "$OUTPUT"
+	wc -c bird-rocknix-prefix.img bird-boot.fat payload/KERNEL \
+		payload/dtb.img >sizes.txt
+)
 (
 	cd "$OUTPUT"
 	shasum -a 256 \

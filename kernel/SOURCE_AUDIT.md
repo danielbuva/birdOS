@@ -14,6 +14,7 @@ baseline.
 | Public mustardroot external tree | H700 config and binary device assets | No matching downstream kernel source located |
 | [Linux stable v7.0.11](https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/tag/?h=v7.0.11) at `bb532bfaf7919c7c98caab81864e9ce2646e11e3` | Source-complete upstream H700/RG35XX-SP, AXP717 power, H616 audio, Panfrost, RTC and fixed-button support | Chosen replacement base; the RG34XX-SP panel/display and analog controls still need an exact device layer |
 | [ROCKNIX H700 stable release](https://github.com/ROCKNIX/distribution/tree/20260701/projects/ROCKNIX/devices/H700) at `3e4ee5852e6ca5ea73a38369d2639fad2262648b` | Exact public source tag for the verified `20260701` DDR4 artifact, including RG34XX-SP DTB, Linux 7.0.11 patches, U-Boot v2026.01 and TF-A v2.12.0 | Chosen complete boot-chain baseline; the shipping chain is reproduced before Bird or any trimming is introduced |
+| [ROCKNIX joypad driver](https://github.com/ROCKNIX/rocknix-joypad/tree/7647fdb0fc89cd69b284903bf7707e861df5dc7e) at `7647fdb0fc89cd69b284903bf7707e861df5dc7e` | Separate GPL source package selected by the H700 distribution profile; implements the shipping DTB's `rocknix-singleadc-joypad` node and `H700 Gamepad` input device | Required part of the untrimmed compatibility closure; its initial omission caused Bird v1/v2 input failures and is corrected in v3 |
 
 The Orange Pi audit is checksum-pinned under ignored
 `kernel/work/vendor-baseline/`. A forced compile with normalized defaults also
@@ -53,12 +54,14 @@ application check will fixed-device config removal begin.
 ## Replacement decision
 
 Reconstructing the unpublished vendor 4.9 additions is no longer the primary
-path. Linux 7.0.11 plus the pinned ROCKNIX H700 hardware patch set provides a
-complete, maintained source tree for a clean-room compatibility baseline. The
-custom board DTS uses standard upstream `adc-joystick`, `io-channel-mux` and
-`gpio-mux` bindings instead of importing the distribution's legacy polling
-driver. Only the RG34XX-SP panel command stream is embedded; wireless firmware
-stays outside the kernel so networking can remain on demand.
+path. Linux 7.0.11 plus the pinned ROCKNIX H700 hardware patch set and separate
+joypad repository provide the complete source set for the compatibility
+baseline. The exact shipping DTB deliberately remains byte-identical during
+this gate, so its `rocknix-singleadc-joypad` node requires that external module.
+Once compatibility passes, Bird can either strip that 37,248-byte driver to
+the RG34XX-SP path or replace the node with standard `adc-joystick`,
+`io-channel-mux`, `gpio-mux` and `gpio-keys` bindings. Wireless firmware stays
+outside the kernel so networking can remain on demand.
 
 This is not yet permission to flash it. The current launcher and applications
 were built around the vendor framebuffer/Mali ABI, whereas the replacement

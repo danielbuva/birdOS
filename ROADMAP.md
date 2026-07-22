@@ -128,7 +128,7 @@ keeping the verified menu-first boundary.
 Build for the hardware that actually exists rather than a family of possible
 boards.
 
-- [x] [source gap closed; exact-chain source baseline reproduced]
+- [x] [complete source set pinned; exact-chain baseline reproduced]
   Reproduce or replace the current vendor 4.9.170
   kernel before changing the boot kernel. The active `Image` and its embedded
   4,209-line config are pinned, as is the exact Linaro GCC 5.3.1 compiler. The
@@ -136,8 +136,12 @@ boards.
   normalization proves it lacks the active AXP2202 power, newer sunxi audio and
   exFAT code. Never deploy that comparison build. The next hardware run
   captured live module, device and DT closure is now pinned. Linux 7.0.11 plus
-  the exact public ROCKNIX H700 hardware patch base is the chosen source-complete
-  replacement path. Keep the accepted vendor kernel as fallback until the broad
+  the exact public ROCKNIX H700 hardware patch base is the chosen replacement
+  path. The H700 profile also selects the separately published ROCKNIX joypad
+  module at pinned commit `7647fdb0...dc7e`; omitting that package from the
+  first source audit caused the v1/v2 input failures. The build gate now treats
+  Linux, its patches, the DTB and that external GPL module as one complete
+  source set. Keep the accepted vendor kernel as oracle until the broad
   replacement build passes every compatibility gate.
 - [x] [profile captured; DTB v1 rejected] Record the exact live board hardware,
   buses and device IDs. The live DTB, modules, interrupts, I/O map and measured
@@ -197,12 +201,23 @@ boards.
   reclaimed the screen, the launcher selected the wrong event node, and the
   old root requested vendor-only `mali_kbase`; those are localized userspace
   compatibility failures, not a failure to boot the source kernel.
-- [ ] [compatibility v2 staged; next physical gate] Retest the untrimmed
-  Bird/source-kernel candidate. V2 keeps the launcher independent, discovers
-  the fixed `H700 Gamepad` event by name, applies its mainline key map, prevents
-  fbcon from owning the internal panel, and binds a post-frame mainline
-  compatibility bridge that does not request `mali_kbase`. It also persists
-  input, audio, framebuffer, DRM, mount and dmesg evidence after p6 appears.
+- [x] [compatibility v2 failed; cause localized] Retest the untrimmed
+  Bird/source-kernel candidate. V2 prevented fbcon from reclaiming the panel
+  and correctly rejected the separate volume-key event, but the expected
+  `H700 Gamepad` never appeared. The launcher waited before drawing or marking
+  readiness, so its 20-second watchdog reboot looked like a failed fallback;
+  extlinux has only one Bird label, so it was another attempt at the same v2
+  image. No source-kernel capture was written before the restart. The exact
+  shipping DTB requests
+  `rocknix-singleadc-joypad`, while the Linux tree and 30 patches contain only
+  the standard `adc-joystick` driver. ROCKNIX ships the requested driver from a
+  separate repository/package that the initial source gate had not included.
+- [ ] [compatibility v3 staged; next physical gate] Load the exact pinned H700
+  joypad module from early init before dispatching the launcher. The launcher
+  paints as soon as the framebuffer exists, but retains the correct semantic gate:
+  it publishes readiness and cancels the watchdog only after `H700 Gamepad`
+  has opened. Keep the display-console and old-root compatibility bridges from
+  v2. Persist input, audio, framebuffer, DRM, mount and dmesg evidence after p6.
   Test repeated cold boot, immediate launcher input, display/brightness,
   system volume, game launch/return and in-game controls, MP3, complete movie
   controls, favorites persistence and shutdown. Record power-to-input timing,

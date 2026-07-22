@@ -207,9 +207,40 @@ Two clean v2 builds are byte-identical:
 `firmware/mac-update-rocknix-bird-compat-v2.sh` accepts only the verified
 p1/p5/p6 layout and old/new candidate hashes. It updates only the mounted p1
 kernel and extlinux file, leaving the customized p5 root and p6 library
-untouched. V2 is currently staged on the card and awaits the next physical
-functionality gate. The independently reproduced complete v2 prefix has
-SHA-256 `b9828838e6197efa9108365493275a4ebc246c2e24725b7c852d650d42bbfb38`.
+untouched. The independently reproduced complete v2 prefix has SHA-256
+`b9828838e6197efa9108365493275a4ebc246c2e24725b7c852d650d42bbfb38`.
+
+The v2 physical gate was negative but localized. It never produced a
+data-partition capture, and the 20-second first-frame watchdog restarted what
+looked like a fallback. Extlinux contains only one Bird label, so the second
+failure was another v2 attempt. The exact DTB requests
+`rocknix-singleadc-joypad`, but that driver is not in Linux 7.0.11 or the 30
+distribution patches. ROCKNIX builds it from the separate
+`rocknix-joypad` repository at commit
+`7647fdb0fc89cd69b284903bf7707e861df5dc7e`. V1 had accidentally opened the
+volume-key event; v2 correctly rejected it and therefore waited without ever
+drawing or publishing readiness.
+
+Compatibility v3 treats that repository as a required source input. Its exact
+37,248-byte module has SHA-256
+`fd2ceb95f0b3bdc1d68e7182a8ac5239b5286cc277a04980e53f65e0f73d3a05`,
+vermagic `7.0.11 SMP preempt mod_unload modversions aarch64`, and no module
+dependencies. Fixed init loads it before launcher dispatch. The launcher now
+paints immediately after framebuffer mapping, then opens `H700 Gamepad`; it
+still publishes readiness and cancels the watchdog only after input is usable.
+
+| Compatibility v3 artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Bird source-kernel `Image` | 29,943,816 | `82f1a2ed941b55f5bb3a79421962f78029fa0559379c0651a4d4c82bd46d8653` |
+| embedded Bird cpio | 3,924,992 | `a2f247e9723a2bd6db440485fcb5af33a85569a4bef090367cc3491401553ebf` |
+| v3 launcher | 623,064 | `840ab4cfd967f18687e624a3dd916ea6cb852a23db84f554d81e1b7c2bcecf2c` |
+| H700 joypad module | 37,248 | `fd2ceb95f0b3bdc1d68e7182a8ac5239b5286cc277a04980e53f65e0f73d3a05` |
+| complete p1 prefix | 163,577,856 | `6f5f6cec067c9e03c088d629c9a31f9f382d6302e1095fbacd66fde1476761cb` |
+
+Two complete v3 kernel builds and two complete prefix builds reproduce these
+bytes exactly. `firmware/mac-update-rocknix-bird-compat-v3.sh` accepted only
+the card's exact removable p1/p5/p6 geometry and v2/v3 checksums, then staged
+v3 by updating p1 alone. P5 root and p6 data were not written.
 
 ## Card-safe hardware gate
 

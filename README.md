@@ -36,8 +36,15 @@ must serve this one device and this one experience.
   untrimmed 7.0.11 candidate reached a drawn frame at 1.547 seconds and mounted
   the customized root. Its remaining failure was localized to framebuffer
   console ownership, a hardcoded vendor input-event number and the old root's
-  `mali_kbase` request. A byte-reproducible v2 correcting those three boundaries
-  is staged on the card; it is not yet a functionality or promotion pass.
+  `mali_kbase` request. V2 fixed framebuffer ownership and rejected the wrong
+  volume-key input node, but then exposed an incomplete source audit: ROCKNIX
+  supplies the DTB's H700 joypad driver as a separate GPL package, not in its
+  30 Linux patches. Without it the launcher never reached input readiness and
+  the 20-second watchdog restarted the same sole boot label. V3 pins that
+  package, loads its 37,248-byte module before launcher dispatch and paints
+  before input discovery while still withholding the usable marker until the
+  correct gamepad opens. Its two clean full kernel builds are byte-identical,
+  and the guarded updater has staged it on BIRD p1 without writing p5 or p6.
 
 The boot image now starts the launcher from initramfs after mounting the fixed
 root but before `switch_root`. The launcher and its input descriptors survive

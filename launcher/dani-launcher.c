@@ -1278,13 +1278,22 @@ static int application(void) {
         return 5;
     }
 
+    /*
+     * Paint before input discovery so an absent or late joypad can never keep
+     * the kernel boot logo on screen.  The ready marker remains below the
+     * input gate: the watchdog is cancelled only when the menu is usable.
+     */
+    load_ui_resume();
+    draw_screen();
+    log_text("first_frame_visible boot_ms=");
+    log_number(boot_ms());
+    log_text(" input_ready=0\n");
+
     if (open_fixed_input() < 0) {
         sys_munmap((void *)fb, fb_fix.smem_len);
         sys_close(fb_fd);
         return 6;
     }
-    load_ui_resume();
-    draw_screen();
     mark_first_frame();
     log_text("first_frame boot_ms=");
     log_number(boot_ms());

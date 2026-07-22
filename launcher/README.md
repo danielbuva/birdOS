@@ -212,10 +212,15 @@ MPV chime from the active boot path. They demonstrated the intended policy but
 are not part of first-frame measurement; final animation and direct audio will
 return only after the earliest interactive menu point is established.
 
-The launcher now creates `/run/muos/dani-first-frame-ready` immediately after
-its framebuffer write barrier. The fixed sysinit patch dispatches the launcher
-before all asynchronous observers and general init services, waits only for
-that exact marker, then continues initialization. `S02rgb` is skipped because
+The accepted vendor path creates `/run/muos/dani-first-frame-ready` immediately
+after its framebuffer write barrier because its fixed input is already open.
+The source-kernel v3 path separates visibility from usability: it paints as
+soon as `/dev/fb0` is mapped, then publishes the same marker only after the
+named `H700 Gamepad` opens. Thus missing input can no longer retain the boot
+logo, but also cannot produce a false interactive measurement or cancel the
+candidate watchdog. The fixed sysinit patch dispatches the launcher before all
+asynchronous observers and general init services, waits only for that exact
+marker, then continues initialization. `S02rgb` is skipped because
 it consistently costs about 40 ms and returns failure on the RG34XX-SP. Early
 entropy remains enabled after the first frame because prior hardware tests
 proved that deferring it creates multi-second CRNG/audio stalls.

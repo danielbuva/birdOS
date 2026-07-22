@@ -1,12 +1,14 @@
 #!/bin/sh
 # Rebuild the untrimmed ROCKNIX 20260701 H700 kernel from the exact stable
-# source, executed patch order, shipping configuration and RG34XX-SP DTB.
+# source, executed patch order, shipping configuration, RG34XX-SP DTB and
+# separately packaged H700 joypad driver.
 # This is an offline artifact gate only; it never writes to removable media.
 
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 ROCKNIX_SOURCE=${ROCKNIX_SOURCE:-/Users/dani/rocknix-distribution-20260701}
+JOYPAD_SOURCE=${JOYPAD_SOURCE:-/Users/dani/muos-kernel-source/rocknix-joypad}
 FIRMWARE_SOURCE=${FIRMWARE_SOURCE:-/Users/dani/muos-kernel-source/linux-firmware-20260309}
 IMAGE=${DANI_MAINLINE_BUILD_IMAGE:-dani-rg34xxsp-kernel-build:7.0.11}
 OUTPUT=${OUTPUT:-$ROOT/kernel/work/rocknix-source-reference}
@@ -17,6 +19,7 @@ JOBS=${JOBS:-4}
 
 ROCKNIX_COMMIT=3e4ee5852e6ca5ea73a38369d2639fad2262648b
 LINUX_COMMIT=bb532bfaf7919c7c98caab81864e9ce2646e11e3
+JOYPAD_COMMIT=7647fdb0fc89cd69b284903bf7707e861df5dc7e
 SHIPPING_KERNEL_SHA=af4e75cb30b097ee5764764eb056d686bc00c6bd03fefece26b0ebbaa7fbb673
 SHIPPING_DTB_SHA=f3a4273986d6e4f431b110cead8aa19e8da52ff08c64c4b204ef9664d28b5c31
 SHIPPING_DTB_BYTES=49010
@@ -32,6 +35,11 @@ command -v python3 >/dev/null 2>&1 || fail 'python3 is required'
 [ -d "$ROCKNIX_SOURCE/.git" ] || fail "ROCKNIX source missing: $ROCKNIX_SOURCE"
 [ "$(git -C "$ROCKNIX_SOURCE" rev-parse HEAD)" = "$ROCKNIX_COMMIT" ] || \
 	fail 'ROCKNIX source commit mismatch'
+[ -d "$JOYPAD_SOURCE/.git" ] || fail "ROCKNIX joypad source missing: $JOYPAD_SOURCE"
+[ "$(git -C "$JOYPAD_SOURCE" rev-parse HEAD)" = "$JOYPAD_COMMIT" ] || \
+	fail 'ROCKNIX joypad source commit mismatch'
+[ -z "$(git -C "$JOYPAD_SOURCE" status --short)" ] || \
+	fail 'ROCKNIX joypad source is not clean'
 [ -f "$SHIPPING_KERNEL" ] || fail "shipping KERNEL oracle missing: $SHIPPING_KERNEL"
 [ "$(shasum -a 256 "$SHIPPING_KERNEL" | awk '{print $1}')" = \
 	"$SHIPPING_KERNEL_SHA" ] || fail 'shipping KERNEL checksum mismatch'
@@ -65,9 +73,11 @@ fi
 set -- docker run --rm --platform linux/arm64 \
 	-e JOBS="$JOBS" \
 	-e LINUX_COMMIT="$LINUX_COMMIT" \
+	-e JOYPAD_COMMIT="$JOYPAD_COMMIT" \
 	-e INITRAMFS_CONFIG="$INITRAMFS_CONFIG" \
 	-e LOCALVERSION= \
 	-v "$ROCKNIX_SOURCE:/rocknix:ro" \
+	-v "$JOYPAD_SOURCE:/rocknix-joypad:ro" \
 	-v "$FIRMWARE_SOURCE:/shipping-firmware:ro" \
 	-v "$SHIPPING_KERNEL:/shipping-KERNEL:ro" \
 	-v "$BUILD_OUTPUT:/out"
@@ -138,6 +148,13 @@ set -- "$@" "$IMAGE" sh -eu -c '
 		make -j"$JOBS" ARCH=arm64 DTC_FLAGS=-@ Image modules
 		cp arch/arm64/boot/Image /out/Image
 		cp System.map Module.symvers /out/
+		mkdir -p /tmp/rocknix-joypad
+		cp /rocknix-joypad/Makefile /rocknix-joypad/*.c \
+			/rocknix-joypad/*.h /tmp/rocknix-joypad/
+		make -j"$JOBS" ARCH=arm64 DEVICE=H700 \
+			-C /src/linux M=/tmp/rocknix-joypad modules
+		cp /tmp/rocknix-joypad/rocknix-singleadc-joypad.ko /out/
+		printf "%s\n" "$JOYPAD_COMMIT" > /out/joypad.commit
 		make ARCH=arm64 INSTALL_MOD_PATH=/tmp/reference-modules modules_install >/dev/null
 		find /tmp/reference-modules/lib/modules -type l \
 			\( -name build -o -name source \) -delete
@@ -157,6 +174,16 @@ DTB="$BUILD_OUTPUT/sun50i-h700-anbernic-rg34xx-sp.dtb"
 	fail 'source-built RG34XX-SP DTB size differs from shipping'
 [ "$(shasum -a 256 "$DTB" | awk '{print $1}')" = "$SHIPPING_DTB_SHA" ] || \
 	fail 'source-built RG34XX-SP DTB differs from shipping'
+
+JOYPAD_MODULE="$BUILD_OUTPUT/rocknix-singleadc-joypad.ko"
+strings "$JOYPAD_MODULE" | grep -Fqx \
+	'vermagic=7.0.11 SMP preempt mod_unload modversions aarch64' || \
+	fail 'H700 joypad module vermagic mismatch'
+strings "$JOYPAD_MODULE" | grep -Fqx 'depends=' || \
+	fail 'H700 joypad module gained a module dependency'
+strings "$JOYPAD_MODULE" | grep -Fqx \
+	'alias=of:N*T*Crocknix-singleadc-joypad' || \
+	fail 'H700 joypad module DT alias missing'
 
 python3 - "$BUILD_OUTPUT/shipping.config" "$BUILD_OUTPUT/built.config" \
 	"$BUILD_OUTPUT/config-diff.txt" <<'PY'
@@ -247,8 +274,11 @@ else
 	printf '%s\n' 'none' >"$BUILD_OUTPUT/embedded-initramfs.txt"
 fi
 
-wc -c "$BUILD_OUTPUT/Image" "$DTB" "$BUILD_OUTPUT/modules.tar.xz" \
-	> "$BUILD_OUTPUT/sizes.txt"
+(
+	cd "$BUILD_OUTPUT"
+	wc -c Image sun50i-h700-anbernic-rg34xx-sp.dtb modules.tar.xz \
+		rocknix-singleadc-joypad.ko >sizes.txt
+)
 (
 	cd "$BUILD_OUTPUT"
 	shasum -a 256 \
@@ -261,6 +291,8 @@ wc -c "$BUILD_OUTPUT/Image" "$DTB" "$BUILD_OUTPUT/modules.tar.xz" \
 		kernel.release \
 		System.map \
 		Module.symvers \
+		rocknix-singleadc-joypad.ko \
+		joypad.commit \
 		modules.list \
 		modules.tar.xz \
 		applied-patches.txt \

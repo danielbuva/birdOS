@@ -96,3 +96,15 @@ with its documented `/dtb.img` copy. The first hardware gate is to boot that
 unchanged known-working chain; Bird is substituted only after that proof.
 The final source build remains a challenger and is promoted only after it
 beats the accepted 4.9.170 Bird baseline.
+
+The first Bird gates also corrected the meaning of “source complete.” The
+stable H700 profile selects `rocknix-joypad` as a separate kernel package; it
+is not one of the 30 Linux patches. The shipping RG34XX-SP DTB names that
+driver directly. Bird v1 accidentally opened the independent volume-key event,
+and v2 rejected that node but could not find the absent `H700 Gamepad`, so its
+watchdog rebooted the only boot label. V3 pins the external GPL repository at
+`7647fdb0fc89cd69b284903bf7707e861df5dc7e`, builds its H700 module against
+the exact kernel ABI and inserts it from early init before launcher dispatch.
+That module is a compatibility baseline, not the final design: after the broad
+gate passes, remove its unrelated board paths or replace it with standard
+fixed-device input bindings.
