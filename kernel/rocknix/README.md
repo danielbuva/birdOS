@@ -543,10 +543,62 @@ builds are byte-identical, embed that exact archive at the same offset, retain
 the shipping-identical 49,010-byte DTB and reproduce the same H700 input and
 deferred Panfrost modules. The guarded v5.2 updater accepts only v5.1 or v5.2
 on this exact removable card, verifies the retained v5.0 recovery kernel,
-preserves v5.1 on p6 and changes only p1 `KERNEL`. Its built-in-speaker,
-normal-speed game/Dreamcast, MP3 and immediately advancing movie hardware gate
-is pending. Headphone amplifier switching, Ports/OpenBOR and PortMaster remain
-deliberately outside this proof.
+preserves v5.1 on p6 and changes only p1 `KERNEL`. The physical gate passed
+the built-in speaker, Panfrost, direct audio, MP3 and global-control boundary.
+Frame pacing and application selection did not: the evidence and v5.3
+corrections are recorded below. Headphone amplifier switching remains outside
+this proof.
+
+## Bird clean-root v5.3
+
+The v5.2 physical pass proved the fast permanent-root, fixed input, Panfrost,
+direct ALSA and global-control architecture at roughly 2.5 seconds by
+stopwatch. Its logs separated the remaining regressions from boot: Dreamcast
+used modern Flycast rather than ROCKNIX's H700 low-end build, DS substituted
+melonDS with FreeBIOS for DraStic, libretro PPSSPP segfaulted, content kind 3
+was explicitly unimplemented, and MPV's software DRM output dropped 81 frames
+in the first eight seconds of the measured movie.
+
+V5.3 changes only independent post-menu application policy:
+
+- map Dreamcast/Naomi to the H700-tuned Flycast 2021 core and clear the
+  incompatible modern-Flycast per-core options once;
+- run the runtime's standalone DraStic and PPSSPP builds with fixed direct
+  KMSDRM, GLES2, ALSA and H700 controller policy;
+- launch installed Ports through a small Bird device profile, translate their
+  legacy `/mnt/mmc` path at dispatch and prevent later generic probing from
+  replacing that profile;
+- give each content launch a new session/process group so one Select+Start
+  contract terminates the application and every helper it created;
+- snapshot, raise and restore CPU/GPU policy only around emulation, Ports and
+  video; the launcher and idle menu never request performance clocks;
+- present movies through SDL KMSDRM/GLES2 because pinned MPV lacks a native EGL
+  context, while retaining direct `hw:0,0` audio and system-owned volume; and
+- remove a partial ALSA configuration override and replace unsupported decimal
+  BusyBox sleeps with exact microsecond waits.
+
+The movie path is a measured intermediate step, not the final media design.
+Hardware decode still requires H616 Cedrus, V4L2-request-enabled FFmpeg and an
+EGL-enabled MPV build; v5.3 tests whether GPU presentation alone removes the
+visible scaling/frame-pacing cost.
+
+| Bird clean-root v5.3 | Bytes | SHA-256 |
+| --- | ---: | --- |
+| source-built Linux `Image` | 29,939,720 | `ad60468b880fba88c1fc85eca888fbceefd05eb5d54a9a14f9fe74dd8c0847f9` |
+| embedded clean-root cpio | 4,212,736 | `b6bf87cfc291fa663194445b5b768717908367126fac90d25bc6ab18a729d01c` |
+| complete module archive | 937,412 | `2282447fb26b35b6ff5651959a359fde556602c746dcfe9d39db095662412288` |
+| fixed first init | 5,432 | embedded in cpio |
+| fixed permanent PID 1 | 5,112 | embedded in cpio |
+| static launcher | 623,064 | embedded in cpio |
+| separate controls service | 5,880 | embedded in cpio |
+
+Two independent initramfs builds and two sequential complete kernel builds are
+byte-identical. Both kernels re-extract the exact cpio above, retain the
+shipping-identical 49,010-byte DTB, and reproduce the same H700 input and
+deferred Panfrost modules. The guarded v5.3 updater accepted only the exact
+removable-card geometry, v5.2/v5.3 kernel identities, runtime and DTB. It
+preserved v5.2 on p6 and replaced only p1 `KERNEL`. The v5.3 physical
+application/performance gate is pending.
 
 ## Card-safe hardware gate
 

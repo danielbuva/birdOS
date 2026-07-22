@@ -21,7 +21,7 @@ wait_runtime() {
 	while [ ! -e "$READY" ]; do
 		COUNT=$((COUNT + 1))
 		[ "$COUNT" -lt 500 ] || return 1
-		sleep 0.01
+		/bin/usleep 10000
 	done
 }
 
@@ -61,7 +61,7 @@ case "${1-}" in
 						*)
 							# B on Bird's top page used to request the stock frontend.
 							# There is no second frontend in the clean root, so redraw Bird.
-							sleep 0.05
+							/bin/usleep 50000
 							;;
 					esac
 					snapshot_log

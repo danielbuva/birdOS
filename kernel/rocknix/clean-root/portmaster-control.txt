@@ -1,0 +1,78 @@
+#!/bin/bash
+# Fixed Bird adapter for the already-installed PortMaster payload. Port scripts
+# source this through a bind over control.txt; no muOS or ROCKNIX session
+# profile, compositor, audio daemon, systemd service or hardware discovery is
+# imported.
+
+export controlfolder=/storage/MUOS/PortMaster
+export directory=storage
+export CFW_NAME=Bird
+export CFW_VERSION=5.3
+export DEVICE_INFO_VERSION=0.1.15
+export DEVICE_NAME="Anbernic RG34XX-SP"
+export DEVICE_CPU=H700
+export DEVICE_RAM=1
+export DEVICE_ARCH=aarch64
+export DEVICE_HAS_ARMHF=N
+export DEVICE_HAS_AARCH64=Y
+export DEVICE_HAS_X86=N
+export DEVICE_HAS_X86_64=N
+export DISPLAY_WIDTH=720
+export DISPLAY_HEIGHT=480
+export ASPECT_X=3
+export ASPECT_Y=2
+export DISPLAY_ORIENTATION=0
+export ANALOG_STICKS=2
+export ANALOGSTICKS=2
+export LOWRES=N
+export param_device=anbernic
+export ESUDO=
+export ESUDOKILL=-1
+export ESUDOKILL2=-1
+export CUR_TTY=/dev/null
+export PM_CAN_MOUNT=Y
+export GODOT2_OPTS="-r 720x480 -f"
+export GODOT_OPTS="--resolution 720x480 -f"
+export LIBGL_DRIVERS_PATH=/usr/lib/dri
+export SDL_GAMECONTROLLERCONFIG_FILE=/run/bird/h700-sdl-gamecontrollerdb.txt
+export SDL_GAMECONTROLLERCONFIG="$(cat "$SDL_GAMECONTROLLERCONFIG_FILE")"
+export sdl_controllerconfig="$SDL_GAMECONTROLLERCONFIG"
+export GPTOKEYB="$controlfolder/gptokeyb -1"
+export GPTOKEYB2="env LD_PRELOAD=$controlfolder/libinterpose.aarch64.so $controlfolder/gptokeyb2 -1"
+export PATH="$controlfolder:$PATH"
+
+get_controls() {
+	export SDL_GAMECONTROLLERCONFIG_FILE=/run/bird/h700-sdl-gamecontrollerdb.txt
+	export SDL_GAMECONTROLLERCONFIG="$(cat "$SDL_GAMECONTROLLERCONFIG_FILE")"
+	sdl_controllerconfig="$SDL_GAMECONTROLLERCONFIG"
+}
+
+pm_begin_splash() { :; }
+pm_end_splash() { :; }
+pm_platform_helper() { :; }
+pm_message() { printf 'Port: %s\n' "$*"; }
+pm_show_error() { printf 'Port error: %s\n' "$*" >&2; }
+pm_message_end() { :; }
+
+pm_gptokeyb_finish() {
+	pkill -9 -f gptokeyb 2>/dev/null || :
+	pkill -9 -f gptokeyb2 2>/dev/null || :
+}
+
+pm_finish() {
+	pm_gptokeyb_finish
+}
+
+bind_directories() {
+	[ -d "$2" ] || return 1
+	mkdir -p "$1"
+	umount "$1" 2>/dev/null || :
+	mount --bind "$2" "$1"
+}
+
+bind_files() {
+	[ -f "$2" ] || return 1
+	touch "$1"
+	umount "$1" 2>/dev/null || :
+	mount --bind "$2" "$1"
+}

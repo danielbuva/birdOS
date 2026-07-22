@@ -30,20 +30,28 @@ Files:
 - `h700-sdl-gamecontrollerdb.txt`: the one exact SDL controller record.
 - `input-metadata.sh`: publishes `ID_INPUT_JOYSTICK=1` for the built-in pad.
 - `audio-init.sh`: programs the one fixed H616/RG34XX-SP speaker route.
+- `content-performance.sh`: records and applies app-scoped CPU/GPU policy,
+  then restores the idle policy before Bird redraws.
+- `portmaster-control.txt`: the fixed Bird adapter for installed Port scripts;
+  it replaces generic CFW/device probing only inside the runtime view.
 - `mpv-input.conf`: fixed movie controls; dedicated volume keys remain global.
-- `exit-content.sh`: one Bird-owned Select+Start termination contract.
+- `exit-content.sh`: one process-group Select+Start contract for every app and
+  helper it starts.
 - `volume.sh`, `suspend.sh`, `shutdown.sh`: fixed device lifecycle operations.
 
 Native RetroArch inherits its matching ROCKNIX configuration and H700 frame
 pacing but overrides the fixed 720x480 panel mode, input profile, save paths
 and direct ALSA endpoint. Mesa is not forced to `panfrost`: its native sun4i
-KMSRO path pairs display `card0` with Panfrost `renderD128`. MPV uses its
-compiled direct DRM output and the same direct hardware ALSA endpoint;
-neither application requires a compositor or session daemon. Every launch
-receives a distinct persistent log and dmesg snapshot so a later attempt
-cannot erase the prior failure evidence.
+KMSRO path pairs display `card0` with Panfrost `renderD128`. Dreamcast uses
+ROCKNIX's H700-tuned Flycast 2021 core; DS and PSP use the matching standalone
+DraStic and PPSSPP builds instead of slower or unstable libretro substitutes.
+MPV's v5.3 movie probe presents through SDL KMSDRM/GLES2 because this pinned
+MPV build lacks its native EGL context; decoding remains software until Bird
+enables H616 Cedrus/V4L2-request. Every app uses direct ALSA and runs without a
+compositor or session daemon. Every launch receives a distinct persistent log
+and dmesg snapshot so a later attempt cannot erase prior failure evidence.
 
-V5.2's audio gate is deliberately the built-in-speaker path. The source kernel
+V5.3's audio gate is deliberately the built-in-speaker path. The source kernel
 already publishes the fixed headphone-detect GPIO and `Headphone` DAPM pin,
 but enabling Bird's `Speaker Switch` does not automatically mute that external
 amplifier when headphones are inserted. A tiny fixed jack policy is tracked

@@ -80,14 +80,16 @@ application and move everything unrelated to an interactive menu behind it.
 - [x] Remove the next set of redundant fixed-startup work: per-boot
   immutable policy/geometry writes, obsolete update-file cleanup, zero-swap
   probing and the unnecessary squashfs module request.
-- [ ] [clean-root v5.0 boot gate passed; v5.2 session gate staged] Bake
+- [ ] [clean-root v5.0 boot gate passed; v5.3 application gate staged] Bake
   changes into the image and remove the card-side development user-init
   delivery path. The successful path is entirely embedded and does not enter
   p5. V5.0 physically proved the menu at 1.135 seconds, H700 input at 1.290 and
   the post-frame runtime at 2.08. V5.1 isolated CPU `softpipe` selection and an
-  unprogrammed H616 speaker route; v5.2 corrects those measured post-frame
-  defects. Delete the retained recovery-only muOS partition and obsolete
-  migration payloads only after that application gate passes.
+  unprogrammed H616 speaker route. V5.2 passed fixed Panfrost, audio and global
+  controls at roughly 2.5 seconds by stopwatch, then exposed wrong emulator
+  choices, absent Ports and software movie presentation. V5.3 corrects those
+  post-menu boundaries. Delete the retained recovery-only muOS partition and
+  obsolete migration payloads only after that application gate passes.
 
 ### Layer 2 — early userspace and init
 
@@ -132,11 +134,14 @@ removes the handoff entirely while keeping the verified menu-first boundary.
   static launcher becomes usable first; storage, Panfrost, the immutable
   application runtime and global controls start independently afterward. The
   success path never mounts or switches into old p5.
-- [ ] [clean-root v5.2 staged] Pass the coherent native-application boundary:
+- [ ] [clean-root v5.3 staged] Pass the coherent native-application boundary:
   fixed H700 metadata and mappings, exact 720x480 KMS policy, writable runtime
   scratch space, native sun4i-KMS/Panfrost pairing, a deterministic H616
-  speaker route, direct DRM MPV, system-owned volume and one Select+Start exit
-  contract. No muOS wrapper/configuration/core/library enters this path.
+  speaker route, H700-tuned Flycast, standalone DraStic/PPSSPP, native Ports,
+  system-owned volume and one process-group Select+Start exit contract. MPV's
+  SDL KMSDRM probe is an intermediate presentation path pending Cedrus and a
+  rebuilt EGL-enabled media runtime. No muOS wrapper, configuration, core or
+  library enters this path.
 
 ### Layer 3 — fixed RG34XX-SP kernel
 
@@ -263,14 +268,16 @@ boards.
   but application behavior was otherwise unchanged; SDL still failed KMSDRM
   and decoded video remained invisible. The hint alone did not repair the
   legacy applications' shared display path.
-- [ ] [compatibility v4.3 staged; next physical gate] Make Panfrost and its
+- [x] [compatibility v4.3/v4.5 topology proof complete; superseded by clean root]
+  Make Panfrost and its
   exact DRM helpers modules so built-in sun4i-drm owns display `card0`. Preserve
   the three matching modules through `switch_root`, then warm them
   automatically in parallel with the post-frame input/sound replay. The
   launcher never owns GPU initialization and content selection only performs a
-  bounded readiness wait for `renderD128`. Retest brightness, volume, MP3,
-  movies plus rich controls, RetroArch, PSP, NDS, a native port, exact return,
-  power/lid suspend and shutdown. Reduce the SquashFS only after this gate.
+  bounded readiness wait for `renderD128`. Hardware proved that topology and
+  clean-root v5.2 later proved Panfrost, brightness, volume, audio and content
+  return without the mixed muOS ABI. Application selection/performance is now
+  the v5.3 gate above. Reduce the SquashFS only after that gate.
 - [ ] If the trimmed source path loses a measured race, reverse-engineer only
   the corresponding accepted-kernel path (display handoff, MMC, clocks,
   regulators or fixed delay) and port the finding into controlled source. Do
@@ -372,17 +379,19 @@ savings; it is not forgotten.
   The kernel/DRM topology passed; native RetroArch still failed when combined
   with muOS policy and assets, so the clean-root candidate now pairs each
   application with its own native configuration, cores and libraries.
-- [ ] [clean-root v5.2 native-session gate] V5.0 verified menu/input,
+- [ ] [clean-root v5.3 native-application/performance gate] V5.0 verified menu/input,
   brightness and shutdown. V5.1 then verified application entry, controls and
   direct DRM decode while exposing forced CPU rendering, an unprogrammed H616
-  speaker route and repeating MPV trigger events. V5.2 removes the Mesa
-  override, applies only the six fixed speaker controls after the menu, keeps
-  the proven direct hardware ALSA endpoint and restores native H700 frame
-  pacing. Verify a normal-speed libretro title and Dreamcast title with audio
-  and return, an
-  immediately advancing movie with audio, MP3, Select+Start exit and dedicated
-  system volume. Ports, OpenBOR, PortMaster networking and final media
-  optimization follow only after this boundary passes.
+  speaker route and repeating MPV trigger events. V5.2 then proved Panfrost,
+  direct speaker audio, MP3 and fixed controls while exposing modern Flycast,
+  melonDS/FreeBIOS, a PPSSPP libretro crash, no Port dispatch and MPV software
+  frame drops. V5.3 selects the H700-tuned and standalone applications,
+  implements the fixed Port adapter, applies performance clocks only while
+  content runs, uses one process-group exit contract and probes GPU-backed SDL
+  movie presentation. Verify Dreamcast, DS, PSP, at least one Port, a lighter
+  libretro title, MP3, movie smoothness and pause latency, Select+Start, volume,
+  brightness, suspend/wake and shutdown. PortMaster networking remains a later
+  home-network check; Cedrus/EGL media optimization follows this boundary.
 - [ ] After built-in-speaker audio passes, add a fixed headphone-jack policy
   that uses the existing H700 detect GPIO to mute the external speaker
   amplifier. Do not introduce a UCM or PipeWire session daemon for this one
@@ -392,11 +401,11 @@ savings; it is not forgotten.
 - [ ] Remove superseded muOS components and produce a reproducible firmware image.
 - [ ] Optimize kernel and U-Boot last.
 
-Verified interactive milestone: the clean-root source-kernel record is a
-visible frame at 1.135 seconds and input-ready at 1.290 seconds of kernel
-uptime. LED-on to an immediately usable menu was about 3.5 seconds by
-stopwatch on the last complete vendor-root functionality pass; a new clean-root
-stopwatch series remains pending.
+Verified interactive milestone: clean-root v5.2 recorded pixels at 1.137
+seconds and input-ready at 1.294 seconds of kernel uptime. LED-on to an
+immediately usable menu is approximately 2.5 seconds by stopwatch. V5.3 leaves
+that launcher/early-init dependency path unchanged and awaits its physical
+application gate.
 At the last accepted vendor-root checkpoint, all three emulator/Port paths were
 playable with audio and returned to a redrawn launcher in 27--29 ms. The
 clean-root native-session gate is tracked separately above.

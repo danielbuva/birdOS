@@ -26,9 +26,9 @@ must serve this one device and this one experience.
   produced input-ready frames at 2.032--2.103 seconds, launched content and
   shut down normally. As expected for post-frame work, stopwatch boot time
   remained approximately 3.8 seconds.
-- Current LED-on stopwatch range: approximately 3.5--3.8 seconds. The accepted
-  direct-handoff boot records an ordinary interactive marker at 1.98 seconds;
-  the latest hardware pass was approximately 3.8 seconds by stopwatch.
+- Current clean-root LED-on stopwatch result: approximately 2.5 seconds. V5.2
+  recorded pixels at 1.137 seconds and direct input ready at 1.294 seconds of
+  Linux uptime; the remaining stopwatch interval is primarily pre-kernel.
 - Fixed-root-coordinator behavior test: all functionality passed with
   sub-3.8-second stopwatch boots. Its latest trace records an input-ready frame
   at 2.06 seconds, system-ready at 4.24 and audio ready at 6.02.
@@ -76,6 +76,14 @@ must serve this one device and this one experience.
   yet programmed the fixed H616 DAC/Line-Out/speaker route. MPV's first frame
   could advance after seeking, confirming that decode and direct DRM output
   were alive; its SDL trigger-up events were also proven unreliable.
+- Clean-root v5.2 passed the hardware-rendering, direct-audio and fixed-control
+  boundary. RetroArch logs identify the Mali-G31 Panfrost renderer, MP3 audio
+  is clean, and menu, brightness, volume, exit and shutdown work at the new
+  roughly 2.5-second stopwatch result. The same test exposed application
+  policy rather than boot defects: Dreamcast used modern Flycast instead of
+  the H700 low-end build, DS used melonDS/FreeBIOS instead of DraStic, PPSSPP
+  libretro segfaulted, Ports were unimplemented, and MPV's software DRM path
+  dropped frames.
 
 The accepted vendor-root checkpoint started the launcher from initramfs after
 mounting p5 and carried it across `switch_root`. Clean-root v5.0 removes that
@@ -90,19 +98,20 @@ card-side patches.
 
 ## Current changes
 
-- The active experiment is clean-root v5.2. Bird owns boot, UI, launch policy,
+- The active experiment is clean-root v5.3. Bird owns boot, UI, launch policy,
   storage timing and global controls. It does not import a muOS wrapper,
   executable, core, configuration or shared library. ROCKNIX is an immutable
   application/runtime provider and the source of the open kernel/driver chain,
   not Bird's userspace or frontend.
-- V5.2 keeps the accepted fast path and corrects only measured post-frame
-  application policy: Mesa again performs its native sun4i KMSRO/Panfrost
-  pairing; a six-control fixed audio initializer replaces a generic session
-  manager; RetroArch and MPV keep the already-proven direct `hw:0,0` endpoint;
-  native H700 frame pacing and core options are retained; unreliable MPV
-  trigger-speed bindings are removed; and content exit uses bounded readiness
-  polling rather than a fixed delay. No udev, audio or application daemon
-  moved into the launcher path.
+- V5.3 leaves the accepted first-frame path unchanged and corrects only
+  measured post-menu application policy. It selects the H700-tuned Flycast
+  2021 core, native standalone DraStic and PPSSPP, implements installed Ports
+  through a fixed Bird profile, and gives every app one process-group exit
+  boundary. CPU/GPU performance policy is raised only while emulation, Ports
+  or video is active and is restored on return. MPV now probes SDL
+  KMSDRM/GLES2 presentation without a compositor; proper Cedrus hardware
+  decode remains a later kernel/runtime build. No udev, audio or application
+  daemon moved into the launcher path.
 - Early ROM mount.
 - Frontend/audio readiness gate removed. The session-warm stage is verified:
   menu input was ready at 2.11 seconds, audio started at 3.97, D-Bus completed
@@ -307,10 +316,10 @@ card-side patches.
   profiled through the Allwinner `disp0 getbl/setbl` interface. Early hardware
   traces identify U-Boot's separate raw-50 DTB value as the actual handoff owner.
 
-The cached-module test reported `cached`, and the complete post-change
-functionality test passed. The optimized-stock checkpoint remains in Git. The
-card currently contains the clean-root v5.2 session-correction candidate; the
-v5.1, v5.0 and v4.5 kernels are preserved on p6.
+The historical cached-module test reported `cached`, and that optimized-stock
+functionality checkpoint remains in Git. The card currently contains the
+clean-root v5.3 native-performance candidate; the v5.2, v5.1, v5.0 and v4.5
+kernels are preserved on p6.
 
 ## Font payload
 

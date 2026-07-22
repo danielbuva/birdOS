@@ -40,7 +40,7 @@ while [ ! -b "$DATA_DEVICE" ]; do
 		mark data-device-timeout
 		exit 1
 	}
-	sleep 0.01
+	/bin/usleep 10000
 done
 
 mounted_at "$DATA_ROOT" || \
@@ -80,7 +80,7 @@ while [ ! -e /dev/dri/renderD128 ]; do
 		mark gpu-timeout
 		exit 1
 	}
-	sleep 0.01
+	/bin/usleep 10000
 done
 chmod 0666 /dev/dri/card0 /dev/dri/renderD128 2>/dev/null || :
 mark gpu-ready
@@ -107,11 +107,16 @@ bind_once /tmp "$RUNTIME_ROOT/tmp" || exit 1
 bind_once "$DATA_ROOT" "$RUNTIME_ROOT/storage" || exit 1
 
 mkdir -p "$DATA_ROOT/MUOS/Bird/log" \
+	"$DATA_ROOT/MUOS/Bird/apps" \
+	"$DATA_ROOT/MUOS/Bird/home/.config" \
+	"$DATA_ROOT/MUOS/Bird/migrations" \
 	"$DATA_ROOT/MUOS/Bird/save/files" \
 	"$DATA_ROOT/MUOS/Bird/save/states" \
 	"$DATA_ROOT/MUOS/Bird/screenshots" \
 	/run/bird/joypads \
+	/run/bird/xdg \
 	/tmp/cores
+chmod 0700 /run/bird/xdg
 cp -f /opt/bird/retroarch-append.cfg /run/bird/retroarch-append.cfg
 cp -f "$RUNTIME_ROOT/usr/config/retroarch/retroarch-core-options.cfg" \
 	/run/bird/retroarch-core-options.cfg
@@ -119,6 +124,20 @@ cp -f /opt/bird/h700-gamepad.cfg "/run/bird/joypads/H700 Gamepad.cfg"
 cp -f /opt/bird/h700-sdl-gamecontrollerdb.txt \
 	/run/bird/h700-sdl-gamecontrollerdb.txt
 cp -f /opt/bird/mpv-input.conf /run/bird/mpv-input.conf
+
+# Installed Ports remain data, but their generic muOS control file is replaced
+# only inside the immutable runtime view. The card copy is not modified and no
+# PortMaster code enters Bird's launcher or boot gate.
+PORT_CONTROL="$RUNTIME_ROOT/storage/MUOS/PortMaster/control.txt"
+if [ -f "$PORT_CONTROL" ]; then
+	if bind_once /opt/bird/portmaster-control.txt "$PORT_CONTROL"; then
+		mark port-policy-ready
+	else
+		mark port-policy-bind-failed
+	fi
+else
+	mark port-data-absent
+fi
 
 # Native libudev clients need one fixed record, not a generic boot dependency.
 # Publish it only after Bird is usable and keep this outside the launcher.
