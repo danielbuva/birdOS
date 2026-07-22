@@ -31,6 +31,7 @@ typedef signed long s64;
 #define GAMEPAD_NAME "H700 Gamepad"
 #define VOLUME_NAME "gpio-keys-volume"
 #define POWER_NAME "axp20x-pek"
+#define KMSG_DEVICE "/dev/kmsg"
 
 #define BRIGHT_CURRENT "/opt/muos/config/settings/general/brightness"
 #define BRIGHT_INCREMENT "/opt/muos/config/settings/advanced/incbright"
@@ -78,6 +79,8 @@ static char *const fixed_env[] = {
     "USER=root",
     0,
 };
+
+static int kmsg_fd = -1;
 
 static long syscall6(long number, long a0, long a1, long a2, long a3, long a4,
                      long a5) {
@@ -175,6 +178,10 @@ static void log_text(const char *text) {
     write_all(1, text, string_length(text));
 }
 
+static void log_kernel(const char *text) {
+    if (kmsg_fd >= 0) write_all(kmsg_fd, text, string_length(text));
+}
+
 static int read_integer(const char *path, int fallback) {
     char buffer[32];
     long fd = sys_open(path, O_RDONLY | O_CLOEXEC);
@@ -234,7 +241,7 @@ static int clamp(int value, int minimum, int maximum) {
     return value;
 }
 
-static void adjust_brightness(int direction) {
+static int adjust_brightness(int direction) {
     int current = read_integer(BRIGHT_CURRENT, 1);
     int increment = read_integer(BRIGHT_INCREMENT, 16);
     int device_max = read_integer(BRIGHT_DEVICE_MAX, 255);
@@ -248,8 +255,9 @@ static void adjust_brightness(int direction) {
     level = clamp(current + direction * increment, 1, device_max);
     raw = (level * raw_max + device_max / 2) / device_max;
     if (raw < 1) raw = 1;
-    if (write_integer(BRIGHT_RAW_CURRENT, raw))
-        write_integer(BRIGHT_CURRENT, level);
+    if (!write_integer(BRIGHT_RAW_CURRENT, raw)) return 0;
+    write_integer(BRIGHT_CURRENT, level);
+    return 1;
 }
 
 static int run_action(const char *path, const char *argument) {
@@ -271,7 +279,7 @@ static int run_action(const char *path, const char *argument) {
     return status;
 }
 
-static void adjust_volume(int direction) {
+static int adjust_volume(int direction) {
     int current = read_integer(VOLUME_CURRENT, 45);
     int increment = read_integer(VOLUME_INCREMENT, 8);
     int minimum = read_integer(VOLUME_MIN, 0);
@@ -281,11 +289,11 @@ static void adjust_volume(int direction) {
     if (maximum < minimum) maximum = 100;
     if (sys_faccessat(AUDIO_SOCKET) == 0 &&
         read_integer(AUDIO_READY, 0) == 1) {
-        run_action(AUDIO_SCRIPT, direction > 0 ? "U" : "D");
-        return;
+        return run_action(AUDIO_SCRIPT, direction > 0 ? "U" : "D") == 0;
     }
-    write_integer(VOLUME_CURRENT,
-                  clamp(current + direction * increment, minimum, maximum));
+    return write_integer(
+        VOLUME_CURRENT,
+        clamp(current + direction * increment, minimum, maximum));
 }
 
 static void event_path(char *path, int index) {
@@ -334,6 +342,12 @@ static void discover_inputs(struct input_source *sources, int count) {
                 sources[source].fd = (int)fd;
                 fd = -1;
                 missing--;
+                if (source == 0)
+                    log_kernel("<6>bird-controls: gamepad-ready\n");
+                else if (source == 1)
+                    log_kernel("<6>bird-controls: volume-keys-ready\n");
+                else
+                    log_kernel("<6>bird-controls: power-key-ready\n");
                 break;
             }
         }
@@ -343,8 +357,13 @@ static void discover_inputs(struct input_source *sources, int count) {
 }
 
 static void handle_gamepad(const struct input_event *event, int *menu_held) {
-    if (event->type == EV_KEY && event->code == BTN_MODE)
+    if (event->type == EV_KEY && event->code == BTN_MODE) {
         *menu_held = event->value != 0;
+        if (event->value == 1)
+            log_kernel("<6>bird-controls: menu-held\n");
+        else if (event->value == 0)
+            log_kernel("<6>bird-controls: menu-released\n");
+    }
 }
 
 static void handle_volume(const struct input_event *event, int menu_held) {
@@ -357,10 +376,21 @@ static void handle_volume(const struct input_event *event, int menu_held) {
         direction = -1;
     else
         return;
-    if (menu_held)
-        adjust_brightness(direction);
-    else
-        adjust_volume(direction);
+    if (menu_held) {
+        if (adjust_brightness(direction))
+            log_kernel(direction > 0
+                           ? "<6>bird-controls: brightness-up-applied\n"
+                           : "<6>bird-controls: brightness-down-applied\n");
+        else
+            log_kernel("<3>bird-controls: brightness-write-failed\n");
+    } else {
+        if (adjust_volume(direction))
+            log_kernel(direction > 0
+                           ? "<6>bird-controls: volume-up-applied\n"
+                           : "<6>bird-controls: volume-down-applied\n");
+        else
+            log_kernel("<3>bird-controls: volume-action-failed\n");
+    }
 }
 
 static void handle_power(const struct input_event *event,
@@ -370,6 +400,7 @@ static void handle_power(const struct input_event *event,
         *power_pressed = 1;
     } else if (*power_pressed) {
         *power_pressed = 0;
+        log_kernel("<6>bird-controls: suspend-request\n");
         run_action(SUSPEND_SCRIPT, 0);
     }
 }
@@ -409,7 +440,9 @@ static void application(void) {
     int power_pressed = 0;
     int index;
 
+    kmsg_fd = (int)sys_open(KMSG_DEVICE, O_WRONLY | O_CLOEXEC);
     log_text("bird-controls: start\n");
+    log_kernel("<6>bird-controls: start\n");
     for (;;) {
         discover_inputs(sources, 3);
         for (index = 0; index < 3; index++) {

@@ -158,6 +158,12 @@ strings "$RAMDISK/init" | grep -q 'direct-handoff-static-pid1' || \
 	fail 'direct static PID 1 handoff is missing'
 strings "$RAMDISK/init" | grep -q 'mainline-input-ready' || \
 	fail 'early H700 input load is missing'
+grep -q '^[[:space:]]*export SDL_KMSDRM_DEVICE_INDEX=1$' \
+	"$MAINLINE_OVERRIDE_DIR/bird-mainline-env.sh" || \
+	fail 'fixed sun4i display-card selection is missing'
+strings "$MAINLINE_OVERRIDE_DIR/bird-controls" | \
+	grep -q 'bird-controls: brightness-write-failed' || \
+	fail 'persistent mainline controls diagnostics are missing'
 
 find "$RAMDISK" -type d -exec touch -t 202601010000 {} +
 touch -t 202601010000 \

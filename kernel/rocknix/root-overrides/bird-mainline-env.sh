@@ -41,6 +41,10 @@ BIRD_MAINLINE_REASSERT() {
 	unset LD_PRELOAD
 	export LD_LIBRARY_PATH
 	export SDL_VIDEODRIVER=kmsdrm
+	# On this fixed H700 profile card0 is Panfrost's render-only DRM node;
+	# sun4i-drm owns the panel and is enumerated as display card1.  SDL's
+	# default card0 probe therefore cannot find a connector.
+	export SDL_KMSDRM_DEVICE_INDEX=1
 	export LIBGL_DRIVERS_PATH="$BIRD_RUNTIME_ROOT/usr/lib/dri"
 	export GBM_BACKENDS_PATH="$BIRD_RUNTIME_ROOT/usr/lib/gbm"
 	export __EGL_VENDOR_LIBRARY_FILENAMES="$BIRD_RUNTIME_ROOT/usr/share/glvnd/egl_vendor.d/50_mesa.json"

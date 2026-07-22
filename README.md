@@ -157,6 +157,15 @@ card-side patches.
   the known gamepad, volume and PMIC keys by device name, blocks in `ppoll`,
   never grabs them from applications, and owns only volume,
   Menu+volume brightness and power suspend.
+- The v4.1 physical pass proved that content now reaches `exec`, then exposed
+  one fixed-device mismatch shared by RetroArch, MPV, PPSSPP and SDL-linked
+  PortMaster/FRT games. Panfrost is render-only DRM `card0`, while sun4i-drm
+  owns the panel as `card1`; SDL's default probe therefore reports KMSDRM
+  unavailable or renders no visible frame. V4.2 exports
+  `SDL_KMSDRM_DEVICE_INDEX=1` only in the on-demand content environment. It
+  also writes the separate controls service's device discoveries and applied
+  brightness, volume and suspend actions to the delayed persistent dmesg
+  capture. Neither operation joins the launcher or first-frame dependency path.
 - The fixed-storage path is hardware-verified. It replaces the two resident
   UnionFS-FUSE processes with kernel bind mounts from this card at the same
   `/mnt/union/ROMS` and `/mnt/union/ports` compatibility paths; diagnostics

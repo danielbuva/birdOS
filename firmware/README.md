@@ -475,6 +475,16 @@ devices by name and leaves launcher/application input ownership independent.
 kernel hash, verifies the full card geometry, runtime, DTB and policy, and
 writes p1 plus that single p6 policy file; p5 remains untouched.
 
+The v4.1 physical pass then proved that applications reach `exec`, but exposed
+the source kernel's deterministic DRM numbering: Panfrost render-only is
+`card0`, while the sun4i panel is `card1`. The runtime SDL defaulted to card0,
+causing RetroArch's explicit `kmsdrm not available` failure and blank output
+from MPV, PPSSPP and SDL/FRT ports. V4.2 pins SDL to display index 1 only after
+a content selection and adds persistent kmsg markers to the independent global
+controls service. `mac-update-rocknix-bird-compat-v4-2.sh` accepts only the
+verified v4.1 or v4.2 kernel, rechecks the same complete card geometry and
+artifact identities, and still writes only p1 plus the unchanged p6 policy.
+
 The original one-shot plan required preserving an automatic normal boot target.
 This card is now explicitly disposable experimental media, so a candidate may
 replace BIRD p1 only after exact layout, old-hash and readback gates pass. The

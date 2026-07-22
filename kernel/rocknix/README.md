@@ -310,6 +310,26 @@ Two independent v4.1 initramfs builds are byte-identical. The source gate
 retains the shipping-identical DTB and exact H700 module. The guarded updater
 verified and installed the new p1 kernel plus p6 policy without writing p5.
 
+The v4.1 device pass localized the remaining shared graphics failure. Mainline
+registers Panfrost's render-only node as `/dev/dri/card0` and the sun4i display
+engine as `/dev/dri/card1`. The runtime SDL defaulted to index zero: RetroArch
+logged `kmsdrm not available`, while MPV, PPSSPP and an SDL-linked FRT port
+remained alive without visible application output. V4.2 treats that numbering
+as part of the fixed RG34XX-SP profile and exports
+`SDL_KMSDRM_DEVICE_INDEX=1` in the selection-only compatibility environment.
+The freestanding controls process also sends device-ready and action-result
+markers to `/dev/kmsg`, which the existing delayed dmesg collector persists.
+
+| Compatibility v4.2 artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Bird source-kernel v4.2 `Image` | 30,009,352 | `2ef4a12f4f56942722be4426739cab2802b0c6d0973e2abe4fc3b6f17c3217f4` |
+| embedded Bird v4.2 cpio | 3,952,640 | `31deab031c0065a4d436dd05b87eccb86a4caf59fb2233b6eb8fabfd0f64626e` |
+| diagnostic `bird-controls` | 7,736 | `a101360c7f26feedbcc02b3e1adc8fbaf77316d5a541b75c30e574867bfd1617` |
+
+Two independent v4.2 initramfs builds are byte-identical. The kernel build
+again retains the shipping-identical DTB
+`f3a4273986d6e4f431b110cead8aa19e8da52ff08c64c4b204ef9664d28b5c31`.
+
 ## Card-safe hardware gate
 
 `build-bird-prefix.sh` packages only the bytes before the existing p5 root.

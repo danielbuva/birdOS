@@ -236,14 +236,17 @@ boards.
   input and 2.010-second storage boundary. Runtime mounting began only after a
   selection, but a transient optional PortMaster bind failed and returned every
   request before `exec`; therefore none of the application ABI was retested.
-- [ ] [compatibility v4.1 staged; next physical gate] Remove the optional
-  PortMaster bind from shared preparation and install its fixed policy directly
-  on p6. Replace the vendor hotkey watcher, whose fixed event paths are wrong on
-  mainline, with a separate 6,160-byte static service dispatched after Bird's
-  first frame. Test brightness up/down, volume, MP3, movies plus rich controls,
-  one RetroArch game, PSP, NDS, a native port, exit-to-exact-row, power and lid
-  suspend/wake and shutdown. Reduce the full SquashFS to its exact dependency
-  closure only after this gate passes.
+- [ ] [compatibility v4.2 staged; next physical gate] V4.1 proved that the
+  shared preparation and application `exec` path now works, but all SDL users
+  selected Panfrost's render-only DRM `card0` instead of sun4i-drm's display
+  `card1`. RetroArch reported `kmsdrm not available`; MPV, PPSSPP and SDL-linked
+  FRT ports stayed alive with blank output until the user exited. Pin the fixed
+  display as `SDL_KMSDRM_DEVICE_INDEX=1` in the on-demand content environment.
+  Persist direct controls-service discovery and action results through kmsg so
+  brightness and volume failures are observable. Test brightness up/down,
+  volume, MP3, movies plus rich controls, one RetroArch game, PSP, NDS, a native
+  port, exit-to-exact-row, power and lid suspend/wake and shutdown. Reduce the
+  full SquashFS only after this gate passes.
 - [ ] If the trimmed source path loses a measured race, reverse-engineer only
   the corresponding accepted-kernel path (display handoff, MMC, clocks,
   regulators or fixed delay) and port the finding into controlled source. Do
@@ -336,10 +339,11 @@ savings; it is not forgotten.
   controls and the other libudev clients have fixed direct-event replacements.
   The one-shot proof broke rich movie controls and did not terminate cleanly.
   PortMaster/network remains a deferred home-network acceptance check.
-- [ ] [source-kernel v4.1 physical gate] Prove the separate direct mainline
+- [ ] [source-kernel v4.2 physical gate] Prove fixed display `card1` selection
+  across MPV, RetroArch, PPSSPP and an SDL/FRT port. Prove the separate direct
   `bird-controls` replacement for volume, Menu+volume brightness and power
-  suspend. It starts after the usable menu and blocks in `ppoll`; it is not part
-  of the launcher or first-frame dependency path.
+  suspend from its persistent kmsg markers. It starts after the usable menu and
+  blocks in `ppoll`; it is not part of the launcher or first-frame path.
 - [ ] Move the final animation and audio to the earlier firmware layer.
 - [ ] Complete the final visual, animation and audio identity.
 - [ ] Remove superseded muOS components and produce a reproducible firmware image.
