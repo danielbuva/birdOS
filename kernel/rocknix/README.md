@@ -242,6 +242,46 @@ bytes exactly. `firmware/mac-update-rocknix-bird-compat-v3.sh` accepted only
 the card's exact removable p1/p5/p6 geometry and v2/v3 checksums, then staged
 v3 by updating p1 alone. P5 root and p6 data were not written.
 
+## Compatibility v4: deferred userspace ABI
+
+The v3 hardware result closes the early-input question. Bird drew at 1.586
+seconds, opened the real `H700 Gamepad` at 1.750 seconds, and retained menu
+controls and shutdown. Post-frame udev produced ALSA, `/dev/dri/card0`,
+`renderD128`, Panfrost and the standard backlight class. The failures began
+only when preserved applications loaded muOS's vendor `libmali`/SDL ABI:
+Mali-fbdev required `/dev/ion`, MPV's SDL initialization failed, and DraStic
+eventually trapped in its vendor JIT.
+
+V4 therefore does not add hardware setup to the launcher. The already separate
+post-frame udev process remains separate. On a content request only,
+`S03danilauncher` mounts the checksum-pinned ROCKNIX `SYSTEM` SquashFS from p6
+read-only and builds a private `/run/bird-mainline-lib` view containing modern
+SDL2 KMSDRM, GLVND/Mesa/Panfrost and only the protocol sonames required by that
+Mesa build. A dependency-free 1,824-byte `libmali.so.0` stub satisfies the old
+binaries' redundant DT_NEEDED entry; EGL/GLES symbols come from Mesa. The
+vendor `libmustage` preload and GL4ES path are suppressed only in that selected
+content process. PortMaster's later GL4ES policy is replaced by a transient
+bind mount, so p6 configuration bytes are not edited.
+
+Brightness keeps muOS's existing `R`, `U`, `D` and numeric command contract but
+maps it to `/sys/class/backlight/backlight`. NDS uses the runtime's ABI-stable
+melonDS libretro core through the existing RetroArch policy because the vendor
+DraStic binary's JIT is not a viable source-kernel compatibility layer.
+
+| Compatibility v4 input | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Bird source-kernel v4 `Image` | 29,943,816 | `1645639aec0ac16f1b2ef901f1bb922ab89e4ae54352580076bc42cd73fa4c8f` |
+| embedded Bird cpio | 3,944,960 | `4fc0f948f27655f3cf0868ac1a78701ed086a83e90057647c9dc07230b97d848` |
+| fixed `/init` | 13,144 | `5057ed3a9364a6c9e66c6a260392d538765add4672b3940dadcba02a35bd338f` |
+| v4 launcher | 623,064 | `840ab4cfd967f18687e624a3dd916ea6cb852a23db84f554d81e1b7c2bcecf2c` |
+| Mali ABI stub | 1,824 | `fa728d1079a34e9b1d0a96328b7fbc6b3383c903115e1f6bd61c11bc48f2d117` |
+| pinned ROCKNIX `SYSTEM` | 1,206,476,800 | `6e2112fc9dc81d5fee944f2534346a8f20674f40e23a0a85bb795218d31eadac` |
+
+Two independent initramfs builds reproduce the cpio exactly. The full
+SquashFS is intentionally a first compatibility proof, not Bird's final
+runtime: once the physical matrix passes, reduce it to the exact transitive
+library/core closure and then measure size, launch latency and memory again.
+
 ## Card-safe hardware gate
 
 `build-bird-prefix.sh` packages only the bytes before the existing p5 root.

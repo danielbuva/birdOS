@@ -55,6 +55,33 @@ compile_static() {
 	fi
 }
 
+compile_mali_stub() {
+	SOURCE=$1
+	OBJECT=$2
+	TARGET=$3
+	"$CLANG" \
+		--target=aarch64-linux-gnu \
+		-mcpu=cortex-a53 \
+		-O2 \
+		-ffreestanding \
+		-fno-stack-protector \
+		-fno-ident \
+		-fPIC \
+		-nostdlib \
+		-Wall -Wextra -Werror \
+		-c "$SOURCE" \
+		-o "$OBJECT"
+	"$LLD" -shared --build-id=none -z noexecstack \
+		-soname libmali.so.0 -o "$TARGET" "$OBJECT"
+	chmod 644 "$TARGET"
+	file "$TARGET" | grep -q 'ARM aarch64' ||
+		fail "not an AArch64 shared object: $TARGET"
+	file "$TARGET" | grep -q 'shared object' ||
+		fail "not an AArch64 shared object: $TARGET"
+	"$READELF" -d "$TARGET" | grep -q 'Library soname: \[libmali.so.0\]' ||
+		fail 'Mali compatibility stub SONAME is missing'
+}
+
 [ -f "$BASE" ] || fail "accepted Bird initramfs missing: $BASE"
 [ "$(shasum -a 256 "$BASE" | awk '{print $1}')" = "$BASE_SHA" ] ||
 	fail 'accepted Bird initramfs checksum mismatch'
@@ -71,6 +98,7 @@ CPIO="$OUTPUT/bird-initramfs.cpio"
 GZIP="$OUTPUT/bird-initramfs.cpio.gz"
 FIRST_OBJECT="$OUTPUT/bird-fixed-init.o"
 ROOT_OBJECT="$OUTPUT/bird-root-init.o"
+MALI_STUB_OBJECT="$OUTPUT/bird-mali-stub.o"
 MAINLINE_OVERRIDE_DIR="$RAMDISK/opt/bird-mainline"
 
 mkdir -p "$RAMDISK"
@@ -87,19 +115,38 @@ compile_static "$ROOT/firmware/dani-fixed-init.c" "$FIRST_OBJECT" \
 	-DDANI_BOOT_TIMEOUT_SECONDS="$WATCHDOG_SECONDS"
 compile_static "$ROOT/firmware/dani-root-init.c" "$ROOT_OBJECT" \
 	"$RAMDISK/opt/dani-root-init"
+mkdir -p "$MAINLINE_OVERRIDE_DIR"
+compile_mali_stub \
+	"$ROOT/kernel/rocknix/root-overrides/libmali-stub.c" \
+	"$MALI_STUB_OBJECT" \
+	"$MAINLINE_OVERRIDE_DIR/libmali-bird-stub.so"
 "$LLD" -static --build-id=none -z noexecstack -s -e _start \
 	-o "$RAMDISK/opt/dani-launcher" "$ROOT/launcher/dani-launcher.o"
 chmod 755 "$RAMDISK/opt/dani-launcher"
 
-mkdir -p "$MAINLINE_OVERRIDE_DIR"
 cp -fp "$JOYPAD_MODULE" \
 	"$MAINLINE_OVERRIDE_DIR/rocknix-singleadc-joypad.ko"
 cp -fp "$ROOT/kernel/rocknix/root-overrides/S10udev" \
 	"$MAINLINE_OVERRIDE_DIR/S10udev"
 cp -fp "$ROOT/kernel/rocknix/root-overrides/module.sh" \
 	"$MAINLINE_OVERRIDE_DIR/module.sh"
+cp -fp "$ROOT/launcher/S03danilauncher" \
+	"$MAINLINE_OVERRIDE_DIR/S03danilauncher"
+cp -fp "$ROOT/kernel/rocknix/root-overrides/bird-mainline-env.sh" \
+	"$MAINLINE_OVERRIDE_DIR/bird-mainline-env.sh"
+cp -fp "$ROOT/kernel/rocknix/root-overrides/func-mainline.sh" \
+	"$MAINLINE_OVERRIDE_DIR/func-mainline.sh"
+cp -fp "$ROOT/kernel/rocknix/root-overrides/bright-mainline.sh" \
+	"$MAINLINE_OVERRIDE_DIR/bright-mainline.sh"
+cp -fp "$ROOT/kernel/rocknix/root-overrides/portmaster-libgl-mainline.sh" \
+	"$MAINLINE_OVERRIDE_DIR/portmaster-libgl-mainline.sh"
 chmod 755 "$MAINLINE_OVERRIDE_DIR/S10udev" \
-	"$MAINLINE_OVERRIDE_DIR/module.sh"
+	"$MAINLINE_OVERRIDE_DIR/module.sh" \
+	"$MAINLINE_OVERRIDE_DIR/S03danilauncher" \
+	"$MAINLINE_OVERRIDE_DIR/bird-mainline-env.sh" \
+	"$MAINLINE_OVERRIDE_DIR/func-mainline.sh" \
+	"$MAINLINE_OVERRIDE_DIR/bright-mainline.sh" \
+	"$MAINLINE_OVERRIDE_DIR/portmaster-libgl-mainline.sh"
 
 [ "$(shasum -a 256 "$RAMDISK/opt/dani-launcher" | awk '{print $1}')" = \
 	"$LAUNCHER_SHA" ] || fail 'launcher no longer reproduces pinned executable'
@@ -117,7 +164,13 @@ touch -t 202601010000 \
 	"$RAMDISK/opt/dani-launcher" \
 	"$MAINLINE_OVERRIDE_DIR/rocknix-singleadc-joypad.ko" \
 	"$MAINLINE_OVERRIDE_DIR/S10udev" \
-	"$MAINLINE_OVERRIDE_DIR/module.sh"
+	"$MAINLINE_OVERRIDE_DIR/module.sh" \
+	"$MAINLINE_OVERRIDE_DIR/S03danilauncher" \
+	"$MAINLINE_OVERRIDE_DIR/bird-mainline-env.sh" \
+	"$MAINLINE_OVERRIDE_DIR/func-mainline.sh" \
+	"$MAINLINE_OVERRIDE_DIR/bright-mainline.sh" \
+	"$MAINLINE_OVERRIDE_DIR/portmaster-libgl-mainline.sh" \
+	"$MAINLINE_OVERRIDE_DIR/libmali-bird-stub.so"
 (
 	cd "$RAMDISK"
 	find . -print | LC_ALL=C sort | cpio -o --format newc --owner 0:0 \
@@ -136,6 +189,16 @@ grep -qx './opt/bird-mainline/S10udev' "$OUTPUT/payload.txt" || \
 	fail 'mainline udev override missing from archive'
 grep -qx './opt/bird-mainline/module.sh' "$OUTPUT/payload.txt" || \
 	fail 'mainline module override missing from archive'
+for PAYLOAD in \
+	S03danilauncher \
+	bird-mainline-env.sh \
+	func-mainline.sh \
+	bright-mainline.sh \
+	portmaster-libgl-mainline.sh \
+	libmali-bird-stub.so; do
+	grep -qx "./opt/bird-mainline/$PAYLOAD" "$OUTPUT/payload.txt" || \
+		fail "mainline compatibility payload missing: $PAYLOAD"
+done
 grep -qx './opt/bird-mainline/rocknix-singleadc-joypad.ko' \
 	"$OUTPUT/payload.txt" || fail 'H700 joypad module missing from archive'
 
@@ -145,7 +208,13 @@ grep -qx './opt/bird-mainline/rocknix-singleadc-joypad.ko' \
 		ramdisk/opt/dani-root-init ramdisk/opt/dani-launcher \
 		ramdisk/opt/bird-mainline/rocknix-singleadc-joypad.ko \
 		ramdisk/opt/bird-mainline/S10udev \
-		ramdisk/opt/bird-mainline/module.sh >sizes.txt
+		ramdisk/opt/bird-mainline/module.sh \
+		ramdisk/opt/bird-mainline/S03danilauncher \
+		ramdisk/opt/bird-mainline/bird-mainline-env.sh \
+		ramdisk/opt/bird-mainline/func-mainline.sh \
+		ramdisk/opt/bird-mainline/bright-mainline.sh \
+		ramdisk/opt/bird-mainline/portmaster-libgl-mainline.sh \
+		ramdisk/opt/bird-mainline/libmali-bird-stub.so >sizes.txt
 )
 (
 	cd "$OUTPUT"
@@ -158,6 +227,12 @@ grep -qx './opt/bird-mainline/rocknix-singleadc-joypad.ko' \
 		ramdisk/opt/bird-mainline/rocknix-singleadc-joypad.ko \
 		ramdisk/opt/bird-mainline/S10udev \
 		ramdisk/opt/bird-mainline/module.sh \
+		ramdisk/opt/bird-mainline/S03danilauncher \
+		ramdisk/opt/bird-mainline/bird-mainline-env.sh \
+		ramdisk/opt/bird-mainline/func-mainline.sh \
+		ramdisk/opt/bird-mainline/bright-mainline.sh \
+		ramdisk/opt/bird-mainline/portmaster-libgl-mainline.sh \
+		ramdisk/opt/bird-mainline/libmali-bird-stub.so \
 		payload.txt \
 		sizes.txt >sha256sums.txt
 )

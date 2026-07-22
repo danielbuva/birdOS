@@ -44,7 +44,11 @@ must serve this one device and this one experience.
   package, loads its 37,248-byte module before launcher dispatch and paints
   before input discovery while still withholding the usable marker until the
   correct gamepad opens. Its two clean full kernel builds are byte-identical,
-  and the guarded updater has staged it on BIRD p1 without writing p5 or p6.
+  and the guarded updater staged it on BIRD p1 without writing p5 or p6. The
+  physical v3 gate then drew at 1.586 seconds and opened `H700 Gamepad` at
+  1.750 seconds; menu controls and shutdown worked. Content failures were
+  localized to the preserved userspace's vendor Mali/ION ABI, not early input
+  or the source kernel's DRM, sound or storage devices.
 
 The boot image now starts the launcher from initramfs after mounting the fixed
 root but before `switch_root`. The launcher and its input descriptors survive
@@ -130,6 +134,17 @@ card-side patches.
   resident minimal bridge is restored; it remains fully outside and after the
   interactive launcher. PortMaster/network remains a deferred check at the
   configured home network.
+- Source-kernel compatibility v4 keeps that post-frame udev bridge separate
+  from the launcher and adds no work to the interactive-menu path. Only after
+  a content selection, the supervisor mounts a checksum-pinned ROCKNIX
+  SquashFS read-only and exposes the narrow SDL2 KMSDRM plus Mesa/Panfrost ABI
+  needed by the unchanged muOS applications. An empty `libmali.so.0` SONAME
+  satisfies their redundant vendor dependency without loading the ION/Mali
+  driver, the brightness helper now targets standard backlight sysfs, and NDS
+  uses the runtime's melonDS libretro core instead of the vendor DraStic JIT
+  that trapped on the source kernel. The full runtime image is a compatibility
+  proof; after hardware acceptance it will be reduced to the exact dependency
+  closure Bird actually uses.
 - The fixed-storage path is hardware-verified. It replaces the two resident
   UnionFS-FUSE processes with kernel bind mounts from this card at the same
   `/mnt/union/ROMS` and `/mnt/union/ports` compatibility paths; diagnostics

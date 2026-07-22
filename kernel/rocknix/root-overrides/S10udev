@@ -45,6 +45,17 @@ collect_hardware() {
 			find /sys/class/backlight /sys/class/drm -maxdepth 2 \
 				\( -type f -o -type l \) 2>/dev/null || :
 		} >"$OUT/device-nodes.txt"
+		{
+			for BACKLIGHT in /sys/class/backlight/*; do
+				[ -d "$BACKLIGHT" ] || continue
+				printf 'device=%s\n' "${BACKLIGHT##*/}"
+				for FIELD in brightness actual_brightness max_brightness bl_power; do
+					[ -r "$BACKLIGHT/$FIELD" ] || continue
+					printf '%s=' "$FIELD"
+					cat "$BACKLIGHT/$FIELD"
+				done
+			done
+		} >"$OUT/backlight.txt"
 	) >/dev/null 2>&1 &
 }
 

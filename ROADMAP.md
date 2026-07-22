@@ -212,17 +212,30 @@ boards.
   `rocknix-singleadc-joypad`, while the Linux tree and 30 patches contain only
   the standard `adc-joystick` driver. ROCKNIX ships the requested driver from a
   separate repository/package that the initial source gate had not included.
-- [ ] [compatibility v3 staged; next physical gate] Load the exact pinned H700
+- [x] [compatibility v3 hardware gate complete] Load the exact pinned H700
   joypad module from early init before dispatching the launcher. The launcher
   paints as soon as the framebuffer exists, but retains the correct semantic gate:
   it publishes readiness and cancels the watchdog only after `H700 Gamepad`
   has opened. Keep the display-console and old-root compatibility bridges from
   v2. Persist input, audio, framebuffer, DRM, mount and dmesg evidence after p6.
-  Test repeated cold boot, immediate launcher input, display/brightness,
-  system volume, game launch/return and in-game controls, MP3, complete movie
-  controls, favorites persistence and shutdown. Record power-to-input timing,
-  but treat functionality—not speed—as this gate's pass condition. Do not trim
-  the broad kernel until this matrix passes.
+  The physical gate drew at 1.586 seconds, opened the correct gamepad at 1.750
+  seconds and passed menu controls and shutdown. Udev subsequently exposed
+  ALSA and standard DRM/Panfrost nodes. Brightness still called the vendor
+  display helper, while MPV, RetroArch, PPSSPP and native ports requested
+  vendor Mali-fbdev/ION; DraStic reached its JIT and trapped. These are now
+  localized preserved-userspace ABI failures rather than an early-kernel or
+  input failure.
+- [ ] [compatibility v4 staged; next physical gate] Keep the launcher first and
+  mount a pinned modern SDL2/Mesa runtime only after content selection. Put
+  only the required graphics/protocol sonames ahead of the preserved root,
+  satisfy its redundant `libmali.so.0` dependency with an empty ABI stub and
+  continue to use muOS launch scripts, controller maps, audio and frontend
+  policy. Replace vendor brightness writes with standard backlight sysfs and
+  route source-kernel NDS launches through the pinned melonDS libretro core.
+  Test brightness up/down, MP3, movies plus rich controls, one RetroArch game,
+  PSP, NDS, a native port, exit-to-exact-row, volume, suspend/wake and shutdown.
+  Prove that the runtime mount begins only after selection. Reduce the temporary
+  full SquashFS to its exact dependency closure only after this gate passes.
 - [ ] If the trimmed source path loses a measured race, reverse-engineer only
   the corresponding accepted-kernel path (display handoff, MMC, clocks,
   regulators or fixed delay) and port the finding into controlled source. Do

@@ -448,10 +448,20 @@ watchdog therefore rebooted the sole Bird label rather than entering a second
 fallback image. Compatibility v3 embeds the exact pinned GPL module, loads it
 from fixed init before launcher dispatch, and keeps the obsolete `mali_kbase`
 request behind the separate post-frame mainline device bridge. The guarded Mac
-v3 updater changes only mounted BIRD p1 and leaves the customized root and data
-partitions untouched. It has staged kernel
+v3 updater changed only mounted BIRD p1 and left the customized root and data
+partitions untouched. It staged kernel
 `82f1a2ed941b55f5bb3a79421962f78029fa0559379c0651a4d4c82bd46d8653`
-for the next physical gate.
+and the physical gate confirmed a 1.586-second visible frame, a 1.750-second
+correct gamepad, working menu controls and shutdown. The remaining failures
+were the old root's vendor Mali/ION graphics and brightness interfaces.
+
+Compatibility v4 bind-mounts its userspace helpers from the embedded cpio but
+does not execute the graphics bridge during boot. A selection mounts the exact
+ROCKNIX `SYSTEM` SquashFS from p6 read-only, constructs a private library view
+in `/run`, selects SDL KMSDRM and Mesa/Panfrost, and then invokes the preserved
+muOS launcher scripts. The root partition is still not rewritten. The same
+batch maps muOS brightness commands to mainline backlight sysfs and substitutes
+melonDS for the vendor DraStic JIT on NDS selections.
 
 The original one-shot plan required preserving an automatic normal boot target.
 This card is now explicitly disposable experimental media, so a candidate may

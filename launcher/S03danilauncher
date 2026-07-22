@@ -14,6 +14,25 @@ BOOT_ID=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null)
 ARCHIVE_LOG="/mnt/mmc/MUOS/bespoke-launcher/early-launcher-$BOOT_ID.log"
 LAUNCH_REQUEST="$RUN_DIR/dani-launch-request"
 AUDIO_CONTROL="/opt/muos/script/system/pipewire.sh"
+MAINLINE_ENV="/run/muos/bird-mainline-env"
+# Resolve from /opt/muos/share/core without writing to the preserved root.
+MAINLINE_NDS_CORE="../../../../run/bird-rocknix/usr/lib/libretro/melonds_libretro.so"
+
+PREPARE_MAINLINE_CONTENT() {
+	[ -r "$MAINLINE_ENV" ] || return 0
+	. "$MAINLINE_ENV"
+	BIRD_MAINLINE_CONTENT=1
+	export BIRD_MAINLINE_CONTENT
+	printf 'mainline content runtime start uptime: '
+	cut -d ' ' -f 1 /proc/uptime
+	BIRD_MAINLINE_PREPARE || {
+		printf 'mainline content runtime failed uptime: '
+		cut -d ' ' -f 1 /proc/uptime
+		return 1
+	}
+	printf 'mainline content runtime ready uptime: '
+	cut -d ' ' -f 1 /proc/uptime
+}
 
 SNAPSHOT_LOG() {
 	[ -d /mnt/mmc/MUOS ] || return 0
@@ -86,6 +105,7 @@ RUN_CONTENT() {
 
 	WAIT_RUNTIME content || return 1
 	START_AUDIO || return 1
+	PREPARE_MAINLINE_CONTENT || return 1
 
 	. /opt/muos/script/var/func.sh
 	GOVERNOR_FILE=$(GET_VAR "device" "cpu/governor")
@@ -106,7 +126,10 @@ RUN_CONTENT() {
 		1) /opt/muos/script/launch/lr-general.sh "$CONTENT_NAME" "$CONTENT_CORE" "$CONTENT_PATH" ;;
 		2) /opt/muos/script/launch/ext-ppsspp.sh "$CONTENT_NAME" "ext-ppsspp" "$CONTENT_PATH" ;;
 		3) /opt/muos/script/launch/ext-general.sh "$CONTENT_NAME" "external" "$CONTENT_PATH" ;;
-		4) /opt/muos/script/launch/ext-drastic.sh "$CONTENT_NAME" "$CONTENT_CORE" "$CONTENT_PATH" ;;
+		# The vendor DraStic binary reaches its JIT and traps with SIGILL on the
+		# source kernel.  Use ROCKNIX's ABI-stable melonDS libretro core while
+		# retaining muOS's existing RetroArch configuration and controls.
+		4) /opt/muos/script/launch/lr-general.sh "$CONTENT_NAME" "$MAINLINE_NDS_CORE" "$CONTENT_PATH" ;;
 		5) /opt/muos/script/launch/ext-openbor.sh "$CONTENT_NAME" "$CONTENT_CORE" "$CONTENT_PATH" ;;
 		6) /opt/muos/script/launch/ext-mpv.sh "$CONTENT_NAME" "$CONTENT_CORE" "$CONTENT_PATH" ;;
 		*)
@@ -130,6 +153,7 @@ RUN_CONTENT() {
 
 RUN_PORTMASTER() {
 	WAIT_RUNTIME portmaster || return 1
+	PREPARE_MAINLINE_CONTENT || return 1
 	/opt/muos/script/init/S30dbus demand-start || return 1
 	printf 'portmaster network connect start uptime: '
 	cut -d ' ' -f 1 /proc/uptime

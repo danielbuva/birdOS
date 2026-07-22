@@ -82,7 +82,10 @@ OpenBOR use their dedicated muOS wrappers.
 - SNES: `snes9x_libretro.so` through `lr-general.sh`
 - PSP: standalone PPSSPP through `ext-ppsspp.sh`
 - Ports: executable script through `ext-general.sh`
-- NDS: standalone DraStic through `ext-drastic.sh`
+- NDS on the accepted vendor kernel: standalone DraStic through
+  `ext-drastic.sh`
+- NDS on source-kernel compatibility v4: pinned melonDS through the existing
+  `lr-general.sh`/RetroArch policy (the vendor DraStic JIT traps there)
 - OpenBOR: standalone OpenBOR 7530 through its optional package wrapper
 
 The supervisor waits for the game process, records its result, and starts the

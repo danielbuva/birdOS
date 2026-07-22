@@ -65,6 +65,20 @@ typedef signed long s64;
 #define MAINLINE_UDEV_TARGET "/mnt/opt/muos/script/init/S10udev"
 #define MAINLINE_MODULE_SOURCE "/opt/bird-mainline/module.sh"
 #define MAINLINE_MODULE_TARGET "/mnt/opt/muos/script/device/module.sh"
+#define MAINLINE_SUPERVISOR_SOURCE "/opt/bird-mainline/S03danilauncher"
+#define MAINLINE_SUPERVISOR_TARGET "/mnt/opt/muos/script/init/S03danilauncher"
+#define MAINLINE_ENV_SOURCE "/opt/bird-mainline/bird-mainline-env.sh"
+#define MAINLINE_ENV_TARGET "/mnt/run/muos/bird-mainline-env"
+#define MAINLINE_FUNC_SOURCE "/opt/bird-mainline/func-mainline.sh"
+#define MAINLINE_FUNC_TARGET "/mnt/opt/muos/script/var/func.sh"
+#define MAINLINE_FUNC_ORIGINAL "/mnt/opt/muos/script/var/func.sh"
+#define MAINLINE_FUNC_PRESERVED "/mnt/run/muos/bird-func-vendor"
+#define MAINLINE_BRIGHT_SOURCE "/opt/bird-mainline/bright-mainline.sh"
+#define MAINLINE_BRIGHT_TARGET "/mnt/opt/muos/script/device/bright.sh"
+#define MAINLINE_MALI_STUB_SOURCE "/opt/bird-mainline/libmali-bird-stub.so"
+#define MAINLINE_MALI_STUB_TARGET "/mnt/run/muos/libmali-bird-stub.so"
+#define MAINLINE_PORT_GL_SOURCE "/opt/bird-mainline/portmaster-libgl-mainline.sh"
+#define MAINLINE_PORT_GL_TARGET "/mnt/run/muos/bird-portmaster-libgl"
 #define MAINLINE_OVERRIDE_MARKER "/mnt/run/muos/dani-mainline-overrides-v1"
 #endif
 #ifdef DANI_MAINLINE_INPUT_MODULE
@@ -511,9 +525,30 @@ static int bind_root_override(const char *source, const char *target) {
     return sys_mount(source, target, 0, MS_BIND, 0) == 0;
 }
 
+static int preserve_root_file(const char *source, const char *target) {
+    long target_fd;
+
+    if (!path_exists(source)) return 0;
+    target_fd = sys_open(target, O_WRONLY | O_CREAT | O_CLOEXEC, 0755);
+    if (target_fd < 0) return 0;
+    sys_close((int)target_fd);
+    return sys_mount(source, target, 0, MS_BIND, 0) == 0;
+}
+
 static void bind_mainline_root_overrides(void) {
-    if (!bind_root_override(MAINLINE_UDEV_SOURCE, MAINLINE_UDEV_TARGET) ||
-        !bind_root_override(MAINLINE_MODULE_SOURCE, MAINLINE_MODULE_TARGET)) {
+    if (!preserve_root_file(MAINLINE_FUNC_ORIGINAL,
+                            MAINLINE_FUNC_PRESERVED) ||
+        !bind_root_override(MAINLINE_UDEV_SOURCE, MAINLINE_UDEV_TARGET) ||
+        !bind_root_override(MAINLINE_MODULE_SOURCE, MAINLINE_MODULE_TARGET) ||
+        !bind_root_override(MAINLINE_SUPERVISOR_SOURCE,
+                            MAINLINE_SUPERVISOR_TARGET) ||
+        !bind_root_override(MAINLINE_ENV_SOURCE, MAINLINE_ENV_TARGET) ||
+        !bind_root_override(MAINLINE_FUNC_SOURCE, MAINLINE_FUNC_TARGET) ||
+        !bind_root_override(MAINLINE_BRIGHT_SOURCE, MAINLINE_BRIGHT_TARGET) ||
+        !bind_root_override(MAINLINE_MALI_STUB_SOURCE,
+                            MAINLINE_MALI_STUB_TARGET) ||
+        !bind_root_override(MAINLINE_PORT_GL_SOURCE,
+                            MAINLINE_PORT_GL_TARGET)) {
         log_stage("mainline-overrides-failed");
         return;
     }
