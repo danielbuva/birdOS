@@ -75,10 +75,10 @@ typedef signed long s64;
 #define MAINLINE_FUNC_PRESERVED "/mnt/run/muos/bird-func-vendor"
 #define MAINLINE_BRIGHT_SOURCE "/opt/bird-mainline/bright-mainline.sh"
 #define MAINLINE_BRIGHT_TARGET "/mnt/opt/muos/script/device/bright.sh"
+#define MAINLINE_CONTROLS_SOURCE "/opt/bird-mainline/bird-controls"
+#define MAINLINE_CONTROLS_TARGET "/mnt/run/muos/bird-controls"
 #define MAINLINE_MALI_STUB_SOURCE "/opt/bird-mainline/libmali-bird-stub.so"
 #define MAINLINE_MALI_STUB_TARGET "/mnt/run/muos/libmali-bird-stub.so"
-#define MAINLINE_PORT_GL_SOURCE "/opt/bird-mainline/portmaster-libgl-mainline.sh"
-#define MAINLINE_PORT_GL_TARGET "/mnt/run/muos/bird-portmaster-libgl"
 #define MAINLINE_OVERRIDE_MARKER "/mnt/run/muos/dani-mainline-overrides-v1"
 #endif
 #ifdef DANI_MAINLINE_INPUT_MODULE
@@ -545,10 +545,10 @@ static void bind_mainline_root_overrides(void) {
         !bind_root_override(MAINLINE_ENV_SOURCE, MAINLINE_ENV_TARGET) ||
         !bind_root_override(MAINLINE_FUNC_SOURCE, MAINLINE_FUNC_TARGET) ||
         !bind_root_override(MAINLINE_BRIGHT_SOURCE, MAINLINE_BRIGHT_TARGET) ||
+        !bind_root_override(MAINLINE_CONTROLS_SOURCE,
+                            MAINLINE_CONTROLS_TARGET) ||
         !bind_root_override(MAINLINE_MALI_STUB_SOURCE,
-                            MAINLINE_MALI_STUB_TARGET) ||
-        !bind_root_override(MAINLINE_PORT_GL_SOURCE,
-                            MAINLINE_PORT_GL_TARGET)) {
+                            MAINLINE_MALI_STUB_TARGET)) {
         log_stage("mainline-overrides-failed");
         return;
     }

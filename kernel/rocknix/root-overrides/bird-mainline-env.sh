@@ -7,8 +7,6 @@ BIRD_RUNTIME_IMAGE="/mnt/mmc/MUOS/runtime/ROCKNIX-SYSTEM"
 BIRD_RUNTIME_ROOT="/run/bird-rocknix"
 BIRD_COMPAT_LIB="/run/bird-mainline-lib"
 BIRD_MALI_STUB="/run/muos/libmali-bird-stub.so"
-BIRD_PORT_GL_SOURCE="/run/muos/bird-portmaster-libgl"
-BIRD_PORT_GL_TARGET="/mnt/mmc/MUOS/PortMaster/libgl_muOS.txt"
 
 BIRD_MAINLINE_MOUNTED() {
 	while IFS=' ' read -r _ MOUNT_POINT _; do
@@ -103,19 +101,6 @@ BIRD_MAINLINE_PREPARE() {
 	BIRD_MAINLINE_LINK libwayland-client.so.0 \
 		"$BIRD_RUNTIME_ROOT/usr/lib/libwayland-client.so.0.23.1" || return 1
 	ln -sf "$BIRD_MALI_STUB" "$BIRD_COMPAT_LIB/libmali.so.0"
-
-	# PortMaster sources this policy after its game-specific scripts have
-	# started, which would otherwise put vendor GL4ES/Mali back in front of the
-	# private ABI.  A transient bind changes no p6 bytes and vanishes on reboot.
-	if [ -r "$BIRD_PORT_GL_SOURCE" ] && [ -f "$BIRD_PORT_GL_TARGET" ]; then
-		PORT_GL_BOUND=0
-		while IFS=' ' read -r _ MOUNT_POINT _; do
-			[ "$MOUNT_POINT" = "$BIRD_PORT_GL_TARGET" ] && PORT_GL_BOUND=1
-		done </proc/mounts
-		[ "$PORT_GL_BOUND" -eq 1 ] || \
-			mount -o bind "$BIRD_PORT_GL_SOURCE" "$BIRD_PORT_GL_TARGET" || \
-			return 1
-	fi
 
 	BIRD_MAINLINE_REASSERT
 	return 0

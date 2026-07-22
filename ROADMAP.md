@@ -225,17 +225,25 @@ boards.
   vendor Mali-fbdev/ION; DraStic reached its JIT and trapped. These are now
   localized preserved-userspace ABI failures rather than an early-kernel or
   input failure.
-- [ ] [compatibility v4 staged; next physical gate] Keep the launcher first and
+- [x] [compatibility v4 failure localized before application exec] Keep the launcher first and
   mount a pinned modern SDL2/Mesa runtime only after content selection. Put
   only the required graphics/protocol sonames ahead of the preserved root,
   satisfy its redundant `libmali.so.0` dependency with an empty ABI stub and
   continue to use muOS launch scripts, controller maps, audio and frontend
   policy. Replace vendor brightness writes with standard backlight sysfs and
   route source-kernel NDS launches through the pinned melonDS libretro core.
-  Test brightness up/down, MP3, movies plus rich controls, one RetroArch game,
-  PSP, NDS, a native port, exit-to-exact-row, volume, suspend/wake and shutdown.
-  Prove that the runtime mount begins only after selection. Reduce the temporary
-  full SquashFS to its exact dependency closure only after this gate passes.
+  The physical pass retained a 1.400-second visible frame, 1.553-second usable
+  input and 2.010-second storage boundary. Runtime mounting began only after a
+  selection, but a transient optional PortMaster bind failed and returned every
+  request before `exec`; therefore none of the application ABI was retested.
+- [ ] [compatibility v4.1 staged; next physical gate] Remove the optional
+  PortMaster bind from shared preparation and install its fixed policy directly
+  on p6. Replace the vendor hotkey watcher, whose fixed event paths are wrong on
+  mainline, with a separate 6,160-byte static service dispatched after Bird's
+  first frame. Test brightness up/down, volume, MP3, movies plus rich controls,
+  one RetroArch game, PSP, NDS, a native port, exit-to-exact-row, power and lid
+  suspend/wake and shutdown. Reduce the full SquashFS to its exact dependency
+  closure only after this gate passes.
 - [ ] If the trimmed source path loses a measured race, reverse-engineer only
   the corresponding accepted-kernel path (display handoff, MMC, clocks,
   regulators or fixed delay) and port the finding into controlled source. Do
@@ -328,6 +336,10 @@ savings; it is not forgotten.
   controls and the other libudev clients have fixed direct-event replacements.
   The one-shot proof broke rich movie controls and did not terminate cleanly.
   PortMaster/network remains a deferred home-network acceptance check.
+- [ ] [source-kernel v4.1 physical gate] Prove the separate direct mainline
+  `bird-controls` replacement for volume, Menu+volume brightness and power
+  suspend. It starts after the usable menu and blocks in `ppoll`; it is not part
+  of the launcher or first-frame dependency path.
 - [ ] Move the final animation and audio to the earlier firmware layer.
 - [ ] Complete the final visual, animation and audio identity.
 - [ ] Remove superseded muOS components and produce a reproducible firmware image.

@@ -99,6 +99,7 @@ GZIP="$OUTPUT/bird-initramfs.cpio.gz"
 FIRST_OBJECT="$OUTPUT/bird-fixed-init.o"
 ROOT_OBJECT="$OUTPUT/bird-root-init.o"
 MALI_STUB_OBJECT="$OUTPUT/bird-mali-stub.o"
+CONTROLS_OBJECT="$OUTPUT/bird-controls.o"
 MAINLINE_OVERRIDE_DIR="$RAMDISK/opt/bird-mainline"
 
 mkdir -p "$RAMDISK"
@@ -120,6 +121,10 @@ compile_mali_stub \
 	"$ROOT/kernel/rocknix/root-overrides/libmali-stub.c" \
 	"$MALI_STUB_OBJECT" \
 	"$MAINLINE_OVERRIDE_DIR/libmali-bird-stub.so"
+compile_static \
+	"$ROOT/kernel/rocknix/root-overrides/bird-controls.c" \
+	"$CONTROLS_OBJECT" \
+	"$MAINLINE_OVERRIDE_DIR/bird-controls"
 "$LLD" -static --build-id=none -z noexecstack -s -e _start \
 	-o "$RAMDISK/opt/dani-launcher" "$ROOT/launcher/dani-launcher.o"
 chmod 755 "$RAMDISK/opt/dani-launcher"
@@ -138,15 +143,12 @@ cp -fp "$ROOT/kernel/rocknix/root-overrides/func-mainline.sh" \
 	"$MAINLINE_OVERRIDE_DIR/func-mainline.sh"
 cp -fp "$ROOT/kernel/rocknix/root-overrides/bright-mainline.sh" \
 	"$MAINLINE_OVERRIDE_DIR/bright-mainline.sh"
-cp -fp "$ROOT/kernel/rocknix/root-overrides/portmaster-libgl-mainline.sh" \
-	"$MAINLINE_OVERRIDE_DIR/portmaster-libgl-mainline.sh"
 chmod 755 "$MAINLINE_OVERRIDE_DIR/S10udev" \
 	"$MAINLINE_OVERRIDE_DIR/module.sh" \
 	"$MAINLINE_OVERRIDE_DIR/S03danilauncher" \
 	"$MAINLINE_OVERRIDE_DIR/bird-mainline-env.sh" \
 	"$MAINLINE_OVERRIDE_DIR/func-mainline.sh" \
-	"$MAINLINE_OVERRIDE_DIR/bright-mainline.sh" \
-	"$MAINLINE_OVERRIDE_DIR/portmaster-libgl-mainline.sh"
+	"$MAINLINE_OVERRIDE_DIR/bright-mainline.sh"
 
 [ "$(shasum -a 256 "$RAMDISK/opt/dani-launcher" | awk '{print $1}')" = \
 	"$LAUNCHER_SHA" ] || fail 'launcher no longer reproduces pinned executable'
@@ -169,7 +171,7 @@ touch -t 202601010000 \
 	"$MAINLINE_OVERRIDE_DIR/bird-mainline-env.sh" \
 	"$MAINLINE_OVERRIDE_DIR/func-mainline.sh" \
 	"$MAINLINE_OVERRIDE_DIR/bright-mainline.sh" \
-	"$MAINLINE_OVERRIDE_DIR/portmaster-libgl-mainline.sh" \
+	"$MAINLINE_OVERRIDE_DIR/bird-controls" \
 	"$MAINLINE_OVERRIDE_DIR/libmali-bird-stub.so"
 (
 	cd "$RAMDISK"
@@ -194,7 +196,7 @@ for PAYLOAD in \
 	bird-mainline-env.sh \
 	func-mainline.sh \
 	bright-mainline.sh \
-	portmaster-libgl-mainline.sh \
+	bird-controls \
 	libmali-bird-stub.so; do
 	grep -qx "./opt/bird-mainline/$PAYLOAD" "$OUTPUT/payload.txt" || \
 		fail "mainline compatibility payload missing: $PAYLOAD"
@@ -213,7 +215,7 @@ grep -qx './opt/bird-mainline/rocknix-singleadc-joypad.ko' \
 		ramdisk/opt/bird-mainline/bird-mainline-env.sh \
 		ramdisk/opt/bird-mainline/func-mainline.sh \
 		ramdisk/opt/bird-mainline/bright-mainline.sh \
-		ramdisk/opt/bird-mainline/portmaster-libgl-mainline.sh \
+		ramdisk/opt/bird-mainline/bird-controls \
 		ramdisk/opt/bird-mainline/libmali-bird-stub.so >sizes.txt
 )
 (
@@ -231,7 +233,7 @@ grep -qx './opt/bird-mainline/rocknix-singleadc-joypad.ko' \
 		ramdisk/opt/bird-mainline/bird-mainline-env.sh \
 		ramdisk/opt/bird-mainline/func-mainline.sh \
 		ramdisk/opt/bird-mainline/bright-mainline.sh \
-		ramdisk/opt/bird-mainline/portmaster-libgl-mainline.sh \
+		ramdisk/opt/bird-mainline/bird-controls \
 		ramdisk/opt/bird-mainline/libmali-bird-stub.so \
 		payload.txt \
 		sizes.txt >sha256sums.txt

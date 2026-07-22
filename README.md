@@ -48,7 +48,11 @@ must serve this one device and this one experience.
   physical v3 gate then drew at 1.586 seconds and opened `H700 Gamepad` at
   1.750 seconds; menu controls and shutdown worked. Content failures were
   localized to the preserved userspace's vendor Mali/ION ABI, not early input
-  or the source kernel's DRM, sound or storage devices.
+  or the source kernel's DRM, sound or storage devices. V4 retained the fast
+  path (frame visible at 1.400 seconds, correct input at 1.553 and storage at
+  2.010) but its optional PortMaster policy bind aborted every selected item
+  before application `exec`. V4.1 removes that shared pre-exec failure and is
+  staged for the next physical content gate.
 
 The boot image now starts the launcher from initramfs after mounting the fixed
 root but before `switch_root`. The launcher and its input descriptors survive
@@ -134,7 +138,7 @@ card-side patches.
   resident minimal bridge is restored; it remains fully outside and after the
   interactive launcher. PortMaster/network remains a deferred check at the
   configured home network.
-- Source-kernel compatibility v4 keeps that post-frame udev bridge separate
+- Source-kernel compatibility v4.1 keeps that post-frame udev bridge separate
   from the launcher and adds no work to the interactive-menu path. Only after
   a content selection, the supervisor mounts a checksum-pinned ROCKNIX
   SquashFS read-only and exposes the narrow SDL2 KMSDRM plus Mesa/Panfrost ABI
@@ -144,7 +148,15 @@ card-side patches.
   uses the runtime's melonDS libretro core instead of the vendor DraStic JIT
   that trapped on the source kernel. The full runtime image is a compatibility
   proof; after hardware acceptance it will be reduced to the exact dependency
-  closure Bird actually uses.
+  closure Bird actually uses. The first v4 physical pass did not exercise this
+  graphics stack: an optional PortMaster bind failed after the runtime mounted
+  and returned every selection to Bird before `exec`. V4.1 removes that bind
+  from the common launch path and installs the fixed PortMaster policy directly
+  on p6. It also replaces the 4.9-specific `muhotkey` watcher with a separate
+  6,160-byte mainline input service, dispatched after the first frame. It opens
+  the known gamepad, volume and PMIC keys by device name, blocks in `ppoll`,
+  never grabs them from applications, and owns only volume,
+  Menu+volume brightness and power suspend.
 - The fixed-storage path is hardware-verified. It replaces the two resident
   UnionFS-FUSE processes with kernel bind mounts from this card at the same
   `/mnt/union/ROMS` and `/mnt/union/ports` compatibility paths; diagnostics

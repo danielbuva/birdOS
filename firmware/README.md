@@ -463,6 +463,18 @@ muOS launcher scripts. The root partition is still not rewritten. The same
 batch maps muOS brightness commands to mainline backlight sysfs and substitutes
 melonDS for the vendor DraStic JIT on NDS selections.
 
+The first v4 physical pass retained the fast Bird frame and correct gamepad,
+but all selected applications returned before `exec`: the modern runtime
+mounted, then an optional bind over PortMaster's p6 policy failed. Compatibility
+v4.1 removes that unrelated operation from normal content preparation and
+installs the 409-byte mainline PortMaster policy directly on p6. It also embeds
+a 6,160-byte freestanding `bird-controls` process and overrides only the
+post-frame `HOTKEY` helper. The process blocks on the fixed mainline input
+devices by name and leaves launcher/application input ownership independent.
+`mac-update-rocknix-bird-compat-v4-1.sh` accepts only v4 or its own installed
+kernel hash, verifies the full card geometry, runtime, DTB and policy, and
+writes p1 plus that single p6 policy file; p5 remains untouched.
+
 The original one-shot plan required preserving an automatic normal boot target.
 This card is now explicitly disposable experimental media, so a candidate may
 replace BIRD p1 only after exact layout, old-hash and readback gates pass. The

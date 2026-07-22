@@ -260,8 +260,8 @@ SDL2 KMSDRM, GLVND/Mesa/Panfrost and only the protocol sonames required by that
 Mesa build. A dependency-free 1,824-byte `libmali.so.0` stub satisfies the old
 binaries' redundant DT_NEEDED entry; EGL/GLES symbols come from Mesa. The
 vendor `libmustage` preload and GL4ES path are suppressed only in that selected
-content process. PortMaster's later GL4ES policy is replaced by a transient
-bind mount, so p6 configuration bytes are not edited.
+content process. V4 initially tried to replace PortMaster's later GL4ES policy
+with a transient bind mount.
 
 Brightness keeps muOS's existing `R`, `U`, `D` and numeric command contract but
 maps it to `/sys/class/backlight/backlight`. NDS uses the runtime's ABI-stable
@@ -281,6 +281,34 @@ Two independent initramfs builds reproduce the cpio exactly. The full
 SquashFS is intentionally a first compatibility proof, not Bird's final
 runtime: once the physical matrix passes, reduce it to the exact transitive
 library/core closure and then measure size, launch latency and memory again.
+
+The v4 physical pass reached Bird quickly and remained stable: the framebuffer
+was visible at 1.400 seconds, `H700 Gamepad` was usable at 1.553 and storage was
+ready at 2.010. Every content request mounted the modern SquashFS successfully,
+but the optional PortMaster bind then failed with `ENOENT` and
+`BIRD_MAINLINE_PREPARE` returned before application `exec`. Consequently this
+pass did not yet retest MPV, RetroArch, PPSSPP or the graphics ABI.
+
+V4.1 removes PortMaster policy from the shared preparation function and from
+the embedded cpio. Its guarded updater installs the fixed policy directly as
+`MUOS/PortMaster/libgl_muOS.txt` on p6. It also replaces the vendor-era hotkey
+watcher, whose fixed event paths no longer match mainline, with a separate
+6,160-byte static `bird-controls` service. The service is dispatched by the
+existing post-frame `HOTKEY start`, opens the three fixed devices by name,
+blocks in `ppoll`, does not grab events, and handles only global volume,
+Menu+volume brightness and power suspend. It is not linked into the launcher.
+
+| Compatibility v4.1 artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Bird source-kernel v4.1 `Image` | 30,009,352 | `dd2a9dd38e33d4625ac774458d13401d90f6f35513c43e63c405eb76a746f47a` |
+| embedded Bird v4.1 cpio | 3,950,592 | `c22f516796d4e6b8b7f38648c73a5ef5704f7cee984acff2bc0e132a3037bc8c` |
+| fixed `/init` | 13,128 | `f194e77966a7e6eea2e39f2bb221978fe1b0ce72f3764249cdb3f3e507b013e6` |
+| `bird-controls` | 6,160 | `8ce5d91c2f15784f7f4971eed723e1fd7c31491926eaf0ac3e81cabac9220f22` |
+| direct PortMaster policy | 409 | `9d65f67c706d23a3b651659c11c6771da039a199b5f03d4e7a8d0d8e689a2e36` |
+
+Two independent v4.1 initramfs builds are byte-identical. The source gate
+retains the shipping-identical DTB and exact H700 module. The guarded updater
+verified and installed the new p1 kernel plus p6 policy without writing p5.
 
 ## Card-safe hardware gate
 
