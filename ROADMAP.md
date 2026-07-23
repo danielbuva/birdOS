@@ -31,7 +31,7 @@ The long-term centerpiece would be a tiny custom launcher—ideally a small stat
 Clean-root v5.4 proved the desired fast architecture but also proved that an
 application stack cannot be reconstructed reliably by copying binaries and
 guessing its hidden service and configuration contract one failure at a time.
-Stock-root v6.9 now optimizes the proven software baseline:
+Stock-root v6.10 now optimizes the proven software baseline:
 
 - exact ROCKNIX 20260701 KERNEL, DTB, SYSTEM and configured STORAGE;
 - complete systemd, udev, D-Bus, PipeWire, WirePlumber and H700 autostart path;
@@ -57,9 +57,13 @@ pixels before `switch_root` but exposed a release-module ABI mismatch; v6.6
 uses the exact SYSTEM H700 input module from the tiny external overlay, then
 hands state to the proven full runtime. V6.7 localized one failed final-root
 bridge path; v6.8 then proved its detached replacement exited with status 2
-before launcher entry. V6.9 removes the replacement entirely. The first Bird
-retains descriptors to the mounts that move, and the final supervisor adopts
-that original PID with a blocking pidfd, so one process owns input until selection.
+before launcher entry. V6.9 removes the replacement entirely. Its physical
+gate proved uninterrupted input and one persistent PID, then exposed a narrower
+storage defect: the launcher did not get scheduled between `/storage` becoming
+available and that mount moving into the final root. V6.10 adds a bounded
+readiness handshake at that exact boundary. The first Bird retains descriptors
+to the mounts that move, and the final supervisor adopts that original PID with
+a blocking pidfd, so one process owns input until selection.
 Early selections remain queued until the provider's generated application
 contract is ready.
 
@@ -121,7 +125,7 @@ application and move everything unrelated to an interactive menu behind it.
 - [x] Remove the next set of redundant fixed-startup work: per-boot
   immutable policy/geometry writes, obsolete update-file cleanup, zero-swap
   probing and the unnecessary squashfs module request.
-- [ ] [stock-root v6.4 compatibility passed; v6.9 persistent-owner staged] Bake
+- [ ] [stock-root v6.4 compatibility passed; v6.10 anchor barrier staged] Bake
   changes into the image and remove the card-side development user-init
   delivery path. The successful path is entirely embedded and does not enter
   p5. V5.0 physically proved the menu at 1.135 seconds, H700 input at 1.290 and
@@ -182,14 +186,16 @@ removes the handoff entirely while keeping the verified menu-first boundary.
 - [x] Hardware-verify the pre-`rcS` inittab launch and fallback.
 - [x] Embed the launcher in initramfs and hardware-verify an interactive frame
   before `switch_root`.
-- [ ] [stock-root v6.9 staged after v6.8 status-2 failure] Overlay the exact release initramfs with the same
+- [ ] [v6.9 persistent PID passed; v6.10 storage correction staged] Overlay the exact release initramfs with the same
   static launcher and exact H700 input module. Keep that original process alive
   using retained descriptors to the moved runtime, device, sysfs and storage
   mounts, then let the supervisor adopt its PID with `pidfd_open`/`ppoll`.
-- [ ] [v6.9 staged] Physically verify uninterrupted navigation across the
-  1.5-second early-input point and final-root takeover. Select one game before
-  the provider milestone and confirm it launches automatically rather than
-  losing the queued request.
+- [x] [v6.9 physical gate passed] Physically verify uninterrupted navigation
+  across the 1.5-second early-input point and final-root takeover. The original
+  process and input descriptor now survive without an ownership swap.
+- [ ] [v6.10 staged] Verify that game and media rows become ready after the
+  bounded pre-move storage acknowledgement. Select content both before and
+  after the provider milestone and confirm the queued request launches.
 - [x] Replace the generic initramfs shell with a tiny static fixed-device init
   while retaining the existing root PID 1 as the fallback second phase.
 - [x] Replace the root BusyBox PID 1 with a blocking 5,128-byte static init;

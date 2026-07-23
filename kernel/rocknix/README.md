@@ -883,6 +883,21 @@ the original PID with the same blocking pidfd waiter. If ROCKNIX actually
 re-registers the gamepad, Bird detects `POLLERR`/`POLLHUP` and reopens it
 through the retained `/dev/input` descriptor instead of starting another UI.
 
+The v6.9 physical gate proved that design: navigation remained uninterrupted
+and systemd adopted the original initramfs PID. It also showed that storage and
+config remained unavailable. The launcher started before `/storage` existed,
+then missed the short interval between `mount_storage` completing and
+`prepare_sysroot` moving that mount. Once the move occurred, its deliberately
+retained old root could no longer discover the new path.
+
+Stock-root v6.10 inserts one fixed readiness boundary after `mount_storage`.
+The launcher opens the content and config directories, verifies its compiled
+ROM root, then acknowledges through its already-retained `/run/muos`
+descriptor. Init waits for that acknowledgement for at most 250 ms before it
+continues. The menu and input are already interactive during this wait; it
+orders only the later mount move. Two independent builds reproduce every card
+payload byte-for-byte. The external overlay is 220,847 bytes.
+
 The exact final common-autostart action now also publishes a timestamped
 `/run/bird/application-contract-ready` marker after Sway configuration exists.
 An initramfs game/media/PortMaster request remains on disk, and its handoff
@@ -894,12 +909,12 @@ point.
 The early launcher applies the fixed five-percent backlight value, paints from
 the compiled catalogue and opens the H700 input module while the unchanged
 ROCKNIX init continues. Its navigation state and any content/PortMaster/
-shutdown action are written to `/run`. Immediately before mount movement, the
-stock init terminates only that early process; the framebuffer retains its last
-image and `/run` moves into the real root. The normal systemd supervisor then
-loads the same state or consumes the action. This keeps all v6.3/v6.4 content,
-audio, power and service compatibility while attacking the measured pre-root
-wait.
+shutdown action are written through a retained `/run` descriptor. The process
+is not terminated at mount movement: it retains the exact `/dev`, `/sys`,
+`/run`, storage and config objects that enter the real root. The normal systemd
+supervisor adopts that PID and consumes its action after exit. This keeps all
+v6.3/v6.4 content, audio, power and service compatibility while attacking the
+measured pre-root wait.
 
 When Bird emits a four-line content request, its separate supervisor starts the
 unchanged `sway.service`, calls the release's `runemu.sh` with the release
@@ -916,6 +931,9 @@ including its 896-byte static pidfd waiter and 219,371-byte external overlay.
 V6.9 retains that waiter while removing the failed detached bridge.
 Two independent v6.9 builds reproduce every card payload byte-for-byte; its
 external overlay is 220,467 bytes.
+V6.10 adds the bounded storage-anchor acknowledgement. Two independent builds
+reproduce every card payload byte-for-byte; its external overlay is 220,847
+bytes.
 `mac-update-rocknix-stock-root-v6.sh`
 validates the exact removable-card geometry and every provider hash, stages the
 loop image and boot hooks, and preserves v5.4 as `KERNEL.fallback`. A persistent
@@ -947,10 +965,11 @@ every LED class brightness/trigger and relevant AXP717 messages rather than
 inferring charge state from one LED color.
 
 V6.3 intentionally accepted the slower full compatibility graph and passed its
-broad physical gate. V6.4 passed the first speed/subtraction gate. V6.9 now
-tests initramfs pixels, immediate input, persistent process ownership and the same
-menu, content, media, Ports, PortMaster, global controls, suspend and shutdown
-closure before any release-kernel option is removed.
+broad physical gate. V6.4 passed the first speed/subtraction gate. V6.9 proved
+initramfs pixels, immediate input and persistent process ownership. V6.10 now
+tests the restored content/config anchor plus the same menu, media, Ports,
+PortMaster, global controls, suspend and shutdown closure before any
+release-kernel option is removed.
 
 The H700 release does not currently enter real kernel suspend. Its platform
 quirk explicitly disables that path and `input_sense` invokes a userspace fake

@@ -87,6 +87,9 @@ typedef signed long s64;
 #ifndef FIRST_FRAME_MARKER
 #define FIRST_FRAME_MARKER "/run/muos/dani-first-frame-ready"
 #endif
+#ifndef STORAGE_ANCHOR_MARKER
+#define STORAGE_ANCHOR_MARKER ""
+#endif
 
 #define VIEW_MAIN 0U
 #define VIEW_PLAY 1U
@@ -1503,9 +1506,26 @@ static void probe_storage(void) {
     if (now < next_storage_probe) return;
     next_storage_probe = now + 50UL;
     refresh_path_anchors();
+    /*
+     * An initramfs-owned Bird must retain both directory descriptors before
+     * ROCKNIX moves /storage into the final root. The marker is the bounded
+     * readiness acknowledgement consumed by bird-early.sh; it never makes
+     * the already-interactive menu wait for storage.
+     */
+    if (storage_dir_fd < 0 || config_dir_fd < 0) return;
     fd = fixed_open(ROM_ROOT, O_RDONLY | O_NONBLOCK);
     if (fd < 0) return;
     sys_close((int)fd);
+    if (STORAGE_ANCHOR_MARKER[0]) {
+        fd = fixed_create(STORAGE_ANCHOR_MARKER,
+                          O_WRONLY | O_CREAT | O_TRUNC, 0600);
+        if (fd < 0) return;
+        (void)sys_write((int)fd, "ready\n", 6U);
+        sys_close((int)fd);
+        log_text("storage_anchor_ready boot_ms=");
+        log_number(now);
+        log_text("\n");
+    }
     storage_ready = 1;
     load_favorites();
     log_text("storage_ready boot_ms=");

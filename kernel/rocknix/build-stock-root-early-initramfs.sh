@@ -5,7 +5,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
-OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.9}
+OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.10}
 OFFICIAL_INIT=${OFFICIAL_INIT:-$ROOT/kernel/work/rocknix-official-initramfs-20260701/ramdisk/init}
 JOYPAD=${JOYPAD:-$ROOT/kernel/work/rocknix-system-exact-20260701/usr/lib/kernel-overlays/base/lib/modules/7.0.11/rocknix-joypad/rocknix-singleadc-joypad.ko}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
@@ -66,6 +66,7 @@ mkdir -p "$PAYLOAD/opt/bird" "$VERIFY"
 	'-DRECENT_PATH="/storage/.config/bird/recent.txt"' \
 	'-DRECENT_TEMP="/storage/.config/bird/recent.tmp"' \
 	'-DHANDOFF_ACTION_PATH="/run/muos/dani-launch-action"' \
+	'-DSTORAGE_ANCHOR_MARKER="/run/muos/dani-storage-anchor-ready"' \
 	-DDEVICE_WAIT_MS=20000UL \
 	-c "$ROOT/launcher/dani-launcher.c" -o "$OBJECT"
 "$LLD" -static --gc-sections --build-id=none -z noexecstack -s \
@@ -77,14 +78,21 @@ if "$READELF" -l "$LAUNCHER" | grep -q ' INTERP '; then
 	fail 'early launcher unexpectedly has an interpreter'
 fi
 
-# Inject two fixed calls into the pinned upstream init. Bird starts after the
-# special filesystems exist and remains alive while those exact mounts move.
+# Inject three fixed calls into the pinned upstream init. Bird starts after the
+# special filesystems exist. Once storage is mounted, init gives Bird a bounded
+# opportunity to retain it before prepare_sysroot moves that mount. The same
+# Bird process remains alive while the exact special filesystems move.
 awk '
 	$0 == "hidecursor" {
 		print
 		print ""
 		print "/bird-early.sh start"
 		print "load_splash() { :; }"
+		next
+	}
+	$0 == "  ${BOOT_STEP}" {
+		print
+		print "  [ \"${BOOT_STEP}\" != \"mount_storage\" ] || /bird-early.sh storage"
 		next
 	}
 	$0 == "# move some special filesystems" {
@@ -95,6 +103,8 @@ awk '
 ' "$OFFICIAL_INIT" >"$PAYLOAD/init"
 [ "$(grep -c '^/bird-early.sh start$' "$PAYLOAD/init")" = 1 ] || \
 	fail 'early start injection count changed'
+[ "$(grep -c '^  \[ "${BOOT_STEP}" != "mount_storage" \] || /bird-early.sh storage$' "$PAYLOAD/init")" = 1 ] || \
+	fail 'storage anchor injection count changed'
 [ "$(grep -c '^/bird-early.sh handoff$' "$PAYLOAD/init")" = 1 ] || \
 	fail 'handoff injection count changed'
 [ "$(grep -c '^/bird-early.sh resume$' "$PAYLOAD/init")" = 0 ] || \

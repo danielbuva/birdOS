@@ -119,11 +119,13 @@ card-side patches.
 
 ## Current changes
 
-- The active experiment is stock-root v6.9. V6.3 established the coherent
+- The active experiment is stock-root v6.10. V6.3 established the coherent
   ROCKNIX application environment and v6.4 passed early-systemd subtraction;
   v6.5 put Bird pixels before `switch_root`, v6.6 made that early frame
-  interactive and v6.9 removes the remaining handoff blackout without changing
-  the release KERNEL, SYSTEM or configured writable STORAGE.
+  interactive and v6.9 removed the remaining input-owner blackout without
+  changing the release KERNEL, SYSTEM or configured writable STORAGE. V6.10
+  adds a bounded acknowledgement before the mounted storage namespace moves,
+  so that same initramfs process can retain content and configuration access.
 - Bird's first initramfs instance is now the long-lived UI process. The normal
   systemd UI service adopts its PID instead of creating another launcher. The
   unchanged Sway compositor still starts

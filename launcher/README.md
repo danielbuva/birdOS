@@ -259,6 +259,15 @@ The callback now changes state and logs readiness without drawing. The next
 user action naturally renders the current state, so background storage work
 cannot overwrite the foreground or interrupt unrelated visual effects.
 
+The ROCKNIX stock-root path now keeps the first initramfs launcher as the
+permanent menu owner across `switch_root`. File operations use retained
+directory descriptors instead of resolving through that process's old root.
+V6.9 physically proved uninterrupted input but showed that storage could be
+mounted and moved between two 50 ms probes. V6.10 therefore acknowledges both
+the content and config descriptors before init may move the mount. This is a
+readiness check for storage ownership, not a dependency of first paint or
+input.
+
 ## Real-cache deployment
 
 The v11 build replaces the five-title proof with the real 5,953-title card
