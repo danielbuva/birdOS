@@ -119,14 +119,14 @@ card-side patches.
 
 ## Current changes
 
-- The active experiment is stock-root v6.8. V6.3 established the coherent
+- The active experiment is stock-root v6.9. V6.3 established the coherent
   ROCKNIX application environment and v6.4 passed early-systemd subtraction;
   v6.5 put Bird pixels before `switch_root`, v6.6 made that early frame
-  interactive and v6.8 removes the remaining handoff blackout without changing
+  interactive and v6.9 removes the remaining handoff blackout without changing
   the release KERNEL, SYSTEM or configured writable STORAGE.
-- Bird's long-lived instance remains a normal systemd UI service, starting
-  before the complete H700 compatibility graph; v6.5 adds only the short-lived
-  pre-root copy described below. The unchanged Sway compositor still starts
+- Bird's first initramfs instance is now the long-lived UI process. The normal
+  systemd UI service adopts its PID instead of creating another launcher. The
+  unchanged Sway compositor still starts
   only around content. Selections use the release's own `runemu.sh`,
   platform/core identities, standalone wrappers and configuration generators.
 - P5 and all content bytes remain untouched. V6.2 changed only Port directory
@@ -158,10 +158,11 @@ card-side patches.
   final-root instance after `/run` reaches `/sysroot`. Its physical log exposed
   an exact ordering bug: the hook read old-root `/proc/uptime` after `/proc` had
   moved, so it never reached a working bridge and the later service still
-  replaced Bird. V6.8 dispatches first, records the PID before any optional
-  diagnostics, and has the systemd supervisor adopt that same final-root process
-  with an 896-byte static `pidfd_open`/`ppoll` waiter. No second Bird starts while
-  the menu is owned. An early content request stays transactional and queued until
+  replaced Bird. V6.8 proved the detached final-root process also exited before
+  launcher entry, with status 2. V6.9 removes that process boundary: the original
+  launcher retains descriptors to the mounts that move, while the systemd
+  supervisor adopts its original PID using an 896-byte static
+  `pidfd_open`/`ppoll` waiter. An early content request stays transactional and queued until
   the exact ROCKNIX common-autostart path publishes its generated Sway/app
   contract; it can no longer be consumed before the provider is usable.
 - NetworkManager and iwd are condition-gated and exist only around an explicit
@@ -180,9 +181,11 @@ card-side patches.
   driver treats the latter as a clamp for later writes rather than programming
   it at probe; the unplugged snapshot exposed the PMIC's 2,000,000-uA default
   and keeps that discrepancy on the charging audit. Bird reads kernel status
-  directly and blocks on power uevents, showing the live numeric capacity
-  without a polling timer. The first plugged snapshot confirmed `Charging`,
-  100 percent, 4.194 V and +492 mA; the post-frame snapshot
+  directly and blocks on power uevents, showing the PMIC's numeric capacity
+  without a polling timer. The exact 7.0 driver exposes the raw AXP717 fuel-gauge
+  register as capacity and explicitly documents an unknown current-channel
+  offset; 100 percent and 492 mA are therefore observations, not yet calibrated
+  charge measurements. The post-frame snapshot
   records status, capacity, current, voltage, charger online state and relevant
   kernel messages for physical validation.
 - Port preparation remains a separate, selection-time process. It does not run

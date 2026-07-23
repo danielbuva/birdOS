@@ -14,13 +14,16 @@ profiling targets framebuffer write volume, redraw granularity, catalogue
 representation, code size and supervisor handoff overhead. Battery efficiency
 outranks memory reduction when those trade off.
 
-The current stock-root v6.8 build keeps the final-root launcher that resumes
-after the initramfs mount move as the sole input owner. Its supervisor sleeps
-in a separate 896-byte static pidfd waiter until Bird actually exits; it no
-longer kills and replaces the menu during background initialization. Bird also
+The current stock-root v6.9 build keeps the original initramfs launcher alive
+through the mount move as the sole input owner. Open directory descriptors
+anchor its runtime, evdev, power and storage operations to the moved mounts;
+the systemd supervisor sleeps in a separate 896-byte static pidfd waiter until
+that original Bird actually exits. Bird also
 reads the fixed AXP717 `capacity` value and updates the upper-right percentage
 only on kernel power-supply uevents. Charging changes therefore add neither a
-polling interval nor a resident battery helper.
+polling interval nor a resident battery helper. That value is the PMIC's raw
+fuel-gauge register, not a launcher estimate, and still needs device-specific
+calibration.
 
 The calibration runs were deliberately late and temporary:
 

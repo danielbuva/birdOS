@@ -44,6 +44,16 @@ LOG=/storage/bird-data/MUOS/Bird/log/stock-root-boot-state-latest.log
 		done
 		[ -r "$SUPPLY/uevent" ] && cat "$SUPPLY/uevent"
 	done
+	printf '%s\n' '--- LEDs ---'
+	for LED in /sys/class/leds/*; do
+		[ -e "$LED" ] || continue
+		printf '[%s]\n' "${LED##*/}"
+		for PROPERTY in brightness max_brightness trigger; do
+			[ -r "$LED/$PROPERTY" ] || continue
+			printf '%s=' "$PROPERTY"
+			cat "$LED/$PROPERTY"
+		done
+	done
 	printf '%s\n' '--- AXP717 kernel messages ---'
 	dmesg | grep -Ei 'axp717|battery|charger|power supply' | tail -n 80 || :
 } >"$LOG" 2>&1

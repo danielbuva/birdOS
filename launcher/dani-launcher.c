@@ -46,6 +46,8 @@ typedef signed long s64;
 #define ABS_HAT0X 16
 #define ABS_HAT0Y 17
 #define POLLIN 0x0001
+#define POLLERR 0x0008
+#define POLLHUP 0x0010
 #define AF_NETLINK 16
 #define SOCK_DGRAM 2
 #define SOCK_NONBLOCK 04000
@@ -204,6 +206,11 @@ static int power_event_fd = -1;
 static int h700_input;
 static int charging_state = -1;
 static int battery_percent = -1;
+static int runtime_dir_fd = -1;
+static int input_dir_fd = -1;
+static int power_dir_fd = -1;
+static int storage_dir_fd = -1;
+static int config_dir_fd = -1;
 static char input_path[] = "/dev/input/event0";
 static u32 view;
 static u32 selection;
@@ -270,10 +277,6 @@ static long sys_open(const char *path, int flags) {
     return syscall6(56, AT_FDCWD, (long)path, flags, 0, 0, 0);
 }
 
-static long sys_create(const char *path, int flags, int mode) {
-    return syscall6(56, AT_FDCWD, (long)path, flags, mode, 0, 0);
-}
-
 static long sys_close(int fd) {
     return syscall6(57, fd, 0, 0, 0, 0, 0);
 }
@@ -288,14 +291,6 @@ static long sys_write(int fd, const void *buffer, u64 length) {
 
 static long sys_fsync(int fd) {
     return syscall6(82, fd, 0, 0, 0, 0, 0);
-}
-
-static long sys_unlink(const char *path) {
-    return syscall6(35, AT_FDCWD, (long)path, 0, 0, 0, 0);
-}
-
-static long sys_rename(const char *old_path, const char *new_path) {
-    return syscall6(38, AT_FDCWD, (long)old_path, AT_FDCWD, (long)new_path, 0, 0);
 }
 
 static long sys_ioctl(int fd, u64 request, void *arg) {
@@ -360,6 +355,96 @@ static int string_starts_with(const char *text, const char *prefix) {
 }
 
 /*
+ * The initramfs Bird survives switch_root. Directory descriptors keep pointing
+ * at the same moved tmpfs/devtmpfs/sysfs/storage mounts even though that
+ * process intentionally retains its tiny old root. All post-handoff file work
+ * therefore uses openat/renameat/unlinkat through these fixed anchors.
+ */
+static void refresh_path_anchors(void) {
+    if (runtime_dir_fd < 0)
+        runtime_dir_fd = (int)sys_open("/run/muos", O_RDONLY | O_NONBLOCK);
+    if (input_dir_fd < 0)
+        input_dir_fd = (int)sys_open("/dev/input", O_RDONLY | O_NONBLOCK);
+    if (power_dir_fd < 0)
+        power_dir_fd = (int)sys_open("/sys/class/power_supply/battery",
+                                     O_RDONLY | O_NONBLOCK);
+    if (storage_dir_fd < 0)
+        storage_dir_fd = (int)sys_open(LIVE_STORAGE_ROOT,
+                                       O_RDONLY | O_NONBLOCK);
+    if (config_dir_fd < 0)
+        config_dir_fd = (int)sys_open("/storage/.config/bird",
+                                      O_RDONLY | O_NONBLOCK);
+}
+
+static int anchored_dirfd(const char *path, const char **relative) {
+    static const char run_root[] = "/run/muos";
+    static const char input_root[] = "/dev/input";
+    static const char power_root[] = "/sys/class/power_supply/battery";
+    static const char config_root[] = "/storage/.config/bird";
+    u64 length;
+
+    length = sizeof(run_root) - 1U;
+    if (runtime_dir_fd >= 0 && string_starts_with(path, run_root) &&
+        path[length] == '/') {
+        *relative = path + length + 1U;
+        return runtime_dir_fd;
+    }
+    length = sizeof(input_root) - 1U;
+    if (input_dir_fd >= 0 && string_starts_with(path, input_root) &&
+        path[length] == '/') {
+        *relative = path + length + 1U;
+        return input_dir_fd;
+    }
+    length = sizeof(power_root) - 1U;
+    if (power_dir_fd >= 0 && string_starts_with(path, power_root) &&
+        path[length] == '/') {
+        *relative = path + length + 1U;
+        return power_dir_fd;
+    }
+    length = sizeof(config_root) - 1U;
+    if (config_dir_fd >= 0 && string_starts_with(path, config_root) &&
+        path[length] == '/') {
+        *relative = path + length + 1U;
+        return config_dir_fd;
+    }
+    length = string_length(LIVE_STORAGE_ROOT);
+    if (storage_dir_fd >= 0 && string_starts_with(path, LIVE_STORAGE_ROOT) &&
+        path[length] == '/') {
+        *relative = path + length + 1U;
+        return storage_dir_fd;
+    }
+    *relative = path;
+    return AT_FDCWD;
+}
+
+static long fixed_open(const char *path, int flags) {
+    const char *relative;
+    int dirfd = anchored_dirfd(path, &relative);
+    return syscall6(56, dirfd, (long)relative, flags, 0, 0, 0);
+}
+
+static long fixed_create(const char *path, int flags, int mode) {
+    const char *relative;
+    int dirfd = anchored_dirfd(path, &relative);
+    return syscall6(56, dirfd, (long)relative, flags, mode, 0, 0);
+}
+
+static long fixed_unlink(const char *path) {
+    const char *relative;
+    int dirfd = anchored_dirfd(path, &relative);
+    return syscall6(35, dirfd, (long)relative, 0, 0, 0, 0);
+}
+
+static long fixed_rename(const char *old_path, const char *new_path) {
+    const char *old_relative;
+    const char *new_relative;
+    int old_dirfd = anchored_dirfd(old_path, &old_relative);
+    int new_dirfd = anchored_dirfd(new_path, &new_relative);
+    return syscall6(38, old_dirfd, (long)old_relative,
+                    new_dirfd, (long)new_relative, 0, 0);
+}
+
+/*
  * Catalogue paths remain stable across firmware providers. Only live file
  * access is translated, so favorites, recents and launch requests continue
  * to use the canonical /mnt/mmc paths embedded in the cached index.
@@ -420,7 +505,7 @@ static int read_charging_state(void) {
     u32 index;
 
     for (index = 0; index < sizeof(paths) / sizeof(paths[0]); index++) {
-        long fd = sys_open(paths[index], O_RDONLY | O_NONBLOCK);
+        long fd = fixed_open(paths[index], O_RDONLY | O_NONBLOCK);
         long count;
         if (fd < 0) continue;
         count = sys_read((int)fd, value, sizeof(value) - 1U);
@@ -441,7 +526,7 @@ static int read_battery_percent(void) {
     u32 index;
 
     for (index = 0; index < sizeof(paths) / sizeof(paths[0]); index++) {
-        long fd = sys_open(paths[index], O_RDONLY | O_NONBLOCK);
+        long fd = fixed_open(paths[index], O_RDONLY | O_NONBLOCK);
         long count;
         long offset = 0;
         int result = 0;
@@ -489,7 +574,8 @@ static int is_power_supply_uevent(const char *event, u64 length) {
 }
 
 static void mark_first_frame(void) {
-    long fd = sys_create(FIRST_FRAME_MARKER, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    long fd = fixed_create(FIRST_FRAME_MARKER,
+                           O_WRONLY | O_CREAT | O_TRUNC, 0600);
     if (fd >= 0) sys_close((int)fd);
 }
 
@@ -559,7 +645,7 @@ static void load_favorites(void) {
     favorite_count = 0;
     favorites_loaded = 1;
 
-    fd = sys_open(FAVORITES_PATH, O_RDONLY);
+    fd = fixed_open(FAVORITES_PATH, O_RDONLY);
     if (fd < 0) {
         log_text("favorites_load boot_ms=");
         log_number(boot_ms());
@@ -605,11 +691,11 @@ static int save_ui_resume(void) {
         state.active_index = active_system;
     state.selection = selection;
 
-    fd = sys_create(UI_RESUME_PATH, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    fd = fixed_create(UI_RESUME_PATH, O_WRONLY | O_CREAT | O_TRUNC, 0600);
     if (fd < 0) return -1;
     if (write_exact((int)fd, (const char *)&state, sizeof(state)) < 0) {
         sys_close((int)fd);
-        sys_unlink(UI_RESUME_PATH);
+        fixed_unlink(UI_RESUME_PATH);
         return -1;
     }
     sys_close((int)fd);
@@ -639,7 +725,8 @@ static void write_handoff_action(int action) {
     value[0] = (char)('0' + action / 10);
     value[1] = (char)('0' + action % 10);
     value[2] = '\n';
-    fd = sys_create(HANDOFF_ACTION_PATH, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    fd = fixed_create(HANDOFF_ACTION_PATH,
+                      O_WRONLY | O_CREAT | O_TRUNC, 0600);
     if (fd < 0) return;
     (void)sys_write((int)fd, value, sizeof(value));
     sys_close((int)fd);
@@ -652,12 +739,12 @@ static u32 media_category_count(void);
 
 static int load_ui_resume(void) {
     struct ui_resume_state state;
-    long fd = sys_open(UI_RESUME_PATH, O_RDONLY);
+    long fd = fixed_open(UI_RESUME_PATH, O_RDONLY);
     long count;
     if (fd < 0) return 0;
     count = sys_read((int)fd, &state, sizeof(state));
     sys_close((int)fd);
-    sys_unlink(UI_RESUME_PATH);
+    fixed_unlink(UI_RESUME_PATH);
 
     if (count != (long)sizeof(state) || state.magic != UI_RESUME_MAGIC)
         return 0;
@@ -711,7 +798,8 @@ static int load_ui_resume(void) {
 
 static int save_favorites(void) {
     u32 catalog_index;
-    long fd = sys_create(FAVORITES_TEMP, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    long fd = fixed_create(FAVORITES_TEMP,
+                           O_WRONLY | O_CREAT | O_TRUNC, 0600);
     if (fd < 0) return -1;
 
     for (catalog_index = 0; catalog_index < CATALOG_ENTRY_COUNT; catalog_index++) {
@@ -721,25 +809,26 @@ static int save_favorites(void) {
         if (write_exact((int)fd, path, string_length(path)) < 0 ||
             write_exact((int)fd, "\n", 1) < 0) {
             sys_close((int)fd);
-            sys_unlink(FAVORITES_TEMP);
+            fixed_unlink(FAVORITES_TEMP);
             return -1;
         }
     }
     if (sys_fsync((int)fd) < 0) {
         sys_close((int)fd);
-        sys_unlink(FAVORITES_TEMP);
+        fixed_unlink(FAVORITES_TEMP);
         return -1;
     }
     sys_close((int)fd);
-    if (sys_rename(FAVORITES_TEMP, FAVORITES_PATH) < 0) {
-        sys_unlink(FAVORITES_TEMP);
+    if (fixed_rename(FAVORITES_TEMP, FAVORITES_PATH) < 0) {
+        fixed_unlink(FAVORITES_TEMP);
         return -1;
     }
     return 0;
 }
 
 static void save_recent(const struct catalog_entry *entry) {
-    long fd = sys_create(RECENT_TEMP, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    long fd = fixed_create(RECENT_TEMP,
+                           O_WRONLY | O_CREAT | O_TRUNC, 0600);
     int result = -1;
     if (fd >= 0) {
         if (write_exact((int)fd, entry->path, string_length(entry->path)) == 0 &&
@@ -747,7 +836,7 @@ static void save_recent(const struct catalog_entry *entry) {
             result = 0;
         sys_close((int)fd);
     }
-    if (!result && sys_rename(RECENT_TEMP, RECENT_PATH) == 0) {
+    if (!result && fixed_rename(RECENT_TEMP, RECENT_PATH) == 0) {
         log_text("recent_save boot_ms=");
         log_number(boot_ms());
         log_text(" result=ready path=");
@@ -755,7 +844,7 @@ static void save_recent(const struct catalog_entry *entry) {
         log_text("\n");
         return;
     }
-    sys_unlink(RECENT_TEMP);
+    fixed_unlink(RECENT_TEMP);
     log_text("recent_save boot_ms=");
     log_number(boot_ms());
     log_text(" result=failed\n");
@@ -1056,7 +1145,8 @@ static int write_content_request(u8 launch_kind, const char *core,
                                  const char *name, const char *path,
                                  const char *status) {
     char kind[2];
-    long fd = sys_create(LAUNCH_REQUEST, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    long fd = fixed_create(LAUNCH_REQUEST,
+                           O_WRONLY | O_CREAT | O_TRUNC, 0600);
     if (fd < 0) {
         selected_status = "LAUNCH REQUEST FAILED";
         log_text("launch_request result=open-failed\n");
@@ -1079,7 +1169,7 @@ static int write_content_request(u8 launch_kind, const char *core,
     }
     sys_close((int)fd);
     if (save_ui_resume() < 0) {
-        sys_unlink(LAUNCH_REQUEST);
+        fixed_unlink(LAUNCH_REQUEST);
         selected_status = "RETURN STATE SAVE FAILED";
         log_text("launch_request result=resume-save-failed\n");
         return ACTION_NONE;
@@ -1107,7 +1197,7 @@ static int launch_catalog_entry(u32 catalog_index) {
     entry = &catalog_entries[catalog_index];
     system = &catalog_systems[entry->system];
     path = resolve_live_path(entry->path);
-    fd = path ? sys_open(path, O_RDONLY | O_NONBLOCK) : -1;
+    fd = path ? fixed_open(path, O_RDONLY | O_NONBLOCK) : -1;
     log_text("rom_test boot_ms=");
     log_number(boot_ms());
     log_text(" path=");
@@ -1142,7 +1232,7 @@ static int launch_media_entry(void) {
     entry_index = category->first + selection;
     entry = &catalog_media_entries[entry_index];
     path = resolve_live_path(entry->path);
-    fd = path ? sys_open(path, O_RDONLY | O_NONBLOCK) : -1;
+    fd = path ? fixed_open(path, O_RDONLY | O_NONBLOCK) : -1;
     log_text("media_test boot_ms=");
     log_number(boot_ms());
     log_text(" path=");
@@ -1412,7 +1502,8 @@ static void probe_storage(void) {
     now = boot_ms();
     if (now < next_storage_probe) return;
     next_storage_probe = now + 50UL;
-    fd = sys_open(ROM_ROOT, O_RDONLY | O_NONBLOCK);
+    refresh_path_anchors();
+    fd = fixed_open(ROM_ROOT, O_RDONLY | O_NONBLOCK);
     if (fd < 0) return;
     sys_close((int)fd);
     storage_ready = 1;
@@ -1430,7 +1521,7 @@ static int open_fixed_input(void) {
     while (boot_ms() < deadline) {
         for (index = 0; index < 8; index++) {
             input_path[16] = (char)('0' + index);
-            input_fd = (int)sys_open(input_path, O_RDONLY | O_NONBLOCK);
+            input_fd = (int)fixed_open(input_path, O_RDONLY | O_NONBLOCK);
             if (input_fd < 0) continue;
 
             name[0] = 0;
@@ -1473,6 +1564,19 @@ static int application(void) {
     int exit_action = ACTION_NONE;
     log_text("direct launcher start boot_ms=");
     log_number(started);
+    log_text("\n");
+
+    refresh_path_anchors();
+    log_text("path_anchors runtime=");
+    log_text(runtime_dir_fd >= 0 ? "ready" : "missing");
+    log_text(" input=");
+    log_text(input_dir_fd >= 0 ? "ready" : "missing");
+    log_text(" power=");
+    log_text(power_dir_fd >= 0 ? "ready" : "missing");
+    log_text(" storage=");
+    log_text(storage_dir_fd >= 0 ? "ready" : "missing");
+    log_text(" config=");
+    log_text(config_dir_fd >= 0 ? "ready" : "missing");
     log_text("\n");
 
     deadline = boot_ms() + DEVICE_WAIT_MS;
@@ -1592,6 +1696,19 @@ static int application(void) {
         }
         sys_ppoll(polls, poll_count, timeout);
 
+        if (polls[0].revents & (POLLERR | POLLHUP)) {
+            log_text("input reconnect boot_ms=");
+            log_number(boot_ms());
+            log_text("\n");
+            sys_close(input_fd);
+            input_fd = -1;
+            if (open_fixed_input() < 0) {
+                exit_action = ACTION_STOCK;
+                break;
+            }
+            continue;
+        }
+
         if (power_event_fd >= 0 && (polls[1].revents & POLLIN)) {
             char uevent[2049];
             int previous = charging_state;
@@ -1647,6 +1764,11 @@ static int application(void) {
     sys_close(input_fd);
     sys_munmap((void *)fb, fb_fix.smem_len);
     sys_close(fb_fd);
+    if (config_dir_fd >= 0) sys_close(config_dir_fd);
+    if (storage_dir_fd >= 0) sys_close(storage_dir_fd);
+    if (power_dir_fd >= 0) sys_close(power_dir_fd);
+    if (input_dir_fd >= 0) sys_close(input_dir_fd);
+    if (runtime_dir_fd >= 0) sys_close(runtime_dir_fd);
     if (exit_action == ACTION_LAUNCH || exit_action == ACTION_SHUTDOWN ||
         exit_action == ACTION_PORTMASTER)
         return exit_action;

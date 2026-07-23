@@ -10,9 +10,7 @@ REQUEST=/run/muos/dani-launch-request
 FIRST_FRAME=/run/muos/dani-first-frame-ready
 HANDOFF_ACTION=/run/muos/dani-launch-action
 EARLY_LOG=/run/muos/initramfs-launcher.log
-BRIDGE_LOG=/run/muos/initramfs-bridge.log
-BRIDGE_PID=/run/muos/initramfs-bridge.pid
-BRIDGE_BINARY=/run/muos/dani-launcher-bridge
+EARLY_PID=/run/muos/initramfs-launcher.pid
 PIDWAIT=/storage/.config/bird/bird-pidwait
 ATTEMPTS=/storage/bird-data/MUOS/Bird/boot-state/stock-root-attempts
 LOG_DIR=/storage/bird-data/MUOS/Bird/log
@@ -44,60 +42,37 @@ dispatch_handoff_action() {
 	esac
 }
 
-archive_root_bridge() {
-	[ -f "$BRIDGE_LOG" ] && cp -f "$BRIDGE_LOG" "$LOG_DIR/root-bridge-latest.log"
-	rm -f "$BRIDGE_PID" "$BRIDGE_BINARY"
+archive_early_launcher() {
+	[ -f "$EARLY_LOG" ] && cp -f "$EARLY_LOG" "$LOG_DIR/early-initramfs-latest.log"
+	rm -f "$EARLY_PID"
 }
 
-adopt_root_bridge() {
-	[ -s "$BRIDGE_PID" ] || return 1
+adopt_early_launcher() {
+	[ -s "$EARLY_PID" ] || return 1
 	[ -x "$PIDWAIT" ] || return 1
-	PID=$(cat "$BRIDGE_PID")
+	PID=$(cat "$EARLY_PID")
 	case "$PID" in *[!0-9]*|'') return 1 ;; esac
 	kill -0 "$PID" 2>/dev/null || return 1
 	EXE=$(readlink "/proc/$PID/exe" 2>/dev/null || :)
 	case "$EXE" in
-		*/dani-launcher-bridge) ;;
-		*) printf 'bird ignored stale bridge pid=%s exe=%s\n' "$PID" "$EXE"
+		*/opt/bird/dani-launcher*) ;;
+		*) printf 'bird ignored stale early pid=%s exe=%s\n' "$PID" "$EXE"
 			return 1 ;;
 	esac
 
-	printf 'bird adopted root bridge pid=%s uptime=' "$PID"
+	printf 'bird adopted persistent initramfs launcher pid=%s uptime=' "$PID"
 	cut -d ' ' -f 1 /proc/uptime
 	# pidfd_open + ppoll sleeps inside the kernel. The supervisor does no
 	# periodic kill(2), /proc scan or timer wakeup while Bird owns the menu.
 	if ! "$PIDWAIT" "$PID"; then
-		printf 'bird pidfd wait fallback pid=%s uptime=' "$PID"
+		printf 'bird persistent-owner pidfd fallback pid=%s uptime=' "$PID"
 		cut -d ' ' -f 1 /proc/uptime
 		while kill -0 "$PID" 2>/dev/null; do usleep 20000; done
 	fi
-	printf 'bird root bridge exited pid=%s uptime=' "$PID"
+	printf 'bird persistent initramfs launcher exited pid=%s uptime=' "$PID"
 	cut -d ' ' -f 1 /proc/uptime
-	archive_root_bridge
+	archive_early_launcher
 	return 0
-}
-
-discard_stale_root_bridge() {
-	if [ -s "$BRIDGE_PID" ]; then
-		PID=$(cat "$BRIDGE_PID")
-		case "$PID" in *[!0-9]*|'') PID= ;; esac
-		if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
-			EXE=$(readlink "/proc/$PID/exe" 2>/dev/null || :)
-			case "$EXE" in
-				*/dani-launcher-bridge)
-					printf 'bird stopping unadoptable root bridge pid=%s uptime=' "$PID"
-					cut -d ' ' -f 1 /proc/uptime
-					kill "$PID" 2>/dev/null || :
-					for _ in $(seq 1 100); do
-						kill -0 "$PID" 2>/dev/null || break
-						usleep 1000
-					done
-					;;
-				*) printf 'bird ignored stale bridge pid=%s exe=%s\n' "$PID" "$EXE" ;;
-			esac
-		fi
-	fi
-	archive_root_bridge
 }
 
 mark_healthy() {
@@ -119,8 +94,8 @@ mark_healthy() {
 }
 
 accept_early_frame
-if ! adopt_root_bridge; then
-	discard_stale_root_bridge
+if ! adopt_early_launcher; then
+	archive_early_launcher
 fi
 dispatch_handoff_action
 

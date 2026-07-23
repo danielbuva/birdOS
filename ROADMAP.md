@@ -31,7 +31,7 @@ The long-term centerpiece would be a tiny custom launcher—ideally a small stat
 Clean-root v5.4 proved the desired fast architecture but also proved that an
 application stack cannot be reconstructed reliably by copying binaries and
 guessing its hidden service and configuration contract one failure at a time.
-Stock-root v6.8 now optimizes the proven software baseline:
+Stock-root v6.9 now optimizes the proven software baseline:
 
 - exact ROCKNIX 20260701 KERNEL, DTB, SYSTEM and configured STORAGE;
 - complete systemd, udev, D-Bus, PipeWire, WirePlumber and H700 autostart path;
@@ -55,10 +55,11 @@ PortMaster-only and masks services absent from the fixed profile; its broad
 physical gate passed at roughly seven stopwatch seconds. V6.5 proved Bird
 pixels before `switch_root` but exposed a release-module ABI mismatch; v6.6
 uses the exact SYSTEM H700 input module from the tiny external overlay, then
-hands state to the proven full runtime. V6.7 localized its failed final-root
-bridge to an old-root `/proc` read after that mount had moved. V6.8 dispatches
-the bridge before optional diagnostics and lets the final supervisor adopt that
-same process with a blocking pidfd, so one Bird owns input until selection.
+hands state to the proven full runtime. V6.7 localized one failed final-root
+bridge path; v6.8 then proved its detached replacement exited with status 2
+before launcher entry. V6.9 removes the replacement entirely. The first Bird
+retains descriptors to the mounts that move, and the final supervisor adopts
+that original PID with a blocking pidfd, so one process owns input until selection.
 Early selections remain queued until the provider's generated application
 contract is ready.
 
@@ -120,7 +121,7 @@ application and move everything unrelated to an interactive menu behind it.
 - [x] Remove the next set of redundant fixed-startup work: per-boot
   immutable policy/geometry writes, obsolete update-file cleanup, zero-swap
   probing and the unnecessary squashfs module request.
-- [ ] [stock-root v6.4 compatibility passed; v6.8 single-owner handoff staged] Bake
+- [ ] [stock-root v6.4 compatibility passed; v6.9 persistent-owner staged] Bake
   changes into the image and remove the card-side development user-init
   delivery path. The successful path is entirely embedded and does not enter
   p5. V5.0 physically proved the menu at 1.135 seconds, H700 input at 1.290 and
@@ -158,12 +159,14 @@ application and move everything unrelated to an interactive menu behind it.
   stop them again on return. Remove SSH, RPC, discovery, touchscreen, Sixaxis,
   statistics and HDMI-monitor units from this fixed user's ordinary boot; mask
   RPC's activation socket as well as its daemon so it cannot wake indirectly.
-- [ ] [v6.7 charge-current proof passed; numeric accumulation display staged] Physically
+- [ ] [numeric gauge exposed; calibration and LED meaning pending] Physically
   verify the AXP717 charging path. Bird reads the
   kernel's fixed battery status and receives state changes through blocking
-  uevents with no polling daemon. Plug/unplug updates passed, and the plugged
-  snapshot recorded `Charging`, 100 percent, 4.194 V and +492 mA. V6.8 replaces
-  the word label with live numeric capacity so accumulation can be observed;
+  uevents with no polling daemon. Plug/unplug updates passed. The exact kernel
+  driver returns the raw AXP717 fuel-gauge percentage and documents the current
+  channel's unknown offset, so the observed 100 percent and 492 mA are not yet
+  calibrated proof. Numeric accumulation and the red/green LED state are now
+  captured together;
   next compare it across a meaningful charging interval. Reconcile the DT's
   1,500,000-uA USB maximum with the
   driver's observed 2,000,000-uA boot default before hardcoding charge policy.
@@ -179,12 +182,11 @@ removes the handoff entirely while keeping the verified menu-first boundary.
 - [x] Hardware-verify the pre-`rcS` inittab launch and fallback.
 - [x] Embed the launcher in initramfs and hardware-verify an interactive frame
   before `switch_root`.
-- [ ] [stock-root v6.8 staged after v6.7 localized failure] Overlay the exact release initramfs with the same
-  static launcher and exact H700 input module, preserve navigation/action state
-  in `/run`, bridge into the prepared final root immediately after mount handoff,
-  and let the supervisor adopt it with `pidfd_open`/`ppoll` instead of killing
-  it and starting a second input owner.
-- [ ] [v6.8 staged] Physically verify uninterrupted navigation across the
+- [ ] [stock-root v6.9 staged after v6.8 status-2 failure] Overlay the exact release initramfs with the same
+  static launcher and exact H700 input module. Keep that original process alive
+  using retained descriptors to the moved runtime, device, sysfs and storage
+  mounts, then let the supervisor adopt its PID with `pidfd_open`/`ppoll`.
+- [ ] [v6.9 staged] Physically verify uninterrupted navigation across the
   1.5-second early-input point and final-root takeover. Select one game before
   the provider milestone and confirm it launches automatically rather than
   losing the queued request.
@@ -872,7 +874,7 @@ Your next concrete milestones should be:
 
 Cold game launch findings and the resume-later checklist are intentionally
 parked in [`GAME_LOAD_DEFERRED.md`](GAME_LOAD_DEFERRED.md). The accepted
-compatibility stack is functional. The final-root single-owner bridge remains
+compatibility stack is functional. The persistent original launcher remains
 under physical test before further timing work moves below it.
 
 The power-key threshold is confirmed programmable in the AXP2202/AXP2101 PMIC.

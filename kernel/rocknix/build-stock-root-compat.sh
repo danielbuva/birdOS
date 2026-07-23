@@ -10,7 +10,7 @@ ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 SOURCE=${SOURCE:-/Volumes/BIRD}
 SYSTEM_SOURCE=${SYSTEM_SOURCE:-/Volumes/dani-sp/MUOS/runtime/ROCKNIX-SYSTEM}
 STORAGE=${STORAGE:-/Users/dani/rocknix-reference-result/storage.ext4}
-OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.8}
+OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.9}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
 LLD=${LLD:-/opt/homebrew/opt/lld/bin/ld.lld}
 READELF=${READELF:-/opt/homebrew/opt/llvm/bin/llvm-readelf}
@@ -153,8 +153,13 @@ grep -q '^After=rocknix-autostart.service$' \
 	"$OUTPUT/card/bird/rocknix-report-stats.service" || fail 'event-ordered snapshot missing'
 grep -q '^  INITRD /bird-initramfs.cpio.gz$' \
 	"$OUTPUT/card/extlinux/extlinux.conf" || fail 'external early initramfs missing'
-grep -q '^/bird-early.sh resume$' \
-	"$OUTPUT/build/early-initramfs/payload/init" || fail 'root bridge missing'
+grep -q 'persistent-owner' \
+	"$OUTPUT/build/early-initramfs/payload/bird-early.sh" || \
+	fail 'persistent early owner missing'
+if grep -q '^/bird-early.sh resume$' \
+	"$OUTPUT/build/early-initramfs/payload/init"; then
+	fail 'obsolete chroot bridge remained'
+fi
 grep -q 'power_supply/battery/status' \
 	"$ROOT/launcher/dani-launcher.c" || fail 'battery indicator missing'
 grep -q 'pidfd_open' \

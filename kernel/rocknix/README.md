@@ -870,8 +870,18 @@ Stock-root v6.8 removes that fallible pre-dispatch read, writes the child PID
 immediately and checks that the process survived. The systemd supervisor no
 longer retires a valid bridge. It adopts it and sleeps in an 896-byte static
 `pidfd_open`/`ppoll` helper until the user launches content, requests shutdown
-or the launcher actually exits. Thus one final-root Bird owns framebuffer and
-input across the rest of startup without a polling timer or a second launcher.
+or the launcher actually exits. Its physical trace proved the detached
+`setsid`/`chroot` process exited with status 2 before the launcher emitted its
+entry marker, so systemd still had to create the later input owner.
+
+Stock-root v6.9 deletes that fragile replacement path. The first initramfs Bird
+keeps open descriptors for framebuffer, input, power, runtime and storage.
+Those descriptors remain attached to the same mounts when `/dev`, `/sys`,
+`/run` and the prepared root move. File operations after the move use
+`openat`, `renameat` and `unlinkat` relative to those anchors. Systemd adopts
+the original PID with the same blocking pidfd waiter. If ROCKNIX actually
+re-registers the gamepad, Bird detects `POLLERR`/`POLLHUP` and reopens it
+through the retained `/dev/input` descriptor instead of starting another UI.
 
 The exact final common-autostart action now also publishes a timestamped
 `/run/bird/application-contract-ready` marker after Sway configuration exists.
@@ -903,6 +913,9 @@ overlay merges cleanly over the complete 7,474,688-byte official archive.
 Two independent v6.6 and v6.7 builds likewise reproduce all card payloads
 byte-for-byte. Two independent v6.8 builds reproduce every card payload too,
 including its 896-byte static pidfd waiter and 219,371-byte external overlay.
+V6.9 retains that waiter while removing the failed detached bridge.
+Two independent v6.9 builds reproduce every card payload byte-for-byte; its
+external overlay is 220,467 bytes.
 `mac-update-rocknix-stock-root-v6.sh`
 validates the exact removable-card geometry and every provider hash, stages the
 loop image and boot hooks, and preserves v5.4 as `KERNEL.fallback`. A persistent
@@ -925,15 +938,17 @@ hardware snapshot reported the PMIC's 2,000,000-uA boot default; reconcile that
 before changing charge policy. Bird reads
 `/sys/class/power_supply/battery/status` and `capacity`, then listens to kernel
 power-supply uevents. The upper right now shows the live percentage without a
-periodic wake-up and colors it orange while charging. The first plugged snapshot
-confirmed `Charging`, 100 percent, 4.194 V and +492 mA. The diagnostic snapshot
-records every available battery/USB
-property and the relevant AXP717 messages to verify actual current flow rather
-than inferring it from the LED.
+periodic wake-up and colors it orange while charging. In the exact kernel
+source, capacity is the raw seven-bit AXP717 fuel-gauge register, while the
+driver explicitly says the current channel has an unknown offset around
+450 mA. The observed 100 percent and 492 mA therefore require physical
+calibration. The diagnostic snapshot now records every battery/USB property,
+every LED class brightness/trigger and relevant AXP717 messages rather than
+inferring charge state from one LED color.
 
 V6.3 intentionally accepted the slower full compatibility graph and passed its
-broad physical gate. V6.4 passed the first speed/subtraction gate. V6.8 now
-tests initramfs pixels, immediate input, single-owner state handoff and the same
+broad physical gate. V6.4 passed the first speed/subtraction gate. V6.9 now
+tests initramfs pixels, immediate input, persistent process ownership and the same
 menu, content, media, Ports, PortMaster, global controls, suspend and shutdown
 closure before any release-kernel option is removed.
 

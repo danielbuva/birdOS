@@ -5,7 +5,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
-OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.8}
+OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.9}
 OFFICIAL_INIT=${OFFICIAL_INIT:-$ROOT/kernel/work/rocknix-official-initramfs-20260701/ramdisk/init}
 JOYPAD=${JOYPAD:-$ROOT/kernel/work/rocknix-system-exact-20260701/usr/lib/kernel-overlays/base/lib/modules/7.0.11/rocknix-joypad/rocknix-singleadc-joypad.ko}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
@@ -66,7 +66,7 @@ mkdir -p "$PAYLOAD/opt/bird" "$VERIFY"
 	'-DRECENT_PATH="/storage/.config/bird/recent.txt"' \
 	'-DRECENT_TEMP="/storage/.config/bird/recent.tmp"' \
 	'-DHANDOFF_ACTION_PATH="/run/muos/dani-launch-action"' \
-	-DEARLY_HANDOFF_STATE=1 -DDEVICE_WAIT_MS=20000UL \
+	-DDEVICE_WAIT_MS=20000UL \
 	-c "$ROOT/launcher/dani-launcher.c" -o "$OBJECT"
 "$LLD" -static --gc-sections --build-id=none -z noexecstack -s \
 	-e _start -o "$LAUNCHER" "$OBJECT"
@@ -77,9 +77,8 @@ if "$READELF" -l "$LAUNCHER" | grep -q ' INTERP '; then
 	fail 'early launcher unexpectedly has an interpreter'
 fi
 
-# Inject three fixed calls into the pinned upstream init. Bird starts after the
-# special filesystems exist, preserves state before their move, then resumes
-# inside the final root immediately after /run reaches its permanent location.
+# Inject two fixed calls into the pinned upstream init. Bird starts after the
+# special filesystems exist and remains alive while those exact mounts move.
 awk '
 	$0 == "hidecursor" {
 		print
@@ -92,19 +91,14 @@ awk '
 		print "/bird-early.sh handoff"
 		print ""
 	}
-	$0 == "/usr/bin/busybox mount --move /run /sysroot/run" {
-		print
-		print "/bird-early.sh resume"
-		next
-	}
 	{ print }
 ' "$OFFICIAL_INIT" >"$PAYLOAD/init"
 [ "$(grep -c '^/bird-early.sh start$' "$PAYLOAD/init")" = 1 ] || \
 	fail 'early start injection count changed'
 [ "$(grep -c '^/bird-early.sh handoff$' "$PAYLOAD/init")" = 1 ] || \
 	fail 'handoff injection count changed'
-[ "$(grep -c '^/bird-early.sh resume$' "$PAYLOAD/init")" = 1 ] || \
-	fail 'root bridge injection count changed'
+[ "$(grep -c '^/bird-early.sh resume$' "$PAYLOAD/init")" = 0 ] || \
+	fail 'obsolete root bridge injection remained'
 [ "$(grep -c '^load_splash() { :; }$' "$PAYLOAD/init")" = 1 ] || \
 	fail 'splash suppression injection count changed'
 
