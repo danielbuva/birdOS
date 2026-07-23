@@ -115,3 +115,8 @@ mount --bind /flash/bird/090-ui_service \
 	error bird-ui-selection "Could not select Bird as the only boot UI"
 	return 1
 }
+mount --bind /flash/bird/999-export \
+	/sysroot/usr/lib/autostart/common/999-export || {
+	error bird-application-ready "Could not install Bird application milestone"
+	return 1
+}

@@ -1,7 +1,7 @@
 #!/bin/sh
-# Run Bird beside the unchanged ROCKNIX initramfs, then stop it immediately
-# before switch_root. Its framebuffer remains visible and its tmpfs UI/action
-# state moves with /run for the normal systemd supervisor to consume.
+# Run Bird beside the unchanged ROCKNIX initramfs, then bridge the same static
+# binary into the prepared final root. UI/action state moves with /run and the
+# systemd supervisor retires the bridge only when its owned process is ready.
 
 BUSYBOX=/usr/bin/busybox
 RUN=/run/muos
@@ -10,6 +10,8 @@ LOG=$RUN/initramfs-launcher.log
 LAUNCHER=/opt/bird/dani-launcher
 JOYPAD=/opt/bird/rocknix-singleadc-joypad.ko
 BACKLIGHT=/sys/class/backlight/backlight
+BRIDGE=$RUN/dani-launcher-bridge
+BRIDGE_PID=$RUN/initramfs-bridge.pid
 
 case "${1:-}" in
 	start)
@@ -42,24 +44,47 @@ case "${1:-}" in
 		printf '%s\n' "$!" >"$PID_FILE"
 		;;
 	handoff)
-		[ -s "$PID_FILE" ] || exit 0
-		PID=$($BUSYBOX cat "$PID_FILE")
-		case "$PID" in *[!0-9]*|'') exit 0 ;; esac
-		if $BUSYBOX kill -0 "$PID" 2>/dev/null; then
-			printf 'Bird early-init handoff uptime=' >>"$LOG"
-			$BUSYBOX cut -d ' ' -f 1 /proc/uptime >>"$LOG"
-			$BUSYBOX kill "$PID" 2>/dev/null || :
-			COUNT=0
-			while [ "$COUNT" -lt 50 ]; do
-				$BUSYBOX kill -0 "$PID" 2>/dev/null || break
-				$BUSYBOX usleep 1000
-				COUNT=$((COUNT + 1))
-			done
+		if [ -s "$PID_FILE" ]; then
+			PID=$($BUSYBOX cat "$PID_FILE")
+			case "$PID" in *[!0-9]*|'') PID= ;; esac
+			if [ -n "$PID" ] && $BUSYBOX kill -0 "$PID" 2>/dev/null; then
+				printf 'Bird early-init handoff uptime=' >>"$LOG"
+				$BUSYBOX cut -d ' ' -f 1 /proc/uptime >>"$LOG"
+				$BUSYBOX kill "$PID" 2>/dev/null || :
+				COUNT=0
+				while [ "$COUNT" -lt 50 ]; do
+					$BUSYBOX kill -0 "$PID" 2>/dev/null || break
+					$BUSYBOX usleep 1000
+					COUNT=$((COUNT + 1))
+				done
+			fi
 		fi
 		$BUSYBOX rm -f "$PID_FILE"
+		# /run moves into the final root a few instructions from here. Carry the
+		# same static binary with it so pixels and evdev can resume before PID 1
+		# begins parsing the systemd graph.
+		$BUSYBOX cp "$LAUNCHER" "$BRIDGE" || exit 1
+		$BUSYBOX chmod 0755 "$BRIDGE" || exit 1
+		;;
+	resume)
+		ROOT_RUN=/sysroot/run/muos
+		[ -x "$ROOT_RUN/dani-launcher-bridge" ] || exit 1
+		if [ -s "$ROOT_RUN/dani-launch-action" ]; then
+			printf 'Bird root bridge skipped for queued action uptime=' \
+				>"$ROOT_RUN/initramfs-bridge.log"
+			$BUSYBOX cut -d ' ' -f 1 /proc/uptime \
+				>>"$ROOT_RUN/initramfs-bridge.log"
+			exit 0
+		fi
+		printf 'Bird root bridge start uptime=' >"$ROOT_RUN/initramfs-bridge.log"
+		$BUSYBOX cut -d ' ' -f 1 /proc/uptime \
+			>>"$ROOT_RUN/initramfs-bridge.log"
+		$BUSYBOX chroot /sysroot /run/muos/dani-launcher-bridge \
+			>>"$ROOT_RUN/initramfs-bridge.log" 2>&1 &
+		printf '%s\n' "$!" >"/sysroot$BRIDGE_PID"
 		;;
 	*)
-		printf 'usage: %s {start|handoff}\n' "$0" >&2
+		printf 'usage: %s {start|handoff|resume}\n' "$0" >&2
 		exit 2
 		;;
 esac

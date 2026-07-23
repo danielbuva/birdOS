@@ -566,8 +566,12 @@ static int save_ui_resume(void) {
     long fd;
     state.magic = UI_RESUME_MAGIC;
     state.view = view;
-    state.active_index =
-        view == VIEW_MEDIA_ENTRIES ? active_media_category : active_system;
+    if (view == VIEW_MEDIA_ENTRIES)
+        state.active_index = active_media_category;
+    else if (view == VIEW_MEDIA_CATEGORIES)
+        state.active_index = media_section;
+    else
+        state.active_index = active_system;
     state.selection = selection;
 
     fd = sys_create(UI_RESUME_PATH, O_WRONLY | O_CREAT | O_TRUNC, 0600);
@@ -613,6 +617,8 @@ static void write_handoff_action(int action) {
 #endif
 }
 
+static u32 media_category_count(void);
+
 static int load_ui_resume(void) {
     struct ui_resume_state state;
     long fd = sys_open(UI_RESUME_PATH, O_RDONLY);
@@ -624,7 +630,11 @@ static int load_ui_resume(void) {
 
     if (count != (long)sizeof(state) || state.magic != UI_RESUME_MAGIC)
         return 0;
-    if (state.view == VIEW_GAMES) {
+    if (state.view == VIEW_MAIN || state.view == VIEW_PLAY) {
+        if (state.selection >= 4U) return 0;
+    } else if (state.view == VIEW_SYSTEMS) {
+        if (state.selection >= CATALOG_SYSTEM_COUNT) return 0;
+    } else if (state.view == VIEW_GAMES) {
         if (state.active_index >= CATALOG_SYSTEM_COUNT ||
             state.selection >= catalog_systems[state.active_index].count)
             return 0;
@@ -636,8 +646,12 @@ static int load_ui_resume(void) {
         if (state.active_index >= CATALOG_MEDIA_CATEGORY_COUNT ||
             state.selection >= catalog_media_categories[state.active_index].count)
             return 0;
-    } else if (state.view == VIEW_PLAY) {
-        if (state.selection >= 4U) return 0;
+    } else if (state.view == VIEW_MEDIA_CATEGORIES) {
+        if (state.active_index < CATALOG_MEDIA_SECTION_LISTEN ||
+            state.active_index > CATALOG_MEDIA_SECTION_WATCH)
+            return 0;
+        media_section = state.active_index;
+        if (state.selection >= media_category_count()) return 0;
     } else {
         return 0;
     }
@@ -648,7 +662,8 @@ static int load_ui_resume(void) {
     else if (view == VIEW_MEDIA_ENTRIES) {
         active_media_category = state.active_index;
         media_section = catalog_media_categories[active_media_category].section;
-    }
+    } else if (view == VIEW_MEDIA_CATEGORIES)
+        media_section = state.active_index;
     selection = state.selection;
     selected_status = "RETURNED TO PREVIOUS SCREEN";
     log_text("ui_resume_load boot_ms=");
@@ -1459,8 +1474,13 @@ static int application(void) {
      * Paint before input discovery so an absent or late joypad can never keep
      * the kernel boot logo on screen.  The ready marker remains below the
      * input gate: the watchdog is cancelled only when the menu is usable.
-     */
+    */
     load_ui_resume();
+#ifdef EARLY_HANDOFF_STATE
+    /* load_ui_resume consumes its file. Keep the bridge transaction armed
+     * even when no button is pressed between two process owners. */
+    (void)save_ui_resume();
+#endif
     power_event_fd = open_power_events();
     charging_state = read_charging_state();
     log_text("power battery_state=");

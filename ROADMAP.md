@@ -31,7 +31,7 @@ The long-term centerpiece would be a tiny custom launcher—ideally a small stat
 Clean-root v5.4 proved the desired fast architecture but also proved that an
 application stack cannot be reconstructed reliably by copying binaries and
 guessing its hidden service and configuration contract one failure at a time.
-Stock-root v6.6 now optimizes the proven software baseline:
+Stock-root v6.7 now optimizes the proven software baseline:
 
 - exact ROCKNIX 20260701 KERNEL, DTB, SYSTEM and configured STORAGE;
 - complete systemd, udev, D-Bus, PipeWire, WirePlumber and H700 autostart path;
@@ -55,7 +55,9 @@ PortMaster-only and masks services absent from the fixed profile; its broad
 physical gate passed at roughly seven stopwatch seconds. V6.5 proved Bird
 pixels before `switch_root` but exposed a release-module ABI mismatch; v6.6
 uses the exact SYSTEM H700 input module from the tiny external overlay, then
-hands state to the proven full runtime.
+hands state to the proven full runtime. V6.7 bridges the same static Bird
+through the final-root transition and keeps early selections queued until the
+provider's generated application contract is ready.
 
 The gate order is compatibility first, then early Bird handoff, then service
 deferral/removal, then kernel trimming. No component is removed from the full
@@ -115,7 +117,7 @@ application and move everything unrelated to an interactive menu behind it.
 - [x] Remove the next set of redundant fixed-startup work: per-boot
   immutable policy/geometry writes, obsolete update-file cleanup, zero-swap
   probing and the unnecessary squashfs module request.
-- [ ] [stock-root v6.4 compatibility passed; v6.6 immediate-input staged] Bake
+- [ ] [stock-root v6.4 compatibility passed; v6.7 seamless-handoff staged] Bake
   changes into the image and remove the card-side development user-init
   delivery path. The successful path is entirely embedded and does not enter
   p5. V5.0 physically proved the menu at 1.135 seconds, H700 input at 1.290 and
@@ -153,11 +155,13 @@ application and move everything unrelated to an interactive menu behind it.
   stop them again on return. Remove SSH, RPC, discovery, touchscreen, Sixaxis,
   statistics and HDMI-monitor units from this fixed user's ordinary boot; mask
   RPC's activation socket as well as its daemon so it cannot wake indirectly.
-- [ ] [v6.6 staged] Physically verify the AXP717 charging path. Bird reads the
+- [ ] [v6.6 live indicator passed; charge accumulation pending] Physically
+  verify the AXP717 charging path. Bird reads the
   kernel's fixed battery status and receives state changes through blocking
-  uevents with no polling daemon. Boot once while plugged in, confirm the
-  upper-right `CHARGING` label, then compare captured capacity, current,
-  voltage and USB-online values across a meaningful charging interval.
+  uevents with no polling daemon. Plug/unplug label updates passed; next compare
+  captured capacity, current, voltage and USB-online values across a meaningful
+  charging interval. Reconcile the DT's 1,500,000-uA USB maximum with the
+  driver's observed 2,000,000-uA boot default before hardcoding charge policy.
 
 ### Layer 2 — early userspace and init
 
@@ -170,10 +174,15 @@ removes the handoff entirely while keeping the verified menu-first boundary.
 - [x] Hardware-verify the pre-`rcS` inittab launch and fallback.
 - [x] Embed the launcher in initramfs and hardware-verify an interactive frame
   before `switch_root`.
-- [ ] [stock-root v6.6 staged] Overlay the exact release initramfs with the same
+- [ ] [stock-root v6.7 staged] Overlay the exact release initramfs with the same
   static launcher and exact H700 input module, preserve navigation/action state
-  in `/run`, stop the early process before mount handoff and resume through the
-  complete compatibility-tested ROCKNIX root without a visible reset.
+  in `/run`, bridge into the prepared final root immediately after mount
+  handoff and resume through the complete compatibility-tested ROCKNIX root
+  without a visible or input reset.
+- [ ] [v6.7 staged] Physically verify uninterrupted navigation across the
+  1.5-second early-input point and final-root takeover. Select one game before
+  the provider milestone and confirm it launches automatically rather than
+  losing the queued request.
 - [x] Replace the generic initramfs shell with a tiny static fixed-device init
   while retaining the existing root PID 1 as the fallback second phase.
 - [x] Replace the root BusyBox PID 1 with a blocking 5,128-byte static init;

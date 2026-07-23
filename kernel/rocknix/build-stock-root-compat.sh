@@ -10,7 +10,7 @@ ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 SOURCE=${SOURCE:-/Volumes/BIRD}
 SYSTEM_SOURCE=${SYSTEM_SOURCE:-/Volumes/dani-sp/MUOS/runtime/ROCKNIX-SYSTEM}
 STORAGE=${STORAGE:-/Users/dani/rocknix-reference-result/storage.ext4}
-OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.6}
+OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.7}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
 LLD=${LLD:-/opt/homebrew/opt/lld/bin/ld.lld}
 READELF=${READELF:-/opt/homebrew/opt/llvm/bin/llvm-readelf}
@@ -76,7 +76,7 @@ cp -fp "$ROOT/kernel/rocknix/stock-root/post-flash.sh" \
 	"$OUTPUT/card/post-flash.sh"
 cp -fp "$ROOT/kernel/rocknix/stock-root/mount-storage.sh" \
 	"$OUTPUT/card/mount-storage.sh"
-for FILE in 090-ui_service essway.service rocknix.target \
+for FILE in 090-ui_service 999-export essway.service rocknix.target \
 	rocknix-automount.service rocknix-autostart.service \
 	rocknix-report-stats.service \
 	NetworkManager.service iwd.service supervisor.sh run-content.sh \
@@ -93,6 +93,7 @@ cp -fp "$ROOT/kernel/rocknix/stock-root/extlinux.fallback.conf" \
 touch "$OUTPUT/card/SYSTEM"
 chmod 0755 "$OUTPUT/card/post-flash.sh" "$OUTPUT/card/mount-storage.sh" \
 	"$OUTPUT/card/bird/090-ui_service" \
+	"$OUTPUT/card/bird/999-export" \
 	"$OUTPUT/card/bird/supervisor.sh" "$OUTPUT/card/bird/run-content.sh" \
 	"$OUTPUT/card/bird/prepare-ports.sh" \
 	"$OUTPUT/card/bird/fixed-storage.sh" \
@@ -103,6 +104,7 @@ chmod 0755 "$OUTPUT/card/post-flash.sh" "$OUTPUT/card/mount-storage.sh" \
 for SCRIPT in "$OUTPUT/card/post-flash.sh" \
 	"$OUTPUT/card/mount-storage.sh" \
 	"$OUTPUT/card/bird/090-ui_service" \
+	"$OUTPUT/card/bird/999-export" \
 	"$OUTPUT/card/bird/supervisor.sh" \
 	"$OUTPUT/card/bird/run-content.sh" \
 	"$OUTPUT/card/bird/prepare-ports.sh" \
@@ -134,12 +136,20 @@ grep -q '^After=rocknix-autostart.service$' \
 	"$OUTPUT/card/bird/rocknix-report-stats.service" || fail 'event-ordered snapshot missing'
 grep -q '^  INITRD /bird-initramfs.cpio.gz$' \
 	"$OUTPUT/card/extlinux/extlinux.conf" || fail 'external early initramfs missing'
+grep -q '^/bird-early.sh resume$' \
+	"$OUTPUT/build/early-initramfs/payload/init" || fail 'root bridge missing'
 grep -q 'power_supply/battery/status' \
 	"$ROOT/launcher/dani-launcher.c" || fail 'charging indicator missing'
 grep -q 'power supplies' \
 	"$OUTPUT/card/bird/capture-boot-state.sh" || fail 'power snapshot missing'
 grep -q 'mount --bind "$ROM_SOURCE" "$ROM_TARGET"' \
 	"$OUTPUT/card/bird/fixed-storage.sh" || fail 'fixed ROM bind missing'
+grep -q 'application-contract-ready' \
+	"$OUTPUT/card/bird/999-export" || fail 'application milestone missing'
+grep -q '/flash/bird/999-export' \
+	"$OUTPUT/card/mount-storage.sh" || fail 'application milestone bind missing'
+grep -q 'wait_application_contract' \
+	"$OUTPUT/card/bird/run-content.sh" || fail 'early selection queue missing'
 grep -q 'ExecStart=/storage/.config/bird/supervisor.sh' \
 	"$OUTPUT/card/bird/essway.service" || fail 'Bird UI unit missing'
 grep -q '^UI_SERVICE="essway.service"$' \

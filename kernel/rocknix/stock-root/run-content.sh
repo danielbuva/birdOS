@@ -15,6 +15,7 @@ SWAY_SOCKET=/var/run/0-runtime-dir/sway-ipc.0.sock
 PORTMASTER_ONLY=0
 PORT_PREP=/storage/.config/bird/prepare-ports.sh
 NETWORK=/storage/.config/bird/bird-network.sh
+APPLICATION_READY=/run/bird/application-contract-ready
 
 mkdir -p "$LOG_DIR" /run/bird
 
@@ -28,7 +29,6 @@ else
 		IFS= read -r NAME
 		IFS= read -r HOST_PATH
 	} <"$REQUEST"
-	rm -f "$REQUEST"
 	case "$HOST_PATH" in
 		/mnt/mmc/*) CONTENT=/storage/bird-data/${HOST_PATH#/mnt/mmc/} ;;
 		*) printf 'Rejected Bird content path: %s\n' "$HOST_PATH" >"$LOG"; exit 1 ;;
@@ -59,6 +59,19 @@ ensure_content_services() {
 	systemctl start dbus.service || return 1
 	systemctl start pipewire.service wireplumber.service \
 		pipewire-pulse.service || return 1
+}
+
+wait_application_contract() {
+	[ -e "$APPLICATION_READY" ] && return 0
+	# A selection may arrive from initramfs before ROCKNIX has generated the
+	# exact Sway/application configuration. Request that existing job and join
+	# only its first usable milestone; the launcher remains independent.
+	systemctl start --no-block rocknix-autostart.service || return 1
+	for _ in $(seq 1 1200); do
+		[ -e "$APPLICATION_READY" ] && return 0
+		usleep 25000
+	done
+	return 1
 }
 
 stop_sway() {
@@ -161,19 +174,27 @@ run_selected() {
 		printf 'kind=%s core=%s name=%s host=%s content=%s\n' \
 			"$KIND" "$REQUESTED_CORE" "$NAME" "$HOST_PATH" "$CONTENT"
 	fi
-	if start_sway; then
-		ensure_content_services || STATUS=1
-		: >/var/log/exec.log
-		if [ "${STATUS:-0}" -eq 0 ]; then
-			run_selected
-			STATUS=$?
+	if wait_application_contract; then
+		printf 'Bird application contract ready uptime=%s dispatch=' \
+			"$(cat "$APPLICATION_READY")"
+		cut -d ' ' -f 1 /proc/uptime
+		[ "$PORTMASTER_ONLY" -eq 1 ] || rm -f "$REQUEST"
+		if start_sway; then
+			ensure_content_services || STATUS=1
+			: >/var/log/exec.log
+			if [ "${STATUS:-0}" -eq 0 ]; then
+				run_selected
+				STATUS=$?
+			fi
+			if [ -s /var/log/exec.log ]; then
+				printf '%s\n' '--- ROCKNIX application log (last 256 KiB) ---'
+				tail -c 262144 /var/log/exec.log
+				printf '%s\n' '--- end ROCKNIX application log ---'
+			fi
+			stop_sway
+		else
+			STATUS=1
 		fi
-		if [ -s /var/log/exec.log ]; then
-			printf '%s\n' '--- ROCKNIX application log (last 256 KiB) ---'
-			tail -c 262144 /var/log/exec.log
-			printf '%s\n' '--- end ROCKNIX application log ---'
-		fi
-		stop_sway
 	else
 		STATUS=1
 	fi

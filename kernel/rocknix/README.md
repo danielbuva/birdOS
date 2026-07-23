@@ -850,6 +850,31 @@ The reproducible overlay is 218,397 bytes and keeps the same unchanged release
 KERNEL, DTB, SYSTEM and writable STORAGE. Early failure now captures the last
 kernel messages instead of discarding the reason.
 
+V6.6's physical gate then proved immediate navigation at the early frame but
+exposed the remaining process boundary directly: initramfs Bird was interactive
+at kernel uptime 1.497 seconds, stopped near 2.9 seconds and system-root Bird
+did not return until 5.7--8.9 seconds. A selection at 2.900 seconds was recorded
+correctly but its request was consumed while the ROCKNIX application contract
+was still being generated.
+
+Stock-root v6.7 replaces that frozen-frame interval with a final-root bridge.
+Its reproducible external overlay is 218,810 bytes.
+Before the four special mounts move, the initramfs hook copies the already
+verified static launcher into `/run` and preserves its state. Immediately after
+`/run` moves, it executes that binary through `chroot /sysroot`; the process
+therefore sees the permanent `/dev`, `/proc`, `/sys`, `/run` and `/storage`
+names and remains interactive across the subsequent `switch_root`. The normal
+supervisor validates the bridge PID/executable, copies its log, retires it and
+loads its latest state before drawing its owned instance.
+
+The exact final common-autostart action now also publishes a timestamped
+`/run/bird/application-contract-ready` marker after Sway configuration exists.
+An initramfs game/media/PortMaster request remains on disk, and its handoff
+action remains armed, until the separate runner joins that milestone. A killed
+or restarted supervisor therefore cannot lose the request; the menu stays
+independent while an early selection queues for the first reliable launch
+point.
+
 The early launcher applies the fixed five-percent backlight value, paints from
 the compiled catalogue and opens the H700 input module while the unchanged
 ROCKNIX init continues. Its navigation state and any content/PortMaster/
@@ -869,7 +894,8 @@ redraws Bird. PortMaster and MPV continue to use their release wrappers.
 overlay, then copies the checksummed release files. Two independent v6.5 builds
 reproduce all 40 files byte-for-byte; offline extraction also verifies the
 overlay merges cleanly over the complete 7,474,688-byte official archive.
-Two independent v6.6 builds likewise reproduce all card payloads byte-for-byte.
+Two independent v6.6 and v6.7 builds likewise reproduce all card payloads
+byte-for-byte.
 `mac-update-rocknix-stock-root-v6.sh`
 validates the exact removable-card geometry and every provider hash, stages the
 loop image and boot hooks, and preserves v5.4 as `KERNEL.fallback`. A persistent
@@ -885,15 +911,19 @@ boot/UI payload.
 
 Charging remains a kernel/PMIC function rather than a launcher or daemon
 responsibility. The exact H700 DTB binds the AXP717 battery and USB supplies,
-sets `constant-charge-current-max-microamp` to 1,024,000 and the USB input limit
-to 1,500,000. Bird reads `/sys/class/power_supply/battery/status` and listens to
+sets `constant-charge-current-max-microamp` to 1,024,000 and declares a
+1,500,000-uA USB input maximum. The battery driver programs the former. The
+USB driver uses the latter only to clamp future writes, and the unplugged
+hardware snapshot reported the PMIC's 2,000,000-uA boot default; reconcile that
+before changing charge policy. Bird reads
+`/sys/class/power_supply/battery/status` and listens to
 kernel power-supply uevents, so `CHARGING` appears in the upper right without a
 periodic wake-up. The diagnostic snapshot records every available battery/USB
 property and the relevant AXP717 messages to verify actual current flow rather
 than inferring it from the LED.
 
 V6.3 intentionally accepted the slower full compatibility graph and passed its
-broad physical gate. V6.4 passed the first speed/subtraction gate. V6.6 now
+broad physical gate. V6.4 passed the first speed/subtraction gate. V6.7 now
 tests initramfs pixels, immediate input, seamless state handoff and the same
 menu, content, media, Ports, PortMaster, global controls, suspend and shutdown
 closure before any release-kernel option is removed.
