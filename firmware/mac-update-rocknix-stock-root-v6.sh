@@ -9,7 +9,7 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 BIRD=${BIRD:-/Volumes/BIRD}
 DATA=${DATA:-/Volumes/dani-sp}
-CANDIDATE=${CANDIDATE:-$ROOT/kernel/work/bird-rocknix-stock-root-v6/card}
+CANDIDATE=${CANDIDATE:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.1/card}
 STORAGE_SOURCE=${STORAGE_SOURCE:-/Users/dani/rocknix-reference-result/storage.ext4}
 RUNTIME=$DATA/MUOS/runtime/ROCKNIX-SYSTEM
 STORAGE_TARGET=$DATA/MUOS/runtime/ROCKNIX-STORAGE
@@ -19,6 +19,7 @@ ROCKNIX_KERNEL_SHA=af4e75cb30b097ee5764764eb056d686bc00c6bd03fefece26b0ebbaa7fbb
 DTB_SHA=f3a4273986d6e4f431b110cead8aa19e8da52ff08c64c4b204ef9664d28b5c31
 RUNTIME_SHA=6e2112fc9dc81d5fee944f2534346a8f20674f40e23a0a85bb795218d31eadac
 STORAGE_SHA=12affdad7bc2042cb590fea60fc015a7ee8d4374ebcc3b1c11098a64b9ffa3be
+STORAGE_BYTES=268435456
 BIRD_BYTES=134217728
 BIRD_OFFSET=16777216
 DISK_BYTES=512074186752
@@ -43,6 +44,14 @@ disk_bytes() {
 
 sha256() {
 	shasum -a 256 "$1" | awk '{print $1}'
+}
+
+file_bytes() {
+	stat -f '%z' "$1"
+}
+
+ext4_magic() {
+	od -An -tx1 -j 1080 -N 2 "$1" | tr -d ' \n'
 }
 
 [ -d "$BIRD" ] || fail "BIRD volume missing: $BIRD"
@@ -89,9 +98,14 @@ else
 	fail 'v5.4 fallback KERNEL is missing'
 fi
 
-COPYFILE_DISABLE=1 cp -f "$STORAGE_SOURCE" "$DATA/MUOS/runtime/.ROCKNIX-STORAGE.new"
-[ "$(sha256 "$DATA/MUOS/runtime/.ROCKNIX-STORAGE.new")" = "$STORAGE_SHA" ] || fail 'storage copy failed'
-mv -f "$DATA/MUOS/runtime/.ROCKNIX-STORAGE.new" "$STORAGE_TARGET"
+if [ -f "$STORAGE_TARGET" ]; then
+	[ "$(file_bytes "$STORAGE_TARGET")" = "$STORAGE_BYTES" ] || fail 'installed STORAGE size changed'
+	[ "$(ext4_magic "$STORAGE_TARGET")" = 53ef ] || fail 'installed STORAGE is not ext4'
+else
+	COPYFILE_DISABLE=1 cp -f "$STORAGE_SOURCE" "$DATA/MUOS/runtime/.ROCKNIX-STORAGE.new"
+	[ "$(sha256 "$DATA/MUOS/runtime/.ROCKNIX-STORAGE.new")" = "$STORAGE_SHA" ] || fail 'storage copy failed'
+	mv -f "$DATA/MUOS/runtime/.ROCKNIX-STORAGE.new" "$STORAGE_TARGET"
+fi
 
 mkdir -p "$BIRD/bird" "$BIRD/extlinux" "$DATA/MUOS/Bird/boot-state"
 for FILE in post-flash.sh mount-storage.sh SYSTEM; do
@@ -130,10 +144,11 @@ sync
 [ "$(sha256 "$BIRD/KERNEL")" = "$ROCKNIX_KERNEL_SHA" ] || fail 'installed KERNEL verification failed'
 [ "$(sha256 "$BIRD/KERNEL.fallback")" = "$V54_KERNEL_SHA" ] || fail 'installed fallback verification failed'
 [ "$(sha256 "$BIRD/dtb.img")" = "$DTB_SHA" ] || fail 'installed DTB verification failed'
-[ "$(sha256 "$STORAGE_TARGET")" = "$STORAGE_SHA" ] || fail 'installed STORAGE verification failed'
+[ "$(file_bytes "$STORAGE_TARGET")" = "$STORAGE_BYTES" ] || fail 'installed STORAGE size verification failed'
+[ "$(ext4_magic "$STORAGE_TARGET")" = 53ef ] || fail 'installed STORAGE ext4 verification failed'
 cmp "$CANDIDATE/extlinux/extlinux.conf" "$BIRD/extlinux/extlinux.conf" || fail 'active extlinux verification failed'
 
-printf 'Bird stock-root v6 staged on /dev/%s.\n' "$WHOLE"
+printf 'Bird stock-root v6.1 staged on /dev/%s.\n' "$WHOLE"
 printf 'p5 and the p6 library were not modified.\n'
 printf 'Exact ROCKNIX KERNEL: %s\n' "$ROCKNIX_KERNEL_SHA"
 printf 'Automatic fallback KERNEL: %s\n' "$V54_KERNEL_SHA"

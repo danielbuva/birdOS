@@ -9,7 +9,7 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 SOURCE=${SOURCE:-/Volumes/ROCKNIX}
 STORAGE=${STORAGE:-/Users/dani/rocknix-reference-result/storage.ext4}
-OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6}
+OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.1}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
 LLD=${LLD:-/opt/homebrew/opt/lld/bin/ld.lld}
 READELF=${READELF:-/opt/homebrew/opt/llvm/bin/llvm-readelf}
@@ -50,6 +50,7 @@ mkdir -p "$OUTPUT/card/bird" "$OUTPUT/card/extlinux" "$OUTPUT/build"
 	-fno-asynchronous-unwind-tables -fno-ident -fvisibility=hidden \
 	-nostdlib -Wall -Wextra -Werror -Wno-unused-function \
 	'-DROM_ROOT="/storage/bird-data/ROMS"' \
+	'-DLIVE_STORAGE_ROOT="/storage/bird-data"' \
 	'-DFAVORITES_PATH="/storage/.config/bird/favorites.txt"' \
 	'-DFAVORITES_TEMP="/storage/.config/bird/favorites.tmp"' \
 	'-DRECENT_PATH="/storage/.config/bird/recent.txt"' \

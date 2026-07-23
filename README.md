@@ -31,11 +31,13 @@ must serve this one device and this one experience.
 - Current clean-root LED-on stopwatch result: approximately 2.5 seconds. V5.2
   recorded pixels at 1.137 seconds and direct input ready at 1.294 seconds of
   Linux uptime; the remaining stopwatch interval is primarily pre-kernel.
-- Stock-root v6 is staged as a deliberate compatibility baseline, not a timing
+- Stock-root v6.1 is staged as a deliberate compatibility baseline, not a timing
   candidate. It restores the byte-identical ROCKNIX kernel/SYSTEM/STORAGE set,
   systemd, udev, D-Bus, PipeWire, WirePlumber, Sway-on-content and all H700
   quirks. Bird starts through ROCKNIX's normal UI-service slot after that graph
-  is ready. Physical application results are pending.
+  is ready. The first physical boot proved the menu and PortMaster handoff but
+  found that per-item readiness still tested cached `/mnt/mmc` paths. V6.1 maps
+  only those live probes into the mounted ROCKNIX namespace.
 - Fixed-root-coordinator behavior test: all functionality passed with
   sub-3.8-second stopwatch boots. Its latest trace records an input-ready frame
   at 2.06 seconds, system-ready at 4.24 and audio ready at 6.02.
@@ -105,7 +107,7 @@ card-side patches.
 
 ## Current changes
 
-- The active experiment is stock-root v6. It stops fixing isolated ABI failures
+- The active experiment is stock-root v6.1. It stops fixing isolated ABI failures
   in the clean root and restores the coherent ROCKNIX application environment
   first. Its release KERNEL and SYSTEM are byte-identical to 20260701, and its
   writable STORAGE starts from the captured exact configured ext4 image.
@@ -118,6 +120,10 @@ card-side patches.
   loop-mounted from p6; the existing ROM and BIOS trees are bind-mounted into
   its expected namespace. The accepted v5.4 clean-root kernel is retained on
   p1 and automatically selected after two failed stock-root starts.
+- Cached catalogue identities remain provider-independent. Bird now resolves
+  `/mnt/mmc` to `/storage/bird-data` for live file checks, while the separate
+  runner performs the same mapping at application handoff. Existing writable
+  ROCKNIX storage is preserved across Bird-only deployments.
 - Once the broad physical compatibility gate passes, Bird moves progressively
   earlier again and services are removed or deferred one measured closure at a
   time. V5.4 remains the accepted speed architecture and evidence base, not

@@ -52,6 +52,11 @@ typedef signed long s64;
 #ifndef ROM_ROOT
 #define ROM_ROOT "/mnt/mmc/ROMS"
 #endif
+#ifndef LIVE_STORAGE_ROOT
+#define LIVE_STORAGE_ROOT "/mnt/mmc"
+#endif
+#define CATALOG_STORAGE_ROOT "/mnt/mmc"
+#define LIVE_PATH_BYTES 4096U
 #ifndef LAUNCH_REQUEST
 #define LAUNCH_REQUEST "/run/muos/dani-launch-request"
 #endif
@@ -195,6 +200,7 @@ static int storage_ready;
 static int favorites_loaded;
 static u32 favorite_count;
 static u8 favorites[(CATALOG_ENTRY_COUNT + 7U) / 8U];
+static char live_path[LIVE_PATH_BYTES];
 static u64 next_storage_probe;
 static const char *selected_status = "DIRECT FRAMEBUFFER READY";
 
@@ -319,6 +325,30 @@ static int string_equal(const char *left, const char *right) {
         right++;
     }
     return *left == *right;
+}
+
+/*
+ * Catalogue paths remain stable across firmware providers. Only live file
+ * access is translated, so favorites, recents and launch requests continue
+ * to use the canonical /mnt/mmc paths embedded in the cached index.
+ */
+static const char *resolve_live_path(const char *path) {
+    u64 source_length = string_length(CATALOG_STORAGE_ROOT);
+    u64 target_length = string_length(LIVE_STORAGE_ROOT);
+    u64 tail_length;
+    u64 i;
+
+    if (string_equal(CATALOG_STORAGE_ROOT, LIVE_STORAGE_ROOT)) return path;
+    for (i = 0; i < source_length; i++)
+        if (path[i] != CATALOG_STORAGE_ROOT[i]) return path;
+    if (path[source_length] && path[source_length] != '/') return path;
+
+    tail_length = string_length(path + source_length);
+    if (target_length + tail_length + 1U > sizeof(live_path)) return 0;
+    for (i = 0; i < target_length; i++) live_path[i] = LIVE_STORAGE_ROOT[i];
+    for (i = 0; i <= tail_length; i++)
+        live_path[target_length + i] = path[source_length + i];
+    return live_path;
 }
 
 static void log_text(const char *text) {
@@ -894,16 +924,22 @@ static int write_content_request(u8 launch_kind, const char *core,
 static int launch_catalog_entry(u32 catalog_index) {
     const struct catalog_entry *entry;
     const struct catalog_system *system;
+    const char *path;
     long fd;
     int action;
     if (catalog_index >= CATALOG_ENTRY_COUNT) return ACTION_NONE;
     entry = &catalog_entries[catalog_index];
     system = &catalog_systems[entry->system];
-    fd = sys_open(entry->path, O_RDONLY | O_NONBLOCK);
+    path = resolve_live_path(entry->path);
+    fd = path ? sys_open(path, O_RDONLY | O_NONBLOCK) : -1;
     log_text("rom_test boot_ms=");
     log_number(boot_ms());
     log_text(" path=");
     log_text(entry->path);
+    if (path != entry->path) {
+        log_text(" live=");
+        log_text(path ? path : "path-too-long");
+    }
     if (fd >= 0) {
         sys_close((int)fd);
         log_text(" result=ready\n");
@@ -920,6 +956,7 @@ static int launch_catalog_entry(u32 catalog_index) {
 static int launch_media_entry(void) {
     const struct catalog_media_category *category;
     const struct catalog_media_entry *entry;
+    const char *path;
     u32 entry_index;
     long fd;
     if (active_media_category >= CATALOG_MEDIA_CATEGORY_COUNT)
@@ -928,11 +965,16 @@ static int launch_media_entry(void) {
     if (selection >= category->count) return ACTION_NONE;
     entry_index = category->first + selection;
     entry = &catalog_media_entries[entry_index];
-    fd = sys_open(entry->path, O_RDONLY | O_NONBLOCK);
+    path = resolve_live_path(entry->path);
+    fd = path ? sys_open(path, O_RDONLY | O_NONBLOCK) : -1;
     log_text("media_test boot_ms=");
     log_number(boot_ms());
     log_text(" path=");
     log_text(entry->path);
+    if (path != entry->path) {
+        log_text(" live=");
+        log_text(path ? path : "path-too-long");
+    }
     if (fd >= 0) {
         sys_close((int)fd);
         log_text(" result=ready\n");

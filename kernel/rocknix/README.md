@@ -721,6 +721,18 @@ publishes that exact file at its normal `/flash/SYSTEM` target.
 binds the existing ROM and BIOS trees into ROCKNIX's `/storage/roms`
 namespace. P5 is not read or written.
 
+The cached catalogue deliberately retains its canonical `/mnt/mmc` paths so
+favorites, recents and launch requests stay provider-independent. For this
+layout, Bird maps that prefix to `/storage/bird-data` only when checking a
+selected file; the separate content runner applies the same mapping at the
+ROCKNIX handoff.
+
+The first v6 hardware boot exposed this boundary precisely: the root probe
+reported ready, but selected entries were still probed at `/mnt/mmc`, so Bird
+displayed `WAITING FOR ... STORAGE` and never emitted a request. V6.1 adds only
+the live-prefix resolver above; PortMaster had already proved the supervisor,
+Sway handoff and unmodified application stack could start.
+
 Bird is deliberately no longer in initramfs for this gate. The H700 autostart
 profile selects only the replaced `essway.service`; every other platform quirk
 and common service runs unchanged. Bird draws directly after those services
@@ -737,6 +749,11 @@ attempt counter returns extlinux to that fallback before a third failed v6
 boot; the guarded ROCKNIX target also requests a forced reboot if its startup
 job has not completed in 45 seconds. A successful Bird first frame resets the
 counter.
+
+After the seed image is installed, updates validate its fixed size and ext4
+superblock rather than recopying it. This preserves the writable ROCKNIX and
+PortMaster state and reduces subsequent Bird-only deployments to the small
+boot/UI payload.
 
 This candidate is intentionally expected to boot much more slowly than v5.4.
 Its first physical gate is broad behavior: menu, RetroArch and Dreamcast pace
