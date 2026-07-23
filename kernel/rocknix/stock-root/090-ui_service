@@ -1,0 +1,8 @@
+#!/bin/sh
+# Preserve ROCKNIX's compositor and application contract, but do not let Sway
+# own DRM before Bird's direct-framebuffer menu. The content dispatcher starts
+# the unchanged sway.service only while a selected application needs it.
+
+cat <<EOF >/storage/.config/profile.d/090-ui_service
+UI_SERVICE="essway.service"
+EOF

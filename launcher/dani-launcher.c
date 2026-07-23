@@ -49,15 +49,31 @@ typedef signed long s64;
 
 #define CLOCK_BOOTTIME 7
 #define DEVICE_WAIT_MS 5000UL
+#ifndef ROM_ROOT
 #define ROM_ROOT "/mnt/mmc/ROMS"
+#endif
+#ifndef LAUNCH_REQUEST
 #define LAUNCH_REQUEST "/run/muos/dani-launch-request"
+#endif
+#ifndef UI_RESUME_PATH
 #define UI_RESUME_PATH "/run/muos/dani-launcher-ui-resume"
+#endif
 #define UI_RESUME_MAGIC 0x44414e4aU
+#ifndef FAVORITES_PATH
 #define FAVORITES_PATH "/mnt/mmc/MUOS/bespoke-launcher/favorites.txt"
+#endif
+#ifndef FAVORITES_TEMP
 #define FAVORITES_TEMP "/mnt/mmc/MUOS/bespoke-launcher/favorites.tmp"
+#endif
+#ifndef RECENT_PATH
 #define RECENT_PATH "/mnt/mmc/MUOS/bespoke-launcher/recent.txt"
+#endif
+#ifndef RECENT_TEMP
 #define RECENT_TEMP "/mnt/mmc/MUOS/bespoke-launcher/recent.tmp"
+#endif
+#ifndef FIRST_FRAME_MARKER
 #define FIRST_FRAME_MARKER "/run/muos/dani-first-frame-ready"
+#endif
 
 #define VIEW_MAIN 0U
 #define VIEW_PLAY 1U

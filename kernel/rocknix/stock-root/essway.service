@@ -1,0 +1,17 @@
+[Unit]
+Description=Bird launcher on complete ROCKNIX userspace
+After=rocknix-automount.service systemd-udev-settle.service pipewire.service wireplumber.service
+Wants=pipewire.service wireplumber.service
+
+[Service]
+Type=simple
+Environment=HOME=/storage
+Environment=XDG_RUNTIME_DIR=/var/run/0-runtime-dir
+ExecStart=/storage/.config/bird/supervisor.sh
+Restart=always
+RestartSec=1
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=rocknix.target

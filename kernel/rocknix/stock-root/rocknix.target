@@ -1,0 +1,11 @@
+[Unit]
+Description=ROCKNIX compatibility baseline with guarded Bird handoff
+Requires=multi-user.target graphical.target
+After=graphical.target
+Conflicts=rescue.target
+AllowIsolate=yes
+JobTimeoutSec=45s
+JobTimeoutAction=reboot-force
+
+[Install]
+Alias=default.target

@@ -2,9 +2,11 @@
 
 This repository contains the host-side sources and installation hooks that
 began by profiling and converting muOS 2601.1 into a fixed-purpose RG34XX-SP
-operating system. The current clean-root candidate no longer boots muOS: Bird
-is the permanent initramfs root, while a pinned, read-only ROCKNIX image supplies
-native applications and their matching libraries after the menu is usable.
+operating system. The active compatibility-reset candidate boots the exact
+ROCKNIX 20260701 kernel, immutable system, writable configuration baseline and
+service graph, but replaces its frontend with Bird. The accepted v5.4
+permanent-initramfs system remains the automatic recovery path while this full
+application contract is proven and then reduced.
 
 The governing priority is: boot latency, interaction latency, battery
 efficiency, memory efficiency, then exact user features. Generality is a cost,
@@ -29,6 +31,11 @@ must serve this one device and this one experience.
 - Current clean-root LED-on stopwatch result: approximately 2.5 seconds. V5.2
   recorded pixels at 1.137 seconds and direct input ready at 1.294 seconds of
   Linux uptime; the remaining stopwatch interval is primarily pre-kernel.
+- Stock-root v6 is staged as a deliberate compatibility baseline, not a timing
+  candidate. It restores the byte-identical ROCKNIX kernel/SYSTEM/STORAGE set,
+  systemd, udev, D-Bus, PipeWire, WirePlumber, Sway-on-content and all H700
+  quirks. Bird starts through ROCKNIX's normal UI-service slot after that graph
+  is ready. Physical application results are pending.
 - Fixed-root-coordinator behavior test: all functionality passed with
   sub-3.8-second stopwatch boots. Its latest trace records an input-ready frame
   at 2.06 seconds, system-ready at 4.24 and audio ready at 6.02.
@@ -98,19 +105,23 @@ card-side patches.
 
 ## Current changes
 
-- The active experiment is clean-root v5.4. Bird owns boot, UI, launch policy,
-  storage timing and global controls. It does not import a muOS wrapper,
-  executable, core, configuration or shared library. ROCKNIX is an immutable
-  application/runtime provider and the source of the open kernel/driver chain,
-  not Bird's userspace or frontend.
-- V5.4 leaves the accepted first-frame path unchanged and corrects the failures
-  measured in v5.3. It stops writing the H700 GPU devfreq controls after those
-  writes lowered 648 MHz to 600 MHz and triggered PLL warnings, uses DraStic's
-  Panfrost desktop-OpenGL path, repairs PPSSPP's exFAT-safe payload and opaque
-  KMS window, restores MPV's visible direct-DRM output, gives Ports one complete
-  ALSA default endpoint, and consumes the existing lid switch in the separate
-  controls process. No udev, audio or application daemon moved into the
-  launcher path; Cedrus media decoding remains a later kernel/runtime build.
+- The active experiment is stock-root v6. It stops fixing isolated ABI failures
+  in the clean root and restores the coherent ROCKNIX application environment
+  first. Its release KERNEL and SYSTEM are byte-identical to 20260701, and its
+  writable STORAGE starts from the captured exact configured ext4 image.
+- Bird is temporarily a normal systemd UI service. ROCKNIX initializes its
+  complete H700 hardware and service contract, writes only `essway.service` as
+  the selected boot UI, and starts the unchanged Sway compositor on demand
+  around content. Selections use the release's own `runemu.sh`, platform/core
+  identities, standalone wrappers and configuration generators.
+- P5 and the large library remain untouched. The exact writable filesystem is
+  loop-mounted from p6; the existing ROM and BIOS trees are bind-mounted into
+  its expected namespace. The accepted v5.4 clean-root kernel is retained on
+  p1 and automatically selected after two failed stock-root starts.
+- Once the broad physical compatibility gate passes, Bird moves progressively
+  earlier again and services are removed or deferred one measured closure at a
+  time. V5.4 remains the accepted speed architecture and evidence base, not
+  discarded work.
 - Early ROM mount.
 - Frontend/audio readiness gate removed. The session-warm stage is verified:
   menu input was ready at 2.11 seconds, audio started at 3.97, D-Bus completed

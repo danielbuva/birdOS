@@ -695,3 +695,52 @@ The guarded raw candidate is generated under `/Users/dani`, outside the
 Downloads folder. macOS provenance scanning was observed blocking new opens of
 the otherwise verified multi-gigabyte image inside Downloads; an APFS clone at
 the fixed location opened and rehashed immediately with identical bytes.
+
+## Stock-root v6 compatibility reset
+
+Clean-root v5.4 retained the correct fast-launch architecture but had become a
+manual reconstruction of ROCKNIX's application environment. Restoring one
+missing library, device property, audio route or wrapper at a time did not
+prove that the resulting session matched what the applications were built and
+tested against. V6 changes the order of work: establish one coherent provider,
+then optimize it by measured subtraction.
+
+The active card uses these release artifacts without modification:
+
+| V6 provider artifact | SHA-256 |
+| --- | --- |
+| ROCKNIX `KERNEL` | `af4e75cb30b097ee5764764eb056d686bc00c6bd03fefece26b0ebbaa7fbb673` |
+| RG34XX-SP `dtb.img` | `f3a4273986d6e4f431b110cead8aa19e8da52ff08c64c4b204ef9664d28b5c31` |
+| immutable `SYSTEM` | `6e2112fc9dc81d5fee944f2534346a8f20674f40e23a0a85bb795218d31eadac` |
+| configured ext4 `STORAGE` | `12affdad7bc2042cb590fea60fc015a7ee8d4374ebcc3b1c11098a64b9ffa3be` |
+
+The small BIRD partition cannot contain the 1.2 GB SYSTEM. The unmodified
+release initramfs instead sources `post-flash.sh`, which mounts p6 and bind
+publishes that exact file at its normal `/flash/SYSTEM` target.
+`mount-storage.sh` loop-mounts the captured configured ext4 image from p6 and
+binds the existing ROM and BIOS trees into ROCKNIX's `/storage/roms`
+namespace. P5 is not read or written.
+
+Bird is deliberately no longer in initramfs for this gate. The H700 autostart
+profile selects only the replaced `essway.service`; every other platform quirk
+and common service runs unchanged. Bird draws directly after those services
+are ready. When it emits a four-line content request, its separate supervisor
+starts the unchanged `sway.service`, calls the release's `runemu.sh` with the
+release platform/emulator/core identity, waits for the application, stops Sway
+and redraws Bird. PortMaster and MPV use their release wrappers.
+
+`build-stock-root-compat.sh` builds only the static Bird userspace binary and
+copies the checksummed release files. `mac-update-rocknix-stock-root-v6.sh`
+validates the exact removable-card geometry and every provider hash, stages the
+loop image and boot hooks, and preserves v5.4 as `KERNEL.fallback`. A persistent
+attempt counter returns extlinux to that fallback before a third failed v6
+boot; the guarded ROCKNIX target also requests a forced reboot if its startup
+job has not completed in 45 seconds. A successful Bird first frame resets the
+counter.
+
+This candidate is intentionally expected to boot much more slowly than v5.4.
+Its first physical gate is broad behavior: menu, RetroArch and Dreamcast pace
+and audio, DS layout, PSP, OpenBOR, representative Ports, PortMaster, MP3,
+movie image/controls, system controls, suspend/wake, return and shutdown. Only
+after that passes does work resume on moving Bird before the full graph and
+deferring or removing each known nonessential unit.

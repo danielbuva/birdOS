@@ -26,6 +26,23 @@ Power button
 
 The long-term centerpiece would be a tiny custom launcher—ideally a small statically linked program—that replaces the heavier general-purpose frontend while retaining muOS underneath for hardware support, emulator launching, PortMaster, power controls and other useful infrastructure.
 
+## Active compatibility reset
+
+Clean-root v5.4 proved the desired fast architecture but also proved that an
+application stack cannot be reconstructed reliably by copying binaries and
+guessing its hidden service and configuration contract one failure at a time.
+Stock-root v6 therefore resets only the software baseline:
+
+- exact ROCKNIX 20260701 KERNEL, DTB, SYSTEM and configured STORAGE;
+- complete systemd, udev, D-Bus, PipeWire, WirePlumber and H700 autostart path;
+- Bird substituted for EmulationStation through the ordinary UI-service slot;
+- stock Sway and stock `runemu.sh` started only around selected content; and
+- automatic return to the accepted v5.4 clean root after two failed starts.
+
+The gate order is compatibility first, then early Bird handoff, then service
+deferral/removal, then kernel trimming. No component is removed from the full
+baseline until its exact consumers and physical behavior are known.
+
 ## Governing optimization order
 
 This layered order supersedes the original feature-oriented numbering below.
@@ -80,16 +97,19 @@ application and move everything unrelated to an interactive menu behind it.
 - [x] Remove the next set of redundant fixed-startup work: per-boot
   immutable policy/geometry writes, obsolete update-file cleanup, zero-swap
   probing and the unnecessary squashfs module request.
-- [ ] [clean-root v5.0 boot gate passed; v5.3 application gate staged] Bake
+- [ ] [clean-root boot gate passed; stock-root v6 compatibility reset staged] Bake
   changes into the image and remove the card-side development user-init
   delivery path. The successful path is entirely embedded and does not enter
   p5. V5.0 physically proved the menu at 1.135 seconds, H700 input at 1.290 and
   the post-frame runtime at 2.08. V5.1 isolated CPU `softpipe` selection and an
   unprogrammed H616 speaker route. V5.2 passed fixed Panfrost, audio and global
   controls at roughly 2.5 seconds by stopwatch, then exposed wrong emulator
-  choices, absent Ports and software movie presentation. V5.3 corrects those
-  post-menu boundaries. Delete the retained recovery-only muOS partition and
-  obsolete migration payloads only after that application gate passes.
+  choices, absent Ports and software movie presentation. V5.4 remained
+  incomplete across DS, PSP, Ports and media because the manually recreated
+  runtime contract was still partial. Stock-root v6 restores the entire exact
+  provider before subtraction. Delete recovery partitions and obsolete
+  payloads only after the new broad compatibility gate and later optimized
+  replacement both pass.
 
 ### Layer 2 — early userspace and init
 
