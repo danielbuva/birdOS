@@ -1,15 +1,15 @@
 #!/bin/sh
 # Build the compatibility-first Bird milestone from one exact ROCKNIX release.
 # KERNEL, dtb.img, SYSTEM and the initial STORAGE filesystem are checksummed as
-# a set. Only Bird's normal userspace executable and tiny integration hooks are
-# built here.
+# a set. Bird's normal userspace executable, tiny early overlay and integration
+# hooks are the only rebuilt pieces.
 
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 SOURCE=${SOURCE:-/Volumes/ROCKNIX}
 STORAGE=${STORAGE:-/Users/dani/rocknix-reference-result/storage.ext4}
-OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.4}
+OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.5}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
 LLD=${LLD:-/opt/homebrew/opt/lld/bin/ld.lld}
 READELF=${READELF:-/opt/homebrew/opt/llvm/bin/llvm-readelf}
@@ -66,6 +66,8 @@ file "$OUTPUT/card/bird/dani-launcher" | \
 if "$READELF" -l "$OUTPUT/card/bird/dani-launcher" | grep -q ' INTERP '; then
 	fail 'launcher unexpectedly has an interpreter'
 fi
+
+OUTPUT="$OUTPUT" "$ROOT/kernel/rocknix/build-stock-root-early-initramfs.sh"
 
 cp -fp "$SOURCE/KERNEL" "$OUTPUT/card/KERNEL"
 cp -fp "$SOURCE/dtb.img" "$OUTPUT/card/dtb.img"
@@ -125,10 +127,12 @@ grep -q '^BindPaths=/dev/null:/dev/console$' \
 	"$OUTPUT/card/bird/rocknix-autostart.service" || fail 'autostart console isolation missing'
 grep -q '^ConditionPathExists=/run/bird/network-request$' \
 	"$OUTPUT/card/bird/NetworkManager.service" || fail 'NetworkManager gate missing'
-grep -q 'systemctl stop NetworkManager.service iwd.service' \
+grep -q 'systemctl stop --no-block NetworkManager.service iwd.service' \
 	"$OUTPUT/card/bird/bird-network.sh" || fail 'network release missing'
 grep -q '^After=rocknix-autostart.service$' \
 	"$OUTPUT/card/bird/rocknix-report-stats.service" || fail 'event-ordered snapshot missing'
+grep -q '^  INITRD /bird-initramfs.cpio.gz$' \
+	"$OUTPUT/card/extlinux/extlinux.conf" || fail 'external early initramfs missing'
 grep -q 'mount --bind "$ROM_SOURCE" "$ROM_TARGET"' \
 	"$OUTPUT/card/bird/fixed-storage.sh" || fail 'fixed ROM bind missing'
 grep -q 'ExecStart=/storage/.config/bird/supervisor.sh' \
@@ -143,6 +147,8 @@ grep -q '^JobTimeoutAction=reboot-force$' \
 	printf '%s  dtb.img\n' "$DTB_SHA"
 	printf '%s  ROCKNIX-SYSTEM\n' "$SYSTEM_SHA"
 	printf '%s  ROCKNIX-STORAGE\n' "$STORAGE_SHA"
+	printf '%s  bird-initramfs.cpio.gz\n' \
+		"$(sha256 "$OUTPUT/card/bird-initramfs.cpio.gz")"
 	printf '%s  bird/dani-launcher\n' \
 		"$(sha256 "$OUTPUT/card/bird/dani-launcher")"
 } >"$OUTPUT/manifest.sha256"
@@ -150,3 +156,4 @@ grep -q '^JobTimeoutAction=reboot-force$' \
 printf 'Built exact ROCKNIX compatibility baseline: %s\n' "$OUTPUT"
 printf 'KERNEL remains byte-identical to release 20260701: %s\n' "$KERNEL_SHA"
 printf 'Bird launcher: %s\n' "$(sha256 "$OUTPUT/card/bird/dani-launcher")"
+printf 'Early overlay: %s\n' "$(sha256 "$OUTPUT/card/bird-initramfs.cpio.gz")"

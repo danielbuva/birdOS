@@ -14,8 +14,7 @@ case "${1:-}" in
 		printf 'Bird network request start uptime='
 		cut -d ' ' -f 1 /proc/uptime
 		touch "$FLAG"
-		systemctl start dbus.service systemd-resolved.service \
-			network.target || :
+		systemctl start dbus.service systemd-resolved.service || :
 		systemctl start iwd.service NetworkManager.service || :
 		/usr/bin/wifictl enable || :
 		for _ in $(seq 1 100); do
@@ -31,7 +30,7 @@ case "${1:-}" in
 		printf 'Bird network release start uptime='
 		cut -d ' ' -f 1 /proc/uptime
 		/usr/bin/wifictl disable || :
-		systemctl stop NetworkManager.service iwd.service || :
+		systemctl stop --no-block NetworkManager.service iwd.service || :
 		rm -f "$FLAG"
 		printf 'Bird network release ready uptime='
 		cut -d ' ' -f 1 /proc/uptime

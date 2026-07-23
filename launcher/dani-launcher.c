@@ -48,7 +48,9 @@ typedef signed long s64;
 #define POLLIN 0x0001
 
 #define CLOCK_BOOTTIME 7
+#ifndef DEVICE_WAIT_MS
 #define DEVICE_WAIT_MS 5000UL
+#endif
 #ifndef ROM_ROOT
 #define ROM_ROOT "/mnt/mmc/ROMS"
 #endif
@@ -504,6 +506,29 @@ static int save_ui_resume(void) {
     log_number(selection);
     log_text(" result=ready\n");
     return 0;
+}
+
+static void preserve_early_handoff_state(void) {
+#ifdef EARLY_HANDOFF_STATE
+    (void)save_ui_resume();
+#endif
+}
+
+static void write_handoff_action(int action) {
+#ifdef HANDOFF_ACTION_PATH
+    char value[3];
+    long fd;
+    if (action < ACTION_LAUNCH || action > ACTION_PORTMASTER) return;
+    value[0] = (char)('0' + action / 10);
+    value[1] = (char)('0' + action % 10);
+    value[2] = '\n';
+    fd = sys_create(HANDOFF_ACTION_PATH, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (fd < 0) return;
+    (void)sys_write((int)fd, value, sizeof(value));
+    sys_close((int)fd);
+#else
+    (void)action;
+#endif
 }
 
 static int load_ui_resume(void) {
@@ -1024,6 +1049,7 @@ static void toggle_current_favorite(void) {
     }
     log_text(catalog_entries[catalog_index].path);
     log_text("\n");
+    preserve_early_handoff_state();
     draw_screen();
 }
 
@@ -1092,6 +1118,7 @@ static int select_current(void) {
     } else if (view == VIEW_MEDIA_ENTRIES) {
         action = launch_media_entry();
     }
+    if (action == ACTION_NONE) preserve_early_handoff_state();
     draw_screen();
     return action;
 }
@@ -1104,6 +1131,7 @@ static void move_selection(int direction, u32 steps) {
         if (direction > 0) selection = selection + 1U < count ? selection + 1U : 0U;
     }
     selected_status = "DIRECT EVDEV INPUT READY";
+    preserve_early_handoff_state();
     draw_screen();
 }
 
@@ -1117,6 +1145,7 @@ static int handle_back(void) {
         view = VIEW_PLAY;
         selection = 1U;
         selected_status = "PLAY LIBRARY READY";
+        preserve_early_handoff_state();
         draw_screen();
         return 0;
     }
@@ -1124,6 +1153,7 @@ static int handle_back(void) {
         view = VIEW_SYSTEMS;
         selection = active_system;
         selected_status = "CATALOG READY FROM FIRMWARE";
+        preserve_early_handoff_state();
         draw_screen();
         return 0;
     }
@@ -1131,6 +1161,7 @@ static int handle_back(void) {
         view = VIEW_PLAY;
         selection = 0U;
         selected_status = "PLAY LIBRARY READY";
+        preserve_early_handoff_state();
         draw_screen();
         return 0;
     }
@@ -1138,6 +1169,7 @@ static int handle_back(void) {
         view = VIEW_MAIN;
         selection = 0U;
         selected_status = "DIRECT FRAMEBUFFER READY";
+        preserve_early_handoff_state();
         draw_screen();
         return 0;
     }
@@ -1145,6 +1177,7 @@ static int handle_back(void) {
         view = VIEW_MEDIA_CATEGORIES;
         selection = active_media_category - media_category_first();
         selected_status = "MEDIA CATALOG READY FROM FIRMWARE";
+        preserve_early_handoff_state();
         draw_screen();
         return 0;
     }
@@ -1154,6 +1187,7 @@ static int handle_back(void) {
                         ? 1U
                         : (media_section == CATALOG_MEDIA_SECTION_READ ? 2U : 3U);
         selected_status = "DIRECT FRAMEBUFFER READY";
+        preserve_early_handoff_state();
         draw_screen();
         return 0;
     }
@@ -1397,6 +1431,7 @@ static int application(void) {
         log_text("exit reason=b-button boot_ms=");
     log_number(boot_ms());
     log_text("\n");
+    write_handoff_action(exit_action);
     sys_close(input_fd);
     sys_munmap((void *)fb, fb_fix.smem_len);
     sys_close(fb_fd);

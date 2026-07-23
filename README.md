@@ -45,6 +45,11 @@ must serve this one device and this one experience.
   PortMaster, media and player controls, emulation, brightness, both suspend
   paths and shutdown. The recorded baseline is fixed storage at 8.48 seconds,
   Bird visible at 17.38 and direct input ready at 17.50 seconds of Linux uptime.
+- Stock-root v6.4 passed the same broad functionality gate at roughly seven
+  seconds by stopwatch. Across the captured boots, Bird became visible at
+  5.60--9.82 seconds and input-ready at 7.93--9.94 seconds of kernel uptime.
+  The ordinary service graph is no longer the boundary: fixed p6 storage and
+  the SYSTEM handoff now determine when the systemd launcher can begin.
 - Fixed-root-coordinator behavior test: all functionality passed with
   sub-3.8-second stopwatch boots. Its latest trace records an input-ready frame
   at 2.06 seconds, system-ready at 4.24 and audio ready at 6.02.
@@ -114,14 +119,15 @@ card-side patches.
 
 ## Current changes
 
-- The active experiment is stock-root v6.4. V6.3 established the coherent
-  ROCKNIX application environment; v6.4 begins measured subtraction without
-  changing its release KERNEL, SYSTEM or configured writable STORAGE.
-- Bird remains a normal systemd UI service for this optimization layer, but it
-  now starts before the complete H700 compatibility graph. The unchanged Sway
-  compositor still starts only around content. Selections use the release's
-  own `runemu.sh`, platform/core identities, standalone wrappers and
-  configuration generators.
+- The active experiment is stock-root v6.5. V6.3 established the coherent
+  ROCKNIX application environment and v6.4 passed early-systemd subtraction;
+  v6.5 crosses the next measured boundary without changing the release KERNEL,
+  SYSTEM or configured writable STORAGE.
+- Bird's long-lived instance remains a normal systemd UI service, starting
+  before the complete H700 compatibility graph; v6.5 adds only the short-lived
+  pre-root copy described below. The unchanged Sway compositor still starts
+  only around content. Selections use the release's own `runemu.sh`,
+  platform/core identities, standalone wrappers and configuration generators.
 - P5 and all content bytes remain untouched. V6.2 changed only Port directory
   metadata within p6 to create ROCKNIX's native unified tree; the ROM and BIOS
   trees are bind-mounted into its expected namespace. The accepted v5.4
@@ -136,11 +142,19 @@ card-side patches.
   content selection explicitly joins the exact audio services. The unchanged
   ROCKNIX autostart continues in parallel inside a private console namespace,
   so its status text and final clear cannot repaint the early menu.
+- V6.5 supplies a 217,666-byte external initramfs overlay alongside the exact
+  release kernel. It changes only the pinned upstream `/init`, adds the exact
+  37,248-byte H700 input module and starts an early copy of the same launcher.
+  Navigation state and launch actions live in `/run`; the original init stops
+  the early process before `switch_root`, moves that state into the complete
+  ROCKNIX system and leaves the last framebuffer image visible. The normal
+  supervisor resumes the same screen or dispatches an early selection.
 - NetworkManager and iwd are condition-gated and exist only around an explicit
-  PortMaster session. SSH, RPC (including its activation socket), network discovery, touchscreen helpers,
-  Sixaxis, statistics and HDMI monitoring are masked because none serves this
-  fixed profile. A post-frame snapshot records the remaining graph for the
-  next subtraction pass.
+  PortMaster session. SSH, RPC (including its activation socket), network
+  discovery, touchscreen helpers, Sixaxis, statistics and HDMI monitoring are
+  masked because none serves this fixed profile. The v6.4 snapshot exposed a
+  circular `systemd-analyze` wait; v6.5 replaces it with direct, nonblocking
+  unit timestamps and makes PortMaster network teardown asynchronous.
 - Cached catalogue identities remain provider-independent. Bird now resolves
   `/mnt/mmc` to `/storage/bird-data` for live file checks, while the separate
   runner performs the same mapping at application handoff. Existing writable

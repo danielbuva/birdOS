@@ -8,12 +8,37 @@ LAUNCHER=/storage/.config/bird/dani-launcher
 RUNNER=/storage/.config/bird/run-content.sh
 REQUEST=/run/muos/dani-launch-request
 FIRST_FRAME=/run/muos/dani-first-frame-ready
+HANDOFF_ACTION=/run/muos/dani-launch-action
+EARLY_LOG=/run/muos/initramfs-launcher.log
 ATTEMPTS=/storage/bird-data/MUOS/Bird/boot-state/stock-root-attempts
 LOG_DIR=/storage/bird-data/MUOS/Bird/log
 LOG=$LOG_DIR/stock-root-supervisor.log
 
 mkdir -p /run/muos "$LOG_DIR" "${ATTEMPTS%/*}"
 exec >>"$LOG" 2>&1
+
+accept_early_frame() {
+	[ -e "$FIRST_FRAME" ] || return 0
+	printf '0\n' >"$ATTEMPTS"
+	sync "$ATTEMPTS"
+	[ -f "$EARLY_LOG" ] && \
+		cp -f "$EARLY_LOG" "$LOG_DIR/early-initramfs-latest.log"
+	printf 'bird accepted initramfs first frame uptime='
+	cut -d ' ' -f 1 /proc/uptime
+}
+
+dispatch_handoff_action() {
+	[ -s "$HANDOFF_ACTION" ] || return 0
+	ACTION=$(cat "$HANDOFF_ACTION")
+	rm -f "$HANDOFF_ACTION"
+	printf 'bird initramfs handoff action=%s uptime=' "$ACTION"
+	cut -d ' ' -f 1 /proc/uptime
+	case "$ACTION" in
+		10) "$RUNNER" "$REQUEST" ;;
+		11) systemctl poweroff; exit 0 ;;
+		12) "$RUNNER" --portmaster ;;
+	esac
+}
 
 mark_healthy() {
 	# The early launcher intentionally races udev. Keep the menu visible while
@@ -32,6 +57,9 @@ mark_healthy() {
 	cut -d ' ' -f 1 /proc/uptime
 	return 1
 }
+
+accept_early_frame
+dispatch_handoff_action
 
 while :; do
 	rm -f "$FIRST_FRAME"

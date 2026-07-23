@@ -822,16 +822,42 @@ loads its units. RPC's socket is masked with its service so socket activation
 cannot resurrect it. A single post-frame service/process snapshot waits for
 autostart completion and records the next measured subtraction boundary.
 
-Bird is deliberately still outside initramfs for this layer. The default target
-requests the replaced `essway.service` immediately while the H700 autostart and
-remaining compatibility services proceed concurrently. When Bird emits a
-four-line content request, its separate supervisor starts the unchanged
-`sway.service`, calls the release's `runemu.sh` with the release
+V6.4 passed the full physical gate at roughly seven stopwatch seconds. Its
+captured boots put visible Bird frames at 5.60--9.82 seconds and correct H700
+input at 7.93--9.94 seconds of kernel uptime. Against v6.3's 17.38/17.50-second
+frame/input baseline, early systemd ordering removed about nine seconds without
+breaking any tested application or device behavior. Fixed storage and the
+stock initramfs-to-SYSTEM transition are now the first-frame boundary.
+
+Stock-root v6.5 restores Bird before `switch_root` without returning to the
+incomplete clean-root application stack. A reproducible 217,666-byte external
+cpio is unpacked over the byte-identical release kernel's pinned built-in
+initramfs. It overrides only `/init`, adding one start call after the stock
+console clear, suppressing the later stock splash repaint, and adding one
+handoff call before the special mounts move into sysroot.
+The overlay also contains the same 623,176-byte static launcher and the exact
+37,248-byte `rocknix-singleadc-joypad.ko` from the release source closure.
+
+The early launcher applies the fixed five-percent backlight value, paints from
+the compiled catalogue and opens the H700 input module while the unchanged
+ROCKNIX init continues. Its navigation state and any content/PortMaster/
+shutdown action are written to `/run`. Immediately before mount movement, the
+stock init terminates only that early process; the framebuffer retains its last
+image and `/run` moves into the real root. The normal systemd supervisor then
+loads the same state or consumes the action. This keeps all v6.3/v6.4 content,
+audio, power and service compatibility while attacking the measured pre-root
+wait.
+
+When Bird emits a four-line content request, its separate supervisor starts the
+unchanged `sway.service`, calls the release's `runemu.sh` with the release
 platform/emulator/core identity, waits for the application, stops Sway and
 redraws Bird. PortMaster and MPV continue to use their release wrappers.
 
-`build-stock-root-compat.sh` builds only the static Bird userspace binary and
-copies the checksummed release files. `mac-update-rocknix-stock-root-v6.sh`
+`build-stock-root-compat.sh` builds the two static Bird binaries and external
+overlay, then copies the checksummed release files. Two independent v6.5 builds
+reproduce all 40 files byte-for-byte; offline extraction also verifies the
+overlay merges cleanly over the complete 7,474,688-byte official archive.
+`mac-update-rocknix-stock-root-v6.sh`
 validates the exact removable-card geometry and every provider hash, stages the
 loop image and boot hooks, and preserves v5.4 as `KERNEL.fallback`. A persistent
 attempt counter returns extlinux to that fallback before a third failed v6
@@ -845,10 +871,10 @@ PortMaster state and reduces subsequent Bird-only deployments to the small
 boot/UI payload.
 
 V6.3 intentionally accepted the slower full compatibility graph and passed its
-broad physical gate. V6.4 resumes the speed work: measure power-to-input and
-internal first-frame/input markers, then repeat menu, immediate content, media,
-Ports, PortMaster, global controls, suspend and shutdown before removing the
-next services identified by its post-frame snapshot.
+broad physical gate. V6.4 passed the first speed/subtraction gate. V6.5 now
+tests initramfs pixels, immediate input, seamless state handoff and the same
+menu, content, media, Ports, PortMaster, global controls, suspend and shutdown
+closure before any release-kernel option is removed.
 
 The H700 release does not currently enter real kernel suspend. Its platform
 quirk explicitly disables that path and `input_sense` invokes a userspace fake

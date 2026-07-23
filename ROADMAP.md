@@ -31,7 +31,7 @@ The long-term centerpiece would be a tiny custom launcher—ideally a small stat
 Clean-root v5.4 proved the desired fast architecture but also proved that an
 application stack cannot be reconstructed reliably by copying binaries and
 guessing its hidden service and configuration contract one failure at a time.
-Stock-root v6.4 now optimizes the proven software baseline:
+Stock-root v6.5 now optimizes the proven software baseline:
 
 - exact ROCKNIX 20260701 KERNEL, DTB, SYSTEM and configured STORAGE;
 - complete systemd, udev, D-Bus, PipeWire, WirePlumber and H700 autostart path;
@@ -51,7 +51,10 @@ replaced Bird's p6 view with its internal writable-image game tree. V6.3
 replaces that one service with a deterministic fixed-p6 assertion and retains
 the same ordering. Its broad physical gate passed. V6.4 starts Bird before the
 generic graph, runs compatibility setup silently in parallel, makes networking
-PortMaster-only and masks services absent from the fixed profile.
+PortMaster-only and masks services absent from the fixed profile; its broad
+physical gate passed at roughly seven stopwatch seconds. V6.5 now starts Bird
+and the exact H700 input module from a tiny external overlay on the unchanged
+release initramfs, then hands state to the proven full runtime.
 
 The gate order is compatibility first, then early Bird handoff, then service
 deferral/removal, then kernel trimming. No component is removed from the full
@@ -111,7 +114,7 @@ application and move everything unrelated to an interactive menu behind it.
 - [x] Remove the next set of redundant fixed-startup work: per-boot
   immutable policy/geometry writes, obsolete update-file cleanup, zero-swap
   probing and the unnecessary squashfs module request.
-- [ ] [stock-root v6.3 compatibility passed; v6.4 early UI staged] Bake
+- [ ] [stock-root v6.4 compatibility passed; v6.5 early-init staged] Bake
   changes into the image and remove the card-side development user-init
   delivery path. The successful path is entirely embedded and does not enter
   p5. V5.0 physically proved the menu at 1.135 seconds, H700 input at 1.290 and
@@ -141,11 +144,11 @@ application and move everything unrelated to an interactive menu behind it.
   stock movie controls pass.
 - [ ] [media pacing deferred] Profile decoder/VO drop counters before changing
   the exact player or kernel video configuration.
-- [ ] [v6.4 staged] Start Bird and its fixed storage before the generic systemd
+- [x] [v6.4 physical gate passed] Start Bird and its fixed storage before the generic systemd
   graph. Keep exact autostart running in parallel but isolate its console so it
   cannot repaint the menu; join audio only when an unusually early selection
   outruns the background warm-up.
-- [ ] [v6.4 staged] Keep NetworkManager and iwd stopped until PortMaster, then
+- [x] [v6.4 physical gate passed] Keep NetworkManager and iwd stopped until PortMaster, then
   stop them again on return. Remove SSH, RPC, discovery, touchscreen, Sixaxis,
   statistics and HDMI-monitor units from this fixed user's ordinary boot; mask
   RPC's activation socket as well as its daemon so it cannot wake indirectly.
@@ -161,6 +164,10 @@ removes the handoff entirely while keeping the verified menu-first boundary.
 - [x] Hardware-verify the pre-`rcS` inittab launch and fallback.
 - [x] Embed the launcher in initramfs and hardware-verify an interactive frame
   before `switch_root`.
+- [ ] [stock-root v6.5 staged] Overlay the exact release initramfs with the same
+  static launcher and exact H700 input module, preserve navigation/action state
+  in `/run`, stop the early process before mount handoff and resume through the
+  complete compatibility-tested ROCKNIX root without a visible reset.
 - [x] Replace the generic initramfs shell with a tiny static fixed-device init
   while retaining the existing root PID 1 as the fallback second phase.
 - [x] Replace the root BusyBox PID 1 with a blocking 5,128-byte static init;

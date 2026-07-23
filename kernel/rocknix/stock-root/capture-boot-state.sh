@@ -9,10 +9,15 @@ LOG=/storage/bird-data/MUOS/Bird/log/stock-root-boot-state-latest.log
 {
 	printf 'Bird post-frame boot snapshot uptime='
 	cut -d ' ' -f 1 /proc/uptime
-	printf '%s\n' '--- systemd critical chain ---'
-	systemd-analyze critical-chain 2>&1 || :
-	printf '%s\n' '--- systemd blame ---'
-	systemd-analyze blame 2>&1 || :
+	printf '%s\n' '--- selected unit timestamps ---'
+	for UNIT in rocknix-automount.service essway.service \
+		rocknix-autostart.service input.service pipewire.service \
+		wireplumber.service powerstate.service; do
+		systemctl show "$UNIT" --no-pager \
+			-p Id -p LoadState -p ActiveState -p SubState \
+			-p InactiveExitTimestampMonotonic \
+			-p ActiveEnterTimestampMonotonic 2>&1 || :
+	done
 	printf '%s\n' '--- running services ---'
 	systemctl list-units --type=service --state=running --no-pager 2>&1 || :
 	printf '%s\n' '--- failed units ---'
