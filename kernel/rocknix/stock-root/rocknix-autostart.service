@@ -1,0 +1,17 @@
+[Unit]
+Description=ROCKNIX compatibility setup behind the interactive Bird frame
+Before=emustation.service weston.service
+After=network.target graphical.target userconfig.service
+
+[Service]
+Type=oneshot
+Environment=HOME=/storage
+ExecStart=/bin/bash -a -c 'source /etc/profile && exec /usr/bin/autostart'
+RemainAfterExit=yes
+PrivateMounts=yes
+BindPaths=/dev/null:/dev/console
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=rocknix.target

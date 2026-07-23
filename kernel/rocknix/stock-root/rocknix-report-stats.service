@@ -1,0 +1,7 @@
+[Unit]
+Description=Bird one-shot post-frame boot snapshot
+After=rocknix-autostart.service
+
+[Service]
+Type=oneshot
+ExecStart=/storage/.config/bird/capture-boot-state.sh

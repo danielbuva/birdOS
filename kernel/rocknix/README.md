@@ -766,8 +766,8 @@ Ports, including Stardew, returned immediately. ROCKNIX autostart synchronously
 started its generic automounter after Bird's initramfs bind. That service
 unmounted `/storage/roms`, skipped p6 because it was already mounted at
 `/storage/bird-data`, and published its internal writable-image game tree.
-Direct Bird content paths continued to work, which isolated the regression to Port scripts' native
-`/roms/ports` contract.
+Direct Bird content paths continued to work, which isolated the regression to
+Port scripts' native `/roms/ports` contract.
 
 Stock-root v6.3 replaces that generic scanner at its existing ordered systemd
 boundary with `fixed-storage.sh`. It performs no device discovery: it verifies
@@ -792,13 +792,43 @@ storage service records its failure and Port preparation refuses the wrong
 tree. This preserves the menu-first architecture while making the physical
 Ports test, rather than a hidden reboot, the acceptance signal.
 
-Bird is deliberately no longer in initramfs for this gate. The H700 autostart
-profile selects only the replaced `essway.service`; every other platform quirk
-and common service runs unchanged. Bird draws directly after those services
-are ready. When it emits a four-line content request, its separate supervisor
-starts the unchanged `sway.service`, calls the release's `runemu.sh` with the
-release platform/emulator/core identity, waits for the application, stops Sway
-and redraws Bird. PortMaster and MPV use their release wrappers.
+The v6.3 physical gate passed the complete requested behavior sweep. Its new
+evidence also identified the next optimization boundary precisely: fixed p6
+storage completed at 8.48 seconds, while autostart did not launch Bird until
+17.36 seconds; the frame appeared at 17.38 and the H700 input gate passed at
+17.50. The remaining delay was therefore the generic service graph preceding
+the UI, not catalogue parsing or launcher work.
+
+Stock-root v6.4 moves the already-proven Bird service before that graph. Both
+Bird and the fixed storage assertion use `DefaultDependencies=no`; the default
+target requests Bird immediately, and its existing framebuffer/input waits are
+the readiness checks. PipeWire and WirePlumber continue warming concurrently,
+while the content dispatcher explicitly starts and joins them if the user
+selects something first. The first-frame watchdog is extended to the launcher's
+20-second input deadline so an early visible frame cannot be mistaken for a
+failed boot while udev is still exposing the H700 gamepad.
+
+The exact ROCKNIX autostart script remains intact for this pass. Its service now
+receives a private mount namespace with `/dev/null` over `/dev/console`; common
+setup and H700 quirks run in parallel without late `tocon` or `clear` writes
+repainting Bird. Persisted backlight state is applied directly before the first
+frame so the later exact display step repeats the same value invisibly.
+
+Networking becomes explicit maintenance work. Condition-gated exact
+NetworkManager and iwd units start only around PortMaster and stop on return.
+The fixed profile also masks always-irrelevant SSH, RPC, WSD, Entware,
+touchscreen, Sway-touch, Sixaxis, statistics and HDMI-monitor jobs before PID 1
+loads its units. RPC's socket is masked with its service so socket activation
+cannot resurrect it. A single post-frame service/process snapshot waits for
+autostart completion and records the next measured subtraction boundary.
+
+Bird is deliberately still outside initramfs for this layer. The default target
+requests the replaced `essway.service` immediately while the H700 autostart and
+remaining compatibility services proceed concurrently. When Bird emits a
+four-line content request, its separate supervisor starts the unchanged
+`sway.service`, calls the release's `runemu.sh` with the release
+platform/emulator/core identity, waits for the application, stops Sway and
+redraws Bird. PortMaster and MPV continue to use their release wrappers.
 
 `build-stock-root-compat.sh` builds only the static Bird userspace binary and
 copies the checksummed release files. `mac-update-rocknix-stock-root-v6.sh`
@@ -814,12 +844,11 @@ superblock rather than recopying it. This preserves the writable ROCKNIX and
 PortMaster state and reduces subsequent Bird-only deployments to the small
 boot/UI payload.
 
-This candidate is intentionally expected to boot much more slowly than v5.4.
-Its first physical gate is broad behavior: menu, RetroArch and Dreamcast pace
-and audio, DS layout, PSP, OpenBOR, representative Ports, PortMaster, MP3,
-movie image/controls, system controls, suspend/wake, return and shutdown. Only
-after that passes does work resume on moving Bird before the full graph and
-deferring or removing each known nonessential unit.
+V6.3 intentionally accepted the slower full compatibility graph and passed its
+broad physical gate. V6.4 resumes the speed work: measure power-to-input and
+internal first-frame/input markers, then repeat menu, immediate content, media,
+Ports, PortMaster, global controls, suspend and shutdown before removing the
+next services identified by its post-frame snapshot.
 
 The H700 release does not currently enter real kernel suspend. Its platform
 quirk explicitly disables that path and `input_sense` invokes a userspace fake

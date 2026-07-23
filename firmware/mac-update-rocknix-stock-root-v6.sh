@@ -1,7 +1,7 @@
 #!/bin/sh
 # Guarded deployment of the compatibility-first stock-root milestone. P5 and
-# content bytes stay untouched. V6.3 fixes p6 as the only content volume,
-# preserves the native Port layout and removes duplicate MPV volume ownership.
+# content bytes stay untouched. V6.4 starts Bird before the generic userspace
+# graph, gates networking and removes services absent from the fixed profile.
 # The exact ROCKNIX writable filesystem remains a loop image on p6, and the
 # accepted v5.4 kernel remains on p1 as a fallback.
 
@@ -10,7 +10,7 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 BIRD=${BIRD:-/Volumes/BIRD}
 DATA=${DATA:-/Volumes/dani-sp}
-CANDIDATE=${CANDIDATE:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.3/card}
+CANDIDATE=${CANDIDATE:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.4/card}
 STORAGE_SOURCE=${STORAGE_SOURCE:-/Users/dani/rocknix-reference-result/storage.ext4}
 PORTMASTER_ARCHIVE=${PORTMASTER_ARCHIVE:-$ROOT/kernel/work/rocknix-system-exact-20260701/usr/config/PortMaster/release/PortMaster.zip}
 RUNTIME=$DATA/MUOS/runtime/ROCKNIX-SYSTEM
@@ -67,8 +67,12 @@ for FILE in post-flash.sh mount-storage.sh SYSTEM KERNEL dtb.img \
 	extlinux/extlinux.conf extlinux/extlinux.fallback.conf \
 	bird/090-ui_service bird/dani-launcher bird/essway.service \
 	bird/rocknix.target bird/rocknix-automount.service \
-	bird/supervisor.sh bird/run-content.sh bird/prepare-ports.sh \
-	bird/fixed-storage.sh bird/mpv-input.conf; do
+	bird/rocknix-autostart.service bird/rocknix-report-stats.service \
+	bird/NetworkManager.service \
+	bird/iwd.service bird/supervisor.sh bird/run-content.sh \
+	bird/prepare-ports.sh bird/fixed-storage.sh \
+	bird/first-frame-prep.sh bird/capture-boot-state.sh \
+	bird/bird-network.sh bird/mpv-input.conf; do
 	[ -f "$CANDIDATE/$FILE" ] || fail "candidate payload missing: $FILE"
 done
 
@@ -197,8 +201,11 @@ for FILE in post-flash.sh mount-storage.sh SYSTEM; do
 	COPYFILE_DISABLE=1 cp -f "$CANDIDATE/$FILE" "$BIRD/$FILE"
 done
 for FILE in 090-ui_service dani-launcher essway.service rocknix.target \
-	rocknix-automount.service supervisor.sh run-content.sh prepare-ports.sh \
-	fixed-storage.sh mpv-input.conf; do
+	rocknix-automount.service rocknix-autostart.service \
+	rocknix-report-stats.service \
+	NetworkManager.service iwd.service supervisor.sh run-content.sh \
+	prepare-ports.sh fixed-storage.sh first-frame-prep.sh \
+	capture-boot-state.sh bird-network.sh mpv-input.conf; do
 	COPYFILE_DISABLE=1 cp -f "$CANDIDATE/bird/$FILE" "$BIRD/bird/$FILE"
 done
 COPYFILE_DISABLE=1 cp -f "$CANDIDATE/extlinux/extlinux.fallback.conf" \
@@ -238,11 +245,13 @@ sync
 [ "$(ext4_magic "$STORAGE_TARGET")" = 53ef ] || fail 'installed STORAGE ext4 verification failed'
 cmp "$CANDIDATE/extlinux/extlinux.conf" "$BIRD/extlinux/extlinux.conf" || fail 'active extlinux verification failed'
 
-printf 'Bird stock-root v6.3 staged on /dev/%s.\n' "$WHOLE"
+printf 'Bird stock-root v6.4 staged on /dev/%s.\n' "$WHOLE"
 printf 'Moved %s Port data directories into the native ROCKNIX tree.\n' "$MOVED_PORTS"
 printf 'Generic storage discovery replaced by the fixed p6 Bird view.\n'
 printf 'MPV physical volume ownership is system-only.\n'
+printf 'Bird starts before generic userspace; autostart cannot repaint it.\n'
+printf 'Network is PortMaster-only; unused fixed-profile units are masked.\n'
 printf 'p5 was not modified; p6 content bytes were preserved by same-volume moves.\n'
 printf 'Exact ROCKNIX KERNEL: %s\n' "$ROCKNIX_KERNEL_SHA"
 printf 'Automatic fallback KERNEL: %s\n' "$V54_KERNEL_SHA"
-printf 'Test broad compatibility first; boot timing is intentionally deferred.\n'
+printf 'Test early interaction timing, then repeat the broad compatibility gate.\n'

@@ -1,12 +1,16 @@
 [Unit]
-Description=Bird launcher on complete ROCKNIX userspace
-After=rocknix-automount.service systemd-udev-settle.service pipewire.service wireplumber.service
-Wants=pipewire.service wireplumber.service
+Description=Bird launcher before the generic ROCKNIX userspace graph
+DefaultDependencies=no
+Requires=rocknix-automount.service
+After=rocknix-automount.service
+Conflicts=shutdown.target
+Before=shutdown.target
 
 [Service]
 Type=simple
 Environment=HOME=/storage
 Environment=XDG_RUNTIME_DIR=/var/run/0-runtime-dir
+ExecStartPre=/storage/.config/bird/first-frame-prep.sh
 ExecStart=/storage/.config/bird/supervisor.sh
 Restart=always
 RestartSec=1

@@ -14,6 +14,7 @@ LOG=$LOG_DIR/stock-root-content-latest.log
 SWAY_SOCKET=/var/run/0-runtime-dir/sway-ipc.0.sock
 PORTMASTER_ONLY=0
 PORT_PREP=/storage/.config/bird/prepare-ports.sh
+NETWORK=/storage/.config/bird/bird-network.sh
 
 mkdir -p "$LOG_DIR" /run/bird
 
@@ -50,6 +51,14 @@ start_sway() {
 		usleep 25000
 	done
 	return 1
+}
+
+ensure_content_services() {
+	# Bird can be selected before the background compatibility graph completes.
+	# Join only the services every proven application session actually needs.
+	systemctl start dbus.service || return 1
+	systemctl start pipewire.service wireplumber.service \
+		pipewire-pulse.service || return 1
 }
 
 stop_sway() {
@@ -107,8 +116,11 @@ rocknix_tuple() {
 run_selected() {
 	if [ "$PORTMASTER_ONLY" -eq 1 ]; then
 		"$PORT_PREP" || return 1
+		"$NETWORK" start || :
 		/usr/bin/start_portmaster.sh
-		return
+		STATUS=$?
+		"$NETWORK" stop || :
+		return "$STATUS"
 	fi
 	case "$KIND" in
 		1|2|4|5)
@@ -150,9 +162,12 @@ run_selected() {
 			"$KIND" "$REQUESTED_CORE" "$NAME" "$HOST_PATH" "$CONTENT"
 	fi
 	if start_sway; then
+		ensure_content_services || STATUS=1
 		: >/var/log/exec.log
-		run_selected
-		STATUS=$?
+		if [ "${STATUS:-0}" -eq 0 ]; then
+			run_selected
+			STATUS=$?
+		fi
 		if [ -s /var/log/exec.log ]; then
 			printf '%s\n' '--- ROCKNIX application log (last 256 KiB) ---'
 			tail -c 262144 /var/log/exec.log

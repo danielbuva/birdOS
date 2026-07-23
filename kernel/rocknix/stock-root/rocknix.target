@@ -1,6 +1,7 @@
 [Unit]
 Description=ROCKNIX compatibility baseline with guarded Bird handoff
 Requires=multi-user.target graphical.target
+Wants=essway.service rocknix-report-stats.service
 After=graphical.target
 Conflicts=rescue.target
 AllowIsolate=yes

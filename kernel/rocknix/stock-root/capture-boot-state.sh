@@ -1,0 +1,28 @@
+#!/bin/bash
+# One diagnostic snapshot ordered after normal ROCKNIX autostart. This is
+# deliberately post-frame and never blocks Bird interaction.
+
+set -u
+
+LOG=/storage/bird-data/MUOS/Bird/log/stock-root-boot-state-latest.log
+
+{
+	printf 'Bird post-frame boot snapshot uptime='
+	cut -d ' ' -f 1 /proc/uptime
+	printf '%s\n' '--- systemd critical chain ---'
+	systemd-analyze critical-chain 2>&1 || :
+	printf '%s\n' '--- systemd blame ---'
+	systemd-analyze blame 2>&1 || :
+	printf '%s\n' '--- running services ---'
+	systemctl list-units --type=service --state=running --no-pager 2>&1 || :
+	printf '%s\n' '--- failed units ---'
+	systemctl --failed --no-pager 2>&1 || :
+	printf '%s\n' '--- remaining jobs ---'
+	systemctl list-jobs --no-pager 2>&1 || :
+	printf '%s\n' '--- processes ---'
+	ps -eo pid,ppid,stat,rss,comm,args 2>&1 || :
+	printf '%s\n' '--- memory ---'
+	cat /proc/meminfo
+	printf '%s\n' '--- mounts ---'
+	cat /proc/mounts
+} >"$LOG" 2>&1

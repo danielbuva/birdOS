@@ -16,7 +16,9 @@ mkdir -p /run/muos "$LOG_DIR" "${ATTEMPTS%/*}"
 exec >>"$LOG" 2>&1
 
 mark_healthy() {
-	for _ in $(seq 1 250); do
+	# The early launcher intentionally races udev. Keep the menu visible while
+	# allowing the fixed H700 input node the launcher's full 20-second deadline.
+	for _ in $(seq 1 1000); do
 		if [ -e "$FIRST_FRAME" ]; then
 			printf '0\n' >"$ATTEMPTS"
 			sync "$ATTEMPTS"
@@ -35,7 +37,10 @@ while :; do
 	rm -f "$FIRST_FRAME"
 	"$LAUNCHER" &
 	LAUNCHER_PID=$!
-	mark_healthy || systemctl reboot --force
+	if ! mark_healthy; then
+		systemctl reboot --force
+		exit 1
+	fi
 	wait "$LAUNCHER_PID"
 	RESULT=$?
 	printf 'bird launcher result=%s uptime=' "$RESULT"

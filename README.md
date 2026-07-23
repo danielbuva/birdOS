@@ -31,8 +31,8 @@ must serve this one device and this one experience.
 - Current clean-root LED-on stopwatch result: approximately 2.5 seconds. V5.2
   recorded pixels at 1.137 seconds and direct input ready at 1.294 seconds of
   Linux uptime; the remaining stopwatch interval is primarily pre-kernel.
-- Stock-root v6.3 is staged as a deliberate compatibility baseline, not a timing
-  candidate. It retains the byte-identical ROCKNIX kernel/SYSTEM/STORAGE set,
+- Stock-root v6.3 passed as the deliberate compatibility baseline. It retains
+  the byte-identical ROCKNIX kernel/SYSTEM/STORAGE set,
   systemd, udev, D-Bus, PipeWire, WirePlumber, Sway-on-content and all H700
   quirks. The v6.1 physical gate restored near-stock behavior across tested
   RetroArch systems, Dreamcast, DraStic, PPSSPP, MP3, MPV, brightness and lid
@@ -41,7 +41,10 @@ must serve this one device and this one experience.
   shared boundary: generic ROCKNIX automount discarded Bird's p6 bind and
   published its internal writable-image game tree at `/storage/roms`. V6.3
   replaces that scanner, under the same ordered service name, with one
-  deterministic fixed-p6 view.
+  deterministic fixed-p6 view. Its broad physical gate passed native Ports,
+  PortMaster, media and player controls, emulation, brightness, both suspend
+  paths and shutdown. The recorded baseline is fixed storage at 8.48 seconds,
+  Bird visible at 17.38 and direct input ready at 17.50 seconds of Linux uptime.
 - Fixed-root-coordinator behavior test: all functionality passed with
   sub-3.8-second stopwatch boots. Its latest trace records an input-ready frame
   at 2.06 seconds, system-ready at 4.24 and audio ready at 6.02.
@@ -111,15 +114,14 @@ card-side patches.
 
 ## Current changes
 
-- The active experiment is stock-root v6.3. It stops fixing isolated ABI failures
-  in the clean root and restores the coherent ROCKNIX application environment
-  first. Its release KERNEL and SYSTEM are byte-identical to 20260701, and its
-  writable STORAGE starts from the captured exact configured ext4 image.
-- Bird is temporarily a normal systemd UI service. ROCKNIX initializes its
-  complete H700 hardware and service contract, writes only `essway.service` as
-  the selected boot UI, and starts the unchanged Sway compositor on demand
-  around content. Selections use the release's own `runemu.sh`, platform/core
-  identities, standalone wrappers and configuration generators.
+- The active experiment is stock-root v6.4. V6.3 established the coherent
+  ROCKNIX application environment; v6.4 begins measured subtraction without
+  changing its release KERNEL, SYSTEM or configured writable STORAGE.
+- Bird remains a normal systemd UI service for this optimization layer, but it
+  now starts before the complete H700 compatibility graph. The unchanged Sway
+  compositor still starts only around content. Selections use the release's
+  own `runemu.sh`, platform/core identities, standalone wrappers and
+  configuration generators.
 - P5 and all content bytes remain untouched. V6.2 changed only Port directory
   metadata within p6 to create ROCKNIX's native unified tree; the ROM and BIOS
   trees are bind-mounted into its expected namespace. The accepted v5.4
@@ -129,6 +131,16 @@ card-side patches.
   existing `rocknix-automount.service` name now asserts the already-mounted p6
   ROM and BIOS views, so ROCKNIX compatibility consumers and Bird resolve one
   physical library. It is a separate fixed-device process, not launcher code.
+- V6.4 makes Bird and fixed storage dependency-free early services. Bird no
+  longer waits for multi-user, udev settling or audio, while an immediate
+  content selection explicitly joins the exact audio services. The unchanged
+  ROCKNIX autostart continues in parallel inside a private console namespace,
+  so its status text and final clear cannot repaint the early menu.
+- NetworkManager and iwd are condition-gated and exist only around an explicit
+  PortMaster session. SSH, RPC (including its activation socket), network discovery, touchscreen helpers,
+  Sixaxis, statistics and HDMI monitoring are masked because none serves this
+  fixed profile. A post-frame snapshot records the remaining graph for the
+  next subtraction pass.
 - Cached catalogue identities remain provider-independent. Bird now resolves
   `/mnt/mmc` to `/storage/bird-data` for live file checks, while the separate
   runner performs the same mapping at application handoff. Existing writable

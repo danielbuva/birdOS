@@ -1,0 +1,21 @@
+[Unit]
+Description=Wireless service on explicit Bird request
+Documentation=man:iwd(8) man:iwd.config(5) man:iwd.network(5) man:iwd.ap(5)
+ConditionPathExists=/run/bird/network-request
+After=network-pre.target
+
+[Service]
+Environment=STATE_DIRECTORY=/storage/.cache/iwd
+Type=dbus
+BusName=net.connman.iwd
+ExecStart=/usr/lib/iwd
+NotifyAccess=main
+LimitNPROC=1
+Restart=on-failure
+TimeoutStopSec=1s
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_NET_BIND_SERVICE
+DevicePolicy=closed
+DeviceAllow=/dev/rfkill rw
+
+[Install]
+WantedBy=multi-user.target

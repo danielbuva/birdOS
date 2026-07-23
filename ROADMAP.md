@@ -31,7 +31,7 @@ The long-term centerpiece would be a tiny custom launcher—ideally a small stat
 Clean-root v5.4 proved the desired fast architecture but also proved that an
 application stack cannot be reconstructed reliably by copying binaries and
 guessing its hidden service and configuration contract one failure at a time.
-Stock-root v6.3 therefore resets only the software baseline:
+Stock-root v6.4 now optimizes the proven software baseline:
 
 - exact ROCKNIX 20260701 KERNEL, DTB, SYSTEM and configured STORAGE;
 - complete systemd, udev, D-Bus, PipeWire, WirePlumber and H700 autostart path;
@@ -49,7 +49,9 @@ identity and records the release application's real diagnostic log. Its
 physical gate exposed a second shared cause: ROCKNIX's generic automounter
 replaced Bird's p6 view with its internal writable-image game tree. V6.3
 replaces that one service with a deterministic fixed-p6 assertion and retains
-the same ordering.
+the same ordering. Its broad physical gate passed. V6.4 starts Bird before the
+generic graph, runs compatibility setup silently in parallel, makes networking
+PortMaster-only and masks services absent from the fixed profile.
 
 The gate order is compatibility first, then early Bird handoff, then service
 deferral/removal, then kernel trimming. No component is removed from the full
@@ -109,7 +111,7 @@ application and move everything unrelated to an interactive menu behind it.
 - [x] Remove the next set of redundant fixed-startup work: per-boot
   immutable policy/geometry writes, obsolete update-file cleanup, zero-swap
   probing and the unnecessary squashfs module request.
-- [ ] [clean-root boot gate passed; stock-root v6.3 storage closure staged] Bake
+- [ ] [stock-root v6.3 compatibility passed; v6.4 early UI staged] Bake
   changes into the image and remove the card-side development user-init
   delivery path. The successful path is entirely embedded and does not enter
   p5. V5.0 physically proved the menu at 1.135 seconds, H700 input at 1.290 and
@@ -125,7 +127,7 @@ application and move everything unrelated to an interactive menu behind it.
   recovery partitions and obsolete
   payloads only after the new broad compatibility gate and later optimized
   replacement both pass.
-- [ ] [v6.3 staged] Physically verify representative native Ports: one FRT
+- [x] [v6.3 physical gate passed] Physically verify representative native Ports: one FRT
   runtime game, one LÖVE game, one commercial-data game and Stardew; preserve
   `/var/log/exec.log` after every return so any remaining failures become
   per-game tuning rather than another common-provider guess.
@@ -133,11 +135,20 @@ application and move everything unrelated to an interactive menu behind it.
   power suspend/resume with lid open, ignored power while lid remains closed,
   and automatic resume when the lid opens. Do not enable H700 kernel suspend;
   the exact ROCKNIX profile disables it as broken and uses fake suspend.
-- [ ] [v6.3 system-only policy staged; pacing deferred] Remove duplicate MPV
-  volume ownership without replacing the exact player. Physical VOL+/VOL- and
-  L1/R1 player volume are ignored inside MPV; verify the remaining stock movie
-  controls, then profile decoder/VO drop counters before changing the player or
-  kernel video configuration.
+- [x] [v6.3 physical gate passed; player-volume remap deferred] Remove duplicate
+  MPV volume ownership without replacing the exact player. Physical VOL+/VOL-
+  is system-owned, L1/R1 no longer changes player volume, and the remaining
+  stock movie controls pass.
+- [ ] [media pacing deferred] Profile decoder/VO drop counters before changing
+  the exact player or kernel video configuration.
+- [ ] [v6.4 staged] Start Bird and its fixed storage before the generic systemd
+  graph. Keep exact autostart running in parallel but isolate its console so it
+  cannot repaint the menu; join audio only when an unusually early selection
+  outruns the background warm-up.
+- [ ] [v6.4 staged] Keep NetworkManager and iwd stopped until PortMaster, then
+  stop them again on return. Remove SSH, RPC, discovery, touchscreen, Sixaxis,
+  statistics and HDMI-monitor units from this fixed user's ordinary boot; mask
+  RPC's activation socket as well as its daemon so it cannot wake indirectly.
 
 ### Layer 2 — early userspace and init
 

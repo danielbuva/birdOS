@@ -9,7 +9,7 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 SOURCE=${SOURCE:-/Volumes/ROCKNIX}
 STORAGE=${STORAGE:-/Users/dani/rocknix-reference-result/storage.ext4}
-OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.3}
+OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.4}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
 LLD=${LLD:-/opt/homebrew/opt/lld/bin/ld.lld}
 READELF=${READELF:-/opt/homebrew/opt/llvm/bin/llvm-readelf}
@@ -74,8 +74,11 @@ cp -fp "$ROOT/kernel/rocknix/stock-root/post-flash.sh" \
 cp -fp "$ROOT/kernel/rocknix/stock-root/mount-storage.sh" \
 	"$OUTPUT/card/mount-storage.sh"
 for FILE in 090-ui_service essway.service rocknix.target \
-	rocknix-automount.service supervisor.sh run-content.sh prepare-ports.sh \
-	fixed-storage.sh; do
+	rocknix-automount.service rocknix-autostart.service \
+	rocknix-report-stats.service \
+	NetworkManager.service iwd.service supervisor.sh run-content.sh \
+	prepare-ports.sh fixed-storage.sh first-frame-prep.sh \
+	capture-boot-state.sh bird-network.sh; do
 	cp -fp "$ROOT/kernel/rocknix/stock-root/$FILE" "$OUTPUT/card/bird/$FILE"
 done
 cp -fp "$ROOT/kernel/rocknix/stock-root/mpv-input.conf" \
@@ -89,7 +92,10 @@ chmod 0755 "$OUTPUT/card/post-flash.sh" "$OUTPUT/card/mount-storage.sh" \
 	"$OUTPUT/card/bird/090-ui_service" \
 	"$OUTPUT/card/bird/supervisor.sh" "$OUTPUT/card/bird/run-content.sh" \
 	"$OUTPUT/card/bird/prepare-ports.sh" \
-	"$OUTPUT/card/bird/fixed-storage.sh"
+	"$OUTPUT/card/bird/fixed-storage.sh" \
+	"$OUTPUT/card/bird/first-frame-prep.sh" \
+	"$OUTPUT/card/bird/capture-boot-state.sh" \
+	"$OUTPUT/card/bird/bird-network.sh"
 
 for SCRIPT in "$OUTPUT/card/post-flash.sh" \
 	"$OUTPUT/card/mount-storage.sh" \
@@ -97,7 +103,10 @@ for SCRIPT in "$OUTPUT/card/post-flash.sh" \
 	"$OUTPUT/card/bird/supervisor.sh" \
 	"$OUTPUT/card/bird/run-content.sh" \
 	"$OUTPUT/card/bird/prepare-ports.sh" \
-	"$OUTPUT/card/bird/fixed-storage.sh"; do
+	"$OUTPUT/card/bird/fixed-storage.sh" \
+	"$OUTPUT/card/bird/first-frame-prep.sh" \
+	"$OUTPUT/card/bird/capture-boot-state.sh" \
+	"$OUTPUT/card/bird/bird-network.sh"; do
 	bash -n "$SCRIPT" || fail "shell syntax failed: $SCRIPT"
 done
 
@@ -108,6 +117,18 @@ grep -q 'PortMaster.zip' "$OUTPUT/card/bird/prepare-ports.sh" || fail 'exact Por
 grep -q '^VOLUME_UP ignore$' "$OUTPUT/card/bird/mpv-input.conf" || fail 'MPV volume policy missing'
 grep -q 'ExecStart=/storage/.config/bird/fixed-storage.sh' \
 	"$OUTPUT/card/bird/rocknix-automount.service" || fail 'fixed storage unit missing'
+grep -q '^DefaultDependencies=no$' \
+	"$OUTPUT/card/bird/essway.service" || fail 'early Bird ordering missing'
+grep -q '^Wants=.*essway.service' \
+	"$OUTPUT/card/bird/rocknix.target" || fail 'early Bird target request missing'
+grep -q '^BindPaths=/dev/null:/dev/console$' \
+	"$OUTPUT/card/bird/rocknix-autostart.service" || fail 'autostart console isolation missing'
+grep -q '^ConditionPathExists=/run/bird/network-request$' \
+	"$OUTPUT/card/bird/NetworkManager.service" || fail 'NetworkManager gate missing'
+grep -q 'systemctl stop NetworkManager.service iwd.service' \
+	"$OUTPUT/card/bird/bird-network.sh" || fail 'network release missing'
+grep -q '^After=rocknix-autostart.service$' \
+	"$OUTPUT/card/bird/rocknix-report-stats.service" || fail 'event-ordered snapshot missing'
 grep -q 'mount --bind "$ROM_SOURCE" "$ROM_TARGET"' \
 	"$OUTPUT/card/bird/fixed-storage.sh" || fail 'fixed ROM bind missing'
 grep -q 'ExecStart=/storage/.config/bird/supervisor.sh' \
