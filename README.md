@@ -119,10 +119,11 @@ card-side patches.
 
 ## Current changes
 
-- The active experiment is stock-root v6.5. V6.3 established the coherent
+- The active experiment is stock-root v6.6. V6.3 established the coherent
   ROCKNIX application environment and v6.4 passed early-systemd subtraction;
-  v6.5 crosses the next measured boundary without changing the release KERNEL,
-  SYSTEM or configured writable STORAGE.
+  v6.5 put Bird pixels before `switch_root`, and v6.6 makes that same early
+  frame interactive without changing the release KERNEL, SYSTEM or configured
+  writable STORAGE.
 - Bird's long-lived instance remains a normal systemd UI service, starting
   before the complete H700 compatibility graph; v6.5 adds only the short-lived
   pre-root copy described below. The unchanged Sway compositor still starts
@@ -142,9 +143,12 @@ card-side patches.
   content selection explicitly joins the exact audio services. The unchanged
   ROCKNIX autostart continues in parallel inside a private console namespace,
   so its status text and final clear cannot repaint the early menu.
-- V6.5 supplies a 217,666-byte external initramfs overlay alongside the exact
+- V6.6 supplies a 218,397-byte external initramfs overlay alongside the exact
   release kernel. It changes only the pinned upstream `/init`, adds the exact
-  37,248-byte H700 input module and starts an early copy of the same launcher.
+  36,584-byte H700 input module from that release SYSTEM and starts an early
+  copy of the same launcher. V6.5 proved pixels at kernel uptime 1.377 seconds,
+  but its source-rebuilt module failed the release kernel's symbol versions;
+  the controller consequently arrived only with the later system root.
   Navigation state and launch actions live in `/run`; the original init stops
   the early process before `switch_root`, moves that state into the complete
   ROCKNIX system and leaves the last framebuffer image visible. The normal
@@ -159,6 +163,12 @@ card-side patches.
   `/mnt/mmc` to `/storage/bird-data` for live file checks, while the separate
   runner performs the same mapping at application handoff. Existing writable
   ROCKNIX storage is preserved across Bird-only deployments.
+- The AXP717 kernel driver, not a userspace daemon, owns charging. The fixed
+  DTB programs a 1,024,000-uA maximum charge current and 1,500,000-uA USB input
+  limit. Bird reads the kernel battery status directly and blocks on power
+  uevents, showing `CHARGING` without a polling timer; the post-frame snapshot
+  records status, capacity, current, voltage, charger online state and relevant
+  kernel messages for physical validation.
 - Port preparation remains a separate, selection-time process. It does not run
   in Bird and adds nothing to menu boot. The Mac updater performs same-volume
   metadata moves for the existing 16 GiB Port library; the on-device helper

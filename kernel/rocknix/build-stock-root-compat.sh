@@ -7,9 +7,10 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
-SOURCE=${SOURCE:-/Volumes/ROCKNIX}
+SOURCE=${SOURCE:-/Volumes/BIRD}
+SYSTEM_SOURCE=${SYSTEM_SOURCE:-/Volumes/dani-sp/MUOS/runtime/ROCKNIX-SYSTEM}
 STORAGE=${STORAGE:-/Users/dani/rocknix-reference-result/storage.ext4}
-OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.5}
+OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.6}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
 LLD=${LLD:-/opt/homebrew/opt/lld/bin/ld.lld}
 READELF=${READELF:-/opt/homebrew/opt/llvm/bin/llvm-readelf}
@@ -31,11 +32,11 @@ sha256() {
 [ -d "$SOURCE" ] || fail "mounted exact ROCKNIX release missing: $SOURCE"
 [ -f "$SOURCE/KERNEL" ] || fail 'release KERNEL missing'
 [ -f "$SOURCE/dtb.img" ] || fail 'release DTB missing'
-[ -f "$SOURCE/SYSTEM" ] || fail 'release SYSTEM missing'
+[ -f "$SYSTEM_SOURCE" ] || fail 'release SYSTEM missing'
 [ -f "$STORAGE" ] || fail 'captured ROCKNIX STORAGE image missing'
 [ "$(sha256 "$SOURCE/KERNEL")" = "$KERNEL_SHA" ] || fail 'release KERNEL changed'
 [ "$(sha256 "$SOURCE/dtb.img")" = "$DTB_SHA" ] || fail 'release DTB changed'
-[ "$(sha256 "$SOURCE/SYSTEM")" = "$SYSTEM_SHA" ] || fail 'release SYSTEM changed'
+[ "$(sha256 "$SYSTEM_SOURCE")" = "$SYSTEM_SHA" ] || fail 'release SYSTEM changed'
 [ "$(sha256 "$STORAGE")" = "$STORAGE_SHA" ] || fail 'reference STORAGE changed'
 [ -x "$CLANG" ] || fail 'LLVM clang missing'
 [ -x "$LLD" ] || fail 'LLVM lld missing'
@@ -133,6 +134,10 @@ grep -q '^After=rocknix-autostart.service$' \
 	"$OUTPUT/card/bird/rocknix-report-stats.service" || fail 'event-ordered snapshot missing'
 grep -q '^  INITRD /bird-initramfs.cpio.gz$' \
 	"$OUTPUT/card/extlinux/extlinux.conf" || fail 'external early initramfs missing'
+grep -q 'power_supply/battery/status' \
+	"$ROOT/launcher/dani-launcher.c" || fail 'charging indicator missing'
+grep -q 'power supplies' \
+	"$OUTPUT/card/bird/capture-boot-state.sh" || fail 'power snapshot missing'
 grep -q 'mount --bind "$ROM_SOURCE" "$ROM_TARGET"' \
 	"$OUTPUT/card/bird/fixed-storage.sh" || fail 'fixed ROM bind missing'
 grep -q 'ExecStart=/storage/.config/bird/supervisor.sh' \

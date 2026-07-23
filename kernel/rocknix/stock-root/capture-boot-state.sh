@@ -30,4 +30,20 @@ LOG=/storage/bird-data/MUOS/Bird/log/stock-root-boot-state-latest.log
 	cat /proc/meminfo
 	printf '%s\n' '--- mounts ---'
 	cat /proc/mounts
+	printf '%s\n' '--- power supplies ---'
+	for SUPPLY in /sys/class/power_supply/*; do
+		[ -e "$SUPPLY" ] || continue
+		printf '[%s]\n' "${SUPPLY##*/}"
+		for PROPERTY in type status capacity health present online \
+			voltage_now voltage_min_design voltage_max_design \
+			current_now constant_charge_current \
+			constant_charge_current_max input_current_limit; do
+			[ -r "$SUPPLY/$PROPERTY" ] || continue
+			printf '%s=' "$PROPERTY"
+			cat "$SUPPLY/$PROPERTY"
+		done
+		[ -r "$SUPPLY/uevent" ] && cat "$SUPPLY/uevent"
+	done
+	printf '%s\n' '--- AXP717 kernel messages ---'
+	dmesg | grep -Ei 'axp717|battery|charger|power supply' | tail -n 80 || :
 } >"$LOG" 2>&1

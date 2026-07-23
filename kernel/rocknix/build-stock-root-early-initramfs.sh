@@ -5,9 +5,9 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
-OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.5}
+OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.6}
 OFFICIAL_INIT=${OFFICIAL_INIT:-$ROOT/kernel/work/rocknix-official-initramfs-20260701/ramdisk/init}
-JOYPAD=${JOYPAD:-$ROOT/kernel/work/rocknix-bird-kernel-v2-joypad/build/rocknix-singleadc-joypad.ko}
+JOYPAD=${JOYPAD:-$ROOT/kernel/work/rocknix-system-exact-20260701/usr/lib/kernel-overlays/base/lib/modules/7.0.11/rocknix-joypad/rocknix-singleadc-joypad.ko}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
 LLD=${LLD:-/opt/homebrew/opt/lld/bin/ld.lld}
 READELF=${READELF:-/opt/homebrew/opt/llvm/bin/llvm-readelf}
@@ -18,7 +18,7 @@ case "$OUTPUT" in
 esac
 
 OFFICIAL_INIT_SHA=3473415af0cf5df44e70259c3392817b1df421a12a617ec083ec018ff51dbc48
-JOYPAD_SHA=fd2ceb95f0b3bdc1d68e7182a8ac5239b5286cc277a04980e53f65e0f73d3a05
+JOYPAD_SHA=a8ac6cacfa89672fa08dec7fa02179bb108a4a2303fd5c1eb5834f916089b79b
 
 fail() {
 	printf 'error: %s\n' "$*" >&2
@@ -35,6 +35,9 @@ sha256() {
 [ -f "$JOYPAD" ] || fail 'exact H700 input module missing'
 [ "$(sha256 "$JOYPAD")" = "$JOYPAD_SHA" ] || \
 	fail 'exact H700 input module changed'
+strings "$JOYPAD" | grep -Fqx \
+	'vermagic=7.0.11 SMP preempt mod_unload modversions aarch64' || \
+	fail 'exact H700 input module ABI changed'
 [ -x "$CLANG" ] || fail 'LLVM clang missing'
 [ -x "$LLD" ] || fail 'LLVM lld missing'
 [ -x "$READELF" ] || fail 'LLVM readelf missing'

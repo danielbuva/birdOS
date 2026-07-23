@@ -46,6 +46,10 @@ typedef signed long s64;
 #define ABS_HAT0X 16
 #define ABS_HAT0Y 17
 #define POLLIN 0x0001
+#define AF_NETLINK 16
+#define SOCK_DGRAM 2
+#define SOCK_NONBLOCK 04000
+#define NETLINK_KOBJECT_UEVENT 15
 
 #define CLOCK_BOOTTIME 7
 #ifndef DEVICE_WAIT_MS
@@ -172,6 +176,13 @@ struct pollfd {
     short revents;
 };
 
+struct sockaddr_nl {
+    u16 family;
+    u16 padding;
+    u32 pid;
+    u32 groups;
+};
+
 struct glyph {
     char c;
     u8 row[7];
@@ -189,7 +200,9 @@ static struct fb_fix_screeninfo fb_fix;
 static volatile u8 *fb;
 static int fb_fd = -1;
 static int input_fd = -1;
+static int power_event_fd = -1;
 static int h700_input;
+static int charging_state = -1;
 static char input_path[] = "/dev/input/event0";
 static u32 view;
 static u32 selection;
@@ -303,6 +316,14 @@ static long sys_ppoll(struct pollfd *fds, u64 count, struct timespec *timeout) {
     return syscall6(73, (long)fds, (long)count, (long)timeout, 0, 0, 0);
 }
 
+static long sys_socket(int domain, int type, int protocol) {
+    return syscall6(198, domain, type, protocol, 0, 0, 0);
+}
+
+static long sys_bind(int fd, const struct sockaddr_nl *address, u32 length) {
+    return syscall6(200, fd, (long)address, length, 0, 0, 0);
+}
+
 static void sys_nanosleep(s64 nanoseconds) {
     struct timespec request;
     request.sec = 0;
@@ -327,6 +348,13 @@ static int string_equal(const char *left, const char *right) {
         right++;
     }
     return *left == *right;
+}
+
+static int string_starts_with(const char *text, const char *prefix) {
+    while (*prefix) {
+        if (*text++ != *prefix++) return 0;
+    }
+    return 1;
 }
 
 /*
@@ -373,6 +401,60 @@ static u64 boot_ms(void) {
     struct timespec now;
     if (sys_clock_gettime(&now) < 0) return 0;
     return (u64)now.sec * 1000UL + (u64)(now.nsec / 1000000L);
+}
+
+/*
+ * Charging is owned by the AXP717 kernel driver. Bird reads its fixed sysfs
+ * contract directly and blocks on kernel uevents, so the indicator needs no
+ * polling timer, helper daemon or dependency on the later ROCKNIX service
+ * graph. The second path keeps the launcher useful with an unpatched kernel.
+ */
+static int read_charging_state(void) {
+    static const char *paths[] = {
+        "/sys/class/power_supply/battery/status",
+        "/sys/class/power_supply/axp20x-battery/status",
+    };
+    char value[32];
+    u32 index;
+
+    for (index = 0; index < sizeof(paths) / sizeof(paths[0]); index++) {
+        long fd = sys_open(paths[index], O_RDONLY | O_NONBLOCK);
+        long count;
+        if (fd < 0) continue;
+        count = sys_read((int)fd, value, sizeof(value) - 1U);
+        sys_close((int)fd);
+        if (count <= 0) continue;
+        value[count] = 0;
+        return string_starts_with(value, "Charging") ? 1 : 0;
+    }
+    return -1;
+}
+
+static int open_power_events(void) {
+    struct sockaddr_nl address;
+    long fd = sys_socket(AF_NETLINK, SOCK_DGRAM | SOCK_NONBLOCK,
+                         NETLINK_KOBJECT_UEVENT);
+    if (fd < 0) return -1;
+    address.family = AF_NETLINK;
+    address.padding = 0;
+    address.pid = 0;
+    address.groups = 1;
+    if (sys_bind((int)fd, &address, sizeof(address)) < 0) {
+        sys_close((int)fd);
+        return -1;
+    }
+    return (int)fd;
+}
+
+static int is_power_supply_uevent(const char *event, u64 length) {
+    u64 offset = 0;
+    while (offset < length) {
+        const char *field = event + offset;
+        u64 field_length = string_length(field);
+        if (string_equal(field, "SUBSYSTEM=power_supply")) return 1;
+        offset += field_length + 1U;
+    }
+    return 0;
 }
 
 static void mark_first_frame(void) {
@@ -881,6 +963,9 @@ static void draw_screen(void) {
         }
     }
 
+    if (charging_state == 1)
+        draw_text((int)fb_var.xres - 128, 30, "CHARGING", 2, selected);
+
     draw_text(32, (int)fb_var.yres - 54, selected_status, 2, muted);
     if (view == VIEW_MAIN)
         draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE   A SELECT   B STOCK", 2, primary);
@@ -1376,6 +1461,16 @@ static int application(void) {
      * input gate: the watchdog is cancelled only when the menu is usable.
      */
     load_ui_resume();
+    power_event_fd = open_power_events();
+    charging_state = read_charging_state();
+    log_text("power battery_state=");
+    log_text(charging_state == 1 ? "charging" :
+             (charging_state == 0 ? "not-charging" : "unavailable"));
+    log_text(" uevent=");
+    log_text(power_event_fd >= 0 ? "ready" : "unavailable");
+    log_text(" boot_ms=");
+    log_number(boot_ms());
+    log_text("\n");
     draw_screen();
     log_text("first_frame_visible boot_ms=");
     log_number(boot_ms());
@@ -1396,22 +1491,51 @@ static int application(void) {
     log_text("\n");
 
     while (exit_action == ACTION_NONE) {
-        struct pollfd input_poll;
+        struct pollfd polls[2];
         struct timespec storage_timeout;
         struct timespec *timeout = 0;
         struct input_event event;
         long count;
+        u64 poll_count = 1;
 
         probe_storage();
-        input_poll.fd = input_fd;
-        input_poll.events = POLLIN;
-        input_poll.revents = 0;
+        polls[0].fd = input_fd;
+        polls[0].events = POLLIN;
+        polls[0].revents = 0;
+        if (power_event_fd >= 0) {
+            polls[1].fd = power_event_fd;
+            polls[1].events = POLLIN;
+            polls[1].revents = 0;
+            poll_count = 2;
+        }
         if (!storage_ready) {
             storage_timeout.sec = 0;
             storage_timeout.nsec = 50000000L;
             timeout = &storage_timeout;
         }
-        sys_ppoll(&input_poll, 1, timeout);
+        sys_ppoll(polls, poll_count, timeout);
+
+        if (power_event_fd >= 0 && (polls[1].revents & POLLIN)) {
+            char uevent[2049];
+            int previous = charging_state;
+            int power_changed = 0;
+            while ((count = sys_read(power_event_fd, uevent,
+                                     sizeof(uevent) - 1U)) > 0) {
+                uevent[count] = 0;
+                if (is_power_supply_uevent(uevent, (u64)count))
+                    power_changed = 1;
+            }
+            if (power_changed) charging_state = read_charging_state();
+            if (power_changed && charging_state != previous) {
+                log_text("power battery_state=");
+                log_text(charging_state == 1 ? "charging" :
+                         (charging_state == 0 ? "not-charging" : "unavailable"));
+                log_text(" boot_ms=");
+                log_number(boot_ms());
+                log_text("\n");
+                draw_screen();
+            }
+        }
 
         while ((count = sys_read(input_fd, &event, sizeof(event))) == (long)sizeof(event)) {
             exit_action = handle_event(&event);
@@ -1432,6 +1556,7 @@ static int application(void) {
     log_number(boot_ms());
     log_text("\n");
     write_handoff_action(exit_action);
+    if (power_event_fd >= 0) sys_close(power_event_fd);
     sys_close(input_fd);
     sys_munmap((void *)fb, fb_fix.smem_len);
     sys_close(fb_fd);

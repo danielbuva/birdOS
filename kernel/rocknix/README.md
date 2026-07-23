@@ -835,8 +835,20 @@ cpio is unpacked over the byte-identical release kernel's pinned built-in
 initramfs. It overrides only `/init`, adding one start call after the stock
 console clear, suppressing the later stock splash repaint, and adding one
 handoff call before the special mounts move into sysroot.
-The overlay also contains the same 623,176-byte static launcher and the exact
-37,248-byte `rocknix-singleadc-joypad.ko` from the release source closure.
+The first physical v6.5 boot proved that architecture at kernel uptime 1.377
+seconds, corresponding to about 3.2 seconds from the green LED by stopwatch.
+It also found a precise input defect: the 37,248-byte module rebuilt from the
+pinned source had matching `vermagic` but not the exact release kernel's symbol
+versions, so `insmod` returned `Invalid argument`. Bird remained visible while
+input waited for the later SYSTEM copy, producing the measured 3.2-second
+visible/10.4-second interactive split.
+
+Stock-root v6.6 replaces only that module with the byte-exact 36,584-byte
+`rocknix-singleadc-joypad.ko` carried by the checksummed release SYSTEM
+(`a8ac6cac...b79b`). The build now checks both its full hash and 7.0.11 ABI.
+The reproducible overlay is 218,397 bytes and keeps the same unchanged release
+KERNEL, DTB, SYSTEM and writable STORAGE. Early failure now captures the last
+kernel messages instead of discarding the reason.
 
 The early launcher applies the fixed five-percent backlight value, paints from
 the compiled catalogue and opens the H700 input module while the unchanged
@@ -857,6 +869,7 @@ redraws Bird. PortMaster and MPV continue to use their release wrappers.
 overlay, then copies the checksummed release files. Two independent v6.5 builds
 reproduce all 40 files byte-for-byte; offline extraction also verifies the
 overlay merges cleanly over the complete 7,474,688-byte official archive.
+Two independent v6.6 builds likewise reproduce all card payloads byte-for-byte.
 `mac-update-rocknix-stock-root-v6.sh`
 validates the exact removable-card geometry and every provider hash, stages the
 loop image and boot hooks, and preserves v5.4 as `KERNEL.fallback`. A persistent
@@ -870,8 +883,17 @@ superblock rather than recopying it. This preserves the writable ROCKNIX and
 PortMaster state and reduces subsequent Bird-only deployments to the small
 boot/UI payload.
 
+Charging remains a kernel/PMIC function rather than a launcher or daemon
+responsibility. The exact H700 DTB binds the AXP717 battery and USB supplies,
+sets `constant-charge-current-max-microamp` to 1,024,000 and the USB input limit
+to 1,500,000. Bird reads `/sys/class/power_supply/battery/status` and listens to
+kernel power-supply uevents, so `CHARGING` appears in the upper right without a
+periodic wake-up. The diagnostic snapshot records every available battery/USB
+property and the relevant AXP717 messages to verify actual current flow rather
+than inferring it from the LED.
+
 V6.3 intentionally accepted the slower full compatibility graph and passed its
-broad physical gate. V6.4 passed the first speed/subtraction gate. V6.5 now
+broad physical gate. V6.4 passed the first speed/subtraction gate. V6.6 now
 tests initramfs pixels, immediate input, seamless state handoff and the same
 menu, content, media, Ports, PortMaster, global controls, suspend and shutdown
 closure before any release-kernel option is removed.

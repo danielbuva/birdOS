@@ -17,7 +17,12 @@ case "${1:-}" in
 		{
 			printf 'Bird early-init start uptime='
 			$BUSYBOX cut -d ' ' -f 1 /proc/uptime
-			$BUSYBOX insmod "$JOYPAD" 2>&1 || :
+			if $BUSYBOX insmod "$JOYPAD" 2>&1; then
+				printf '%s\n' 'early_input_module=loaded'
+			else
+				printf '%s\n' 'early_input_module=failed'
+				$BUSYBOX dmesg | $BUSYBOX tail -n 30
+			fi
 			COUNT=0
 			while [ "$COUNT" -lt 500 ]; do
 				if [ -r "$BACKLIGHT/max_brightness" ] && \

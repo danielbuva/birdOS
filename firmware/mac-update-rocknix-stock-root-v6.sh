@@ -1,7 +1,8 @@
 #!/bin/sh
 # Guarded deployment of the compatibility-first stock-root milestone. P5 and
-# content bytes stay untouched. V6.5 adds an external early Bird overlay while
-# retaining the exact kernel and complete working ROCKNIX userspace.
+# content bytes stay untouched. V6.6 makes that early Bird instance interactive
+# at first paint and reads charging state directly from the kernel PMIC driver.
+# It retains the exact kernel and complete working ROCKNIX userspace.
 # The exact ROCKNIX writable filesystem remains a loop image on p6, and the
 # accepted v5.4 kernel remains on p1 as a fallback.
 
@@ -10,7 +11,7 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 BIRD=${BIRD:-/Volumes/BIRD}
 DATA=${DATA:-/Volumes/dani-sp}
-CANDIDATE=${CANDIDATE:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.5/card}
+CANDIDATE=${CANDIDATE:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.6/card}
 STORAGE_SOURCE=${STORAGE_SOURCE:-/Users/dani/rocknix-reference-result/storage.ext4}
 PORTMASTER_ARCHIVE=${PORTMASTER_ARCHIVE:-$ROOT/kernel/work/rocknix-system-exact-20260701/usr/config/PortMaster/release/PortMaster.zip}
 RUNTIME=$DATA/MUOS/runtime/ROCKNIX-SYSTEM
@@ -249,13 +250,14 @@ sync
 cmp "$CANDIDATE/extlinux/extlinux.conf" "$BIRD/extlinux/extlinux.conf" || fail 'active extlinux verification failed'
 cmp "$CANDIDATE/bird-initramfs.cpio.gz" "$BIRD/bird-initramfs.cpio.gz" || fail 'early initramfs verification failed'
 
-printf 'Bird stock-root v6.5 staged on /dev/%s.\n' "$WHOLE"
+printf 'Bird stock-root v6.6 staged on /dev/%s.\n' "$WHOLE"
 printf 'Moved %s Port data directories into the native ROCKNIX tree.\n' "$MOVED_PORTS"
 printf 'Generic storage discovery replaced by the fixed p6 Bird view.\n'
 printf 'MPV physical volume ownership is system-only.\n'
 printf 'Bird starts before generic userspace; autostart cannot repaint it.\n'
 printf 'Network is PortMaster-only; unused fixed-profile units are masked.\n'
-printf 'Bird and the exact H700 input module now begin in external initramfs.\n'
+printf 'Bird and the release-matched H700 input module now begin in external initramfs.\n'
+printf 'Charging state is kernel-driven, uevent-fed and shown in Bird.\n'
 printf 'p5 was not modified; p6 content bytes were preserved by same-volume moves.\n'
 printf 'Exact ROCKNIX KERNEL: %s\n' "$ROCKNIX_KERNEL_SHA"
 printf 'Automatic fallback KERNEL: %s\n' "$V54_KERNEL_SHA"
