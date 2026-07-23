@@ -203,6 +203,7 @@ static int input_fd = -1;
 static int power_event_fd = -1;
 static int h700_input;
 static int charging_state = -1;
+static int battery_percent = -1;
 static char input_path[] = "/dev/input/event0";
 static u32 view;
 static u32 selection;
@@ -229,7 +230,8 @@ static const struct glyph font[] = {
     {')', {8, 4, 2, 2, 2, 4, 8}},       {'&', {12, 18, 20, 8, 21, 18, 13}},
     {'*', {0, 21, 14, 31, 14, 21, 0}},
     {',', {0, 0, 0, 0, 0, 4, 8}},       {'-', {0, 0, 0, 31, 0, 0, 0}},
-    {'.', {0, 0, 0, 0, 0, 0, 4}},       {'/', {1, 2, 4, 8, 16, 0, 0}},
+    {'.', {0, 0, 0, 0, 0, 0, 4}},       {'%', {17, 18, 4, 8, 19, 17, 0}},
+    {'/', {1, 2, 4, 8, 16, 0, 0}},
     {':', {0, 4, 0, 0, 4, 0, 0}},       {'?', {14, 17, 1, 2, 4, 0, 4}},
     {'>', {16, 8, 4, 2, 4, 8, 16}},      {'0', {14, 17, 19, 21, 25, 17, 14}},
     {'1', {4, 12, 4, 4, 4, 4, 14}},      {'2', {14, 17, 1, 2, 4, 8, 31}},
@@ -426,6 +428,35 @@ static int read_charging_state(void) {
         if (count <= 0) continue;
         value[count] = 0;
         return string_starts_with(value, "Charging") ? 1 : 0;
+    }
+    return -1;
+}
+
+static int read_battery_percent(void) {
+    static const char *paths[] = {
+        "/sys/class/power_supply/battery/capacity",
+        "/sys/class/power_supply/axp20x-battery/capacity",
+    };
+    char value[16];
+    u32 index;
+
+    for (index = 0; index < sizeof(paths) / sizeof(paths[0]); index++) {
+        long fd = sys_open(paths[index], O_RDONLY | O_NONBLOCK);
+        long count;
+        long offset = 0;
+        int result = 0;
+        int digits = 0;
+        if (fd < 0) continue;
+        count = sys_read((int)fd, value, sizeof(value));
+        sys_close((int)fd);
+        if (count <= 0) continue;
+        while (offset < count && (value[offset] == ' ' || value[offset] == '\t'))
+            offset++;
+        while (offset < count && value[offset] >= '0' && value[offset] <= '9') {
+            result = result * 10 + (value[offset++] - '0');
+            digits++;
+        }
+        if (digits && result <= 100) return result;
     }
     return -1;
 }
@@ -813,6 +844,27 @@ static void draw_text_limited(int x, int y, const char *text, int scale, u32 val
     }
 }
 
+static void draw_battery_percent(u32 charging, u32 idle) {
+    char label[5];
+    u32 length = 0;
+    int value = battery_percent;
+    if (value < 0 || value > 100) return;
+    if (value == 100) {
+        label[length++] = '1';
+        label[length++] = '0';
+        label[length++] = '0';
+    } else if (value >= 10) {
+        label[length++] = (char)('0' + value / 10);
+        label[length++] = (char)('0' + value % 10);
+    } else {
+        label[length++] = (char)('0' + value);
+    }
+    label[length++] = '%';
+    label[length] = 0;
+    draw_text((int)fb_var.xres - 32 - (int)(length * 12U), 30, label, 2,
+              charging_state == 1 ? charging : idle);
+}
+
 static u32 media_category_first(void) {
     if (media_section == CATALOG_MEDIA_SECTION_LISTEN)
         return CATALOG_LISTEN_CATEGORY_FIRST;
@@ -978,8 +1030,7 @@ static void draw_screen(void) {
         }
     }
 
-    if (charging_state == 1)
-        draw_text((int)fb_var.xres - 128, 30, "CHARGING", 2, selected);
+    draw_battery_percent(selected, muted);
 
     draw_text(32, (int)fb_var.yres - 54, selected_status, 2, muted);
     if (view == VIEW_MAIN)
@@ -1483,11 +1534,17 @@ static int application(void) {
 #endif
     power_event_fd = open_power_events();
     charging_state = read_charging_state();
+    battery_percent = read_battery_percent();
     log_text("power battery_state=");
     log_text(charging_state == 1 ? "charging" :
              (charging_state == 0 ? "not-charging" : "unavailable"));
     log_text(" uevent=");
     log_text(power_event_fd >= 0 ? "ready" : "unavailable");
+    log_text(" percent=");
+    if (battery_percent >= 0)
+        log_number((u64)battery_percent);
+    else
+        log_text("unavailable");
     log_text(" boot_ms=");
     log_number(boot_ms());
     log_text("\n");
@@ -1538,6 +1595,7 @@ static int application(void) {
         if (power_event_fd >= 0 && (polls[1].revents & POLLIN)) {
             char uevent[2049];
             int previous = charging_state;
+            int previous_percent = battery_percent;
             int power_changed = 0;
             while ((count = sys_read(power_event_fd, uevent,
                                      sizeof(uevent) - 1U)) > 0) {
@@ -1545,13 +1603,22 @@ static int application(void) {
                 if (is_power_supply_uevent(uevent, (u64)count))
                     power_changed = 1;
             }
-            if (power_changed) charging_state = read_charging_state();
-            if (power_changed && charging_state != previous) {
+            if (power_changed) {
+                charging_state = read_charging_state();
+                battery_percent = read_battery_percent();
+            }
+            if (power_changed && (charging_state != previous ||
+                                  battery_percent != previous_percent)) {
                 log_text("power battery_state=");
                 log_text(charging_state == 1 ? "charging" :
                          (charging_state == 0 ? "not-charging" : "unavailable"));
                 log_text(" boot_ms=");
                 log_number(boot_ms());
+                log_text(" percent=");
+                if (battery_percent >= 0)
+                    log_number((u64)battery_percent);
+                else
+                    log_text("unavailable");
                 log_text("\n");
                 draw_screen();
             }

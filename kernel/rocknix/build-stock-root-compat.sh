@@ -10,7 +10,7 @@ ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 SOURCE=${SOURCE:-/Volumes/BIRD}
 SYSTEM_SOURCE=${SYSTEM_SOURCE:-/Volumes/dani-sp/MUOS/runtime/ROCKNIX-SYSTEM}
 STORAGE=${STORAGE:-/Users/dani/rocknix-reference-result/storage.ext4}
-OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.7}
+OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.8}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
 LLD=${LLD:-/opt/homebrew/opt/lld/bin/ld.lld}
 READELF=${READELF:-/opt/homebrew/opt/llvm/bin/llvm-readelf}
@@ -66,6 +66,23 @@ file "$OUTPUT/card/bird/dani-launcher" | \
 	grep -q 'ARM aarch64.*statically linked' || fail 'launcher is not static AArch64'
 if "$READELF" -l "$OUTPUT/card/bird/dani-launcher" | grep -q ' INTERP '; then
 	fail 'launcher unexpectedly has an interpreter'
+fi
+
+"$CLANG" --target=aarch64-linux-gnu -mcpu=cortex-a53 -Os \
+	-ffreestanding -ffunction-sections -fdata-sections \
+	-fno-builtin -fno-stack-protector -fno-unwind-tables \
+	-fno-asynchronous-unwind-tables -fno-ident -fvisibility=hidden \
+	-nostdlib -Wall -Wextra -Werror \
+	-c "$ROOT/launcher/bird-pidwait.c" \
+	-o "$OUTPUT/build/bird-pidwait.o"
+"$LLD" -static --gc-sections --build-id=none -z noexecstack -s \
+	-e _start -o "$OUTPUT/card/bird/bird-pidwait" \
+	"$OUTPUT/build/bird-pidwait.o"
+chmod 0755 "$OUTPUT/card/bird/bird-pidwait"
+file "$OUTPUT/card/bird/bird-pidwait" | \
+	grep -q 'ARM aarch64.*statically linked' || fail 'pid waiter is not static AArch64'
+if "$READELF" -l "$OUTPUT/card/bird/bird-pidwait" | grep -q ' INTERP '; then
+	fail 'pid waiter unexpectedly has an interpreter'
 fi
 
 OUTPUT="$OUTPUT" "$ROOT/kernel/rocknix/build-stock-root-early-initramfs.sh"
@@ -139,7 +156,9 @@ grep -q '^  INITRD /bird-initramfs.cpio.gz$' \
 grep -q '^/bird-early.sh resume$' \
 	"$OUTPUT/build/early-initramfs/payload/init" || fail 'root bridge missing'
 grep -q 'power_supply/battery/status' \
-	"$ROOT/launcher/dani-launcher.c" || fail 'charging indicator missing'
+	"$ROOT/launcher/dani-launcher.c" || fail 'battery indicator missing'
+grep -q 'pidfd_open' \
+	"$ROOT/launcher/bird-pidwait.c" || fail 'pidfd waiter missing'
 grep -q 'power supplies' \
 	"$OUTPUT/card/bird/capture-boot-state.sh" || fail 'power snapshot missing'
 grep -q 'mount --bind "$ROM_SOURCE" "$ROM_TARGET"' \
@@ -166,6 +185,8 @@ grep -q '^JobTimeoutAction=reboot-force$' \
 		"$(sha256 "$OUTPUT/card/bird-initramfs.cpio.gz")"
 	printf '%s  bird/dani-launcher\n' \
 		"$(sha256 "$OUTPUT/card/bird/dani-launcher")"
+	printf '%s  bird/bird-pidwait\n' \
+		"$(sha256 "$OUTPUT/card/bird/bird-pidwait")"
 } >"$OUTPUT/manifest.sha256"
 
 printf 'Built exact ROCKNIX compatibility baseline: %s\n' "$OUTPUT"

@@ -1,7 +1,7 @@
 #!/bin/sh
 # Run Bird beside the unchanged ROCKNIX initramfs, then bridge the same static
 # binary into the prepared final root. UI/action state moves with /run and the
-# systemd supervisor retires the bridge only when its owned process is ready.
+# systemd supervisor adopts the bridge as its one input owner.
 
 BUSYBOX=/usr/bin/busybox
 RUN=/run/muos
@@ -70,18 +70,30 @@ case "${1:-}" in
 		ROOT_RUN=/sysroot/run/muos
 		[ -x "$ROOT_RUN/dani-launcher-bridge" ] || exit 1
 		if [ -s "$ROOT_RUN/dani-launch-action" ]; then
-			printf 'Bird root bridge skipped for queued action uptime=' \
+			printf '%s\n' 'Bird root bridge skipped for queued action' \
 				>"$ROOT_RUN/initramfs-bridge.log"
-			$BUSYBOX cut -d ' ' -f 1 /proc/uptime \
-				>>"$ROOT_RUN/initramfs-bridge.log"
 			exit 0
 		fi
-		printf 'Bird root bridge start uptime=' >"$ROOT_RUN/initramfs-bridge.log"
-		$BUSYBOX cut -d ' ' -f 1 /proc/uptime \
-			>>"$ROOT_RUN/initramfs-bridge.log"
-		$BUSYBOX chroot /sysroot /run/muos/dani-launcher-bridge \
+		# /proc has already moved below /sysroot here. Do not touch an old-root
+		# path before dispatching the bridge: v6.7 stopped at that exact read.
+		printf '%s\n' 'Bird root bridge dispatch' \
+			>"$ROOT_RUN/initramfs-bridge.log"
+		# Give the final-root launcher its own session before this short hook
+		# exits and PID 1 becomes systemd; no shell-exit SIGHUP can end it.
+		$BUSYBOX setsid $BUSYBOX chroot /sysroot /run/muos/dani-launcher-bridge \
 			>>"$ROOT_RUN/initramfs-bridge.log" 2>&1 &
-		printf '%s\n' "$!" >"/sysroot$BRIDGE_PID"
+		PID=$!
+		printf '%s\n' "$PID" >"/sysroot$BRIDGE_PID"
+		printf 'Bird root bridge pid=%s\n' "$PID" \
+			>>"$ROOT_RUN/initramfs-bridge.log"
+		$BUSYBOX usleep 5000
+		if ! $BUSYBOX kill -0 "$PID" 2>/dev/null; then
+			STATUS=0
+			wait "$PID" || STATUS=$?
+			printf 'Bird root bridge launch failed status=%s\n' "$STATUS" \
+				>>"$ROOT_RUN/initramfs-bridge.log"
+			$BUSYBOX rm -f "/sysroot$BRIDGE_PID"
+		fi
 		;;
 	*)
 		printf 'usage: %s {start|handoff|resume}\n' "$0" >&2

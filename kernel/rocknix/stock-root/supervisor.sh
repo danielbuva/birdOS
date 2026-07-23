@@ -13,6 +13,7 @@ EARLY_LOG=/run/muos/initramfs-launcher.log
 BRIDGE_LOG=/run/muos/initramfs-bridge.log
 BRIDGE_PID=/run/muos/initramfs-bridge.pid
 BRIDGE_BINARY=/run/muos/dani-launcher-bridge
+PIDWAIT=/storage/.config/bird/bird-pidwait
 ATTEMPTS=/storage/bird-data/MUOS/Bird/boot-state/stock-root-attempts
 LOG_DIR=/storage/bird-data/MUOS/Bird/log
 LOG=$LOG_DIR/stock-root-supervisor.log
@@ -43,7 +44,40 @@ dispatch_handoff_action() {
 	esac
 }
 
-retire_root_bridge() {
+archive_root_bridge() {
+	[ -f "$BRIDGE_LOG" ] && cp -f "$BRIDGE_LOG" "$LOG_DIR/root-bridge-latest.log"
+	rm -f "$BRIDGE_PID" "$BRIDGE_BINARY"
+}
+
+adopt_root_bridge() {
+	[ -s "$BRIDGE_PID" ] || return 1
+	[ -x "$PIDWAIT" ] || return 1
+	PID=$(cat "$BRIDGE_PID")
+	case "$PID" in *[!0-9]*|'') return 1 ;; esac
+	kill -0 "$PID" 2>/dev/null || return 1
+	EXE=$(readlink "/proc/$PID/exe" 2>/dev/null || :)
+	case "$EXE" in
+		*/dani-launcher-bridge) ;;
+		*) printf 'bird ignored stale bridge pid=%s exe=%s\n' "$PID" "$EXE"
+			return 1 ;;
+	esac
+
+	printf 'bird adopted root bridge pid=%s uptime=' "$PID"
+	cut -d ' ' -f 1 /proc/uptime
+	# pidfd_open + ppoll sleeps inside the kernel. The supervisor does no
+	# periodic kill(2), /proc scan or timer wakeup while Bird owns the menu.
+	if ! "$PIDWAIT" "$PID"; then
+		printf 'bird pidfd wait fallback pid=%s uptime=' "$PID"
+		cut -d ' ' -f 1 /proc/uptime
+		while kill -0 "$PID" 2>/dev/null; do usleep 20000; done
+	fi
+	printf 'bird root bridge exited pid=%s uptime=' "$PID"
+	cut -d ' ' -f 1 /proc/uptime
+	archive_root_bridge
+	return 0
+}
+
+discard_stale_root_bridge() {
 	if [ -s "$BRIDGE_PID" ]; then
 		PID=$(cat "$BRIDGE_PID")
 		case "$PID" in *[!0-9]*|'') PID= ;; esac
@@ -51,7 +85,7 @@ retire_root_bridge() {
 			EXE=$(readlink "/proc/$PID/exe" 2>/dev/null || :)
 			case "$EXE" in
 				*/dani-launcher-bridge)
-					printf 'bird retiring root bridge pid=%s uptime=' "$PID"
+					printf 'bird stopping unadoptable root bridge pid=%s uptime=' "$PID"
 					cut -d ' ' -f 1 /proc/uptime
 					kill "$PID" 2>/dev/null || :
 					for _ in $(seq 1 100); do
@@ -63,8 +97,7 @@ retire_root_bridge() {
 			esac
 		fi
 	fi
-	[ -f "$BRIDGE_LOG" ] && cp -f "$BRIDGE_LOG" "$LOG_DIR/root-bridge-latest.log"
-	rm -f "$BRIDGE_PID" "$BRIDGE_BINARY"
+	archive_root_bridge
 }
 
 mark_healthy() {
@@ -86,7 +119,9 @@ mark_healthy() {
 }
 
 accept_early_frame
-retire_root_bridge
+if ! adopt_root_bridge; then
+	discard_stale_root_bridge
+fi
 dispatch_handoff_action
 
 while :; do

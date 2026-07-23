@@ -26,12 +26,13 @@ mount --bind /storage/bird-data/MUOS/bios /storage/roms/bios || {
 
 # These are deliberately copied after /storage exists. Bird is a normal
 # userspace UI service in this compatibility milestone, not initramfs payload.
-for FILE in dani-launcher supervisor.sh run-content.sh prepare-ports.sh \
+for FILE in dani-launcher bird-pidwait supervisor.sh run-content.sh prepare-ports.sh \
 	fixed-storage.sh first-frame-prep.sh capture-boot-state.sh \
 	bird-network.sh; do
 	cp -f "/flash/bird/$FILE" "/storage/.config/bird/$FILE" || return 1
 done
 chmod 0755 /storage/.config/bird/dani-launcher \
+	/storage/.config/bird/bird-pidwait \
 	/storage/.config/bird/supervisor.sh \
 	/storage/.config/bird/run-content.sh \
 	/storage/.config/bird/prepare-ports.sh \

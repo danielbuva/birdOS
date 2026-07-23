@@ -857,15 +857,21 @@ did not return until 5.7--8.9 seconds. A selection at 2.900 seconds was recorded
 correctly but its request was consumed while the ROCKNIX application contract
 was still being generated.
 
-Stock-root v6.7 replaces that frozen-frame interval with a final-root bridge.
+Stock-root v6.7 attempted to replace that frozen-frame interval with a final-root bridge.
 Its reproducible external overlay is 218,810 bytes.
 Before the four special mounts move, the initramfs hook copies the already
 verified static launcher into `/run` and preserves its state. Immediately after
-`/run` moves, it executes that binary through `chroot /sysroot`; the process
-therefore sees the permanent `/dev`, `/proc`, `/sys`, `/run` and `/storage`
-names and remains interactive across the subsequent `switch_root`. The normal
-supervisor validates the bridge PID/executable, copies its log, retires it and
-loads its latest state before drawing its owned instance.
+`/run` moves, it was intended to execute that binary through `chroot /sysroot`.
+The physical log contained only an empty `uptime=` field: the hook tried to read
+old-root `/proc/uptime` after `/proc` had moved and did not establish the bridge.
+The later systemd Bird therefore still replaced the early input owner.
+
+Stock-root v6.8 removes that fallible pre-dispatch read, writes the child PID
+immediately and checks that the process survived. The systemd supervisor no
+longer retires a valid bridge. It adopts it and sleeps in an 896-byte static
+`pidfd_open`/`ppoll` helper until the user launches content, requests shutdown
+or the launcher actually exits. Thus one final-root Bird owns framebuffer and
+input across the rest of startup without a polling timer or a second launcher.
 
 The exact final common-autostart action now also publishes a timestamped
 `/run/bird/application-contract-ready` marker after Sway configuration exists.
@@ -895,7 +901,8 @@ overlay, then copies the checksummed release files. Two independent v6.5 builds
 reproduce all 40 files byte-for-byte; offline extraction also verifies the
 overlay merges cleanly over the complete 7,474,688-byte official archive.
 Two independent v6.6 and v6.7 builds likewise reproduce all card payloads
-byte-for-byte.
+byte-for-byte. Two independent v6.8 builds reproduce every card payload too,
+including its 896-byte static pidfd waiter and 219,371-byte external overlay.
 `mac-update-rocknix-stock-root-v6.sh`
 validates the exact removable-card geometry and every provider hash, stages the
 loop image and boot hooks, and preserves v5.4 as `KERNEL.fallback`. A persistent
@@ -916,15 +923,17 @@ sets `constant-charge-current-max-microamp` to 1,024,000 and declares a
 USB driver uses the latter only to clamp future writes, and the unplugged
 hardware snapshot reported the PMIC's 2,000,000-uA boot default; reconcile that
 before changing charge policy. Bird reads
-`/sys/class/power_supply/battery/status` and listens to
-kernel power-supply uevents, so `CHARGING` appears in the upper right without a
-periodic wake-up. The diagnostic snapshot records every available battery/USB
+`/sys/class/power_supply/battery/status` and `capacity`, then listens to kernel
+power-supply uevents. The upper right now shows the live percentage without a
+periodic wake-up and colors it orange while charging. The first plugged snapshot
+confirmed `Charging`, 100 percent, 4.194 V and +492 mA. The diagnostic snapshot
+records every available battery/USB
 property and the relevant AXP717 messages to verify actual current flow rather
 than inferring it from the LED.
 
 V6.3 intentionally accepted the slower full compatibility graph and passed its
-broad physical gate. V6.4 passed the first speed/subtraction gate. V6.7 now
-tests initramfs pixels, immediate input, seamless state handoff and the same
+broad physical gate. V6.4 passed the first speed/subtraction gate. V6.8 now
+tests initramfs pixels, immediate input, single-owner state handoff and the same
 menu, content, media, Ports, PortMaster, global controls, suspend and shutdown
 closure before any release-kernel option is removed.
 
