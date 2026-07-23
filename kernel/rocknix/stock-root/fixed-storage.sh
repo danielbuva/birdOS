@@ -34,16 +34,14 @@ while [ ! "$ROM_TARGET" -ef "$ROM_SOURCE" ]; do
 	# A wrong parent layer can hide the correct parent and its nested BIOS
 	# mount. Peel one visible layer at a time and stop as soon as the original
 	# fixed view is revealed.
-	if mountpoint -q "$BIOS_TARGET"; then
-		# The mount table may still name a BIOS child hidden below a stacked
-		# parent; that hidden child cannot be addressed until the parent peels.
-		umount "$BIOS_TARGET" 2>/dev/null || :
+	# BusyBox mountpoint cannot recognize a same-filesystem bind, so actual
+	# unmount success is the authority here. A hidden BIOS child is harmless
+	# until its covering parent has been removed.
+	umount "$BIOS_TARGET" 2>/dev/null || :
+	if umount "$ROM_TARGET" 2>/dev/null; then
+		continue
 	fi
-	if mountpoint -q "$ROM_TARGET"; then
-		umount "$ROM_TARGET" || exit 1
-	else
-		mount --bind "$ROM_SOURCE" "$ROM_TARGET" || exit 1
-	fi
+	mount --bind "$ROM_SOURCE" "$ROM_TARGET" || exit 1
 done
 
 # Bind views can carry per-mount noexec state independently. Make the native
@@ -52,11 +50,10 @@ mount -o remount,bind,rw,exec "$ROM_TARGET" || exit 1
 
 mkdir -p "$BIOS_TARGET" || exit 1
 while [ ! "$BIOS_TARGET" -ef "$BIOS_SOURCE" ]; do
-	if mountpoint -q "$BIOS_TARGET"; then
-		umount "$BIOS_TARGET" || exit 1
-	else
-		mount --bind "$BIOS_SOURCE" "$BIOS_TARGET" || exit 1
+	if umount "$BIOS_TARGET" 2>/dev/null; then
+		continue
 	fi
+	mount --bind "$BIOS_SOURCE" "$BIOS_TARGET" || exit 1
 done
 
 [ "$ROM_TARGET" -ef "$ROM_SOURCE" ] || exit 1
