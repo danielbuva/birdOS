@@ -82,6 +82,23 @@ be pushed into the launcher.
 5. Bake the verified 128 ms setting into the reproducible final firmware and
    remove the experimental installer.
 
+## ROCKNIX fake-suspend distinction
+
+The exact H700 ROCKNIX profile currently disables real kernel suspend and uses
+`rocknix-fake-suspend` from its input worker. That release policy deliberately
+ignores power-key events while `lid-closed.flag` exists; opening the lid is the
+expected resume action. The final power acceptance sweep must therefore test
+three separate interactions rather than report all of them as one wake path:
+
+1. With the lid open, press power to fake-suspend and press it again to resume.
+2. Close the lid; a power press while it remains closed is expected to do
+   nothing under the stock policy.
+3. Open the lid; this must resume the device.
+
+Only failures in cases 1 or 3 are compatibility defects. Allowing power to
+override a closed lid would be a deliberate Bird policy change with the risk of
+lighting the panel inside the closed shell, not a kernel-wake optimization.
+
 ## References
 
 - [X-Powers AXP2101 datasheet](https://bbs.aw-ol.com/assets/uploads/files/1662612785463-c9f5c599-8055-43f4-ae16-690bbc0536e6-axp2101_datasheet_v1.0_en.pdf)

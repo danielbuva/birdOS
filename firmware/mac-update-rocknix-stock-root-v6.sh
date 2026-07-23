@@ -1,16 +1,17 @@
 #!/bin/sh
-# Guarded deployment of the compatibility-first stock-root milestone. p5 and
-# the user's library stay untouched. The exact ROCKNIX writable filesystem is
-# copied as a loop image on p6, and the accepted v5.4 kernel remains on p1 as
-# an automatic fallback.
+# Guarded deployment of the compatibility-first stock-root milestone. P5 and
+# content bytes stay untouched; v6.2 moves Port directories within p6 into the
+# provider's native layout. The exact ROCKNIX writable filesystem remains a
+# loop image on p6, and the accepted v5.4 kernel remains on p1 as a fallback.
 
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 BIRD=${BIRD:-/Volumes/BIRD}
 DATA=${DATA:-/Volumes/dani-sp}
-CANDIDATE=${CANDIDATE:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.1/card}
+CANDIDATE=${CANDIDATE:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.2/card}
 STORAGE_SOURCE=${STORAGE_SOURCE:-/Users/dani/rocknix-reference-result/storage.ext4}
+PORTMASTER_ARCHIVE=${PORTMASTER_ARCHIVE:-$ROOT/kernel/work/rocknix-system-exact-20260701/usr/config/PortMaster/release/PortMaster.zip}
 RUNTIME=$DATA/MUOS/runtime/ROCKNIX-SYSTEM
 STORAGE_TARGET=$DATA/MUOS/runtime/ROCKNIX-STORAGE
 
@@ -19,6 +20,8 @@ ROCKNIX_KERNEL_SHA=af4e75cb30b097ee5764764eb056d686bc00c6bd03fefece26b0ebbaa7fbb
 DTB_SHA=f3a4273986d6e4f431b110cead8aa19e8da52ff08c64c4b204ef9664d28b5c31
 RUNTIME_SHA=6e2112fc9dc81d5fee944f2534346a8f20674f40e23a0a85bb795218d31eadac
 STORAGE_SHA=12affdad7bc2042cb590fea60fc015a7ee8d4374ebcc3b1c11098a64b9ffa3be
+PORTMASTER_ARCHIVE_SHA=9d6f25d461afced95569923a57c6a9c42df225190c043d74fe2ec0edcf40a477
+PORTMASTER_PUGWASH_SHA=3b9ea60ccf202f64155c669fd0b2b18fcb0e5c72e293ad0c61f7c2f2fdcb51d8
 STORAGE_BYTES=268435456
 BIRD_BYTES=134217728
 BIRD_OFFSET=16777216
@@ -59,6 +62,13 @@ ext4_magic() {
 [ -d "$CANDIDATE" ] || fail "built candidate missing: $CANDIDATE"
 [ -f "$STORAGE_SOURCE" ] || fail 'reference ROCKNIX storage image missing'
 [ -f "$RUNTIME" ] || fail 'exact ROCKNIX runtime missing on card'
+for FILE in post-flash.sh mount-storage.sh SYSTEM KERNEL dtb.img \
+	extlinux/extlinux.conf extlinux/extlinux.fallback.conf \
+	bird/090-ui_service bird/dani-launcher bird/essway.service \
+	bird/rocknix.target bird/supervisor.sh bird/run-content.sh \
+	bird/prepare-ports.sh; do
+	[ -f "$CANDIDATE/$FILE" ] || fail "candidate payload missing: $FILE"
+done
 
 WHOLE=$(field "$BIRD" 'Part of Whole')
 [ -n "$WHOLE" ] || fail 'cannot identify card parent'
@@ -81,6 +91,42 @@ WHOLE=$(field "$BIRD" 'Part of Whole')
 [ "$(sha256 "$CANDIDATE/dtb.img")" = "$DTB_SHA" ] || fail 'candidate DTB changed'
 [ "$(sha256 "$RUNTIME")" = "$RUNTIME_SHA" ] || fail 'card SYSTEM changed'
 [ "$(sha256 "$STORAGE_SOURCE")" = "$STORAGE_SHA" ] || fail 'reference STORAGE changed'
+
+# The old muOS layout separated launcher scripts in ROMS/Ports from their game
+# directories in /ports. ROCKNIX's native contract keeps both under one tree.
+# Validate every rename before changing the card; all moves stay on the same
+# ExFAT filesystem and therefore do not recopy the 16 GiB library.
+LEGACY_PORTS=$DATA/ports
+NATIVE_PORTS=$DATA/ROMS/Ports
+if [ -d "$LEGACY_PORTS" ]; then
+	find "$LEGACY_PORTS" -mindepth 1 -maxdepth 1 -name '.*' | grep -q . && \
+		fail 'hidden legacy Port entry requires manual review'
+	for ENTRY in "$LEGACY_PORTS"/*; do
+		[ -e "$ENTRY" ] || break
+		[ -d "$ENTRY" ] || fail "legacy Port entry is not a directory: $ENTRY"
+		NAME=${ENTRY##*/}
+		[ ! -e "$NATIVE_PORTS/$NAME" ] || fail "native Port collision: $NAME"
+	done
+fi
+
+portmaster_ready() {
+	[ -f "$NATIVE_PORTS/PortMaster/.bird-release-complete" ] &&
+	[ -f "$NATIVE_PORTS/PortMaster/pugwash" ] &&
+	[ -f "$NATIVE_PORTS/PortMaster/PortMaster.sh" ] &&
+	[ -f "$NATIVE_PORTS/PortMaster/control.txt" ] &&
+	[ -f "$NATIVE_PORTS/PortMaster/mod_ROCKNIX.txt" ] &&
+	[ -f "$NATIVE_PORTS/PortMaster/funcs.txt" ] &&
+	[ -f "$NATIVE_PORTS/PortMaster/oga_controls" ] &&
+	[ -f "$NATIVE_PORTS/PortMaster/harbourmaster" ]
+}
+
+if ! portmaster_ready; then
+	[ -f "$PORTMASTER_ARCHIVE" ] || fail 'exact PortMaster archive missing'
+	[ "$(sha256 "$PORTMASTER_ARCHIVE")" = "$PORTMASTER_ARCHIVE_SHA" ] || \
+		fail 'exact PortMaster archive changed'
+	/usr/bin/unzip -tq "$PORTMASTER_ARCHIVE" >/dev/null || \
+		fail 'exact PortMaster archive failed integrity test'
+fi
 
 CURRENT=$(sha256 "$BIRD/KERNEL")
 case "$CURRENT" in
@@ -107,11 +153,48 @@ else
 	mv -f "$DATA/MUOS/runtime/.ROCKNIX-STORAGE.new" "$STORAGE_TARGET"
 fi
 
+mkdir -p "$NATIVE_PORTS"
+# Seed the exact release provider now so the first game does not pay its unzip
+# cost. Complete and verify this transaction before moving any game directory.
+# prepare-ports.sh reproduces the bootstrap on-device for a fresh or repaired
+# card and then attaches already-downloaded large runtime assets.
+if ! portmaster_ready; then
+	PORTMASTER_TEMP=$NATIVE_PORTS/.PortMaster.bird-new
+	rm -rf "$PORTMASTER_TEMP"
+	mkdir -p "$PORTMASTER_TEMP"
+	/usr/bin/unzip -q "$PORTMASTER_ARCHIVE" -d "$PORTMASTER_TEMP" || \
+		fail 'exact PortMaster extraction failed'
+	for REQUIRED in pugwash PortMaster.sh control.txt mod_ROCKNIX.txt \
+		funcs.txt oga_controls harbourmaster; do
+		[ -f "$PORTMASTER_TEMP/PortMaster/$REQUIRED" ] || \
+			fail "exact PortMaster file missing after extraction: $REQUIRED"
+	done
+	[ "$(sha256 "$PORTMASTER_TEMP/PortMaster/pugwash")" = "$PORTMASTER_PUGWASH_SHA" ] || \
+		fail 'extracted exact PortMaster provider changed'
+	touch "$PORTMASTER_TEMP/PortMaster/.bird-release-complete"
+	rm -rf "$NATIVE_PORTS/PortMaster"
+	mv "$PORTMASTER_TEMP/PortMaster" "$NATIVE_PORTS/PortMaster"
+	rmdir "$PORTMASTER_TEMP" || fail 'PortMaster temporary directory remained'
+fi
+portmaster_ready || fail 'installed PortMaster provider is incomplete'
+
+MOVED_PORTS=0
+if [ -d "$LEGACY_PORTS" ]; then
+	for ENTRY in "$LEGACY_PORTS"/*; do
+		[ -e "$ENTRY" ] || break
+		NAME=${ENTRY##*/}
+		[ ! -e "$NATIVE_PORTS/$NAME" ] || fail "native Port collision during move: $NAME"
+		mv "$ENTRY" "$NATIVE_PORTS/"
+		MOVED_PORTS=$((MOVED_PORTS + 1))
+	done
+	rmdir "$LEGACY_PORTS" || fail 'legacy Port directory did not become empty'
+fi
+
 mkdir -p "$BIRD/bird" "$BIRD/extlinux" "$DATA/MUOS/Bird/boot-state"
 for FILE in post-flash.sh mount-storage.sh SYSTEM; do
 	COPYFILE_DISABLE=1 cp -f "$CANDIDATE/$FILE" "$BIRD/$FILE"
 done
-for FILE in 090-ui_service dani-launcher essway.service rocknix.target supervisor.sh run-content.sh; do
+for FILE in 090-ui_service dani-launcher essway.service rocknix.target supervisor.sh run-content.sh prepare-ports.sh; do
 	COPYFILE_DISABLE=1 cp -f "$CANDIDATE/bird/$FILE" "$BIRD/bird/$FILE"
 done
 COPYFILE_DISABLE=1 cp -f "$CANDIDATE/extlinux/extlinux.fallback.conf" \
@@ -132,7 +215,10 @@ xattr -c "$BIRD/KERNEL" "$BIRD/KERNEL.fallback" "$BIRD/dtb.img" \
 	"$BIRD/post-flash.sh" "$BIRD/mount-storage.sh" "$BIRD/SYSTEM" \
 	"$BIRD/extlinux/extlinux.conf" "$BIRD/extlinux/extlinux.fallback.conf" \
 	"$BIRD/bird"/* "$STORAGE_TARGET" 2>/dev/null || :
+xattr -cr "$NATIVE_PORTS/PortMaster" 2>/dev/null || :
 find "$BIRD/bird" "$BIRD/extlinux" -name '._*' -delete
+find "$NATIVE_PORTS/PortMaster" -name '._*' -delete
+find "$NATIVE_PORTS" -maxdepth 1 -name '._PortMaster' -delete
 find "$BIRD" -maxdepth 1 -name '._KERNEL*' -delete
 find "$BIRD" -maxdepth 1 -name '._dtb.img' -delete
 find "$BIRD" -maxdepth 1 -name '._post-flash.sh' -delete
@@ -148,8 +234,9 @@ sync
 [ "$(ext4_magic "$STORAGE_TARGET")" = 53ef ] || fail 'installed STORAGE ext4 verification failed'
 cmp "$CANDIDATE/extlinux/extlinux.conf" "$BIRD/extlinux/extlinux.conf" || fail 'active extlinux verification failed'
 
-printf 'Bird stock-root v6.1 staged on /dev/%s.\n' "$WHOLE"
-printf 'p5 and the p6 library were not modified.\n'
+printf 'Bird stock-root v6.2 staged on /dev/%s.\n' "$WHOLE"
+printf 'Moved %s Port data directories into the native ROCKNIX tree.\n' "$MOVED_PORTS"
+printf 'p5 was not modified; p6 content bytes were preserved by same-volume moves.\n'
 printf 'Exact ROCKNIX KERNEL: %s\n' "$ROCKNIX_KERNEL_SHA"
 printf 'Automatic fallback KERNEL: %s\n' "$V54_KERNEL_SHA"
 printf 'Test broad compatibility first; boot timing is intentionally deferred.\n'

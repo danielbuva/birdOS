@@ -13,6 +13,7 @@ LOG_DIR=/storage/bird-data/MUOS/Bird/log
 LOG=$LOG_DIR/stock-root-content-latest.log
 SWAY_SOCKET=/var/run/0-runtime-dir/sway-ipc.0.sock
 PORTMASTER_ONLY=0
+PORT_PREP=/storage/.config/bird/prepare-ports.sh
 
 mkdir -p "$LOG_DIR" /run/bird
 
@@ -85,6 +86,7 @@ rocknix_tuple() {
 
 run_selected() {
 	if [ "$PORTMASTER_ONLY" -eq 1 ]; then
+		"$PORT_PREP" || return 1
 		/usr/bin/start_portmaster.sh
 		return
 	fi
@@ -95,12 +97,21 @@ run_selected() {
 				"--core=$CORE" "--emulator=$EMULATOR" --controllers=""
 			;;
 		3)
-			# Installed muOS-era PortMaster scripts contain /mnt/mmc paths.
-			# Translate only the selected script into tmpfs; ROCKNIX still owns
-			# its runtime, mapper, controller and performance policy.
-			sed 's#/mnt/mmc#/storage/bird-data#g' "$CONTENT" >/run/bird/port-launch.sh
-			chmod 0755 /run/bird/port-launch.sh
-			/usr/bin/runemu.sh /run/bird/port-launch.sh -Pports \
+			"$PORT_PREP" || return 1
+			PORT_SCRIPT=/storage/roms/ports/${CONTENT##*/}
+			# This one pre-existing custom launcher is intentionally retained
+			# until its game is reinstalled from the exact provider. Preserve its
+			# basename while translating only its two old storage roots.
+			if [ "${CONTENT##*/}" = StardewValley.sh ]; then
+				mkdir -p /run/bird/ports
+				PORT_SCRIPT=/run/bird/ports/StardewValley.sh
+				sed \
+					-e 's#/mnt/mmc/MUOS#/storage/bird-data/MUOS#g' \
+					-e 's#/mnt/mmc/ports#/storage/roms/ports#g' \
+					"$CONTENT" >"$PORT_SCRIPT" || return 1
+				chmod 0755 "$PORT_SCRIPT" || return 1
+			fi
+			/usr/bin/runemu.sh "$PORT_SCRIPT" -Pports \
 				--core=portmaster --emulator=portmaster --controllers=""
 			;;
 		6) /usr/bin/start_mplayer.sh "$CONTENT" ;;
@@ -116,8 +127,14 @@ run_selected() {
 			"$KIND" "$REQUESTED_CORE" "$NAME" "$HOST_PATH" "$CONTENT"
 	fi
 	start_sway || exit 1
+	: >/var/log/exec.log
 	run_selected
 	STATUS=$?
+	if [ -s /var/log/exec.log ]; then
+		printf '%s\n' '--- ROCKNIX application log (last 256 KiB) ---'
+		tail -c 262144 /var/log/exec.log
+		printf '%s\n' '--- end ROCKNIX application log ---'
+	fi
 	stop_sway
 	printf 'Bird ROCKNIX session result=%s uptime=' "$STATUS"
 	cut -d ' ' -f 1 /proc/uptime

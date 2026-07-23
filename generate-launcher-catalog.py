@@ -142,7 +142,15 @@ def discover(
         system_root = rom_root / system.directory
         entries: list[tuple[str, str, str]] = []
         if system_root.is_dir():
-            for path in system_root.rglob("*"):
+            # PortMaster's native layout keeps each game's data and its own
+            # helper scripts beside the top-level launchers. Only the latter
+            # are menu entries; ROM systems may still use nested directories.
+            candidates = (
+                system_root.iterdir()
+                if system.directory == "Ports"
+                else system_root.rglob("*")
+            )
+            for path in candidates:
                 if not path.is_file():
                     continue
                 relative_path = path.relative_to(rom_root)

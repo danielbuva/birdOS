@@ -31,13 +31,14 @@ must serve this one device and this one experience.
 - Current clean-root LED-on stopwatch result: approximately 2.5 seconds. V5.2
   recorded pixels at 1.137 seconds and direct input ready at 1.294 seconds of
   Linux uptime; the remaining stopwatch interval is primarily pre-kernel.
-- Stock-root v6.1 is staged as a deliberate compatibility baseline, not a timing
-  candidate. It restores the byte-identical ROCKNIX kernel/SYSTEM/STORAGE set,
+- Stock-root v6.2 is staged as a deliberate compatibility baseline, not a timing
+  candidate. It retains the byte-identical ROCKNIX kernel/SYSTEM/STORAGE set,
   systemd, udev, D-Bus, PipeWire, WirePlumber, Sway-on-content and all H700
-  quirks. Bird starts through ROCKNIX's normal UI-service slot after that graph
-  is ready. The first physical boot proved the menu and PortMaster handoff but
-  found that per-item readiness still tested cached `/mnt/mmc` paths. V6.1 maps
-  only those live probes into the mounted ROCKNIX namespace.
+  quirks. The v6.1 physical gate restored near-stock behavior across tested
+  RetroArch systems, Dreamcast, DraStic, PPSSPP, MP3, MPV, brightness and lid
+  close. V6.2 closes the remaining shared Ports failure by replacing muOS's
+  split script/data layout with ROCKNIX's native `/roms/ports` tree, seeding the
+  exact release PortMaster provider and preserving each launcher's basename.
 - Fixed-root-coordinator behavior test: all functionality passed with
   sub-3.8-second stopwatch boots. Its latest trace records an input-ready frame
   at 2.06 seconds, system-ready at 4.24 and audio ready at 6.02.
@@ -107,7 +108,7 @@ card-side patches.
 
 ## Current changes
 
-- The active experiment is stock-root v6.1. It stops fixing isolated ABI failures
+- The active experiment is stock-root v6.2. It stops fixing isolated ABI failures
   in the clean root and restores the coherent ROCKNIX application environment
   first. Its release KERNEL and SYSTEM are byte-identical to 20260701, and its
   writable STORAGE starts from the captured exact configured ext4 image.
@@ -116,14 +117,27 @@ card-side patches.
   the selected boot UI, and starts the unchanged Sway compositor on demand
   around content. Selections use the release's own `runemu.sh`, platform/core
   identities, standalone wrappers and configuration generators.
-- P5 and the large library remain untouched. The exact writable filesystem is
-  loop-mounted from p6; the existing ROM and BIOS trees are bind-mounted into
-  its expected namespace. The accepted v5.4 clean-root kernel is retained on
-  p1 and automatically selected after two failed stock-root starts.
+- P5 and all content bytes remain untouched. V6.2 changes only Port directory
+  metadata within p6 to create ROCKNIX's native unified tree; the ROM and BIOS
+  trees are bind-mounted into its expected namespace. The accepted v5.4
+  clean-root kernel is retained on p1 and automatically selected after two
+  failed stock-root starts.
 - Cached catalogue identities remain provider-independent. Bird now resolves
   `/mnt/mmc` to `/storage/bird-data` for live file checks, while the separate
   runner performs the same mapping at application handoff. Existing writable
   ROCKNIX storage is preserved across Bird-only deployments.
+- Port preparation remains a separate, selection-time process. It does not run
+  in Bird and adds nothing to menu boot. The Mac updater performs same-volume
+  metadata moves for the existing 16 GiB Port library; the on-device helper
+  synchronizes only the exact ROCKNIX control files and attaches already
+  downloaded large runtimes when the first Port or PortMaster is opened.
+- The current movie volume overlap is stock ROCKNIX policy, not a launcher
+  regression: the global input worker and MPV both receive VOL+/VOL-, while
+  MPV's release input file assigns L1/R1 to private player volume. Mapping and
+  H700 video-frame pacing are explicitly deferred to the media tuning pass.
+- H700 real kernel suspend remains disabled by ROCKNIX. Lid close uses its
+  userspace fake-suspend policy, where power is intentionally ignored while the
+  lid is closed and opening the lid is the expected wake action.
 - Once the broad physical compatibility gate passes, Bird moves progressively
   earlier again and services are removed or deferred one measured closure at a
   time. V5.4 remains the accepted speed architecture and evidence base, not

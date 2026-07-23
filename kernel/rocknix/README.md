@@ -733,6 +733,34 @@ displayed `WAITING FOR ... STORAGE` and never emitted a request. V6.1 adds only
 the live-prefix resolver above; PortMaster had already proved the supervisor,
 Sway handoff and unmodified application stack could start.
 
+The v6.1 physical gate then restored the coherent result the reset was meant
+to establish. Tested libretro systems, Dreamcast, DraStic, PPSSPP, MP3, MPV,
+brightness and lid close behaved at or near the exact release baseline. The
+remaining common failure was not another kernel or ABI gap: the imported muOS
+library split 63 launch scripts under `ROMS/Ports` from 58 game-data directories
+under `/ports`. ROCKNIX's `control.txt` instead resolves both through one
+`/roms/ports` tree, and its release runner assumes the bundled PortMaster
+provider has already been initialized there.
+
+Stock-root v6.2 makes that contract native. The guarded Mac update validates
+all names, moves the 58 directories within the same ExFAT volume and seeds the
+checksummed `2026.05.04-1202` release provider. This changes directory metadata
+rather than copying the 16 GiB payload. `prepare-ports.sh` is a separate
+selection-time process—not launcher or boot work—and reproduces only the setup
+half of release `start_portmaster.sh`. It synchronizes release control files
+and bind-attaches only the already downloaded squashfs `libs` after a Port is
+selected. Exact `pugwash`/`harbourmaster` remains free to create its matching
+`exlibs` from the bundled `pylibs.zip`. Normal launchers execute at their native
+basename so exact per-game controller, GPU, display and governor policy works
+again. Only the
+pre-existing custom Stardew launcher receives its two narrowly scoped old-root
+translations until that game is reinstalled from the native provider.
+
+The dispatcher now appends the final 256 KiB of ROCKNIX's `/var/log/exec.log`
+to Bird's persistent latest-session log. This closes a diagnostic blind spot:
+the release runner deliberately redirects application output there, so earlier
+Port crashes looked silent after returning to Bird.
+
 Bird is deliberately no longer in initramfs for this gate. The H700 autostart
 profile selects only the replaced `essway.service`; every other platform quirk
 and common service runs unchanged. Bird draws directly after those services
@@ -761,3 +789,14 @@ and audio, DS layout, PSP, OpenBOR, representative Ports, PortMaster, MP3,
 movie image/controls, system controls, suspend/wake, return and shutdown. Only
 after that passes does work resume on moving Bird before the full graph and
 deferring or removing each known nonessential unit.
+
+The H700 release does not currently enter real kernel suspend. Its platform
+quirk explicitly disables that path and `input_sense` invokes a userspace fake
+suspend instead. Under the release policy, a power press while the lid remains
+closed is intentionally ignored; opening the lid is the resume event. The
+physical gate therefore distinguishes that expected case from power-button
+suspend/resume with the lid open and lid-open wake. MPV's duplicate volume
+response is also release policy: global input changes PipeWire volume while
+the same ungrabbed key reaches MPV, and release `input.conf` maps L1/R1 to player
+volume. Both mapping cleanup and measured H700 video-frame tuning remain after
+the provider compatibility gate.

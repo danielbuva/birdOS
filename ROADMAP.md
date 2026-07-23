@@ -31,7 +31,7 @@ The long-term centerpiece would be a tiny custom launcher—ideally a small stat
 Clean-root v5.4 proved the desired fast architecture but also proved that an
 application stack cannot be reconstructed reliably by copying binaries and
 guessing its hidden service and configuration contract one failure at a time.
-Stock-root v6.1 therefore resets only the software baseline:
+Stock-root v6.2 therefore resets only the software baseline:
 
 - exact ROCKNIX 20260701 KERNEL, DTB, SYSTEM and configured STORAGE;
 - complete systemd, udev, D-Bus, PipeWire, WirePlumber and H700 autostart path;
@@ -39,11 +39,13 @@ Stock-root v6.1 therefore resets only the software baseline:
 - stock Sway and stock `runemu.sh` started only around selected content; and
 - automatic return to the accepted v5.4 clean root after two failed starts.
 
-The first full-stack boot proved Bird input, storage-root readiness and the
-PortMaster service/compositor handoff. It also localized the first integration
-failure: individual cached entries were still opened at `/mnt/mmc`. V6.1
-translates only live readiness probes to `/storage/bird-data`; cached IDs,
-favorites, recents and launch requests remain unchanged.
+The v6.1 full-stack physical gate restored near-stock compatibility across the
+tested emulator, standalone, media, system-control and lid-close paths. Its one
+shared application failure was Ports: muOS kept scripts in `ROMS/Ports` and
+16 GiB of game directories in `/ports`, while ROCKNIX expects one native
+`/roms/ports` tree and a bootstrapped release PortMaster provider. V6.2 performs
+same-filesystem metadata moves into that exact layout, retains per-game script
+identity and records the release application's real diagnostic log.
 
 The gate order is compatibility first, then early Bird handoff, then service
 deferral/removal, then kernel trimming. No component is removed from the full
@@ -103,7 +105,7 @@ application and move everything unrelated to an interactive menu behind it.
 - [x] Remove the next set of redundant fixed-startup work: per-boot
   immutable policy/geometry writes, obsolete update-file cleanup, zero-swap
   probing and the unnecessary squashfs module request.
-- [ ] [clean-root boot gate passed; stock-root v6.1 path fix staged] Bake
+- [ ] [clean-root boot gate passed; stock-root v6.2 Ports closure staged] Bake
   changes into the image and remove the card-side development user-init
   delivery path. The successful path is entirely embedded and does not enter
   p5. V5.0 physically proved the menu at 1.135 seconds, H700 input at 1.290 and
@@ -112,10 +114,23 @@ application and move everything unrelated to an interactive menu behind it.
   controls at roughly 2.5 seconds by stopwatch, then exposed wrong emulator
   choices, absent Ports and software movie presentation. V5.4 remained
   incomplete across DS, PSP, Ports and media because the manually recreated
-  runtime contract was still partial. Stock-root v6.1 restores the entire exact
-  provider before subtraction. Delete recovery partitions and obsolete
+  runtime contract was still partial. Stock-root v6.1 restored the entire exact
+  provider and physically passed DS, PSP, media and broad emulator behavior;
+  v6.2 normalizes the last shared Ports contract before subtraction. Delete
+  recovery partitions and obsolete
   payloads only after the new broad compatibility gate and later optimized
   replacement both pass.
+- [ ] [v6.2 staged] Physically verify representative native Ports: one FRT
+  runtime game, one LÖVE game, one commercial-data game and Stardew; preserve
+  `/var/log/exec.log` after every return so any remaining failures become
+  per-game tuning rather than another common-provider guess.
+- [ ] [measured stock policy] Separate suspend acceptance into three cases:
+  power suspend/resume with lid open, ignored power while lid remains closed,
+  and automatic resume when the lid opens. Do not enable H700 kernel suspend;
+  the exact ROCKNIX profile disables it as broken and uses fake suspend.
+- [ ] [media tuning deferred] Remove duplicate MPV volume ownership, choose
+  intentional L1/R1 actions, and profile decoder/VO drop counters before
+  changing the exact player or kernel video configuration.
 
 ### Layer 2 — early userspace and init
 
