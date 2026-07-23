@@ -10,6 +10,16 @@ CONFIG=/storage/.config/PortMaster
 LEGACY=/storage/bird-data/MUOS/PortMaster
 MARKER=/run/bird/ports-ready
 PROVIDER_MARKER=$PORTMASTER/.bird-release-complete
+FIXED_PORT_ROOT=/storage/bird-data/ROMS/Ports
+FIXED_STORAGE=/storage/.config/bird/fixed-storage.sh
+
+# A restarted compatibility service must never be allowed to leave Ports on a
+# generic ROCKNIX storage view. Repair the fixed namespace before honoring the
+# per-boot provider marker.
+if [ ! "$PORT_ROOT" -ef "$FIXED_PORT_ROOT" ]; then
+	"$FIXED_STORAGE" || exit 1
+fi
+[ "$PORT_ROOT" -ef "$FIXED_PORT_ROOT" ] || exit 1
 
 [ -e "$MARKER" ] && exit 0
 
@@ -71,6 +81,13 @@ cp -f "$CONFIG/gamecontrollerdb.txt" \
 	"$PORTMASTER/gamecontrollerdb.txt" || exit 1
 cp -f /usr/bin/oga_controls* "$PORTMASTER/" || exit 1
 
+# Exact PortMaster.sh repairs its archive modes before entering the UI. Do the
+# same only when needed before Bird launches a game directly.
+if [ ! -x "$PORTMASTER/gptokeyb" ] || \
+	[ ! -x "$PORTMASTER/runtimes/love_11.5/love.aarch64" ]; then
+	chmod -R a+x "$PORTMASTER" || exit 1
+fi
+
 # Keep already-downloaded large PortMaster runtimes available without copying
 # them or replacing ROCKNIX's provider. This bind is created after menu
 # interaction and lives only for the running boot. `exlibs` deliberately stays
@@ -80,6 +97,14 @@ if [ -d "$LEGACY/libs" ]; then
 	if ! mountpoint -q "$PORTMASTER/libs"; then
 		mount --bind "$LEGACY/libs" "$PORTMASTER/libs" || exit 1
 	fi
+fi
+
+printf '%s\n' 'Bird Ports executable mount state:'
+grep -E ' /storage/(bird-data|roms) ' /proc/mounts || :
+if [ ! -x "$PORTMASTER/gptokeyb" ]; then
+	printf 'Bird Ports provider is not executable: %s\n' \
+		"$PORTMASTER/gptokeyb"
+	exit 126
 fi
 
 touch "$MARKER" || exit 1

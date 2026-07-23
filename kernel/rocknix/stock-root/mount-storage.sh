@@ -26,16 +26,27 @@ mount --bind /storage/bird-data/MUOS/bios /storage/roms/bios || {
 
 # These are deliberately copied after /storage exists. Bird is a normal
 # userspace UI service in this compatibility milestone, not initramfs payload.
-for FILE in dani-launcher supervisor.sh run-content.sh prepare-ports.sh; do
+for FILE in dani-launcher supervisor.sh run-content.sh prepare-ports.sh \
+	fixed-storage.sh; do
 	cp -f "/flash/bird/$FILE" "/storage/.config/bird/$FILE" || return 1
 done
 chmod 0755 /storage/.config/bird/dani-launcher \
 	/storage/.config/bird/supervisor.sh \
 	/storage/.config/bird/run-content.sh \
-	/storage/.config/bird/prepare-ports.sh
+	/storage/.config/bird/prepare-ports.sh \
+	/storage/.config/bird/fixed-storage.sh
 
-# Replace only the UI service implementation. All ROCKNIX targets, services,
-# autostart scripts, platform quirks and application launch machinery remain.
+# Replace the generic partition scanner with this device's fixed storage view.
+# Its original service name preserves ROCKNIX's ordering contract while doing
+# no probing and no launcher work.
+mount --bind /flash/bird/rocknix-automount.service \
+	/sysroot/usr/lib/systemd/system/rocknix-automount.service || {
+	error bird-fixed-storage-service "Could not install fixed storage service"
+	return 1
+}
+
+# Replace only the UI implementation after storage. All other ROCKNIX targets,
+# platform quirks and application launch machinery remain.
 mount --bind /flash/bird/essway.service \
 	/sysroot/usr/lib/systemd/system/essway.service || {
 	error bird-ui-service "Could not install Bird UI service"

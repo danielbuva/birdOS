@@ -11,7 +11,10 @@ BIRD_STATE_REL=MUOS/Bird/boot-state
 BIRD_ATTEMPTS_REL=$BIRD_STATE_REL/stock-root-attempts
 
 mkdir -p "$BIRD_DATA_MOUNT"
-mount -t exfat -o rw,noatime "$BIRD_DATA_DEVICE" "$BIRD_DATA_MOUNT" || {
+# ExFAT has no stored Unix mode bits. The explicit masks reproduce the proven
+# muOS mount contract and make PortMaster's scripts and native payloads 0755.
+mount -t exfat -o rw,exec,noatime,fmask=0022,dmask=0022 \
+	"$BIRD_DATA_DEVICE" "$BIRD_DATA_MOUNT" || {
 	error bird-data "Could not mount $BIRD_DATA_DEVICE"
 	return 1
 }

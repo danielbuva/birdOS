@@ -761,6 +761,37 @@ to Bird's persistent latest-session log. This closes a diagnostic blind spot:
 the release runner deliberately redirects application output there, so earlier
 Port crashes looked silent after returning to Bird.
 
+The v6.2 physical gate then showed that layout alone was insufficient: all
+Ports, including Stardew, returned immediately. ROCKNIX autostart synchronously
+started its generic automounter after Bird's initramfs bind. That service
+unmounted `/storage/roms`, skipped p6 because it was already mounted at
+`/storage/bird-data`, and published its internal writable-image game tree.
+Direct Bird content paths continued to work, which isolated the regression to Port scripts' native
+`/roms/ports` contract.
+
+Stock-root v6.3 replaces that generic scanner at its existing ordered systemd
+boundary with `fixed-storage.sh`. It performs no device discovery: it verifies
+that `/storage/roms` is the already-mounted p6 `ROMS` directory, repairs the
+bind if necessary, explicitly retains executable mount policy and republishes
+the fixed BIOS tree. The process remains separate from Bird and finishes before
+the UI service, so the launcher stays storage-policy-free. Port setup also
+checks this identity before honoring its per-boot ready marker. ExFAT is mounted
+with explicit `exec,fmask=0022,dmask=0022`, matching the proven muOS execution
+contract for scripts and native Port payloads.
+
+V6.3 also preserves every content session in a unique bounded log and installs
+a four-line MPV input overlay only when media is selected. Physical volume and
+L1/R1 player-volume bindings are ignored by MPV, while the exact release
+`start_mplayer.sh`, hardware decode policy and remaining movie controls stay
+unchanged. The confirmed power/lid fake-suspend cases are now closed.
+
+The automatic fallback remains deliberately a first-frame liveness guard, not
+a post-menu application gate. Bird reads its catalogue directly from p6 and can
+still paint if the fixed compatibility namespace fails; in that case the
+storage service records its failure and Port preparation refuses the wrong
+tree. This preserves the menu-first architecture while making the physical
+Ports test, rather than a hidden reboot, the acceptance signal.
+
 Bird is deliberately no longer in initramfs for this gate. The H700 autostart
 profile selects only the replaced `essway.service`; every other platform quirk
 and common service runs unchanged. Bird draws directly after those services
@@ -795,8 +826,7 @@ quirk explicitly disables that path and `input_sense` invokes a userspace fake
 suspend instead. Under the release policy, a power press while the lid remains
 closed is intentionally ignored; opening the lid is the resume event. The
 physical gate therefore distinguishes that expected case from power-button
-suspend/resume with the lid open and lid-open wake. MPV's duplicate volume
-response is also release policy: global input changes PipeWire volume while
-the same ungrabbed key reaches MPV, and release `input.conf` maps L1/R1 to player
-volume. Both mapping cleanup and measured H700 video-frame tuning remain after
-the provider compatibility gate.
+suspend/resume with the lid open and lid-open wake. All three cases passed on
+v6.2. V6.3 removes the release's duplicate MPV volume ownership without
+replacing its player; measured H700 video-frame tuning remains after the
+provider compatibility gate.

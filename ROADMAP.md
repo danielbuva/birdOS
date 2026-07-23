@@ -31,7 +31,7 @@ The long-term centerpiece would be a tiny custom launcher—ideally a small stat
 Clean-root v5.4 proved the desired fast architecture but also proved that an
 application stack cannot be reconstructed reliably by copying binaries and
 guessing its hidden service and configuration contract one failure at a time.
-Stock-root v6.2 therefore resets only the software baseline:
+Stock-root v6.3 therefore resets only the software baseline:
 
 - exact ROCKNIX 20260701 KERNEL, DTB, SYSTEM and configured STORAGE;
 - complete systemd, udev, D-Bus, PipeWire, WirePlumber and H700 autostart path;
@@ -43,9 +43,13 @@ The v6.1 full-stack physical gate restored near-stock compatibility across the
 tested emulator, standalone, media, system-control and lid-close paths. Its one
 shared application failure was Ports: muOS kept scripts in `ROMS/Ports` and
 16 GiB of game directories in `/ports`, while ROCKNIX expects one native
-`/roms/ports` tree and a bootstrapped release PortMaster provider. V6.2 performs
+`/roms/ports` tree and a bootstrapped release PortMaster provider. V6.2 performed
 same-filesystem metadata moves into that exact layout, retains per-game script
-identity and records the release application's real diagnostic log.
+identity and records the release application's real diagnostic log. Its
+physical gate exposed a second shared cause: ROCKNIX's generic automounter
+replaced Bird's p6 view with its internal writable-image game tree. V6.3
+replaces that one service with a deterministic fixed-p6 assertion and retains
+the same ordering.
 
 The gate order is compatibility first, then early Bird handoff, then service
 deferral/removal, then kernel trimming. No component is removed from the full
@@ -105,7 +109,7 @@ application and move everything unrelated to an interactive menu behind it.
 - [x] Remove the next set of redundant fixed-startup work: per-boot
   immutable policy/geometry writes, obsolete update-file cleanup, zero-swap
   probing and the unnecessary squashfs module request.
-- [ ] [clean-root boot gate passed; stock-root v6.2 Ports closure staged] Bake
+- [ ] [clean-root boot gate passed; stock-root v6.3 storage closure staged] Bake
   changes into the image and remove the card-side development user-init
   delivery path. The successful path is entirely embedded and does not enter
   p5. V5.0 physically proved the menu at 1.135 seconds, H700 input at 1.290 and
@@ -116,21 +120,24 @@ application and move everything unrelated to an interactive menu behind it.
   incomplete across DS, PSP, Ports and media because the manually recreated
   runtime contract was still partial. Stock-root v6.1 restored the entire exact
   provider and physically passed DS, PSP, media and broad emulator behavior;
-  v6.2 normalizes the last shared Ports contract before subtraction. Delete
+  v6.2 normalized the native Ports layout; v6.3 removes the generic automount
+  namespace collision before subtraction. Delete
   recovery partitions and obsolete
   payloads only after the new broad compatibility gate and later optimized
   replacement both pass.
-- [ ] [v6.2 staged] Physically verify representative native Ports: one FRT
+- [ ] [v6.3 staged] Physically verify representative native Ports: one FRT
   runtime game, one LÖVE game, one commercial-data game and Stardew; preserve
   `/var/log/exec.log` after every return so any remaining failures become
   per-game tuning rather than another common-provider guess.
-- [ ] [measured stock policy] Separate suspend acceptance into three cases:
+- [x] [v6.2 physical gate passed] Separate suspend acceptance into three cases:
   power suspend/resume with lid open, ignored power while lid remains closed,
   and automatic resume when the lid opens. Do not enable H700 kernel suspend;
   the exact ROCKNIX profile disables it as broken and uses fake suspend.
-- [ ] [media tuning deferred] Remove duplicate MPV volume ownership, choose
-  intentional L1/R1 actions, and profile decoder/VO drop counters before
-  changing the exact player or kernel video configuration.
+- [ ] [v6.3 system-only policy staged; pacing deferred] Remove duplicate MPV
+  volume ownership without replacing the exact player. Physical VOL+/VOL- and
+  L1/R1 player volume are ignored inside MPV; verify the remaining stock movie
+  controls, then profile decoder/VO drop counters before changing the player or
+  kernel video configuration.
 
 ### Layer 2 — early userspace and init
 

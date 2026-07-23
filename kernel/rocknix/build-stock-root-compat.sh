@@ -9,7 +9,7 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 SOURCE=${SOURCE:-/Volumes/ROCKNIX}
 STORAGE=${STORAGE:-/Users/dani/rocknix-reference-result/storage.ext4}
-OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.2}
+OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.3}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
 LLD=${LLD:-/opt/homebrew/opt/lld/bin/ld.lld}
 READELF=${READELF:-/opt/homebrew/opt/llvm/bin/llvm-readelf}
@@ -73,9 +73,13 @@ cp -fp "$ROOT/kernel/rocknix/stock-root/post-flash.sh" \
 	"$OUTPUT/card/post-flash.sh"
 cp -fp "$ROOT/kernel/rocknix/stock-root/mount-storage.sh" \
 	"$OUTPUT/card/mount-storage.sh"
-for FILE in 090-ui_service essway.service rocknix.target supervisor.sh run-content.sh prepare-ports.sh; do
+for FILE in 090-ui_service essway.service rocknix.target \
+	rocknix-automount.service supervisor.sh run-content.sh prepare-ports.sh \
+	fixed-storage.sh; do
 	cp -fp "$ROOT/kernel/rocknix/stock-root/$FILE" "$OUTPUT/card/bird/$FILE"
 done
+cp -fp "$ROOT/kernel/rocknix/stock-root/mpv-input.conf" \
+	"$OUTPUT/card/bird/mpv-input.conf"
 cp -fp "$ROOT/kernel/rocknix/stock-root/extlinux.conf" \
 	"$OUTPUT/card/extlinux/extlinux.conf"
 cp -fp "$ROOT/kernel/rocknix/stock-root/extlinux.fallback.conf" \
@@ -84,14 +88,16 @@ touch "$OUTPUT/card/SYSTEM"
 chmod 0755 "$OUTPUT/card/post-flash.sh" "$OUTPUT/card/mount-storage.sh" \
 	"$OUTPUT/card/bird/090-ui_service" \
 	"$OUTPUT/card/bird/supervisor.sh" "$OUTPUT/card/bird/run-content.sh" \
-	"$OUTPUT/card/bird/prepare-ports.sh"
+	"$OUTPUT/card/bird/prepare-ports.sh" \
+	"$OUTPUT/card/bird/fixed-storage.sh"
 
 for SCRIPT in "$OUTPUT/card/post-flash.sh" \
 	"$OUTPUT/card/mount-storage.sh" \
 	"$OUTPUT/card/bird/090-ui_service" \
 	"$OUTPUT/card/bird/supervisor.sh" \
 	"$OUTPUT/card/bird/run-content.sh" \
-	"$OUTPUT/card/bird/prepare-ports.sh"; do
+	"$OUTPUT/card/bird/prepare-ports.sh" \
+	"$OUTPUT/card/bird/fixed-storage.sh"; do
 	bash -n "$SCRIPT" || fail "shell syntax failed: $SCRIPT"
 done
 
@@ -99,6 +105,11 @@ done
 [ "$(sha256 "$OUTPUT/card/dtb.img")" = "$DTB_SHA" ] || fail 'copied DTB changed'
 grep -q 'runemu.sh' "$OUTPUT/card/bird/run-content.sh" || fail 'ROCKNIX dispatcher missing'
 grep -q 'PortMaster.zip' "$OUTPUT/card/bird/prepare-ports.sh" || fail 'exact PortMaster bootstrap missing'
+grep -q '^VOLUME_UP ignore$' "$OUTPUT/card/bird/mpv-input.conf" || fail 'MPV volume policy missing'
+grep -q 'ExecStart=/storage/.config/bird/fixed-storage.sh' \
+	"$OUTPUT/card/bird/rocknix-automount.service" || fail 'fixed storage unit missing'
+grep -q 'mount --bind "$ROM_SOURCE" "$ROM_TARGET"' \
+	"$OUTPUT/card/bird/fixed-storage.sh" || fail 'fixed ROM bind missing'
 grep -q 'ExecStart=/storage/.config/bird/supervisor.sh' \
 	"$OUTPUT/card/bird/essway.service" || fail 'Bird UI unit missing'
 grep -q '^UI_SERVICE="essway.service"$' \

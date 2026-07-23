@@ -34,6 +34,15 @@ else
 	esac
 fi
 
+BOOT_ID=$(cut -c 1-8 /proc/sys/kernel/random/boot_id 2>/dev/null || printf boot)
+SESSION_TICK=$(cut -d ' ' -f 1 /proc/uptime | tr -d .)
+if [ "$PORTMASTER_ONLY" -eq 1 ]; then
+	SESSION_KIND=portmaster
+else
+	SESSION_KIND=kind$KIND
+fi
+SESSION_LOG=$LOG_DIR/stock-root-content-$BOOT_ID-$SESSION_TICK-$SESSION_KIND.log
+
 start_sway() {
 	systemctl start sway.service || return 1
 	for _ in $(seq 1 200); do
@@ -49,6 +58,17 @@ stop_sway() {
 		[ ! -S "$SWAY_SOCKET" ] && return 0
 		usleep 20000
 	done
+}
+
+install_mpv_input_policy() {
+	SOURCE=/flash/bird/mpv-input.conf
+	TARGET=/storage/.config/mpv/input.conf
+	[ -f "$SOURCE" ] || return 1
+	mkdir -p /storage/.config/mpv || return 1
+	if ! cmp -s "$SOURCE" "$TARGET"; then
+		cp -f "$SOURCE" "$TARGET" || return 1
+		printf 'Bird MPV system-volume-only policy installed\n'
+	fi
 }
 
 rocknix_tuple() {
@@ -114,7 +134,10 @@ run_selected() {
 			/usr/bin/runemu.sh "$PORT_SCRIPT" -Pports \
 				--core=portmaster --emulator=portmaster --controllers=""
 			;;
-		6) /usr/bin/start_mplayer.sh "$CONTENT" ;;
+		6)
+			install_mpv_input_policy || return 1
+			/usr/bin/start_mplayer.sh "$CONTENT"
+			;;
 		*) return 1 ;;
 	esac
 }
@@ -126,17 +149,22 @@ run_selected() {
 		printf 'kind=%s core=%s name=%s host=%s content=%s\n' \
 			"$KIND" "$REQUESTED_CORE" "$NAME" "$HOST_PATH" "$CONTENT"
 	fi
-	start_sway || exit 1
-	: >/var/log/exec.log
-	run_selected
-	STATUS=$?
-	if [ -s /var/log/exec.log ]; then
-		printf '%s\n' '--- ROCKNIX application log (last 256 KiB) ---'
-		tail -c 262144 /var/log/exec.log
-		printf '%s\n' '--- end ROCKNIX application log ---'
+	if start_sway; then
+		: >/var/log/exec.log
+		run_selected
+		STATUS=$?
+		if [ -s /var/log/exec.log ]; then
+			printf '%s\n' '--- ROCKNIX application log (last 256 KiB) ---'
+			tail -c 262144 /var/log/exec.log
+			printf '%s\n' '--- end ROCKNIX application log ---'
+		fi
+		stop_sway
+	else
+		STATUS=1
 	fi
-	stop_sway
 	printf 'Bird ROCKNIX session result=%s uptime=' "$STATUS"
 	cut -d ' ' -f 1 /proc/uptime
-	exit "$STATUS"
-} >"$LOG" 2>&1
+} >"$SESSION_LOG" 2>&1
+
+cp -f "$SESSION_LOG" "$LOG" || :
+exit "$STATUS"
