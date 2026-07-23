@@ -98,20 +98,19 @@ card-side patches.
 
 ## Current changes
 
-- The active experiment is clean-root v5.3. Bird owns boot, UI, launch policy,
+- The active experiment is clean-root v5.4. Bird owns boot, UI, launch policy,
   storage timing and global controls. It does not import a muOS wrapper,
   executable, core, configuration or shared library. ROCKNIX is an immutable
   application/runtime provider and the source of the open kernel/driver chain,
   not Bird's userspace or frontend.
-- V5.3 leaves the accepted first-frame path unchanged and corrects only
-  measured post-menu application policy. It selects the H700-tuned Flycast
-  2021 core, native standalone DraStic and PPSSPP, implements installed Ports
-  through a fixed Bird profile, and gives every app one process-group exit
-  boundary. CPU/GPU performance policy is raised only while emulation, Ports
-  or video is active and is restored on return. MPV now probes SDL
-  KMSDRM/GLES2 presentation without a compositor; proper Cedrus hardware
-  decode remains a later kernel/runtime build. No udev, audio or application
-  daemon moved into the launcher path.
+- V5.4 leaves the accepted first-frame path unchanged and corrects the failures
+  measured in v5.3. It stops writing the H700 GPU devfreq controls after those
+  writes lowered 648 MHz to 600 MHz and triggered PLL warnings, uses DraStic's
+  Panfrost desktop-OpenGL path, repairs PPSSPP's exFAT-safe payload and opaque
+  KMS window, restores MPV's visible direct-DRM output, gives Ports one complete
+  ALSA default endpoint, and consumes the existing lid switch in the separate
+  controls process. No udev, audio or application daemon moved into the
+  launcher path; Cedrus media decoding remains a later kernel/runtime build.
 - Early ROM mount.
 - Frontend/audio readiness gate removed. The session-warm stage is verified:
   menu input was ready at 2.11 seconds, audio started at 3.97, D-Bus completed
@@ -317,9 +316,9 @@ card-side patches.
   traces identify U-Boot's separate raw-50 DTB value as the actual handoff owner.
 
 The historical cached-module test reported `cached`, and that optimized-stock
-functionality checkpoint remains in Git. The card currently contains the
-clean-root v5.3 native-performance candidate; the v5.2, v5.1, v5.0 and v4.5
-kernels are preserved on p6.
+functionality checkpoint remains in Git. The card currently advances through
+the clean-root native-application gate; v5.3 and the accepted v5.2, v5.1, v5.0
+and v4.5 kernels are preserved on p6 as staged.
 
 ## Font payload
 

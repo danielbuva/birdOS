@@ -61,6 +61,13 @@ run_session() {
 	return "$STATUS"
 }
 
+clear_launcher_frame() {
+	# The static launcher has exited before application dispatch, but fbcon can
+	# briefly rescan its last pixels while an SDL app recreates a KMS window.
+	# Erase that fixed 720x480x32bpp backing store once at the app boundary.
+	dd if=/dev/zero of=/dev/fb0 bs=1382400 count=1 2>/dev/null || :
+}
+
 run_retroarch() {
 	CORE=$(native_core "$1")
 	[ -r "$RUNTIME/usr/lib/libretro/$CORE" ] || {
@@ -106,7 +113,7 @@ run_drastic() {
 		PATH=/usr/bin:/usr/sbin:/bin:/sbin \
 		XDG_RUNTIME_DIR=/run/bird/xdg \
 		AUDIODEV=hw:0,0 SDL_AUDIODRIVER=alsa \
-		SDL_VIDEODRIVER=kmsdrm SDL_RENDER_DRIVER=opengles2 \
+		SDL_VIDEODRIVER=kmsdrm SDL_RENDER_DRIVER=opengl \
 		SDL_KMSDRM_DEVICE_INDEX=0 \
 		SDL_GAMECONTROLLERCONFIG_FILE=/run/bird/h700-sdl-gamecontrollerdb.txt \
 		LD_PRELOAD=/usr/lib/libdrastouch.so \
@@ -120,8 +127,23 @@ prepare_ppsspp() {
 	HOST_DIR=/mnt/mmc/.config/ppsspp
 	if [ ! -r "$HOST_DIR/PSP/SYSTEM/ppsspp.ini" ]; then
 		mkdir -p "$HOST_DIR"
-		cp -R "$RUNTIME/usr/config/ppsspp/." "$HOST_DIR/" || return 1
+		# The runtime's assets include a symlink that exFAT cannot represent.
+		# PPSSPP already loads immutable assets from /usr/share/ppsspp, so only
+		# its writable PSP configuration tree belongs on the data volume.
+		cp -R "$RUNTIME/usr/config/ppsspp/PSP" "$HOST_DIR/" || return 1
 		printf '%s\n' 'Bird installed native H700 PPSSPP payload'
+	fi
+	INI=$HOST_DIR/PSP/SYSTEM/ppsspp.ini
+	if grep -q '^TransparentBackground = ' "$INI"; then
+		sed -i 's/^TransparentBackground = .*/TransparentBackground = False/' "$INI"
+	else
+		sed -i '/^\[CPU\]/i TransparentBackground = False' "$INI"
+	fi
+	# Driver and PPSSPP version changes invalidate persisted GL programs.
+	MIGRATION=/mnt/mmc/MUOS/Bird/migrations/v5.4-ppsspp-kms
+	if [ ! -e "$MIGRATION" ]; then
+		rm -f "$HOST_DIR"/PSP/SYSTEM/CACHE/*.glshadercache
+		: >"$MIGRATION"
 	fi
 	mkdir -p /mnt/mmc/roms/savestates/psp/ppsspp-sa
 }
@@ -136,7 +158,7 @@ run_ppsspp() {
 		SDL_VIDEODRIVER=kmsdrm SDL_RENDER_DRIVER=opengles2 \
 		SDL_KMSDRM_DEVICE_INDEX=0 \
 		SDL_GAMECONTROLLERCONFIG_FILE=/run/bird/h700-sdl-gamecontrollerdb.txt \
-		/usr/bin/ppsspp --pause-menu-exit "$CONTENT"
+		/usr/bin/ppsspp --fullscreen --pause-menu-exit "$CONTENT"
 }
 
 run_port() {
@@ -151,6 +173,8 @@ run_port() {
 		XDG_RUNTIME_DIR=/run/bird/xdg \
 		PATH=/usr/bin:/usr/sbin:/bin:/sbin:/storage/MUOS/PortMaster \
 		AUDIODEV=hw:0,0 SDL_AUDIODRIVER=alsa \
+		ALSA_CONFIG_PATH=/run/bird/asound-bird.conf \
+		ALSOFT_DRIVERS=alsa \
 		SDL_VIDEODRIVER=kmsdrm SDL_RENDER_DRIVER=opengles2 \
 		SDL_KMSDRM_DEVICE_INDEX=0 \
 		SDL_GAMECONTROLLERCONFIG_FILE=/run/bird/h700-sdl-gamecontrollerdb.txt \
@@ -176,21 +200,17 @@ run_mpv() {
 				--input-conf=/run/bird/mpv-input.conf "$CONTENT"
 			;;
 		*)
-			# The pinned MPV has no native EGL context, but its SDL build has
-			# KMSDRM, GLES2 and YUV textures. This moves presentation and
-			# scaling from the measured software DRM path onto Panfrost.
+			# MPV's gamepad input initializes SDL before the SDL video output,
+			# which makes that output reject its second SDL owner. Direct DRM is
+			# the proven compositor-free display path until Bird builds MPV with
+			# a native EGL/V4L2-request output.
 			run_session /usr/sbin/chroot "$RUNTIME" /usr/bin/env -i \
 				HOME=/storage/MUOS/Bird USER=root LANG=C \
 				PATH=/usr/bin:/usr/sbin:/bin:/sbin \
-				XDG_RUNTIME_DIR=/run/bird/xdg \
-				SDL_VIDEODRIVER=kmsdrm SDL_RENDER_DRIVER=opengles2 \
-				SDL_KMSDRM_DEVICE_INDEX=0 \
 				SDL_GAMECONTROLLERCONFIG_FILE=/run/bird/h700-sdl-gamecontrollerdb.txt \
-				LIBGL_DRIVERS_PATH=/usr/lib/dri \
-				GBM_BACKENDS_PATH=/usr/lib/gbm \
-				__EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json \
-				/usr/bin/mpv --no-config --hwdec=auto-copy-safe --ao=alsa \
-				--vo=sdl --fullscreen --input-gamepad=yes \
+				/usr/bin/mpv --no-config --hwdec=no --ao=alsa \
+				--vo=drm --drm-device=/dev/dri/card0 \
+				--fullscreen --input-gamepad=yes \
 				--no-input-default-bindings --term-status-msg= \
 				--audio-device=alsa/hw:0,0 \
 				--input-conf=/run/bird/mpv-input.conf "$CONTENT"
@@ -240,6 +260,7 @@ trap cleanup_content EXIT INT TERM
 		/opt/bird/content-performance.sh enter
 		PERFORMANCE_ACTIVE=1
 	fi
+	clear_launcher_frame
 	case "$KIND" in
 		1) run_retroarch "$REQUESTED_CORE" ;;
 		2) run_ppsspp ;;

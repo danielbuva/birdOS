@@ -25,6 +25,6 @@ if valid_session; then
 fi
 
 # Recovery fallback for an interrupted launch before its session PID is
-# published. The normal v5.3 path never needs this list.
+# published. The normal v5.4 path never needs this list.
 /usr/bin/killall -TERM retroarch retroarch32 mpv ppsspp drastic 2>/dev/null || :
 exit 0

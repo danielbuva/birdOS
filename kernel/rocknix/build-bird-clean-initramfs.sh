@@ -1,5 +1,5 @@
 #!/bin/sh
-# Build Bird clean-root v5.3. Unlike the earlier compatibility archives this
+# Build Bird clean-root v5.4. Unlike the earlier compatibility archives this
 # one never mounts or switches into p5: the initramfs is Bird's permanent root.
 
 set -eu
@@ -8,7 +8,7 @@ ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 BASE=${BASE:-$ROOT/firmware/work/direct-handoff-from-power/dani-trimmed-initramfs.cpio}
 MODULE_DIR=${MODULE_DIR:-$ROOT/kernel/work/rocknix-bird-kernel-compat-v4-5-native-ra-deploy/build}
 JOYPAD=${JOYPAD:-$ROOT/kernel/work/rocknix-bird-kernel-v2-joypad/build/rocknix-singleadc-joypad.ko}
-OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-clean-root-v5-3-initramfs}
+OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-clean-root-v5-4-initramfs}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
 LLD=${LLD:-/opt/homebrew/opt/lld/bin/ld.lld}
 READELF=${READELF:-/opt/homebrew/opt/llvm/bin/llvm-readelf}
@@ -62,7 +62,7 @@ done
 
 RAMDISK=$OUTPUT/ramdisk
 BIRD=$RAMDISK/opt/bird
-CPIO=$OUTPUT/bird-clean-root-v5-3.cpio
+CPIO=$OUTPUT/bird-clean-root-v5-4.cpio
 mkdir -p "$RAMDISK"
 (
 	cd "$RAMDISK"
@@ -94,7 +94,7 @@ for FILE in supervisor.sh post-frame.sh run-content.sh shutdown.sh \
 	volume.sh suspend.sh input-metadata.sh audio-init.sh exit-content.sh \
 	content-performance.sh \
 	retroarch-append.cfg h700-gamepad.cfg h700-sdl-gamecontrollerdb.txt \
-	mpv-input.conf portmaster-control.txt; do
+	mpv-input.conf portmaster-control.txt asound-bird.conf; do
 	cp -fp "$ROOT/kernel/rocknix/clean-root/$FILE" "$BIRD/$FILE"
 done
 chmod 755 "$BIRD"/*.sh
@@ -133,8 +133,8 @@ grep -q '^VOLUME_UP ignore$' "$BIRD/mpv-input.conf" || \
 if grep -q '^GAMEPAD_.*_TRIGGER ' "$BIRD/mpv-input.conf"; then
 	fail 'unreliable MPV trigger binding present'
 fi
-grep -q -- '--vo=sdl' "$BIRD/run-content.sh" || \
-	fail 'SDL KMSDRM movie probe missing'
+grep -q -- '--vo=drm --drm-device=/dev/dri/card0' "$BIRD/run-content.sh" || \
+	fail 'direct DRM movie path missing'
 grep -q 'SDL_VIDEODRIVER=kmsdrm' "$BIRD/run-content.sh" || \
 	fail 'fixed SDL KMSDRM policy missing'
 grep -q 'flycast2021_libretro.so' "$BIRD/run-content.sh" || \
@@ -181,9 +181,10 @@ if grep -q 'LIBGL_DEBUG' "$BIRD/run-content.sh"; then
 fi
 grep -q -- '--audio-device=alsa/hw:0,0' "$BIRD/run-content.sh" || \
 	fail 'MPV direct hardware ALSA endpoint missing'
-if grep -q 'ALSA_CONFIG_PATH' "$BIRD/run-content.sh"; then
-	fail 'partial ALSA configuration overrides native runtime definitions'
-fi
+grep -q 'ALSA_CONFIG_PATH=/run/bird/asound-bird.conf' \
+	"$BIRD/run-content.sh" || fail 'fixed Port default ALSA endpoint missing'
+grep -q '^</usr/share/alsa/alsa.conf>$' "$BIRD/asound-bird.conf" || \
+	fail 'complete native ALSA definitions are not included'
 grep -q '^video_fullscreen_x = "720"$' "$BIRD/retroarch-append.cfg" || \
 	fail 'fixed 720-pixel panel width missing'
 grep -q '^video_fullscreen_y = "480"$' "$BIRD/retroarch-append.cfg" || \
@@ -206,10 +207,18 @@ grep -q '^export directory=storage$' "$BIRD/portmaster-control.txt" || \
 	fail 'fixed Port data root missing'
 grep -q '^export DEVICE_INFO_VERSION=0.1.15$' "$BIRD/portmaster-control.txt" || \
 	fail 'fixed Port device profile guard missing'
+grep -q '^export CFW_VERSION=5.4$' "$BIRD/portmaster-control.txt" || \
+	fail 'fixed Port Bird release identity missing'
 grep -q 's#/mnt/mmc#/storage#g' "$BIRD/run-content.sh" || \
 	fail 'legacy Port storage migration missing'
-grep -q '600000000' "$BIRD/content-performance.sh" || \
-	fail 'normal H700 GPU ceiling missing'
+if grep -qE '(max_freq|scaling_governor).*>' "$BIRD/content-performance.sh"; then
+	fail 'unsafe app-scoped clock write reintroduced'
+fi
+grep -q 'native-policy-preserved' "$BIRD/content-performance.sh" || \
+	fail 'non-perturbing clock diagnostics missing'
+grep -q 'LID_NAME "gpio-keys-lid"' \
+	"$ROOT/kernel/rocknix/root-overrides/bird-controls.c" || \
+	fail 'fixed lid input missing'
 grep -Fq '1|2|3|4) return 0 ;;' "$BIRD/run-content.sh" || \
 	fail 'app-scoped emulation performance policy missing'
 
@@ -238,6 +247,7 @@ for FILE in \
 	./opt/bird/h700-gamepad.cfg \
 	./opt/bird/h700-sdl-gamecontrollerdb.txt \
 	./opt/bird/mpv-input.conf \
+	./opt/bird/asound-bird.conf \
 	./opt/bird/portmaster-control.txt \
 	./opt/bird/controls \
 	./opt/bird/rocknix-singleadc-joypad.ko \
@@ -247,12 +257,12 @@ done
 
 (
 	cd "$OUTPUT"
-	wc -c bird-clean-root-v5-3.cpio ramdisk/init ramdisk/opt/dani-root-init \
+	wc -c bird-clean-root-v5-4.cpio ramdisk/init ramdisk/opt/dani-root-init \
 		ramdisk/opt/dani-launcher ramdisk/opt/bird/controls >sizes.txt
-	shasum -a 256 bird-clean-root-v5-3.cpio ramdisk/init \
+	shasum -a 256 bird-clean-root-v5-4.cpio ramdisk/init \
 		ramdisk/opt/dani-root-init ramdisk/opt/dani-launcher \
 		ramdisk/opt/bird/* >sha256sums.txt
 )
 
-printf 'Bird clean-root v5.3 initramfs built: %s\n' "$CPIO"
+printf 'Bird clean-root v5.4 initramfs built: %s\n' "$CPIO"
 cat "$OUTPUT/sizes.txt"

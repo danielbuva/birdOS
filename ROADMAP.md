@@ -134,14 +134,14 @@ removes the handoff entirely while keeping the verified menu-first boundary.
   static launcher becomes usable first; storage, Panfrost, the immutable
   application runtime and global controls start independently afterward. The
   success path never mounts or switches into old p5.
-- [ ] [clean-root v5.3 staged] Pass the coherent native-application boundary:
+- [ ] [clean-root v5.4 staged] Pass the coherent native-application boundary:
   fixed H700 metadata and mappings, exact 720x480 KMS policy, writable runtime
   scratch space, native sun4i-KMS/Panfrost pairing, a deterministic H616
   speaker route, H700-tuned Flycast, standalone DraStic/PPSSPP, native Ports,
-  system-owned volume and one process-group Select+Start exit contract. MPV's
-  SDL KMSDRM probe is an intermediate presentation path pending Cedrus and a
-  rebuilt EGL-enabled media runtime. No muOS wrapper, configuration, core or
-  library enters this path.
+  system-owned volume, lid-close suspend and one process-group Select+Start
+  exit contract. MPV's direct DRM path remains the correctness baseline pending
+  Cedrus and a rebuilt EGL-enabled media runtime. No muOS wrapper,
+  configuration, core or library enters this path.
 
 ### Layer 3 — fixed RG34XX-SP kernel
 
@@ -379,19 +379,24 @@ savings; it is not forgotten.
   The kernel/DRM topology passed; native RetroArch still failed when combined
   with muOS policy and assets, so the clean-root candidate now pairs each
   application with its own native configuration, cores and libraries.
-- [ ] [clean-root v5.3 native-application/performance gate] V5.0 verified menu/input,
+- [ ] [clean-root v5.4 native-application gate] V5.0 verified menu/input,
   brightness and shutdown. V5.1 then verified application entry, controls and
   direct DRM decode while exposing forced CPU rendering, an unprogrammed H616
   speaker route and repeating MPV trigger events. V5.2 then proved Panfrost,
   direct speaker audio, MP3 and fixed controls while exposing modern Flycast,
   melonDS/FreeBIOS, a PPSSPP libretro crash, no Port dispatch and MPV software
   frame drops. V5.3 selects the H700-tuned and standalone applications,
-  implements the fixed Port adapter, applies performance clocks only while
-  content runs, uses one process-group exit contract and probes GPU-backed SDL
-  movie presentation. Verify Dreamcast, DS, PSP, at least one Port, a lighter
-  libretro title, MP3, movie smoothness and pause latency, Select+Start, volume,
-  brightness, suspend/wake and shutdown. PortMaster networking remains a later
-  home-network check; Cedrus/EGL media optimization follows this boundary.
+  implements the fixed Port adapter, uses one process-group exit contract and
+  probes GPU-backed SDL movie presentation. Its hardware run exposed an unsafe
+  648-to-600 MHz devfreq write with PLL warnings, GLES2 DraStic columns,
+  exFAT/transparent-window PPSSPP failures, missing default Port audio, an SDL
+  owner collision in MPV, and an unopened kernel lid event. V5.4 independently
+  corrects those boundaries without changing the launcher path. Verify
+  Dreamcast, DS and layout switching, PSP, Balatro audio, Stardew, a lighter
+  Port, MP3, visible movie controls, Select+Start, volume, brightness, button
+  and lid suspend/wake, shutdown and absence of new PLL warnings. PortMaster
+  networking remains a later home-network check; Cedrus/EGL media optimization
+  follows this boundary.
 - [ ] After built-in-speaker audio passes, add a fixed headphone-jack policy
   that uses the existing H700 detect GPIO to mute the external speaker
   amplifier. Do not introduce a UCM or PipeWire session daemon for this one
@@ -403,7 +408,7 @@ savings; it is not forgotten.
 
 Verified interactive milestone: clean-root v5.2 recorded pixels at 1.137
 seconds and input-ready at 1.294 seconds of kernel uptime. LED-on to an
-immediately usable menu is approximately 2.5 seconds by stopwatch. V5.3 leaves
+immediately usable menu is approximately 2.5 seconds by stopwatch. V5.4 leaves
 that launcher/early-init dependency path unchanged and awaits its physical
 application gate.
 At the last accepted vendor-root checkpoint, all three emulator/Port paths were

@@ -669,3 +669,19 @@ kernel and changes only p1 `KERNEL`. V5.2 restores Mesa's native sun4i
 KMSRO/Panfrost pairing, applies the fixed six-control speaker route after the
 menu, retains direct hardware ALSA for native clients and removes MPV's broken
 repeating trigger-speed bindings. It still starts no generic session daemon.
+
+V5.3 proved that the native application runtime can drive Panfrost RetroArch,
+Dreamcast, standalone DraStic, Ports, MP3 and global controls without changing
+the approximately 2.5-second menu. Its full logs also showed that Bird's clock
+helper lowered the GPU and provoked PLL warnings, DraStic's forced GLES2 output
+striped, PPSSPP inherited an exFAT copy failure and transparent KMS window,
+Ports lacked a complete default ALSA definition, MPV's SDL input and video
+owners collided, and the controls process ignored the already-enumerated lid
+switch. The guarded v5.4 updater preserves v5.3 and changes only p1 `KERNEL`;
+all six corrections remain outside the first-frame dependency path.
+
+`mac-update-bird-clean-root-v5-4.sh` accepts only the exact removable-card
+geometry, v5.3/v5.4 kernel identity, shipping-identical DTB and pinned runtime.
+It checksum-verifies the new 29,939,720-byte kernel, preserves v5.3 at
+`MUOS/Bird/recovery/KERNEL-v5.3`, stages through a temporary FAT file and
+rereads SHA-256 `a53a3483731d28d2e96e53def0fba347fa53607aa9fbda8bfb82db677126daef`.

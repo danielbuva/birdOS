@@ -30,8 +30,8 @@ Files:
 - `h700-sdl-gamecontrollerdb.txt`: the one exact SDL controller record.
 - `input-metadata.sh`: publishes `ID_INPUT_JOYSTICK=1` for the built-in pad.
 - `audio-init.sh`: programs the one fixed H616/RG34XX-SP speaker route.
-- `content-performance.sh`: records and applies app-scoped CPU/GPU policy,
-  then restores the idle policy before Bird redraws.
+- `content-performance.sh`: records the native CPU/GPU policy at application
+  boundaries without writing clock controls.
 - `portmaster-control.txt`: the fixed Bird adapter for installed Port scripts;
   it replaces generic CFW/device probing only inside the runtime view.
 - `mpv-input.conf`: fixed movie controls; dedicated volume keys remain global.
@@ -45,13 +45,23 @@ and direct ALSA endpoint. Mesa is not forced to `panfrost`: its native sun4i
 KMSRO path pairs display `card0` with Panfrost `renderD128`. Dreamcast uses
 ROCKNIX's H700-tuned Flycast 2021 core; DS and PSP use the matching standalone
 DraStic and PPSSPP builds instead of slower or unstable libretro substitutes.
-MPV's v5.3 movie probe presents through SDL KMSDRM/GLES2 because this pinned
-MPV build lacks its native EGL context; decoding remains software until Bird
-enables H616 Cedrus/V4L2-request. Every app uses direct ALSA and runs without a
-compositor or session daemon. Every launch receives a distinct persistent log
-and dmesg snapshot so a later attempt cannot erase prior failure evidence.
+V5.4 restores MPV's proven direct-DRM presentation because this pinned build
+cannot let its SDL gamepad and SDL video components own SDL simultaneously;
+decoding remains software until Bird enables H616 Cedrus/V4L2-request in an
+EGL-capable media build. DraStic uses Panfrost through SDL's desktop OpenGL
+renderer, and PPSSPP receives an opaque KMS window and a clean versioned shader
+cache. Ports inherit ALSA's complete native definitions with one fixed default
+H616 endpoint. Every app runs without a compositor or session daemon and gets
+a distinct persistent log plus dmesg snapshot.
 
-V5.3's audio gate is deliberately the built-in-speaker path. The source kernel
+V5.3 hardware evidence also rejected Bird's first clock helper. The native
+policy reached 1.416 GHz CPU and 648 MHz GPU on demand; Bird's writes reduced
+the GPU to 600 MHz and caused repeated H700 PLL-lock warnings at every enter
+and leave. V5.4 removes all userspace clock writes while preserving snapshots.
+The global controls process now consumes the already-present `gpio-keys-lid`
+event directly, so lid suspend remains separate from the launcher.
+
+The audio gate is deliberately the built-in-speaker path. The source kernel
 already publishes the fixed headphone-detect GPIO and `Headphone` DAPM pin,
 but enabling Bird's `Speaker Switch` does not automatically mute that external
 amplifier when headphones are inserted. A tiny fixed jack policy is tracked

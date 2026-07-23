@@ -2,8 +2,9 @@
  * Bird's fixed RG34XX-SP controls service for the mainline H700 kernel.
  *
  * This deliberately is not part of the launcher. It blocks in ppoll after
- * opening the three known input devices and owns only system-global actions:
- * volume, Menu+volume brightness, application exit, and power-button suspend.
+ * opening the four known input devices and owns only system-global actions:
+ * volume, Menu+volume brightness, application exit, power-button suspend, and
+ * lid-close suspend.
  * Only the dedicated volume-key node is grabbed; applications continue to
  * receive the H700 gamepad directly but cannot reinterpret system volume keys.
  */
@@ -23,6 +24,8 @@ typedef signed long s64;
 #define SIGCHLD 17
 #define POLLIN 0x0001
 #define EV_KEY 0x01
+#define EV_SW 0x05
+#define SW_LID 0
 #define KEY_VOLUMEDOWN 114
 #define KEY_VOLUMEUP 115
 #define KEY_POWER 116
@@ -35,6 +38,7 @@ typedef signed long s64;
 #define GAMEPAD_NAME "H700 Gamepad"
 #define VOLUME_NAME "gpio-keys-volume"
 #define POWER_NAME "axp20x-pek"
+#define LID_NAME "gpio-keys-lid"
 #define KMSG_DEVICE "/dev/kmsg"
 #define BRIGHT_RAW_MAX "/sys/class/backlight/backlight/max_brightness"
 #define BRIGHT_RAW_CURRENT "/sys/class/backlight/backlight/brightness"
@@ -384,8 +388,10 @@ static void discover_inputs(struct input_source *sources, int count) {
                     log_kernel("<6>bird-controls: gamepad-ready\n");
                 else if (source == 1)
                     log_kernel("<6>bird-controls: volume-keys-ready\n");
-                else
+                else if (source == 2)
                     log_kernel("<6>bird-controls: power-key-ready\n");
+                else
+                    log_kernel("<6>bird-controls: lid-switch-ready\n");
                 break;
             }
         }
@@ -467,6 +473,13 @@ static void handle_power(const struct input_event *event,
     }
 }
 
+static void handle_lid(const struct input_event *event) {
+    if (event->type != EV_SW || event->code != SW_LID || event->value != 1)
+        return;
+    log_kernel("<6>bird-controls: lid-close-suspend-request\n");
+    run_action(SUSPEND_SCRIPT, 0);
+}
+
 static void process_source(struct input_source *source, int source_index,
                            int *menu_held, int *power_pressed,
                            int *select_held, int *start_held,
@@ -484,8 +497,10 @@ static void process_source(struct input_source *source, int source_index,
                                start_held, exit_latched);
             else if (source_index == 1)
                 handle_volume(&events[index], *menu_held);
-            else
+            else if (source_index == 2)
                 handle_power(&events[index], power_pressed);
+            else
+                handle_lid(&events[index]);
         }
     }
     if (bytes == 0) {
@@ -495,12 +510,13 @@ static void process_source(struct input_source *source, int source_index,
 }
 
 static void application(void) {
-    struct input_source sources[3] = {
+    struct input_source sources[4] = {
         {-1, GAMEPAD_NAME},
         {-1, VOLUME_NAME},
         {-1, POWER_NAME},
+        {-1, LID_NAME},
     };
-    struct pollfd polls[3];
+    struct pollfd polls[4];
     int menu_held = 0;
     int power_pressed = 0;
     int select_held = 0;
@@ -512,18 +528,19 @@ static void application(void) {
     log_text("bird-controls: start\n");
     log_kernel("<6>bird-controls: start\n");
     for (;;) {
-        discover_inputs(sources, 3);
-        for (index = 0; index < 3; index++) {
+        discover_inputs(sources, 4);
+        for (index = 0; index < 4; index++) {
             polls[index].fd = sources[index].fd;
             polls[index].events = POLLIN;
             polls[index].revents = 0;
         }
-        if (sources[0].fd < 0 && sources[1].fd < 0 && sources[2].fd < 0) {
+        if (sources[0].fd < 0 && sources[1].fd < 0 && sources[2].fd < 0 &&
+            sources[3].fd < 0) {
             sys_nanosleep(250000000L);
             continue;
         }
-        if (sys_ppoll(polls, 3) < 0) continue;
-        for (index = 0; index < 3; index++) {
+        if (sys_ppoll(polls, 4) < 0) continue;
+        for (index = 0; index < 4; index++) {
             if (sources[index].fd >= 0 && (polls[index].revents & POLLIN))
                 process_source(&sources[index], index, &menu_held,
                                &power_pressed, &select_held, &start_held,

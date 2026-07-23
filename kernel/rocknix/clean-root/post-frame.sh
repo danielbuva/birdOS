@@ -124,6 +124,7 @@ cp -f /opt/bird/h700-gamepad.cfg "/run/bird/joypads/H700 Gamepad.cfg"
 cp -f /opt/bird/h700-sdl-gamecontrollerdb.txt \
 	/run/bird/h700-sdl-gamecontrollerdb.txt
 cp -f /opt/bird/mpv-input.conf /run/bird/mpv-input.conf
+cp -f /opt/bird/asound-bird.conf /run/bird/asound-bird.conf
 
 # Installed Ports remain data, but their generic muOS control file is replaced
 # only inside the immutable runtime view. The card copy is not modified and no

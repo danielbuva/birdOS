@@ -597,8 +597,48 @@ byte-identical. Both kernels re-extract the exact cpio above, retain the
 shipping-identical 49,010-byte DTB, and reproduce the same H700 input and
 deferred Panfrost modules. The guarded v5.3 updater accepted only the exact
 removable-card geometry, v5.2/v5.3 kernel identities, runtime and DTB. It
-preserved v5.2 on p6 and replaced only p1 `KERNEL`. The v5.3 physical
-application/performance gate is pending.
+preserved v5.2 on p6 and replaced only p1 `KERNEL`. The v5.3 physical run
+passed the fast launcher, Panfrost RetroArch, Dreamcast, MP3 and global
+controls, then supplied the failure evidence for v5.4 below.
+
+## Bird clean-root v5.4
+
+V5.4 remains entirely after the input-ready menu and makes six independent
+corrections from the v5.3 hardware logs:
+
+- make the clock boundary diagnostic-only; the native governor already reached
+  1.416 GHz CPU and 648 MHz GPU, while Bird's 600 MHz cap and governor writes
+  produced repeated `ccu_helper_wait_for_lock` warnings;
+- select SDL desktop OpenGL for DraStic, matching `libdrastouch`'s Panfrost
+  state path instead of the column-corrupt GLES2 output;
+- copy only PPSSPP's writable `PSP` tree to exFAT, force an opaque fullscreen
+  KMS window and invalidate the old GL cache once;
+- include ALSA's complete runtime definitions and override only `default` to
+  fixed `hw:0,0` for OpenAL/LÖVE/MonoGame Ports;
+- return MPV to the visible direct-DRM correctness path because its gamepad
+  initialized SDL before `vo=sdl` and made video reject its second owner; and
+- open the kernel's existing `gpio-keys-lid` event in the separate controls
+  process and suspend only on `SW_LID=1`.
+
+The app boundary also erases the exited launcher's fixed framebuffer once, so
+KMS window recreation can flash black but cannot expose stale menu pixels.
+Boot, first frame, menu input, storage/runtime preparation and Panfrost warm-up
+are unchanged.
+
+| Bird clean-root v5.4 | Bytes | SHA-256 |
+| --- | ---: | --- |
+| source-built Linux `Image` | 29,939,720 | `a53a3483731d28d2e96e53def0fba347fa53607aa9fbda8bfb82db677126daef` |
+| embedded clean-root cpio | 4,213,248 | `bac7347f742be00ec0a117c19d69d48ab15bf3b11e87279cf9e65aeb33080afc` |
+| complete module archive | 937,412 | `2282447fb26b35b6ff5651959a359fde556602c746dcfe9d39db095662412288` |
+| fixed first init | 5,432 | embedded in cpio |
+| fixed permanent PID 1 | 5,112 | embedded in cpio |
+| static launcher | 623,064 | embedded in cpio |
+| lid-aware controls service | 6,472 | embedded in cpio |
+
+Two clean initramfs builds and two complete source-kernel builds are
+byte-identical. Both kernels re-extract the exact cpio above, retain the
+shipping-identical 49,010-byte DTB and reproduce the same H700 input and
+deferred Panfrost modules.
 
 ## Card-safe hardware gate
 
