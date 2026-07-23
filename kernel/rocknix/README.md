@@ -898,6 +898,19 @@ continues. The menu and input are already interactive during this wait; it
 orders only the later mount move. Two independent builds reproduce every card
 payload byte-for-byte. The external overlay is 220,847 bytes.
 
+The v6.10 physical gate passed without input interruption: storage became ready
+at kernel uptime 2.514 seconds, the init hook observed the existing marker with
+zero wait iterations, games launched quickly and the broad application/control
+tests passed. Stock-root v6.11 therefore leaves that entire early path intact.
+It condition-gates the unchanged `systemd-resolved` and
+`systemd-timesyncd` providers with the existing PortMaster network flag, starts
+them with NetworkManager/iwd for that explicit session and stops all four on
+return. Ordinary offline play no longer retains either daemon. Two independent
+v6.11 builds reproduce every card payload byte-for-byte; the proven KERNEL,
+launcher and 220,847-byte early overlay are unchanged from v6.10. Its one-shot
+snapshot also records input identities/udev properties, loaded modules and
+CPU/GPU frequency policy for the next fixed-control subtraction.
+
 The exact final common-autostart action now also publishes a timestamped
 `/run/bird/application-contract-ready` marker after Sway configuration exists.
 An initramfs game/media/PortMaster request remains on disk, and its handoff

@@ -14,23 +14,27 @@ case "${1:-}" in
 		printf 'Bird network request start uptime='
 		cut -d ' ' -f 1 /proc/uptime
 		touch "$FLAG"
-		systemctl start dbus.service systemd-resolved.service || :
+		systemctl start dbus.service systemd-resolved.service \
+			systemd-timesyncd.service || :
 		systemctl start iwd.service NetworkManager.service || :
 		/usr/bin/wifictl enable || :
 		for _ in $(seq 1 100); do
 			[ "$(systemctl is-active NetworkManager.service 2>/dev/null)" = active ] && break
 			usleep 50000
 		done
-		printf 'Bird network request ready nm=%s iwd=%s uptime=' \
+		printf 'Bird network request ready nm=%s iwd=%s resolved=%s timesync=%s uptime=' \
 			"$(systemctl is-active NetworkManager.service 2>/dev/null || :)" \
-			"$(systemctl is-active iwd.service 2>/dev/null || :)"
+			"$(systemctl is-active iwd.service 2>/dev/null || :)" \
+			"$(systemctl is-active systemd-resolved.service 2>/dev/null || :)" \
+			"$(systemctl is-active systemd-timesyncd.service 2>/dev/null || :)"
 		cut -d ' ' -f 1 /proc/uptime
 		;;
 	stop)
 		printf 'Bird network release start uptime='
 		cut -d ' ' -f 1 /proc/uptime
 		/usr/bin/wifictl disable || :
-		systemctl stop --no-block NetworkManager.service iwd.service || :
+		systemctl stop --no-block NetworkManager.service iwd.service \
+			systemd-resolved.service systemd-timesyncd.service || :
 		rm -f "$FLAG"
 		printf 'Bird network release ready uptime='
 		cut -d ' ' -f 1 /proc/uptime

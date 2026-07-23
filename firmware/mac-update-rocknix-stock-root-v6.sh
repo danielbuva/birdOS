@@ -1,7 +1,7 @@
 #!/bin/sh
 # Guarded deployment of the compatibility-first stock-root milestone. P5 and
-# content bytes stay untouched. V6.10 keeps the first interactive Bird process
-# through switch_root and anchors storage before the mount enters the final root.
+# content bytes stay untouched. V6.11 keeps the proven persistent Bird process
+# and removes resolver/time synchronization from ordinary offline sessions.
 # It retains the exact kernel and complete working ROCKNIX userspace.
 # The exact ROCKNIX writable filesystem remains a loop image on p6, and the
 # accepted v5.4 kernel remains on p1 as a fallback.
@@ -11,7 +11,7 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 BIRD=${BIRD:-/Volumes/BIRD}
 DATA=${DATA:-/Volumes/dani-sp}
-CANDIDATE=${CANDIDATE:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.10/card}
+CANDIDATE=${CANDIDATE:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.11/card}
 STORAGE_SOURCE=${STORAGE_SOURCE:-/Users/dani/rocknix-reference-result/storage.ext4}
 PORTMASTER_ARCHIVE=${PORTMASTER_ARCHIVE:-$ROOT/kernel/work/rocknix-system-exact-20260701/usr/config/PortMaster/release/PortMaster.zip}
 RUNTIME=$DATA/MUOS/runtime/ROCKNIX-SYSTEM
@@ -70,8 +70,9 @@ for FILE in post-flash.sh mount-storage.sh SYSTEM KERNEL dtb.img \
 	bird/090-ui_service bird/999-export bird/dani-launcher bird/bird-pidwait bird/essway.service \
 	bird/rocknix.target bird/rocknix-automount.service \
 	bird/rocknix-autostart.service bird/rocknix-report-stats.service \
-	bird/NetworkManager.service \
-	bird/iwd.service bird/supervisor.sh bird/run-content.sh \
+	bird/NetworkManager.service bird/iwd.service \
+	bird/systemd-resolved.service bird/systemd-timesyncd.service \
+	bird/supervisor.sh bird/run-content.sh \
 	bird/prepare-ports.sh bird/fixed-storage.sh \
 	bird/first-frame-prep.sh bird/capture-boot-state.sh \
 	bird/bird-network.sh bird/mpv-input.conf; do
@@ -205,7 +206,8 @@ done
 for FILE in 090-ui_service 999-export dani-launcher bird-pidwait essway.service rocknix.target \
 	rocknix-automount.service rocknix-autostart.service \
 	rocknix-report-stats.service \
-	NetworkManager.service iwd.service supervisor.sh run-content.sh \
+	NetworkManager.service iwd.service systemd-resolved.service \
+	systemd-timesyncd.service supervisor.sh run-content.sh \
 	prepare-ports.sh fixed-storage.sh first-frame-prep.sh \
 	capture-boot-state.sh bird-network.sh mpv-input.conf; do
 	COPYFILE_DISABLE=1 cp -f "$CANDIDATE/bird/$FILE" "$BIRD/bird/$FILE"
@@ -250,12 +252,13 @@ sync
 cmp "$CANDIDATE/extlinux/extlinux.conf" "$BIRD/extlinux/extlinux.conf" || fail 'active extlinux verification failed'
 cmp "$CANDIDATE/bird-initramfs.cpio.gz" "$BIRD/bird-initramfs.cpio.gz" || fail 'early initramfs verification failed'
 
-printf 'Bird stock-root v6.10 staged on /dev/%s.\n' "$WHOLE"
+printf 'Bird stock-root v6.11 staged on /dev/%s.\n' "$WHOLE"
 printf 'Moved %s Port data directories into the native ROCKNIX tree.\n' "$MOVED_PORTS"
 printf 'Generic storage discovery replaced by the fixed p6 Bird view.\n'
 printf 'MPV physical volume ownership is system-only.\n'
 printf 'Bird starts before generic userspace; autostart cannot repaint it.\n'
 printf 'Network is PortMaster-only; unused fixed-profile units are masked.\n'
+printf 'Resolver and time synchronization now share that PortMaster-only gate.\n'
 printf 'Bird and the release-matched H700 input module now begin in external initramfs.\n'
 printf 'Battery percentage is kernel-driven, uevent-fed and shown in Bird.\n'
 printf 'The original pidfd-adopted Bird owns input continuously across switch_root.\n'

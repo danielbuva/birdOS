@@ -1,0 +1,51 @@
+# Exact ROCKNIX provider, condition-gated to Bird's explicit network session.
+
+[Unit]
+Description=Network Time Synchronization on explicit Bird request
+Documentation=man:systemd-timesyncd.service(8)
+ConditionPathExists=/run/bird/network-request
+ConditionCapability=CAP_SYS_TIME
+ConditionVirtualization=!container
+DefaultDependencies=no
+After=systemd-sysusers.service
+Before=time-set.target sysinit.target shutdown.target
+Conflicts=shutdown.target
+Wants=time-set.target
+
+[Service]
+AmbientCapabilities=CAP_SYS_TIME
+BusName=org.freedesktop.timesync1
+CapabilityBoundingSet=CAP_SYS_TIME
+Environment=SYSTEMD_NSS_RESOLVE_VALIDATE=0
+ExecStart=!!/usr/lib/systemd/systemd-timesyncd
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+NoNewPrivileges=yes
+PrivateDevices=yes
+PrivateTmp=yes
+ProtectProc=invisible
+ProtectControlGroups=yes
+ProtectHome=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectSystem=strict
+Restart=always
+RestartSec=0
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RuntimeDirectory=systemd/timesync
+StateDirectory=systemd/timesync
+SystemCallArchitectures=native
+SystemCallErrorNumber=EPERM
+SystemCallFilter=@system-service @clock
+Type=notify
+User=systemd-timesync
+WatchdogSec=3min
+
+[Install]
+WantedBy=sysinit.target
+Alias=dbus-org.freedesktop.timesync1.service

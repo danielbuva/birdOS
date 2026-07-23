@@ -58,9 +58,10 @@ mount --bind /flash/bird/rocknix-autostart.service \
 	return 1
 }
 
-# NetworkManager and iwd keep their exact implementations but their boot jobs
-# are condition-gated. Bird raises the request only around PortMaster.
-for UNIT in NetworkManager.service iwd.service; do
+# The four network providers keep their exact implementations but their boot
+# jobs are condition-gated. Bird raises the request only around PortMaster.
+for UNIT in NetworkManager.service iwd.service systemd-resolved.service \
+	systemd-timesyncd.service; do
 	mount --bind "/flash/bird/$UNIT" \
 		"/sysroot/usr/lib/systemd/system/$UNIT" || {
 		error bird-network-gate "Could not gate $UNIT"

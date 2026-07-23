@@ -1,0 +1,50 @@
+# Exact ROCKNIX provider, condition-gated to Bird's explicit network session.
+
+[Unit]
+Description=Network Name Resolution on explicit Bird request
+Documentation=man:systemd-resolved.service(8)
+Documentation=man:org.freedesktop.resolve1(5)
+ConditionPathExists=/run/bird/network-request
+DefaultDependencies=no
+After=systemd-sysctl.service systemd-sysusers.service
+Before=sysinit.target network.target nss-lookup.target shutdown.target initrd-switch-root.target
+Conflicts=shutdown.target initrd-switch-root.target
+Wants=nss-lookup.target
+
+[Service]
+AmbientCapabilities=CAP_SETPCAP CAP_NET_RAW CAP_NET_BIND_SERVICE
+BusName=org.freedesktop.resolve1
+CapabilityBoundingSet=CAP_SETPCAP CAP_NET_RAW CAP_NET_BIND_SERVICE
+ExecStart=!!/usr/lib/systemd/systemd-resolved
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+NoNewPrivileges=yes
+PrivateDevices=yes
+PrivateTmp=yes
+ProtectClock=yes
+ProtectControlGroups=yes
+ProtectHome=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectSystem=strict
+Restart=always
+RestartSec=0
+RestrictAddressFamilies=AF_UNIX AF_NETLINK AF_INET AF_INET6
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RuntimeDirectory=systemd/resolve
+RuntimeDirectoryPreserve=yes
+SystemCallArchitectures=native
+SystemCallErrorNumber=EPERM
+SystemCallFilter=@system-service
+Type=notify
+User=systemd-resolve
+ImportCredential=network.dns
+ImportCredential=network.search_domains
+WatchdogSec=3min
+
+[Install]
+WantedBy=sysinit.target
+Alias=dbus-org.freedesktop.resolve1.service

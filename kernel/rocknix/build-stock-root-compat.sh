@@ -10,7 +10,7 @@ ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 SOURCE=${SOURCE:-/Volumes/BIRD}
 SYSTEM_SOURCE=${SYSTEM_SOURCE:-/Volumes/dani-sp/MUOS/runtime/ROCKNIX-SYSTEM}
 STORAGE=${STORAGE:-/Users/dani/rocknix-reference-result/storage.ext4}
-OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.10}
+OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.11}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
 LLD=${LLD:-/opt/homebrew/opt/lld/bin/ld.lld}
 READELF=${READELF:-/opt/homebrew/opt/llvm/bin/llvm-readelf}
@@ -96,7 +96,8 @@ cp -fp "$ROOT/kernel/rocknix/stock-root/mount-storage.sh" \
 for FILE in 090-ui_service 999-export essway.service rocknix.target \
 	rocknix-automount.service rocknix-autostart.service \
 	rocknix-report-stats.service \
-	NetworkManager.service iwd.service supervisor.sh run-content.sh \
+	NetworkManager.service iwd.service systemd-resolved.service \
+	systemd-timesyncd.service supervisor.sh run-content.sh \
 	prepare-ports.sh fixed-storage.sh first-frame-prep.sh \
 	capture-boot-state.sh bird-network.sh; do
 	cp -fp "$ROOT/kernel/rocknix/stock-root/$FILE" "$OUTPUT/card/bird/$FILE"
@@ -147,7 +148,11 @@ grep -q '^BindPaths=/dev/null:/dev/console$' \
 	"$OUTPUT/card/bird/rocknix-autostart.service" || fail 'autostart console isolation missing'
 grep -q '^ConditionPathExists=/run/bird/network-request$' \
 	"$OUTPUT/card/bird/NetworkManager.service" || fail 'NetworkManager gate missing'
-grep -q 'systemctl stop --no-block NetworkManager.service iwd.service' \
+grep -q '^ConditionPathExists=/run/bird/network-request$' \
+	"$OUTPUT/card/bird/systemd-resolved.service" || fail 'resolver gate missing'
+grep -q '^ConditionPathExists=/run/bird/network-request$' \
+	"$OUTPUT/card/bird/systemd-timesyncd.service" || fail 'time sync gate missing'
+grep -q 'systemd-resolved.service systemd-timesyncd.service' \
 	"$OUTPUT/card/bird/bird-network.sh" || fail 'network release missing'
 grep -q '^After=rocknix-autostart.service$' \
 	"$OUTPUT/card/bird/rocknix-report-stats.service" || fail 'event-ordered snapshot missing'

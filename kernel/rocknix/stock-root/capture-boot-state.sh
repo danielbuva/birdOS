@@ -26,6 +26,37 @@ LOG=/storage/bird-data/MUOS/Bird/log/stock-root-boot-state-latest.log
 	systemctl list-jobs --no-pager 2>&1 || :
 	printf '%s\n' '--- processes ---'
 	ps -eo pid,ppid,stat,rss,comm,args 2>&1 || :
+	printf '%s\n' '--- input devices ---'
+	cat /proc/bus/input/devices 2>&1 || :
+	for INPUT in /dev/input/event*; do
+		[ -e "$INPUT" ] || continue
+		printf '[%s]\n' "$INPUT"
+		udevadm info --query=property "$INPUT" 2>&1 || :
+	done
+	printf '%s\n' '--- loaded modules ---'
+	cat /proc/modules 2>&1 || :
+	printf '%s\n' '--- CPU and GPU policy ---'
+	for POLICY in /sys/devices/system/cpu/cpufreq/policy*; do
+		[ -e "$POLICY" ] || continue
+		printf '[%s]\n' "${POLICY##*/}"
+		for PROPERTY in scaling_governor scaling_available_governors \
+			scaling_cur_freq scaling_min_freq scaling_max_freq \
+			cpuinfo_min_freq cpuinfo_max_freq; do
+			[ -r "$POLICY/$PROPERTY" ] || continue
+			printf '%s=' "$PROPERTY"
+			cat "$POLICY/$PROPERTY"
+		done
+	done
+	for DEVFREQ in /sys/class/devfreq/*; do
+		[ -e "$DEVFREQ" ] || continue
+		printf '[%s]\n' "${DEVFREQ##*/}"
+		for PROPERTY in governor available_governors cur_freq min_freq max_freq \
+			available_frequencies; do
+			[ -r "$DEVFREQ/$PROPERTY" ] || continue
+			printf '%s=' "$PROPERTY"
+			cat "$DEVFREQ/$PROPERTY"
+		done
+	done
 	printf '%s\n' '--- memory ---'
 	cat /proc/meminfo
 	printf '%s\n' '--- mounts ---'
