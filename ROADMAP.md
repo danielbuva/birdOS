@@ -116,6 +116,9 @@ recovery contracts. V6.21 searches all 32 bounded input-event slots, retains
 the exact volatile screen across any launcher recovery, archives per-boot
 evidence, restores the raw pre-suspend panel level and moves manual brightness
 steps into the fixed controls binary with raw level one as the lit floor.
+V6.22 adds one app-independent Select+Start exit chord without grabbing input,
+tracks each foreground provider tree for wrappers that publish no kill name,
+and routes MSX through the pinned release's fMSX core after blueMSX segfaulted.
 
 The gate order is compatibility first, then early Bird handoff, then service
 deferral/removal, then kernel trimming. No component is removed from the full
@@ -128,7 +131,7 @@ not discarded ideas.
 
 1. **ROCKNIX implementation audit — active.** Classify every retained startup
    script, service, output file, dependency and idle wake-up. Remove or replace
-   only measured fixed-profile work. v6.21 is the current physical gate; details
+   only measured fixed-profile work. v6.22 is the current physical gate; details
    and discovered bugs live in [`ROCKNIX_AUDIT.md`](ROCKNIX_AUDIT.md).
 2. **Finish fixed userspace contracts.** Generate the exact RG34XX-SP Sway and
    audio configuration, reduce the remaining autostart runner, then reassess
@@ -291,7 +294,7 @@ removes the handoff entirely while keeping the verified menu-first boundary.
   event0 `axp20x-pek`, event2 `gpio-keys-volume`, event3 `gpio-keys-lid` and
   event4 `H700 Gamepad`; event1 is only the codec headphone switch. The
   5,184-byte candidate preserves volume repeat, Menu+volume brightness,
-  power/lid fake suspend and L1+Select+Start global exit without grabbing the
+  power/lid fake suspend and Select+Start global exit without grabbing the
   gamepad.
 - [x] [v6.14 physical gate passed] Replace `powerstate`'s two-second
   battery polling with fixed initial policy plus kernel power-supply events.
@@ -308,7 +311,7 @@ removes the handoff entirely while keeping the verified menu-first boundary.
 - [x] [v6.15 physical gate passed] Prevent post-frame brightness resets. The early fixed
   five-percent value and manual controls are the only writers; generic
   `006-display` and the old preparation write are removed from the boot path.
-- [ ] [v6.21 recovery hardening staged] Replace fixed-profile generic autostart work while retaining
+- [ ] [v6.22 global exit/MSX staged] Replace fixed-profile generic autostart work while retaining
   controller, audio, emulator configuration and Sway compatibility. Audit and
   measured follow-ups are recorded in `ROCKNIX_AUDIT.md`.
 - [x] [v6.15 physical gate passed] Shorten shutdown without bypassing ordered unmounts. Use an
@@ -1019,12 +1022,13 @@ Your next concrete milestones should be:
 15. [done: 128 ms Linux-DTB hardware proof] Reduce the PMIC cold-power hold
     from 512 ms to its minimum; quick-tap power-on is verified, while earlier
     green-LED/display response remains a later bootloader/firmware boundary
-16. [active: v6.21] Audit and reduce the retained ROCKNIX userspace contract;
+16. [active: v6.22] Audit and reduce the retained ROCKNIX userspace contract;
     v6.15 passed brightness/KSM/shutdown and cut the application tail, while
     v6.16 fixed Sway/RF-kill profiles, v6.18 hardens retained storage/UI and
     v6.19 removes repeated fixed-profile/module work and v6.20 fixes its
     supervisor/diagnostic lifecycle regressions; v6.21 hardens UI/input recovery
-    and suspend brightness; Wi-Fi profile capture is deferred
+    and suspend brightness; v6.22 adds one managed global foreground-exit
+    contract and replaces the crashing MSX core; Wi-Fi profile capture is deferred
 17. [planned coherent migration] Remove muOS-to-ROCKNIX namespace shims
 18. [guarded bootloader gate] Use PI12 green during boot and reserve PI11 red
     for the 41-percent low-battery policy

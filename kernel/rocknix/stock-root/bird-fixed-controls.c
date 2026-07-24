@@ -10,7 +10,7 @@
  *   - Menu + volume for a direct fixed-panel brightness step, including the
  *     hardware's lowest nonzero raw level;
  *   - power and lid events through ROCKNIX's proven fake-suspend helper; and
- *   - L1 + Select + Start through ROCKNIX's current process-kill contract.
+ *   - Select + Start through Bird's foreground-session exit contract.
  *
  * It never grabs the H700 gamepad, so Bird and selected applications continue
  * to receive their normal controls.  Event numbers are treated only as a fast
@@ -45,7 +45,6 @@ typedef signed long s64;
 #define KEY_VOLUMEDOWN 114
 #define KEY_VOLUMEUP 115
 #define KEY_POWER 116
-#define BTN_TL 310
 #define BTN_SELECT 314
 #define BTN_START 315
 #define BTN_MODE 316
@@ -101,7 +100,6 @@ struct input_source {
 
 struct control_state {
     int menu_held;
-    int l1_held;
     int select_held;
     int start_held;
     int exit_latched;
@@ -424,7 +422,6 @@ static void discover_inputs(struct input_source *sources) {
 
 static void clear_gamepad_state(struct control_state *state) {
     state->menu_held = 0;
-    state->l1_held = 0;
     state->select_held = 0;
     state->start_held = 0;
     state->exit_latched = 0;
@@ -447,7 +444,7 @@ static void close_source(struct input_source *source, int source_index,
 }
 
 static void update_exit_combo(struct control_state *state) {
-    if (state->l1_held && state->select_held && state->start_held) {
+    if (state->select_held && state->start_held) {
         if (!state->exit_latched) {
             state->exit_latched = 1;
             run_exit();
@@ -469,8 +466,6 @@ static void handle_gamepad(const struct input_event *event,
     pressed = event->value != 0;
     if (event->code == BTN_MODE)
         state->menu_held = pressed;
-    else if (event->code == BTN_TL)
-        state->l1_held = pressed;
     else if (event->code == BTN_SELECT)
         state->select_held = pressed;
     else if (event->code == BTN_START)
@@ -613,7 +608,7 @@ static void application(void) {
         {-1, POWER_NAME},
         {-1, LID_NAME},
     };
-    struct control_state state = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+    struct control_state state = {0, 0, 0, 0, 0, 0, 0, 0};
     struct pollfd polls[SOURCE_COUNT];
 
     kmsg_fd = (int)sys_open(KMSG_DEVICE, O_WRONLY | O_CLOEXEC);

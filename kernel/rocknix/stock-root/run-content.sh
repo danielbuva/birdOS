@@ -16,6 +16,7 @@ PORTMASTER_ONLY=0
 PORT_PREP=/storage/.config/bird/prepare-ports.sh
 NETWORK=/storage/.config/bird/bird-network.sh
 APPLICATION_READY=/run/bird/application-contract-ready
+SESSION_PID=/run/bird/content-session.pid
 
 mkdir -p "$LOG_DIR" /run/bird
 
@@ -93,6 +94,26 @@ install_mpv_input_policy() {
 	fi
 }
 
+prepare_fmsx_bios() {
+	SOURCE='/storage/roms/bios/Machines/Shared Roms'
+	for BIOS in MSX MSX2 MSX2EXT MSX2P MSX2PEXT KANJI; do
+		[ -f "/storage/roms/bios/$BIOS.ROM" ] ||
+			cp "$SOURCE/$BIOS.rom" "/storage/roms/bios/$BIOS.ROM" || return 1
+	done
+}
+
+run_managed() {
+	rm -f "$SESSION_PID"
+	"$@" &
+	MANAGED_PID=$!
+	printf '%s\n' "$MANAGED_PID" >"$SESSION_PID"
+	printf 'Bird managed application root=%s\n' "$MANAGED_PID"
+	wait "$MANAGED_PID"
+	STATUS=$?
+	rm -f "$SESSION_PID"
+	return "$STATUS"
+}
+
 rocknix_tuple() {
 	case "$HOST_PATH" in
 		*/ROMS/A2600/*)      printf '%s %s %s\n' atari2600 retroarch stella ;;
@@ -112,7 +133,7 @@ rocknix_tuple() {
 		*/ROMS/HBMAME/*)     printf '%s %s %s\n' arcade retroarch fbneo ;;
 		*/ROMS/MAME/*)       printf '%s %s %s\n' mame retroarch mame2003_plus ;;
 		*/ROMS/MD/*)         printf '%s %s %s\n' megadrive retroarch genesis_plus_gx ;;
-		*/ROMS/MSX/*)        printf '%s %s %s\n' msx retroarch bluemsx ;;
+		*/ROMS/MSX/*)        printf '%s %s %s\n' msx retroarch fmsx ;;
 		*/ROMS/N64/*)        printf '%s %s %s\n' n64 retroarch mupen64plus_next ;;
 		*/ROMS/NAOMI/*)      printf '%s %s %s\n' naomi retroarch flycast2021 ;;
 		*/ROMS/NDS/*)        printf '%s %s %s\n' nds drastic drastic-sa ;;
@@ -132,7 +153,7 @@ run_selected() {
 		"$NETWORK" start || :
 		# PortMaster is English-only on this fixed profile. Disable X11 compose
 		# parsing so xkbcommon does not load unrelated legacy encodings.
-		XCOMPOSEFILE=/dev/null /usr/bin/start_portmaster.sh
+		run_managed env XCOMPOSEFILE=/dev/null /usr/bin/start_portmaster.sh
 		STATUS=$?
 		"$NETWORK" stop || :
 		return "$STATUS"
@@ -140,7 +161,8 @@ run_selected() {
 	case "$KIND" in
 		1|2|4|5)
 			read -r PLATFORM EMULATOR CORE < <(rocknix_tuple) || return 1
-			/usr/bin/runemu.sh "$CONTENT" "-P$PLATFORM" \
+			[ "$CORE" != fmsx ] || prepare_fmsx_bios || return 1
+			run_managed /usr/bin/runemu.sh "$CONTENT" "-P$PLATFORM" \
 				"--core=$CORE" "--emulator=$EMULATOR" --controllers=""
 			;;
 		3)
@@ -158,16 +180,18 @@ run_selected() {
 					"$CONTENT" >"$PORT_SCRIPT" || return 1
 				chmod 0755 "$PORT_SCRIPT" || return 1
 			fi
-			/usr/bin/runemu.sh "$PORT_SCRIPT" -Pports \
+			run_managed /usr/bin/runemu.sh "$PORT_SCRIPT" -Pports \
 				--core=portmaster --emulator=portmaster --controllers=""
 			;;
 		6)
 			install_mpv_input_policy || return 1
-			/usr/bin/start_mplayer.sh "$CONTENT"
+			run_managed /usr/bin/start_mplayer.sh "$CONTENT"
 			;;
 		*) return 1 ;;
 	esac
 }
+
+trap 'rm -f "$SESSION_PID"' EXIT INT TERM HUP
 
 {
 	printf 'Bird ROCKNIX session start uptime='

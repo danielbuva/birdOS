@@ -11,7 +11,7 @@ SOURCE=${SOURCE:-/Volumes/BIRD}
 SYSTEM_SOURCE=${SYSTEM_SOURCE:-/Volumes/dani-sp/MUOS/runtime/ROCKNIX-SYSTEM}
 STORAGE=${STORAGE:-/Users/dani/rocknix-reference-result/storage.ext4}
 SYSTEM_TREE=${SYSTEM_TREE:-$ROOT/kernel/work/rocknix-system-exact-20260701}
-OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.21}
+OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.22}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
 LLD=${LLD:-/opt/homebrew/opt/lld/bin/ld.lld}
 READELF=${READELF:-/opt/homebrew/opt/llvm/bin/llvm-readelf}
@@ -311,8 +311,15 @@ grep -q '/flash/bird/bird-fixed-controls.service' \
 	"$OUTPUT/card/mount-storage.sh" || fail 'stock input replacement missing'
 grep -q '/flash/bird/bird-powerstate.service' \
 	"$OUTPUT/card/mount-storage.sh" || fail 'stock powerstate replacement missing'
-grep -q 'BTN_TL' \
-	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'fixed exit chord missing'
+grep -q 'state->select_held && state->start_held' \
+	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'Bird exit chord missing'
+if grep -q 'BTN_TL' "$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c"; then
+	fail 'obsolete L1 exit requirement remained'
+fi
+grep -q 'SESSION_PID=/run/bird/content-session.pid' \
+	"$OUTPUT/card/bird/run-content.sh" || fail 'managed content root missing'
+grep -q 'retroarch fmsx' \
+	"$OUTPUT/card/bird/run-content.sh" || fail 'fixed MSX provider missing'
 grep -q '#define INPUT_EVENT_SCAN_COUNT 32' \
 	"$ROOT/launcher/dani-launcher.c" || fail 'complete fixed input search missing'
 grep -q '#define EVENT_SCAN_COUNT 32' \

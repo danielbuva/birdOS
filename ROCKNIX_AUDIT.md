@@ -70,7 +70,7 @@ The power worker's low-battery red-status threshold is now exactly 41 percent.
 Charging remains kernel/PMIC-owned and the green LED remains the ordinary
 power indicator.
 
-## v6.15 result through the v6.21 hardening pass
+## v6.15 result through the v6.22 foreground-contract pass
 
 The physical gate passed brightness stability and visible shutdown at roughly
 1.8--2.0 seconds. The shutdown log places its exact config compare/copy at
@@ -168,6 +168,18 @@ it after resume. The fixed controls binary writes the known backlight sysfs
 directly instead of spawning the generic Bash/find/bc/settings stack; its last
 down-step reaches raw level one while zero remains reserved for display-off.
 
+The v6.21 physical gate passed those UI and brightness contracts. Four MSX
+games then proved a single provider fault: storage, input, audio and the full
+blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.
+V6.22 selects the release's included fMSX core and copies its six required ROMs
+from the already-present shared BIOS directory only when absent. OpenBOR also
+proved ROCKNIX's name-based global kill contract incomplete: its runner clears
+the kill list and never replaces it. V6.22 records the active wrapper PID,
+tries the provider's graceful name first, then terminates only descendants of
+that managed wrapper. Select+Start becomes the uniform Bird chord; because the
+fixed process never grabs the gamepad, generated RetroArch Menu+Start and all
+native application keybinds remain available.
+
 ## Bugs and inefficiencies found
 
 These remain after v6.15 and are ordered for later fixed replacements:
@@ -195,9 +207,10 @@ These remain after v6.15 and are ordered for later fixed replacements:
 
 ## Next active order
 
-1. Physically gate v6.21: repeat Library entry before and after the graphical
-   boundary, exact brightness across both suspend paths, raw-one recovery,
-   retained content suite and shutdown.
+1. Physically gate v6.22: launch multiple MSX games, exit OpenBOR with
+   Select+Start, verify Select+Start across RetroArch/PPSSPP/MPV and confirm
+   RetroArch's native Menu+Start still exits. Retain the broad content,
+   brightness, suspend and shutdown suite.
 2. Replace generic audio setup with a fixed H700 route while preserving the
    already-warm asynchronous audio services.
 3. Audit udev coldplug output and let its manager exit if no retained feature

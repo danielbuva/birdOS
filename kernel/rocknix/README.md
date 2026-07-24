@@ -948,7 +948,7 @@ for the real storage anchor instead of caching a failed early read.
 V6.14 also begins fixed resident-service replacement. A 5,184-byte static
 `ppoll` process replaces the Bash/grep/four-evtest input graph while retaining
 volume repeat, Menu+volume brightness, H700 fake suspend and the release's
-L1+Select+Start process-kill chord. A 5,528-byte static power process applies
+Select+Start process-kill chord. A 5,528-byte static power process applies
 the fixed CPU/GPU policy once, consumes plug/status uevents and performs one
 capacity read every 40 seconds only while discharging; this is required because
 the exact AXP717 driver has no capacity-change event. The fixed 2 GiB memory
@@ -1096,6 +1096,16 @@ write itself. This removes generic Bash, `find`, `bc` and settings parsing from
 each manual step and exposes raw level one as the lowest lit panel state.
 Post-frame diagnostics inherit the real PipeWire runtime environment, bound
 each audio query to two seconds and have a 20-second absolute runtime ceiling.
+
+The v6.21 physical gate passed the menu recovery and brightness changes, but
+four MSX launches all reached `bluemsx_libretro.so` and segfaulted after full
+video, input and audio initialization. An OpenBOR session also exposed that
+ROCKNIX publishes no process-kill name for that wrapper. V6.22 uses the exact
+release's alternate fMSX core and promotes its six already-present shared BIOS
+ROMs only when missing. Bird now records every foreground provider root and
+Select+Start terminates its descendants after first honoring ROCKNIX's graceful
+name contract. The H700 device remains ungrabbed, so RetroArch's generated
+Menu+Start binding and every standalone application's own controls coexist.
 
 The exact final common-autostart action now also publishes a timestamped
 `/run/bird/application-contract-ready` marker after Sway configuration exists.

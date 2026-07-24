@@ -119,7 +119,7 @@ card-side patches.
 
 ## Current changes
 
-- The active experiment is stock-root v6.21. V6.3 established the coherent
+- The active experiment is stock-root v6.22. V6.3 established the coherent
   ROCKNIX application environment and v6.4 passed early-systemd subtraction;
   v6.5 put Bird pixels before `switch_root`, v6.6 made that early frame
   interactive and v6.9 removed the remaining input-owner blackout without
@@ -180,6 +180,10 @@ card-side patches.
   complete fixed input-event range, continuously retains the exact volatile UI
   screen, archives evidence by boot ID, restores the exact pre-suspend raw
   level and replaces generic brightness Bash with direct fixed-control sysfs.
+  V6.22 makes Select+Start Bird's ungrabbed global foreground-exit chord while
+  leaving application-native input intact. It tracks the managed provider tree
+  so wrappers omitted from ROCKNIX's name list, including OpenBOR, cannot trap
+  the user. MSX uses the release's fMSX core after four blueMSX core crashes.
 - Bird's first initramfs instance is now the long-lived UI process. The normal
   systemd UI service adopts its PID instead of creating another launcher. The
   unchanged Sway compositor still starts
