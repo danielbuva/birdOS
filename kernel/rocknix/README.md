@@ -987,11 +987,11 @@ seconds (8.681--12.263 kernel uptime). The same test reported selections stuck
 in the pre-storage queue, although the final returned boot retained p6 at 2.888
 seconds and contains no selection event before shutdown.
 
-Stock-root v6.16 makes that edge fail-safe. Selection forces a synchronous
-directory revalidation, while a 50 ms recovery probe backs up the FIFO only
-until storage succeeds. It replaces the generic 11.5 KiB Sway generator with
-the exact `/dev/dri/card1` and `DSI-1` files captured from the working card;
-ordinary sessions no longer scan HDMI/DP, launch `output_monitor`, or unmask
+Stock-root v6.16 attempts to make that edge fail-safe. Selection forces a
+synchronous directory revalidation, while a 50 ms recovery probe backs up the
+FIFO only until storage succeeds. It replaces the generic 11.5 KiB Sway
+generator with the exact `/dev/dri/card1` and `DSI-1` files captured from the
+working card; ordinary sessions no longer scan HDMI/DP, launch `output_monitor`, or unmask
 the already-running Bird service. The two inconsistent latency writers are
 no-ops against the pinned value 64. RF-kill activation is likewise absent from
 offline boot and condition-released only inside Bird's network transaction.
@@ -1000,6 +1000,28 @@ Two independent v6.16 builds reproduce all 40 card payloads byte-for-byte. The
 normal launcher is 633,656 bytes, the early launcher is 635,200 bytes, the
 fixed Sway installer is 1,308 bytes and the compressed overlay is 222,355
 bytes. KERNEL and DTB remain byte-identical to v6.15 and the release.
+
+The v6.16 physical trace received the FIFO at kernel uptime 2.899 seconds but
+did not retain either late absolute directory before init moved storage; the
+250-iteration boundary expired at 3.60 seconds. Because that early process
+remained otherwise healthy, its queued selection could not self-heal after its
+old root lost the path. The normal final-root launcher later opened the same
+storage immediately, proving the mount and library were healthy.
+
+Stock-root v6.17 publishes content and config as bind aliases below the already
+retained `/run/muos` directory before signalling Bird. The launcher opens both
+with `openat` relative to its runtime descriptor, acknowledges the handoff and
+keeps the old absolute paths only as a fallback. The acknowledgement boundary
+is 500 iterations; a timeout retires the early process so systemd falls back to
+the proven final-root launcher instead of preserving a dead queue. PortMaster's
+explicit network transaction now waits at most ten seconds for an actual
+NetworkManager link. A personal keyfile was provisioned directly in the card's
+writable storage and is intentionally absent from source and logs.
+
+Two independent v6.17 builds reproduce all 40 card payloads byte-for-byte. The
+normal launcher is 633,800 bytes, the early launcher is 635,344 bytes and the
+compressed overlay is 222,766 bytes. KERNEL and DTB remain byte-identical to
+v6.16 and the release.
 
 The exact final common-autostart action now also publishes a timestamped
 `/run/bird/application-contract-ready` marker after Sway configuration exists.

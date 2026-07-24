@@ -31,7 +31,7 @@ The long-term centerpiece would be a tiny custom launcher—ideally a small stat
 Clean-root v5.4 proved the desired fast architecture but also proved that an
 application stack cannot be reconstructed reliably by copying binaries and
 guessing its hidden service and configuration contract one failure at a time.
-Stock-root v6.16 now optimizes the proven software baseline:
+Stock-root v6.17 now optimizes the proven software baseline:
 
 - exact ROCKNIX 20260701 KERNEL, DTB, SYSTEM and configured STORAGE;
 - complete systemd, udev, D-Bus, PipeWire, WirePlumber and H700 autostart path;
@@ -88,10 +88,15 @@ physical result proves brightness stability, `ksm_run=0`, a 40 ms config-save
 checkpoint and roughly 1.8--2.0-second visible shutdown. The generic
 application tail fell from about 8.0 to 3.58 seconds. Content selection reported
 a queued-storage regression, although the final returned boot recorded storage
-anchored at 2.888 seconds and no selection event. V6.16 makes readiness
-self-healing, replaces the 11.5 KiB multi-device Sway generator with the exact
-card1/DSI-1 files, removes duplicate broken latency writes and moves RF-kill
-state management out of offline boot.
+anchored at 2.888 seconds and no selection event. V6.16 made readiness
+self-healing, replaced the 11.5 KiB multi-device Sway generator with the exact
+card1/DSI-1 files, removed duplicate broken latency writes and moved RF-kill
+state management out of offline boot. Its physical trace caught the precise
+remaining race: the FIFO arrived at 2.899 seconds, but neither absolute
+storage directory was retained before the mount move. V6.17 publishes both
+directories below retained `/run`, acknowledges that fixed handoff and retires
+a failed early owner so the final-root launcher recovers instead of preserving
+a permanent queue. Explicit PortMaster networking now waits for a usable link.
 
 The gate order is compatibility first, then early Bird handoff, then service
 deferral/removal, then kernel trimming. No component is removed from the full
@@ -104,7 +109,7 @@ not discarded ideas.
 
 1. **ROCKNIX implementation audit — active.** Classify every retained startup
    script, service, output file, dependency and idle wake-up. Remove or replace
-   only measured fixed-profile work. v6.16 is the current physical gate; details
+   only measured fixed-profile work. v6.17 is the current physical gate; details
    and discovered bugs live in [`ROCKNIX_AUDIT.md`](ROCKNIX_AUDIT.md).
 2. **Finish fixed userspace contracts.** Generate the exact RG34XX-SP Sway and
    audio configuration, reduce the remaining autostart runner, then reassess
@@ -284,25 +289,27 @@ removes the handoff entirely while keeping the verified menu-first boundary.
 - [x] [v6.15 physical gate passed] Prevent post-frame brightness resets. The early fixed
   five-percent value and manual controls are the only writers; generic
   `006-display` and the old preparation write are removed from the boot path.
-- [ ] [v6.15 first subtraction passed; v6.16 staged] Replace fixed-profile generic autostart work while retaining
+- [ ] [v6.15 first subtraction passed; v6.17 physical gate] Replace fixed-profile generic autostart work while retaining
   controller, audio, emulator configuration and Sway compatibility. Audit and
   measured follow-ups are recorded in `ROCKNIX_AUDIT.md`.
 - [x] [v6.15 physical gate passed] Shorten shutdown without bypassing ordered unmounts. Use an
   exact compare/copy config checkpoint and submit poweroff asynchronously;
   record request, save and final timing on hardware. Config preservation took
   40 ms and visible shutdown measured roughly 1.8--2.0 seconds.
-- [ ] [v6.16 staged] Make storage readiness self-healing. A content selection
-  synchronously revalidates the retained directory and a 50 ms fallback probe
-  runs only until success, so a stale/missed FIFO edge cannot strand the queue.
-- [ ] [v6.16 staged] Replace generic Sway display discovery with the physically
+- [ ] [v6.16 failure localized; v6.17 staged] Make storage readiness deterministic.
+  Init publishes storage and config below retained `/run`; Bird opens both by
+  `openat`, acknowledges before the mount move and a timed-out owner retires to
+  the final-root fallback instead of stranding a queued request.
+- [ ] [v6.16 staged; v6.17 physical gate] Replace generic Sway display discovery with the physically
   generated `card1`/`DSI-1` profile, remove external-display polling from normal
   content sessions and stop unmasking/restarting the live Bird service.
-- [ ] [v6.16 staged] Keep systemd RF-kill state and its activation socket out of
-  offline boot; start the exact manager inside explicit PortMaster networking.
+- [ ] [v6.16 staged; v6.17 network gate] Keep systemd RF-kill state and its activation socket out of
+  offline boot; start the exact manager inside explicit PortMaster networking
+  and join a usable NetworkManager link only inside that session.
 - [ ] [migration gate planned] Remove muOS-to-ROCKNIX shims only after cached
   catalogue paths, runtime markers, state directories, BIOS and Ports all use
   canonical Bird/ROCKNIX namespaces in one coherent transaction.
-- [ ] [v6.13 physical functionality passed; untouched FIFO wake proof pending]
+- [ ] [v6.13 physical functionality passed; v6.17 retained-alias proof pending]
   Verify an untouched idle
   boot logs `early_storage_fifo=ready`, `storage_signal_received`,
   `storage_anchor_ready` and an acknowledged marker, then launches content
@@ -993,9 +1000,9 @@ Your next concrete milestones should be:
 15. [done: 128 ms Linux-DTB hardware proof] Reduce the PMIC cold-power hold
     from 512 ms to its minimum; quick-tap power-on is verified, while earlier
     green-LED/display response remains a later bootloader/firmware boundary
-16. [active: v6.16] Audit and reduce the retained ROCKNIX userspace contract;
+16. [active: v6.17] Audit and reduce the retained ROCKNIX userspace contract;
     v6.15 passed brightness/KSM/shutdown and cut the application tail, while
-    v6.16 hardens storage and fixes the Sway/RF-kill profiles
+    v6.16 fixed Sway/RF-kill profiles and v6.17 hardens retained storage
 17. [planned coherent migration] Remove muOS-to-ROCKNIX namespace shims
 18. [guarded bootloader gate] Use PI12 green during boot and reserve PI11 red
     for the 41-percent low-battery policy

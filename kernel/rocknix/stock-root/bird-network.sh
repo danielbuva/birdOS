@@ -23,7 +23,16 @@ case "${1:-}" in
 			[ "$(systemctl is-active NetworkManager.service 2>/dev/null)" = active ] && break
 			usleep 50000
 		done
-		printf 'Bird network request ready nm=%s iwd=%s resolved=%s timesync=%s rfkill=%s uptime=' \
+		# PortMaster should not mistake a running manager for a usable link.
+		# This wait is inside the explicit maintenance session only; it never
+		# delays Bird's offline boot or menu.
+		if /usr/bin/nm-online -q --timeout=10; then
+			LINK=ready
+		else
+			LINK=timeout
+		fi
+		printf 'Bird network request ready link=%s nm=%s iwd=%s resolved=%s timesync=%s rfkill=%s uptime=' \
+			"$LINK" \
 			"$(systemctl is-active NetworkManager.service 2>/dev/null || :)" \
 			"$(systemctl is-active iwd.service 2>/dev/null || :)" \
 			"$(systemctl is-active systemd-resolved.service 2>/dev/null || :)" \

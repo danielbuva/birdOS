@@ -1,7 +1,7 @@
 #!/bin/sh
 # Guarded deployment of the compatibility-first stock-root milestone. P5 and
-# content bytes stay untouched. V6.16 makes storage readiness self-healing and
-# replaces generic multi-display Sway generation with the fixed DSI-1 profile.
+# content bytes stay untouched. V6.17 publishes storage below retained /run,
+# retires a failed early owner and waits for explicit network readiness.
 # It retains the exact kernel and complete working ROCKNIX userspace.
 # The exact ROCKNIX writable filesystem remains a loop image on p6, and the
 # accepted v5.4 kernel remains on p1 as a fallback.
@@ -11,7 +11,7 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 BIRD=${BIRD:-/Volumes/BIRD}
 DATA=${DATA:-/Volumes/dani-sp}
-CANDIDATE=${CANDIDATE:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.16/card}
+CANDIDATE=${CANDIDATE:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.17/card}
 STORAGE_SOURCE=${STORAGE_SOURCE:-/Users/dani/rocknix-reference-result/storage.ext4}
 PORTMASTER_ARCHIVE=${PORTMASTER_ARCHIVE:-$ROOT/kernel/work/rocknix-system-exact-20260701/usr/config/PortMaster/release/PortMaster.zip}
 RUNTIME=$DATA/MUOS/runtime/ROCKNIX-SYSTEM
@@ -266,7 +266,7 @@ sync
 cmp "$CANDIDATE/extlinux/extlinux.conf" "$BIRD/extlinux/extlinux.conf" || fail 'active extlinux verification failed'
 cmp "$CANDIDATE/bird-initramfs.cpio.gz" "$BIRD/bird-initramfs.cpio.gz" || fail 'early initramfs verification failed'
 
-printf 'Bird stock-root v6.16 staged on /dev/%s.\n' "$WHOLE"
+printf 'Bird stock-root v6.17 staged on /dev/%s.\n' "$WHOLE"
 printf 'Moved %s Port data directories into the native ROCKNIX tree.\n' "$MOVED_PORTS"
 printf 'Generic storage discovery replaced by the fixed p6 Bird view.\n'
 printf 'MPV physical volume ownership is system-only.\n'
@@ -284,8 +284,11 @@ printf 'Late generic display ownership and fixed-profile autostart no-ops are re
 printf 'Shutdown keeps the config checkpoint without a full interactive-profile load.\n'
 printf 'The low-battery red LED threshold is fixed at 41 percent.\n'
 printf 'Storage readiness has a bounded self-healing probe until success.\n'
+printf 'Storage/config are published below retained /run before switch_root.\n'
+printf 'A failed early storage owner retires into the final-root fallback.\n'
 printf 'The application compositor uses one fixed card1/DSI-1 profile.\n'
 printf 'RF-kill state management now exists only inside network sessions.\n'
+printf 'PortMaster networking waits for one usable NetworkManager link.\n'
 printf 'p5 was not modified; p6 content bytes were preserved by same-volume moves.\n'
 printf 'Exact ROCKNIX KERNEL: %s\n' "$ROCKNIX_KERNEL_SHA"
 printf 'Automatic fallback KERNEL: %s\n' "$V54_KERNEL_SHA"

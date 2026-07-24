@@ -381,6 +381,8 @@ static int string_starts_with(const char *text, const char *prefix) {
  * therefore uses openat/renameat/unlinkat through these fixed anchors.
  */
 static void refresh_path_anchors(void) {
+    static const char storage_anchor[] = "storage-anchor";
+    static const char config_anchor[] = "config-anchor";
     if (runtime_dir_fd < 0)
         runtime_dir_fd = (int)sys_open("/run/muos", O_RDONLY | O_NONBLOCK);
     if (input_dir_fd < 0)
@@ -388,12 +390,20 @@ static void refresh_path_anchors(void) {
     if (power_dir_fd < 0)
         power_dir_fd = (int)sys_open("/sys/class/power_supply/battery",
                                      O_RDONLY | O_NONBLOCK);
+    if (storage_dir_fd < 0 && runtime_dir_fd >= 0)
+        storage_dir_fd = (int)syscall6(56, runtime_dir_fd,
+                                      (long)storage_anchor,
+                                      O_RDONLY | O_NONBLOCK, 0, 0, 0);
     if (storage_dir_fd < 0)
         storage_dir_fd = (int)sys_open(LIVE_STORAGE_ROOT,
-                                       O_RDONLY | O_NONBLOCK);
+                                      O_RDONLY | O_NONBLOCK);
+    if (config_dir_fd < 0 && runtime_dir_fd >= 0)
+        config_dir_fd = (int)syscall6(56, runtime_dir_fd,
+                                     (long)config_anchor,
+                                     O_RDONLY | O_NONBLOCK, 0, 0, 0);
     if (config_dir_fd < 0)
         config_dir_fd = (int)sys_open("/storage/.config/bird",
-                                      O_RDONLY | O_NONBLOCK);
+                                     O_RDONLY | O_NONBLOCK);
 }
 
 static int anchored_dirfd(const char *path, const char **relative) {
@@ -1639,7 +1649,9 @@ static void probe_storage(void) {
      * An initramfs-owned Bird must retain both directory descriptors before
      * ROCKNIX moves /storage into the final root. The marker is the bounded
      * readiness acknowledgement consumed by bird-early.sh; it never makes
-     * the already-interactive menu wait for storage.
+     * the already-interactive menu wait for storage. The preferred anchors
+     * are bind aliases beneath retained /run, with the original absolute
+     * paths kept only as a compatibility fallback.
      */
     if (storage_dir_fd < 0 || config_dir_fd < 0) return;
     fd = fixed_open(ROM_ROOT, O_RDONLY | O_NONBLOCK);

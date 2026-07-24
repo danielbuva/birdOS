@@ -10,7 +10,7 @@ ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 SOURCE=${SOURCE:-/Volumes/BIRD}
 SYSTEM_SOURCE=${SYSTEM_SOURCE:-/Volumes/dani-sp/MUOS/runtime/ROCKNIX-SYSTEM}
 STORAGE=${STORAGE:-/Users/dani/rocknix-reference-result/storage.ext4}
-OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.16}
+OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.17}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
 LLD=${LLD:-/opt/homebrew/opt/lld/bin/ld.lld}
 READELF=${READELF:-/opt/homebrew/opt/llvm/bin/llvm-readelf}
@@ -205,6 +205,8 @@ grep -q 'systemd-resolved.service systemd-timesyncd.service' \
 	"$OUTPUT/card/bird/bird-network.sh" || fail 'network release missing'
 grep -q 'systemd-rfkill.service' \
 	"$OUTPUT/card/bird/bird-network.sh" || fail 'rfkill release missing'
+grep -q '/usr/bin/nm-online -q --timeout=10' \
+	"$OUTPUT/card/bird/bird-network.sh" || fail 'network readiness join missing'
 grep -q 'systemd-rfkill.socket' \
 	"$OUTPUT/card/mount-storage.sh" || fail 'rfkill activation socket remained'
 grep -q '^After=rocknix-autostart.service$' \
@@ -220,6 +222,12 @@ grep -q 'storage anchor acknowledged' \
 grep -q 'storage readiness signalled' \
 	"$OUTPUT/build/early-initramfs/payload/bird-early.sh" || \
 	fail 'explicit storage readiness signal missing'
+grep -q 'storage anchors published' \
+	"$OUTPUT/build/early-initramfs/payload/bird-early.sh" || \
+	fail 'retained runtime storage aliases missing'
+grep -q 'storage timeout retired' \
+	"$OUTPUT/build/early-initramfs/payload/bird-early.sh" || \
+	fail 'failed early launcher retirement missing'
 grep -q 'mknod -m 0600.*STORAGE_SIGNAL.* p' \
 	"$OUTPUT/build/early-initramfs/payload/bird-early.sh" || \
 	fail 'supported FIFO creation applet missing'
