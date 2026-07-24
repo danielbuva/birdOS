@@ -119,7 +119,7 @@ card-side patches.
 
 ## Current changes
 
-- The active experiment is stock-root v6.17. V6.3 established the coherent
+- The active experiment is stock-root v6.18. V6.3 established the coherent
   ROCKNIX application environment and v6.4 passed early-systemd subtraction;
   v6.5 put Bird pixels before `switch_root`, v6.6 made that early frame
   interactive and v6.9 removed the remaining input-owner blackout without
@@ -151,11 +151,16 @@ card-side patches.
   latency writes and made RF-kill state PortMaster-network-only. Its returned
   trace localized the remaining failure: init signalled storage at 2.899
   seconds, but the old-root launcher did not retain either late directory
-  before the mount moved. V6.17 publishes storage and config as bind aliases
-  below Bird's already-retained `/run` directory, requires acknowledgement at
-  that boundary and retires the early process into a working final-root
-  fallback on timeout. PortMaster-only networking also joins a usable link;
-  the personal Wi-Fi keyfile remains card state rather than repository data.
+  before the mount moved. V6.17 proved its guarded fallback but also proved
+  that late bind aliases below an already-open `/run` directory were not
+  discoverable by this old-root process: it retired at 4.45 seconds, the normal
+  launcher recovered at 7.12 seconds and a redundant autostart UI request
+  caused another repaint near 10 seconds. V6.18 removes the aliases and signals
+  exactly after `prepare_sysroot`, when the final tree is stable at
+  `/sysroot/storage`; it also removes the redundant UI start. PortMaster-only
+  networking explicitly activates the saved profile and records sanitized
+  connection diagnostics. The personal Wi-Fi keyfile remains card state rather
+  than repository data.
 - Bird's first initramfs instance is now the long-lived UI process. The normal
   systemd UI service adopts its PID instead of creating another launcher. The
   unchanged Sway compositor still starts

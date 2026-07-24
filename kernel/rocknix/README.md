@@ -1008,20 +1008,44 @@ remained otherwise healthy, its queued selection could not self-heal after its
 old root lost the path. The normal final-root launcher later opened the same
 storage immediately, proving the mount and library were healthy.
 
-Stock-root v6.17 publishes content and config as bind aliases below the already
-retained `/run/muos` directory before signalling Bird. The launcher opens both
-with `openat` relative to its runtime descriptor, acknowledges the handoff and
-keeps the old absolute paths only as a fallback. The acknowledgement boundary
-is 500 iterations; a timeout retires the early process so systemd falls back to
-the proven final-root launcher instead of preserving a dead queue. PortMaster's
-explicit network transaction now waits at most ten seconds for an actual
-NetworkManager link. A personal keyfile was provisioned directly in the card's
-writable storage and is intentionally absent from source and logs.
+Stock-root v6.17 attempts to publish content and config as bind aliases below
+the already-retained `/run/muos` directory before signalling Bird. The launcher
+tries both with `openat` and keeps the old absolute paths as fallback. The
+acknowledgement boundary is 500 iterations; a timeout retires the early process
+so systemd falls back to the proven final-root launcher instead of preserving a
+dead queue. PortMaster's explicit network transaction waits at most ten seconds
+for an actual NetworkManager link. A personal keyfile was provisioned directly
+in the card's writable storage and is intentionally absent from source and logs.
 
 Two independent v6.17 builds reproduce all 40 card payloads byte-for-byte. The
 normal launcher is 633,800 bytes, the early launcher is 635,344 bytes and the
 compressed overlay is 222,766 bytes. KERNEL and DTB remain byte-identical to
 v6.16 and the release.
+
+The v6.17 physical trace showed both aliases mounted but unavailable to the
+old-root launcher. Init published them at 3.07 seconds, Bird queued a selection
+at 4.314 seconds, the 500-iteration boundary expired at 4.44 seconds and the
+guard retired PID 146 at 4.45 seconds. The normal launcher recovered at 7.12
+seconds. A redundant final UI request in the exact compatibility coordinator
+then produced a second supervisor around 10 seconds, matching the reported
+multiple main-menu repaints. Its network transaction started NetworkManager,
+iwd, resolved and timesyncd, but `nm-online` timed out with no usable link.
+
+Stock-root v6.18 removes both alias mounts and moves the single readiness event
+after `prepare_sysroot`. At that boundary the complete content and config tree
+is stable below `/sysroot/storage`, while Bird's old root and `/run` are still
+accessible. Bird opens those directories, acknowledges them and retains the
+same process through the remaining moves. The timeout fallback remains. The
+build derives an exact autostart coordinator with only its redundant UI start,
+related log line and private-console clear removed; it is 2,066 bytes instead
+of 2,168. PortMaster networking now reloads the saved keyfiles, explicitly
+activates the sole Wi-Fi profile and records sanitized NetworkManager state on
+failure. Supervisor termination signals are also recorded.
+
+Two independent v6.18 builds reproduce all 41 card payloads byte-for-byte. The
+normal launcher is 633,816 bytes, the early launcher is 635,360 bytes and the
+compressed overlay is 222,624 bytes. KERNEL and DTB remain byte-identical to
+v6.17 and the release.
 
 The exact final common-autostart action now also publishes a timestamped
 `/run/bird/application-contract-ready` marker after Sway configuration exists.

@@ -23,6 +23,15 @@ case "${1:-}" in
 			[ "$(systemctl is-active NetworkManager.service 2>/dev/null)" = active ] && break
 			usleep 50000
 		done
+		/usr/bin/nmcli connection reload || :
+		PROFILE=$(/usr/bin/nmcli -t -f NAME,TYPE connection show 2>/dev/null | \
+			awk -F: '$2 == "wifi" || $2 == "802-11-wireless" { print $1; exit }')
+		if [ -n "$PROFILE" ] && \
+			/usr/bin/nmcli -w 20 connection up id "$PROFILE"; then
+			ACTIVATION=ready
+		else
+			ACTIVATION=failed
+		fi
 		# PortMaster should not mistake a running manager for a usable link.
 		# This wait is inside the explicit maintenance session only; it never
 		# delays Bird's offline boot or menu.
@@ -31,14 +40,20 @@ case "${1:-}" in
 		else
 			LINK=timeout
 		fi
-		printf 'Bird network request ready link=%s nm=%s iwd=%s resolved=%s timesync=%s rfkill=%s uptime=' \
-			"$LINK" \
+		printf 'Bird network request ready profile=%s activation=%s link=%s nm=%s iwd=%s resolved=%s timesync=%s rfkill=%s uptime=' \
+			"${PROFILE:-missing}" "$ACTIVATION" "$LINK" \
 			"$(systemctl is-active NetworkManager.service 2>/dev/null || :)" \
 			"$(systemctl is-active iwd.service 2>/dev/null || :)" \
 			"$(systemctl is-active systemd-resolved.service 2>/dev/null || :)" \
 			"$(systemctl is-active systemd-timesyncd.service 2>/dev/null || :)" \
 			"$(systemctl is-active systemd-rfkill.service 2>/dev/null || :)"
 		cut -d ' ' -f 1 /proc/uptime
+		printf '%s\n' '--- NetworkManager connections ---'
+		/usr/bin/nmcli -t -f NAME,TYPE,AUTOCONNECT connection show || :
+		printf '%s\n' '--- Wi-Fi device ---'
+		/usr/bin/nmcli -t -f GENERAL.DEVICE,GENERAL.STATE,GENERAL.REASON,GENERAL.CONNECTION,IP4.ADDRESS,IP4.GATEWAY device show || :
+		printf '%s\n' '--- routes ---'
+		ip route || :
 		;;
 	stop)
 		printf 'Bird network release start uptime='

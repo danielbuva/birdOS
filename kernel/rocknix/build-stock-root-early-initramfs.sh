@@ -5,7 +5,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
-OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.17}
+OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.18}
 OFFICIAL_INIT=${OFFICIAL_INIT:-$ROOT/kernel/work/rocknix-official-initramfs-20260701/ramdisk/init}
 JOYPAD=${JOYPAD:-$ROOT/kernel/work/rocknix-system-exact-20260701/usr/lib/kernel-overlays/base/lib/modules/7.0.11/rocknix-joypad/rocknix-singleadc-joypad.ko}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
@@ -90,9 +90,9 @@ if "$READELF" -l "$LAUNCHER" | grep -q ' INTERP '; then
 fi
 
 # Inject three fixed calls into the pinned upstream init. Bird starts after the
-# special filesystems exist. Once storage is mounted, init gives Bird a bounded
-# opportunity to retain it before prepare_sysroot moves that mount. The same
-# Bird process remains alive while the exact special filesystems move.
+# special filesystems exist. After prepare_sysroot moves the complete storage
+# tree below /sysroot, init gives Bird a bounded opportunity to retain it. The
+# same Bird process remains alive while the exact special filesystems move.
 awk '
 	$0 == "hidecursor" {
 		print
@@ -103,7 +103,7 @@ awk '
 	}
 	$0 == "  ${BOOT_STEP}" {
 		print
-		print "  [ \"${BOOT_STEP}\" != \"mount_storage\" ] || /bird-early.sh storage"
+		print "  [ \"${BOOT_STEP}\" != \"prepare_sysroot\" ] || /bird-early.sh root-ready"
 		next
 	}
 	$0 == "# move some special filesystems" {
@@ -114,7 +114,7 @@ awk '
 ' "$OFFICIAL_INIT" >"$PAYLOAD/init"
 [ "$(grep -c '^/bird-early.sh start$' "$PAYLOAD/init")" = 1 ] || \
 	fail 'early start injection count changed'
-[ "$(grep -c '^  \[ "${BOOT_STEP}" != "mount_storage" \] || /bird-early.sh storage$' "$PAYLOAD/init")" = 1 ] || \
+[ "$(grep -c '^  \[ "${BOOT_STEP}" != "prepare_sysroot" \] || /bird-early.sh root-ready$' "$PAYLOAD/init")" = 1 ] || \
 	fail 'storage anchor injection count changed'
 [ "$(grep -c '^/bird-early.sh handoff$' "$PAYLOAD/init")" = 1 ] || \
 	fail 'handoff injection count changed'

@@ -70,7 +70,7 @@ The power worker's low-battery red-status threshold is now exactly 41 percent.
 Charging remains kernel/PMIC-owned and the green LED remains the ordinary
 power indicator.
 
-## v6.15 result, v6.16 localization and v6.17 correction
+## v6.15 result through the v6.18 correction
 
 The physical gate passed brightness stability and visible shutdown at roughly
 1.8--2.0 seconds. The shutdown log places its exact config compare/copy at
@@ -97,15 +97,24 @@ Finally, systemd's RF-kill process and activation socket leave offline boot;
 the exact process is condition-released with the existing PortMaster network
 transaction.
 
-V6.17 makes the namespace transfer explicit. After mounting storage, init bind
-publishes the content and config directories below `/run/muos`; Bird opens them
-relative to its already-retained runtime descriptor and acknowledges before
-the mount move. The original absolute paths remain fallback-only. If the
-bounded acknowledgement still fails, init retires that early owner so systemd
-can start the proven final-root launcher rather than preserving an unusable
-menu. The same cycle installs a personal NetworkManager keyfile only in card
-state and makes the explicit PortMaster network session wait up to ten seconds
-for one usable link. Neither credentials nor network work enter offline boot.
+V6.17 tested bind aliases below the retained `/run/muos` directory. Init
+published them at 3.07 seconds, but the old-root process still could not open
+them. Its bounded timeout retired that process at 4.45 seconds and the normal
+root launcher recovered at 7.12 seconds, proving the fallback while explaining
+the first repaint. The compatibility coordinator then requested the already
+running UI again and a second supervisor appeared near 10 seconds. PortMaster
+started every requested provider, but `nm-online` timed out with no connection.
+
+V6.18 deletes the two failed alias mounts. Init now sends one readiness event
+after `prepare_sysroot` has moved the completed tree to `/sysroot/storage` but
+before `/run` and the other special mounts move. Bird opens that stable path,
+acknowledges it and retains the same PID; the timeout fallback remains. The
+exact release autostart script is generated with only its redundant UI start,
+associated log line and private-console clear removed (2,168 to 2,066 bytes).
+Supervisor signal traps will identify any other lifecycle owner. Networking
+reloads the saved keyfiles, explicitly activates the sole Wi-Fi profile, waits
+for connectivity and records connection/device/reason/route data without the
+PSK. Neither credentials nor network work enter offline boot.
 
 ## Bugs and inefficiencies found
 
@@ -134,9 +143,9 @@ These remain after v6.15 and are ordered for later fixed replacements:
 
 ## Next active order
 
-1. Physically gate v6.17: retained storage, fixed Sway content suite, suspend,
+1. Physically gate v6.18: retained storage, fixed Sway content suite, suspend,
    PortMaster, charging indicator, low-battery LED policy and shutdown time.
-2. If the v6.17 Sway profile passes, remove the generic connector generator
+2. If the v6.18 Sway profile passes, remove the generic connector generator
    permanently from the reproducible image.
 3. Replace generic audio setup with a fixed H700 route while preserving the
    already-warm asynchronous audio services.

@@ -10,7 +10,8 @@ ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 SOURCE=${SOURCE:-/Volumes/BIRD}
 SYSTEM_SOURCE=${SYSTEM_SOURCE:-/Volumes/dani-sp/MUOS/runtime/ROCKNIX-SYSTEM}
 STORAGE=${STORAGE:-/Users/dani/rocknix-reference-result/storage.ext4}
-OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.17}
+SYSTEM_TREE=${SYSTEM_TREE:-$ROOT/kernel/work/rocknix-system-exact-20260701}
+OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.18}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
 LLD=${LLD:-/opt/homebrew/opt/lld/bin/ld.lld}
 READELF=${READELF:-/opt/homebrew/opt/llvm/bin/llvm-readelf}
@@ -34,6 +35,7 @@ sha256() {
 [ -f "$SOURCE/dtb.img" ] || fail 'release DTB missing'
 [ -f "$SYSTEM_SOURCE" ] || fail 'release SYSTEM missing'
 [ -f "$STORAGE" ] || fail 'captured ROCKNIX STORAGE image missing'
+[ -f "$SYSTEM_TREE/usr/bin/autostart" ] || fail 'extracted exact autostart missing'
 [ "$(sha256 "$SOURCE/KERNEL")" = "$KERNEL_SHA" ] || fail 'release KERNEL changed'
 [ "$(sha256 "$SOURCE/dtb.img")" = "$DTB_SHA" ] || fail 'release DTB changed'
 [ "$(sha256 "$SYSTEM_SOURCE")" = "$SYSTEM_SHA" ] || fail 'release SYSTEM changed'
@@ -44,6 +46,16 @@ sha256() {
 [ ! -e "$OUTPUT" ] || fail "output already exists: $OUTPUT"
 
 mkdir -p "$OUTPUT/card/bird" "$OUTPUT/card/extlinux" "$OUTPUT/build"
+
+# Keep the exact compatibility coordinator for this gate, but remove its final
+# request to start the UI a second time and its private-console clear. Bird is
+# already a rocknix.target dependency; application Sway remains on demand.
+awk '
+	$0 == "log \"Starting ${UI_SERVICE}...\"" { next }
+	$0 == "systemctl start ${UI_SERVICE} 2>&1 >>${BOOTLOG} &" { next }
+	$0 == "clear >/dev/console" { next }
+	{ print }
+' "$SYSTEM_TREE/usr/bin/autostart" >"$OUTPUT/card/bird/bird-autostart"
 
 "$CLANG" --target=aarch64-linux-gnu -mcpu=cortex-a53 -O2 \
 	-ffreestanding -ffunction-sections -fdata-sections \
@@ -160,6 +172,7 @@ chmod 0755 "$OUTPUT/card/post-flash.sh" "$OUTPUT/card/mount-storage.sh" \
 	"$OUTPUT/card/bird/bird-fixed-control-exit.sh" \
 	"$OUTPUT/card/bird/bird-save-config.sh" \
 	"$OUTPUT/card/bird/bird-autostart-noop" \
+	"$OUTPUT/card/bird/bird-autostart" \
 	"$OUTPUT/card/bird/bird-fixed-sway.sh"
 
 for SCRIPT in "$OUTPUT/card/post-flash.sh" \
@@ -176,6 +189,7 @@ for SCRIPT in "$OUTPUT/card/post-flash.sh" \
 	"$OUTPUT/card/bird/bird-fixed-control-exit.sh" \
 	"$OUTPUT/card/bird/bird-save-config.sh" \
 	"$OUTPUT/card/bird/bird-autostart-noop" \
+	"$OUTPUT/card/bird/bird-autostart" \
 	"$OUTPUT/card/bird/bird-fixed-sway.sh"; do
 	bash -n "$SCRIPT" || fail "shell syntax failed: $SCRIPT"
 done
@@ -193,6 +207,13 @@ grep -q '^Wants=.*essway.service' \
 	"$OUTPUT/card/bird/rocknix.target" || fail 'early Bird target request missing'
 grep -q '^BindPaths=/dev/null:/dev/console$' \
 	"$OUTPUT/card/bird/rocknix-autostart.service" || fail 'autostart console isolation missing'
+grep -q 'exec /flash/bird/bird-autostart' \
+	"$OUTPUT/card/bird/rocknix-autostart.service" || fail 'fixed autostart coordinator missing'
+grep -q '### Run common start scripts' \
+	"$OUTPUT/card/bird/bird-autostart" || fail 'exact autostart body missing'
+if grep -q 'systemctl start ${UI_SERVICE}' "$OUTPUT/card/bird/bird-autostart"; then
+	fail 'redundant final UI start remained'
+fi
 grep -q '^ConditionPathExists=/run/bird/network-request$' \
 	"$OUTPUT/card/bird/NetworkManager.service" || fail 'NetworkManager gate missing'
 grep -q '^ConditionPathExists=/run/bird/network-request$' \
@@ -207,6 +228,8 @@ grep -q 'systemd-rfkill.service' \
 	"$OUTPUT/card/bird/bird-network.sh" || fail 'rfkill release missing'
 grep -q '/usr/bin/nm-online -q --timeout=10' \
 	"$OUTPUT/card/bird/bird-network.sh" || fail 'network readiness join missing'
+grep -q '/usr/bin/nmcli -w 20 connection up' \
+	"$OUTPUT/card/bird/bird-network.sh" || fail 'saved Wi-Fi activation missing'
 grep -q 'systemd-rfkill.socket' \
 	"$OUTPUT/card/mount-storage.sh" || fail 'rfkill activation socket remained'
 grep -q '^After=rocknix-autostart.service$' \
@@ -219,15 +242,15 @@ grep -q 'persistent-owner' \
 grep -q 'storage anchor acknowledged' \
 	"$OUTPUT/build/early-initramfs/payload/bird-early.sh" || \
 	fail 'storage anchor readiness barrier missing'
-grep -q 'storage readiness signalled' \
+grep -q 'final-root storage signalled' \
 	"$OUTPUT/build/early-initramfs/payload/bird-early.sh" || \
 	fail 'explicit storage readiness signal missing'
-grep -q 'storage anchors published' \
-	"$OUTPUT/build/early-initramfs/payload/bird-early.sh" || \
-	fail 'retained runtime storage aliases missing'
-grep -q 'storage timeout retired' \
+grep -q 'final-root timeout retired' \
 	"$OUTPUT/build/early-initramfs/payload/bird-early.sh" || \
 	fail 'failed early launcher retirement missing'
+grep -q '/sysroot/storage/bird-data' \
+	"$ROOT/launcher/dani-launcher.c" || \
+	fail 'post-prepare_sysroot storage path missing'
 grep -q 'mknod -m 0600.*STORAGE_SIGNAL.* p' \
 	"$OUTPUT/build/early-initramfs/payload/bird-early.sh" || \
 	fail 'supported FIFO creation applet missing'

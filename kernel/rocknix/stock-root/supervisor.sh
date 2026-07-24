@@ -29,6 +29,15 @@ exec >>"$LOG" 2>&1
 printf 'bird supervisor boot_id=%s start uptime=' "$BOOT_ID"
 cut -d ' ' -f 1 /proc/uptime
 
+supervisor_signal() {
+	printf 'bird supervisor signal=%s uptime=' "$1"
+	cut -d ' ' -f 1 /proc/uptime
+	exit 0
+}
+trap 'supervisor_signal TERM' TERM
+trap 'supervisor_signal HUP' HUP
+trap 'supervisor_signal INT' INT
+
 request_poweroff() {
 	{
 		printf 'Bird shutdown requested boot_id=%s uptime=' "$BOOT_ID"

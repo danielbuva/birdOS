@@ -381,8 +381,6 @@ static int string_starts_with(const char *text, const char *prefix) {
  * therefore uses openat/renameat/unlinkat through these fixed anchors.
  */
 static void refresh_path_anchors(void) {
-    static const char storage_anchor[] = "storage-anchor";
-    static const char config_anchor[] = "config-anchor";
     if (runtime_dir_fd < 0)
         runtime_dir_fd = (int)sys_open("/run/muos", O_RDONLY | O_NONBLOCK);
     if (input_dir_fd < 0)
@@ -390,19 +388,17 @@ static void refresh_path_anchors(void) {
     if (power_dir_fd < 0)
         power_dir_fd = (int)sys_open("/sys/class/power_supply/battery",
                                      O_RDONLY | O_NONBLOCK);
-    if (storage_dir_fd < 0 && runtime_dir_fd >= 0)
-        storage_dir_fd = (int)syscall6(56, runtime_dir_fd,
-                                      (long)storage_anchor,
-                                      O_RDONLY | O_NONBLOCK, 0, 0, 0);
     if (storage_dir_fd < 0)
         storage_dir_fd = (int)sys_open(LIVE_STORAGE_ROOT,
                                       O_RDONLY | O_NONBLOCK);
-    if (config_dir_fd < 0 && runtime_dir_fd >= 0)
-        config_dir_fd = (int)syscall6(56, runtime_dir_fd,
-                                     (long)config_anchor,
-                                     O_RDONLY | O_NONBLOCK, 0, 0, 0);
+    if (storage_dir_fd < 0)
+        storage_dir_fd = (int)sys_open("/sysroot/storage/bird-data",
+                                      O_RDONLY | O_NONBLOCK);
     if (config_dir_fd < 0)
         config_dir_fd = (int)sys_open("/storage/.config/bird",
+                                     O_RDONLY | O_NONBLOCK);
+    if (config_dir_fd < 0)
+        config_dir_fd = (int)sys_open("/sysroot/storage/.config/bird",
                                      O_RDONLY | O_NONBLOCK);
 }
 
@@ -1647,11 +1643,11 @@ static void probe_storage(void) {
     refresh_path_anchors();
     /*
      * An initramfs-owned Bird must retain both directory descriptors before
-     * ROCKNIX moves /storage into the final root. The marker is the bounded
-     * readiness acknowledgement consumed by bird-early.sh; it never makes
-     * the already-interactive menu wait for storage. The preferred anchors
-     * are bind aliases beneath retained /run, with the original absolute
-     * paths kept only as a compatibility fallback.
+     * the special-mount handoff and switch_root. The marker is the bounded
+     * readiness acknowledgement consumed by bird-early.sh; it never makes the
+     * already-interactive menu wait for storage. The initramfs process opens
+     * the final tree below /sysroot after prepare_sysroot moves it; a normal
+     * root process uses the ordinary absolute paths.
      */
     if (storage_dir_fd < 0 || config_dir_fd < 0) return;
     fd = fixed_open(ROM_ROOT, O_RDONLY | O_NONBLOCK);
