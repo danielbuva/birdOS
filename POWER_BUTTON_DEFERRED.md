@@ -62,12 +62,22 @@ ownership model above: Linux programs the retained PMIC threshold for the next
 cold start. Forced-off, lid, charging and repeated near-boundary behavior still
 belong in the final firmware acceptance sweep.
 
-The green work LED is separately described as PMIC/battery GPIO PI12, while the
-panel is initialized by U-Boot's fixed `rg34xxsp_v1` LCD node. The shorter PMIC
-acceptance threshold should naturally advance the green-light boundary by
-roughly 384 ms. Any residual LED delay needs PMIC/bootloader measurement; any
-residual display-dark interval needs U-Boot panel-sequence work. Neither should
-be pushed into the launcher.
+The exact active DTB describes the upper indicator as two GPIOs: PI11 is
+`red:status` and PI12 is `green:power`; PI12 defaults on in Linux. The matching
+ROCKNIX DDR4 U-Boot defconfig enables its status-LED framework on GPIO 267,
+which resolves to PI11, with state 2. That explains the observed red LED during
+power-on: U-Boot is explicitly driving the red half before Linux takes over.
+It also corrects the earlier diagnostic-era claim that this device exposed no
+red LED.
+
+The shorter PMIC acceptance threshold should advance the accepted-power
+boundary by roughly 384 ms, but U-Boot currently chooses which colour appears.
+The next LED experiment should change only the guarded U-Boot indicator policy
+from PI11 red to PI12 green (GPIO 268), then measure the earliest safe assertion
+with the proven external recovery route. Runtime Linux policy remains separate:
+PI11 red is reserved for discharging capacity at or below 41 percent. Any
+residual display-dark interval belongs to the fixed `rg34xxsp_v1` U-Boot panel
+sequence, never the launcher.
 
 ## Remaining acceptance plan
 
@@ -77,8 +87,9 @@ be pushed into the launcher.
    subjective acceptance boundary remains unclear.
 3. Verify normal shutdown, forced-off behavior, lid wake, charging startup and
    recovery-key behavior are unchanged.
-4. If the green LED still appears late, separate PMIC acceptance time from
-   bootloader LED policy; do not misattribute an LED delay to the power key.
+4. Change U-Boot's GPIO 267/PI11 red status selection to GPIO 268/PI12 green in
+   a separately recoverable build, then measure its assertion independently of
+   PMIC acceptance and panel response.
 5. Bake the verified 128 ms setting into the reproducible final firmware and
    remove the experimental installer.
 

@@ -957,6 +957,29 @@ one-shot VM values. Two independent v6.14 builds reproduce every card payload
 byte-for-byte; the normal launcher is 633,528 bytes and the compressed external
 overlay is 222,318 bytes.
 
+The v6.14 broad physical gate passed. Its latest untouched early trace paints
+at 1.340 seconds, accepts H700 input at 1.454 seconds and retains the full p6
+library at 2.810 seconds. The complete application contract still arrives much
+later because the generic ROCKNIX autostart path entered at 8.721 seconds and
+completed at 16.756 seconds.
+
+Stock-root v6.15 starts subtracting from that measured compatibility tail. It
+bind-replaces twelve fixed-profile common-autostart slots with one immediate
+exit while retaining controller setup, configuration provisioning, audio and
+Sway/application generation. It hardcodes the single-display profile instead
+of invoking `modetest`. Both generic `006-display` and Bird's former
+post-frame preparation lose backlight write ownership, preventing the observed
+five-to-25-percent reset at roughly 8.45 seconds. The event-driven power worker
+uses 41 percent as the exact discharging/red-status threshold. Shutdown keeps
+systemd's ordered unmount but replaces the full-profile config checkpoint with
+an exact compare/copy and submits the poweroff transaction nonblockingly.
+
+Two independent v6.15 builds reproduce all 38 card payloads byte-for-byte. The
+normal launcher remains 633,528 bytes, fixed controls remain 5,184 bytes,
+fixed power remains 5,528 bytes and the compressed external overlay remains
+222,318 bytes. `ROCKNIX_AUDIT.md` records the retained closure, known upstream
+script defects and the next fixed-profile replacements.
+
 The exact final common-autostart action now also publishes a timestamped
 `/run/bird/application-contract-ready` marker after Sway configuration exists.
 An initramfs game/media/PortMaster request remains on disk, and its handoff

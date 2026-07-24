@@ -1,0 +1,12 @@
+[Unit]
+Description=Bird fixed shutdown configuration checkpoint
+DefaultDependencies=no
+Before=shutdown.target
+
+[Service]
+Type=oneshot
+ExecStart=/storage/.config/bird/bird-save-config.sh
+TimeoutStartSec=1s
+
+[Install]
+WantedBy=shutdown.target

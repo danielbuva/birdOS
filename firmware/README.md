@@ -102,10 +102,12 @@ The same U-Boot DTB proves that display onset is lower-layer work:
 PWM and backlight GPIO sequence is already active before Linux. Linux inherits
 that display. Turning the panel on earlier therefore means measuring and
 shortening U-Boot's fixed panel/boot-resource path, not adding launcher code.
-The green work LED is distinct: the Linux device profile maps it through the
-AXP2202 battery/PMIC node to PI12. The verified 512-to-128 ms retained PMIC
-power-key setting should already move power acceptance—and normally that LED—
-earlier; any remaining LED delay must be isolated below userspace.
+The upper work indicator is bi-colour: the exact DTB maps PI11 to red/status
+and PI12 to green/power. The verified 512-to-128 ms retained PMIC power-key
+setting moves power acceptance earlier, but the ROCKNIX DDR4 U-Boot defconfig
+currently selects GPIO 267/PI11 red as its status LED. A guarded U-Boot test
+must switch that policy to GPIO 268/PI12 before attributing remaining colour or
+assertion delay to the PMIC. Any such delay is below userspace.
 
 ## Early Linux findings
 
@@ -432,11 +434,13 @@ collector and matching external restore helper. It is a failure-localization
 image, not a performance candidate.
 
 The diagnostic was hardware-tested and also remained on the retained U-Boot
-logo without producing its userspace capture. The RG34XX-SP has no exposed red
-status LED; that assumption came from the broader device-family description
-and made this diagnostic channel invalid. Exact-hash external recovery again
-restored and reread accepted partition 4, and both failed candidate installers
-are disabled.
+logo without producing its userspace capture. That cycle reported no visible
+red pattern and incorrectly inferred the device lacked a red status LED. Later
+hardware observation plus the exact DTB prove PI11 red/status and PI12
+green/power; the diagnostic remains invalid because it supplied no boundary
+evidence and did not account for U-Boot's existing PI11 ownership. Exact-hash
+external recovery again restored and reread accepted partition 4, and both
+failed candidate installers are disabled.
 
 Those failures belonged to the hybrid vendor-Android handoff, not to the
 source kernel itself. The later exact ROCKNIX DDR4 chain booted, and the first

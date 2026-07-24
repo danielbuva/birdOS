@@ -1,7 +1,11 @@
 #!/bin/sh
-# Preserve the exact final ROCKNIX common-autostart action and publish the
-# earliest point at which its generated application/Sway contract is usable.
+# The RG34XX-SP has one fixed internal panel. Avoid modetest-based display
+# discovery, then publish the application/Sway compatibility milestone.
 
-ln -sf /etc/profile.d/999-export /storage/.config/profile.d
+mkdir -p /storage/.config/profile.d
+cat <<'EOF' >/storage/.config/profile.d/080-dual_screen_mode
+DEVICE_HAS_DUAL_SCREEN=false
+EOF
+ln -sf /etc/profile.d/999-export /storage/.config/profile.d/999-export
 mkdir -p /run/bird
 cut -d ' ' -f 1 /proc/uptime > /run/bird/application-contract-ready

@@ -91,10 +91,12 @@ on the raw partition. External recovery again restored and reread the complete
 accepted image as `872a3d0d...7764f`; the diagnostic installer and collector
 are disabled on-card.
 
-The RG34XX-SP does not expose the red status LED assumed from the broader
-RG35XX-family device tree, so the LED scheme supplied no observable evidence.
-The table above is retained only as a record of the rejected diagnostic design,
-not as a valid test procedure for this device.
+That cycle supplied no observable red-status pattern and incorrectly concluded
+the RG34XX-SP exposed no red LED. Later hardware observation and the exact DTB
+prove the upper indicator is bi-colour: PI11 is `red:status` and PI12 is
+`green:power`. The diagnostic remains rejected because it produced no usable
+boundary evidence, not because the red half is physically absent. Any future
+pre-Linux LED test must also account for U-Boot already owning PI11.
 
 No further experimental kernel will replace the only boot target. The next
 test path keeps partition 4 permanently accepted and asks U-Boot to load a

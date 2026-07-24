@@ -31,7 +31,7 @@ The long-term centerpiece would be a tiny custom launcher—ideally a small stat
 Clean-root v5.4 proved the desired fast architecture but also proved that an
 application stack cannot be reconstructed reliably by copying binaries and
 guessing its hidden service and configuration contract one failure at a time.
-Stock-root v6.14 now optimizes the proven software baseline:
+Stock-root v6.15 now optimizes the proven software baseline:
 
 - exact ROCKNIX 20260701 KERNEL, DTB, SYSTEM and configured STORAGE;
 - complete systemd, udev, D-Bus, PipeWire, WirePlumber and H700 autostart path;
@@ -78,11 +78,52 @@ physical gate passed with Bird interactive at kernel uptime 1.520 seconds and
 storage anchored at 2.563 seconds. V6.14 is the first fixed-resident-service
 pass: early selections become one-shot queued intents, one static process
 replaces the generic input graph, one static event process replaces power
-polling, and the fixed 2 GiB profile disables KSM scanning.
+polling, and the fixed 2 GiB profile disables KSM scanning. Its broad physical
+gate passed. The latest trace painted at 1.340 seconds, accepted H700 input at
+1.454 seconds and retained the real 5,953-game library at 2.810 seconds.
+V6.15 begins the measured ROCKNIX audit: it prevents two late brightness
+owners, suppresses fixed-profile autostart no-ops, fixes the low-battery red
+LED policy at 41 percent and shortens the safe shutdown/config checkpoint.
 
 The gate order is compatibility first, then early Bird handoff, then service
 deferral/removal, then kernel trimming. No component is removed from the full
 baseline until its exact consumers and physical behavior are known.
+
+## Ordered execution roadmap
+
+This is the current priority order. Deferred items remain intentional backlog,
+not discarded ideas.
+
+1. **ROCKNIX implementation audit — active.** Classify every retained startup
+   script, service, output file, dependency and idle wake-up. Remove or replace
+   only measured fixed-profile work. v6.15 is the first physical gate; details
+   and discovered bugs live in [`ROCKNIX_AUDIT.md`](ROCKNIX_AUDIT.md).
+2. **Finish fixed userspace contracts.** Generate the exact RG34XX-SP Sway and
+   audio configuration, reduce the remaining autostart runner, then reassess
+   udev, logind/seatd, journald and other resident managers.
+3. **Remove muOS-to-ROCKNIX shims.** Move runtime markers from `/run/muos` to
+   `/run/bird`, regenerate the catalogue with canonical `/storage/roms` paths,
+   move Bird state out of the `MUOS` namespace, normalize BIOS/Ports paths and
+   delete launcher/runner path rewriting after one migration gate.
+4. **Boot-chain indicators and shutdown.** Physically time v6.15 shutdown. In a
+   separate recovery-guarded U-Boot experiment, stop driving PI11 red during
+   boot and assert PI12 green at the earliest safe bootloader boundary. Keep
+   runtime red exclusively for discharging capacity at or below 41 percent.
+5. **Reproduce the complete Bird image.** Bake accepted card-side development
+   state into one deterministic build and recovery route.
+6. **Fixed RG34XX-SP kernel.** Trim the already compatible public ROCKNIX kernel
+   only after userspace contracts and benchmarks settle; it must beat the
+   accepted baseline in latency and efficiency without losing functionality.
+7. **U-Boot optimization last.** Remove unused targets/probes, advance panel
+   response and decide whether any splash is still useful.
+8. **Deferred experience work.** Survey muOS/other OS optimizations; optimize
+   RetroArch/emulators and first-game load; optimize PortMaster; make each
+   music/movie/reader/emulator application bespoke; optimize suspend/wake
+   battery behavior; then add final animation, sound and player controls.
+
+Cross-cutting priorities remain: interaction speed first, then battery, then
+memory, then exact desired features. Independent changes may share a card cycle
+only when their physical results remain distinguishable.
 
 ## Governing optimization order
 
@@ -212,7 +253,7 @@ removes the handoff entirely while keeping the verified menu-first boundary.
 - [ ] [v6.11 retained; network session still needs physical gate] Keep resolver and network time synchronization stopped in
   ordinary offline sessions, then start and release their exact providers with
   the existing PortMaster-only network transaction.
-- [ ] [v6.14 staged; physical gate pending] Replace the generic `input_sense`
+- [x] [v6.14 physical gate passed] Replace the generic `input_sense`
   shell/`grep`/four-`evtest` graph with one fixed RG34XX-SP control process.
   V6.11 captured the exact fixed map:
   event0 `axp20x-pek`, event2 `gpio-keys-volume`, event3 `gpio-keys-lid` and
@@ -220,16 +261,30 @@ removes the handoff entirely while keeping the verified menu-first boundary.
   5,184-byte candidate preserves volume repeat, Menu+volume brightness,
   power/lid fake suspend and L1+Select+Start global exit without grabbing the
   gamepad.
-- [ ] [v6.14 staged; physical gate pending] Replace `powerstate`'s two-second
+- [x] [v6.14 physical gate passed] Replace `powerstate`'s two-second
   battery polling with fixed initial policy plus kernel power-supply events.
   V6.11 captured idle CPU `ondemand` at 480--1,416 MHz and GPU
   `simple_ondemand` at a 420--600 MHz bound. The 5,528-byte candidate never
   rewrites content policy and retains one 40-second capacity safety check only
   on battery because the AXP717 driver emits no capacity-change event.
-- [ ] [v6.14 staged; physical gate pending] Disable KSM on the fixed 2 GiB
+- [ ] [v6.14 functionality passed; v6.15 state proof staged] Disable KSM on the fixed 2 GiB
   profile while retaining ROCKNIX's one-shot VM tuning. The idle snapshot had
   about 1.8 GiB available, only about 24 MiB anonymous memory and no workload
-  that justifies a one-second same-page scan.
+  that justifies a one-second same-page scan. V6.15 records the live KSM `run`
+  value and counters so the next card read can close the policy gate rather
+  than infer it from the presence of the dormant kernel thread.
+- [ ] [v6.15 staged] Prevent post-frame brightness resets. The early fixed
+  five-percent value and manual controls are the only writers; generic
+  `006-display` and the old preparation write are removed from the boot path.
+- [ ] [v6.15 staged] Replace fixed-profile generic autostart work while retaining
+  controller, audio, emulator configuration and Sway compatibility. Audit and
+  measured follow-ups are recorded in `ROCKNIX_AUDIT.md`.
+- [ ] [v6.15 staged] Shorten shutdown without bypassing ordered unmounts. Use an
+  exact compare/copy config checkpoint and submit poweroff asynchronously;
+  record request, save and final timing on hardware.
+- [ ] [migration gate planned] Remove muOS-to-ROCKNIX shims only after cached
+  catalogue paths, runtime markers, state directories, BIOS and Ports all use
+  canonical Bird/ROCKNIX namespaces in one coherent transaction.
 - [ ] [v6.13 physical functionality passed; untouched FIFO wake proof pending]
   Verify an untouched idle
   boot logs `early_storage_fifo=ready`, `storage_signal_received`,
@@ -317,9 +372,11 @@ boards.
   handoff, early-kernel, initramfs/storage and display-only failures.
 - [x] [second candidate failed; recovery proven again] Candidate
   `8b9ba424...9078` also remained on the U-Boot logo and produced no capture.
-  The RG34XX-SP has no exposed red status LED, invalidating that diagnostic
-  channel. The accepted image `872a3d0d...7764f` was restored and reread; all
-  failed installers are disabled.
+  That cycle incorrectly concluded there was no exposed red LED. Current
+  hardware observation plus the exact DTB prove the upper indicator is
+  bi-colour: PI11 is red/status and PI12 is green/power. The old diagnostic
+  still yielded no boundary evidence, so the accepted image
+  `872a3d0d...7764f` was restored and reread; all failed installers are disabled.
 - [x] [vendor one-shot path evaluated; superseded by exact-chain checkpoint]
   Prove that a compact Android candidate fits as a contiguous FAT file and add
   an opt-in first-frame watchdog to the fixed initramfs. Do not use that route
@@ -441,8 +498,11 @@ and a deliberate recovery path.
 - [ ] Preserve a clean display handoff to the launcher.
 - [ ] Decide whether a splash is useful only after final menu latency is known.
 - [ ] Optimize U-Boot configuration and timing last.
-- [ ] Measure and advance the PMIC green-LED assertion if the verified 128 ms
-  power-key threshold does not already own the observed delay.
+- [ ] [exact owner found; guarded test pending] Replace U-Boot's status-LED
+  selection. Its DDR4 defconfig drives GPIO 267, which is PI11 red/status, with
+  boot state 2; PI12 green/power is GPIO 268. Test the corrected green policy
+  only with the existing external recovery route, then measure how early the
+  indicator can be asserted.
 - [ ] Start the fixed `rg34xxsp_v1` LCD/panel sequence earlier in U-Boot; Linux
   inherits an already-running display and cannot recover pre-kernel darkness.
 
@@ -902,9 +962,10 @@ Your next concrete milestones should be:
 5. [done] Mount storage in parallel
 6. [done] Launch games and return directly to the menu
 7. [in progress] Remove/defer every remaining nonessential userspace task;
-   fixed device/power/control workers are staged for their hardware proof
+   fixed device/power/control workers passed; the ROCKNIX application tail is
+   now under a script-by-script audit
 8. [in progress] Replace dynamic storage, audio and device discovery with fixed
-   paths; storage is fixed, audio policy is narrowed and device policy is staged
+   paths; storage/input/power are fixed and the Sway/audio provider is next
 9. [done] Launch the same static menu before `switch_root`
 10. [done] Replace both generic PID 1 layers and the root startup coordinator
     with fixed-device implementations
@@ -915,6 +976,12 @@ Your next concrete milestones should be:
 15. [done: 128 ms Linux-DTB hardware proof] Reduce the PMIC cold-power hold
     from 512 ms to its minimum; quick-tap power-on is verified, while earlier
     green-LED/display response remains a later bootloader/firmware boundary
+16. [active: v6.15] Audit and reduce the retained ROCKNIX userspace contract;
+    stop late brightness ownership, remove fixed-profile no-ops and time safe
+    shutdown
+17. [planned coherent migration] Remove muOS-to-ROCKNIX namespace shims
+18. [guarded bootloader gate] Use PI12 green during boot and reserve PI11 red
+    for the 41-percent low-battery policy
 ```
 
 Cold game launch findings and the resume-later checklist are intentionally

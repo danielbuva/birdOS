@@ -15,9 +15,28 @@ PIDWAIT=/storage/.config/bird/bird-pidwait
 ATTEMPTS=/storage/bird-data/MUOS/Bird/boot-state/stock-root-attempts
 LOG_DIR=/storage/bird-data/MUOS/Bird/log
 LOG=$LOG_DIR/stock-root-supervisor.log
+LOG_BOOT_ID=$LOG_DIR/stock-root-supervisor.boot-id
+SHUTDOWN_LOG=$LOG_DIR/shutdown-latest.log
 
 mkdir -p /run/muos "$LOG_DIR" "${ATTEMPTS%/*}"
+BOOT_ID=$(cut -c1-8 /proc/sys/kernel/random/boot_id 2>/dev/null || :)
+[ -n "$BOOT_ID" ] || BOOT_ID=unknown
+if [ "$(cat "$LOG_BOOT_ID" 2>/dev/null || :)" != "$BOOT_ID" ]; then
+	: >"$LOG"
+	printf '%s\n' "$BOOT_ID" >"$LOG_BOOT_ID"
+fi
 exec >>"$LOG" 2>&1
+printf 'bird supervisor boot_id=%s start uptime=' "$BOOT_ID"
+cut -d ' ' -f 1 /proc/uptime
+
+request_poweroff() {
+	{
+		printf 'Bird shutdown requested boot_id=%s uptime=' "$BOOT_ID"
+		cut -d ' ' -f 1 /proc/uptime
+	} >"$SHUTDOWN_LOG"
+	systemctl --no-block poweroff
+	exit 0
+}
 
 accept_early_frame() {
 	[ -e "$FIRST_FRAME" ] || return 0
@@ -36,7 +55,7 @@ dispatch_handoff_action() {
 	cut -d ' ' -f 1 /proc/uptime
 	case "$ACTION" in
 		10) "$RUNNER" "$REQUEST"; rm -f "$HANDOFF_ACTION" ;;
-		11) rm -f "$HANDOFF_ACTION"; systemctl poweroff; exit 0 ;;
+		11) rm -f "$HANDOFF_ACTION"; request_poweroff ;;
 		12) "$RUNNER" --portmaster; rm -f "$HANDOFF_ACTION" ;;
 		*) rm -f "$HANDOFF_ACTION" ;;
 	esac
@@ -113,7 +132,7 @@ while :; do
 	cut -d ' ' -f 1 /proc/uptime
 	case "$RESULT" in
 		10) "$RUNNER" "$REQUEST" ;;
-		11) systemctl poweroff ; exit 0 ;;
+		11) request_poweroff ;;
 		12) "$RUNNER" --portmaster ;;
 		*) usleep 50000 ;;
 	esac

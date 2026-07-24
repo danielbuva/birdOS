@@ -1,7 +1,7 @@
 #!/bin/sh
 # Guarded deployment of the compatibility-first stock-root milestone. P5 and
-# content bytes stay untouched. V6.14 queues a pre-storage selection and
-# replaces generic input/power polling with fixed event-driven processes.
+# content bytes stay untouched. V6.15 prevents late brightness ownership,
+# removes fixed-profile autostart no-ops and shortens the safe shutdown path.
 # It retains the exact kernel and complete working ROCKNIX userspace.
 # The exact ROCKNIX writable filesystem remains a loop image on p6, and the
 # accepted v5.4 kernel remains on p1 as a fallback.
@@ -11,7 +11,7 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 BIRD=${BIRD:-/Volumes/BIRD}
 DATA=${DATA:-/Volumes/dani-sp}
-CANDIDATE=${CANDIDATE:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.14/card}
+CANDIDATE=${CANDIDATE:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.15/card}
 STORAGE_SOURCE=${STORAGE_SOURCE:-/Users/dani/rocknix-reference-result/storage.ext4}
 PORTMASTER_ARCHIVE=${PORTMASTER_ARCHIVE:-$ROOT/kernel/work/rocknix-system-exact-20260701/usr/config/PortMaster/release/PortMaster.zip}
 RUNTIME=$DATA/MUOS/runtime/ROCKNIX-SYSTEM
@@ -75,6 +75,8 @@ for FILE in post-flash.sh mount-storage.sh SYSTEM KERNEL dtb.img \
 	bird/bird-fixed-controls bird/bird-fixed-controls.service \
 	bird/bird-fixed-control-exit.sh \
 	bird/bird-powerstate bird/bird-powerstate.service \
+	bird/bird-autostart-noop bird/bird-save-config.sh \
+	bird/bird-save-config.service \
 	bird/bird-swap.conf \
 	bird/supervisor.sh bird/run-content.sh \
 	bird/prepare-ports.sh bird/fixed-storage.sh \
@@ -86,7 +88,9 @@ done
 WHOLE=$(field "$BIRD" 'Part of Whole')
 [ -n "$WHOLE" ] || fail 'cannot identify card parent'
 [ "$WHOLE" = "$(field "$DATA" 'Part of Whole')" ] || fail 'volumes are on different disks'
-[ "$(field "/dev/$WHOLE" 'Device Location')" = External ] || fail 'refusing non-external disk'
+[ "$(field "/dev/$WHOLE" 'Device Location')" = External ] || \
+	[ "$(field "/dev/$WHOLE" 'Protocol')" = 'Secure Digital' ] || \
+	fail 'refusing disk that is neither external nor a physical SD card'
 [ "$(field "/dev/$WHOLE" 'Removable Media')" = Removable ] || fail 'refusing non-removable disk'
 [ "$(disk_bytes "/dev/$WHOLE")" = "$DISK_BYTES" ] || fail 'whole-card size changed'
 [ "$(field "$BIRD" 'Device Identifier')" = "${WHOLE}s1" ] || fail 'BIRD is not p1'
@@ -214,6 +218,7 @@ for FILE in 090-ui_service 999-export dani-launcher bird-pidwait essway.service 
 	systemd-timesyncd.service bird-fixed-controls \
 	bird-fixed-controls.service bird-fixed-control-exit.sh \
 	bird-powerstate bird-powerstate.service bird-swap.conf \
+	bird-autostart-noop bird-save-config.sh bird-save-config.service \
 	supervisor.sh run-content.sh \
 	prepare-ports.sh fixed-storage.sh first-frame-prep.sh \
 	capture-boot-state.sh bird-network.sh mpv-input.conf; do
@@ -259,7 +264,7 @@ sync
 cmp "$CANDIDATE/extlinux/extlinux.conf" "$BIRD/extlinux/extlinux.conf" || fail 'active extlinux verification failed'
 cmp "$CANDIDATE/bird-initramfs.cpio.gz" "$BIRD/bird-initramfs.cpio.gz" || fail 'early initramfs verification failed'
 
-printf 'Bird stock-root v6.14 staged on /dev/%s.\n' "$WHOLE"
+printf 'Bird stock-root v6.15 staged on /dev/%s.\n' "$WHOLE"
 printf 'Moved %s Port data directories into the native ROCKNIX tree.\n' "$MOVED_PORTS"
 printf 'Generic storage discovery replaced by the fixed p6 Bird view.\n'
 printf 'MPV physical volume ownership is system-only.\n'
@@ -273,6 +278,9 @@ printf 'The original pidfd-adopted Bird owns input continuously across switch_ro
 printf 'Storage and config descriptors are acknowledged before their mount moves.\n'
 printf 'The acknowledgement is driven by an explicit FIFO event, including idle boots.\n'
 printf 'Early content selections remain queued until the app contract is ready.\n'
+printf 'Late generic display ownership and fixed-profile autostart no-ops are removed.\n'
+printf 'Shutdown keeps the config checkpoint without a full interactive-profile load.\n'
+printf 'The low-battery red LED threshold is fixed at 41 percent.\n'
 printf 'p5 was not modified; p6 content bytes were preserved by same-volume moves.\n'
 printf 'Exact ROCKNIX KERNEL: %s\n' "$ROCKNIX_KERNEL_SHA"
 printf 'Automatic fallback KERNEL: %s\n' "$V54_KERNEL_SHA"

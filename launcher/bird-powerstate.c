@@ -35,7 +35,7 @@ typedef signed long s64;
 #define NETLINK_KOBJECT_UEVENT 15
 #define CLOCK_BOOTTIME 7
 
-#define LOW_PERCENT 25
+#define LOW_PERCENT 41
 #define LOW_REMINDER_SECONDS 40
 
 #define CPU_GOVERNOR \
@@ -423,7 +423,7 @@ static void run(void) {
     struct pollfd events[2];
 
     log_fd = (int)sys_open(POWER_LOG, O_WRONLY | O_CREAT | O_TRUNC, 0600);
-    log_text("Bird fixed powerstate start capacity_check_s=40 threshold=25\n");
+    log_text("Bird fixed powerstate start capacity_check_s=40 threshold=41\n");
 
     event_fd = open_power_events();
     timer_fd = (int)sys_timerfd_create(CLOCK_BOOTTIME, O_NONBLOCK);

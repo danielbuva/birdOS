@@ -10,7 +10,7 @@ ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 SOURCE=${SOURCE:-/Volumes/BIRD}
 SYSTEM_SOURCE=${SYSTEM_SOURCE:-/Volumes/dani-sp/MUOS/runtime/ROCKNIX-SYSTEM}
 STORAGE=${STORAGE:-/Users/dani/rocknix-reference-result/storage.ext4}
-OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.14}
+OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.15}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
 LLD=${LLD:-/opt/homebrew/opt/lld/bin/ld.lld}
 READELF=${READELF:-/opt/homebrew/opt/llvm/bin/llvm-readelf}
@@ -135,6 +135,7 @@ for FILE in 090-ui_service 999-export essway.service rocknix.target \
 	bird-powerstate.service supervisor.sh run-content.sh \
 	prepare-ports.sh fixed-storage.sh first-frame-prep.sh \
 	capture-boot-state.sh bird-network.sh bird-fixed-control-exit.sh \
+	bird-save-config.sh bird-save-config.service bird-autostart-noop \
 	bird-swap.conf; do
 	cp -fp "$ROOT/kernel/rocknix/stock-root/$FILE" "$OUTPUT/card/bird/$FILE"
 done
@@ -154,7 +155,9 @@ chmod 0755 "$OUTPUT/card/post-flash.sh" "$OUTPUT/card/mount-storage.sh" \
 	"$OUTPUT/card/bird/first-frame-prep.sh" \
 	"$OUTPUT/card/bird/capture-boot-state.sh" \
 	"$OUTPUT/card/bird/bird-network.sh" \
-	"$OUTPUT/card/bird/bird-fixed-control-exit.sh"
+	"$OUTPUT/card/bird/bird-fixed-control-exit.sh" \
+	"$OUTPUT/card/bird/bird-save-config.sh" \
+	"$OUTPUT/card/bird/bird-autostart-noop"
 
 for SCRIPT in "$OUTPUT/card/post-flash.sh" \
 	"$OUTPUT/card/mount-storage.sh" \
@@ -167,7 +170,9 @@ for SCRIPT in "$OUTPUT/card/post-flash.sh" \
 	"$OUTPUT/card/bird/first-frame-prep.sh" \
 	"$OUTPUT/card/bird/capture-boot-state.sh" \
 	"$OUTPUT/card/bird/bird-network.sh" \
-	"$OUTPUT/card/bird/bird-fixed-control-exit.sh"; do
+	"$OUTPUT/card/bird/bird-fixed-control-exit.sh" \
+	"$OUTPUT/card/bird/bird-save-config.sh" \
+	"$OUTPUT/card/bird/bird-autostart-noop"; do
 	bash -n "$SCRIPT" || fail "shell syntax failed: $SCRIPT"
 done
 
@@ -252,6 +257,20 @@ grep -q '^KSM_ENABLE="disable"$' \
 	"$OUTPUT/card/bird/bird-swap.conf" || fail 'fixed KSM policy missing'
 grep -q '/flash/bird/bird-swap.conf' \
 	"$OUTPUT/card/mount-storage.sh" || fail 'fixed memory policy install missing'
+grep -q 'brightness_write=none' \
+	"$OUTPUT/card/bird/first-frame-prep.sh" || fail 'brightness ownership missing'
+grep -q '^DEVICE_HAS_DUAL_SCREEN=false$' \
+	"$OUTPUT/card/bird/999-export" || fail 'fixed panel profile missing'
+grep -q 'bird-autostart-noop' \
+	"$OUTPUT/card/mount-storage.sh" || fail 'fixed autostart profile missing'
+grep -q '/flash/bird/bird-save-config.service' \
+	"$OUTPUT/card/mount-storage.sh" || fail 'fixed shutdown checkpoint missing'
+grep -q 'systemctl --no-block poweroff' \
+	"$OUTPUT/card/bird/supervisor.sh" || fail 'nonblocking poweroff request missing'
+grep -q 'for PROPERTY in run pages_to_scan' \
+	"$OUTPUT/card/bird/capture-boot-state.sh" || fail 'KSM diagnostic missing'
+grep -q '^#define LOW_PERCENT 41$' \
+	"$ROOT/launcher/bird-powerstate.c" || fail 'fixed low-battery threshold missing'
 
 {
 	printf '%s  KERNEL\n' "$KERNEL_SHA"

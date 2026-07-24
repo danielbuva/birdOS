@@ -119,7 +119,7 @@ card-side patches.
 
 ## Current changes
 
-- The active experiment is stock-root v6.14. V6.3 established the coherent
+- The active experiment is stock-root v6.15. V6.3 established the coherent
   ROCKNIX application environment and v6.4 passed early-systemd subtraction;
   v6.5 put Bird pixels before `switch_root`, v6.6 made that early frame
   interactive and v6.9 removed the remaining input-owner blackout without
@@ -138,7 +138,12 @@ card-side patches.
   at 2.563 seconds and the complete launch/functionality suite passed. V6.14
   queues an exact game or media selection made during that short gap, replaces
   the generic input and power watchers with fixed 5 KiB event processes, and
-  disables KSM's unnecessary idle memory scan.
+  disables KSM's unnecessary idle memory scan. Its broad physical gate passed;
+  the latest trace painted at 1.340 seconds, accepted input at 1.454 seconds
+  and retained the real storage at 2.810 seconds. V6.15 begins the systematic
+  ROCKNIX audit. It removes late brightness writers and fixed-profile
+  autostart no-ops, sets red/low-battery policy to 41 percent, records the live
+  KSM state and shortens the ordered shutdown checkpoint.
 - Bird's first initramfs instance is now the long-lived UI process. The normal
   systemd UI service adopts its PID instead of creating another launcher. The
   unchanged Sway compositor still starts
@@ -158,6 +163,11 @@ card-side patches.
   content selection explicitly joins the exact audio services. The unchanged
   ROCKNIX autostart continues in parallel inside a private console namespace,
   so its status text and final clear cannot repaint the early menu.
+- The retained ROCKNIX provider is now audited instead of treated as one stock
+  block. Generic autostart currently consumes about eight seconds after Bird
+  is already interactive. Its retained closure, v6.15 subtraction, known bugs,
+  shim-removal migration and next gates are recorded in
+  [`ROCKNIX_AUDIT.md`](ROCKNIX_AUDIT.md).
 - V6.6 supplies a 218,397-byte external initramfs overlay alongside the exact
   release kernel. It changes only the pinned upstream `/init`, adds the exact
   36,584-byte H700 input module from that release SYSTEM and starts an early

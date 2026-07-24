@@ -27,7 +27,7 @@ mount --bind /storage/bird-data/MUOS/bios /storage/roms/bios || {
 # These are deliberately copied after /storage exists. Bird is a normal
 # userspace UI service in this compatibility milestone, not initramfs payload.
 for FILE in dani-launcher bird-pidwait bird-fixed-controls bird-powerstate \
-	bird-fixed-control-exit.sh supervisor.sh run-content.sh prepare-ports.sh \
+	bird-fixed-control-exit.sh bird-save-config.sh supervisor.sh run-content.sh prepare-ports.sh \
 	fixed-storage.sh first-frame-prep.sh capture-boot-state.sh \
 	bird-network.sh; do
 	cp -f "/flash/bird/$FILE" "/storage/.config/bird/$FILE" || return 1
@@ -38,6 +38,7 @@ chmod 0755 /storage/.config/bird/dani-launcher \
 	/storage/.config/bird/bird-fixed-controls \
 	/storage/.config/bird/bird-powerstate \
 	/storage/.config/bird/bird-fixed-control-exit.sh \
+	/storage/.config/bird/bird-save-config.sh \
 	/storage/.config/bird/supervisor.sh \
 	/storage/.config/bird/run-content.sh \
 	/storage/.config/bird/prepare-ports.sh \
@@ -80,6 +81,28 @@ mount --bind /flash/bird/bird-powerstate.service \
 	error bird-fixed-powerstate "Could not replace polling power service"
 	return 1
 }
+
+# ROCKNIX's shutdown hook sources the full interactive profile and copies the
+# same small config unconditionally. Keep the safety checkpoint with one exact
+# compare/copy process instead.
+mount --bind /flash/bird/bird-save-config.service \
+	/sysroot/usr/lib/systemd/system/save-sysconfig.service || {
+	error bird-fixed-shutdown "Could not replace generic config checkpoint"
+	return 1
+}
+
+# These generic jobs either duplicate fixed Bird ownership or configure
+# hardware/features absent from this one-user RG34XX-SP profile. The remaining
+# autostart sequence is unchanged for this physical gate.
+for SCRIPT in 003-upgrade 006-display 007-rootpw 009-bluetooth 010-moonlight \
+	010-uimode 055-hdmi-check 080-dual_screen_mode 080-network 081-usbgadget \
+	098-deviceutils 099-networkservices; do
+	mount --bind /flash/bird/bird-autostart-noop \
+		"/sysroot/usr/lib/autostart/common/$SCRIPT" || {
+		error bird-fixed-autostart "Could not suppress $SCRIPT"
+		return 1
+	}
+done
 
 # The four network providers keep their exact implementations but their boot
 # jobs are condition-gated. Bird raises the request only around PortMaster.

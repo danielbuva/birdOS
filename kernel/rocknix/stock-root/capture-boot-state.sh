@@ -59,6 +59,19 @@ LOG=/storage/bird-data/MUOS/Bird/log/stock-root-boot-state-latest.log
 	done
 	printf '%s\n' '--- memory ---'
 	cat /proc/meminfo
+	printf '%s\n' '--- fixed memory policy ---'
+	if [ -r /storage/.config/swap.conf ]; then
+		cat /storage/.config/swap.conf
+	else
+		printf '%s\n' 'swap.conf=missing'
+	fi
+	for PROPERTY in run pages_to_scan sleep_millisecs pages_shared \
+		pages_sharing pages_unshared; do
+		FILE=/sys/kernel/mm/ksm/$PROPERTY
+		[ -r "$FILE" ] || continue
+		printf 'ksm_%s=' "$PROPERTY"
+		cat "$FILE"
+	done
 	printf '%s\n' '--- mounts ---'
 	cat /proc/mounts
 	printf '%s\n' '--- power supplies ---'
