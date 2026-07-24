@@ -980,6 +980,27 @@ fixed power remains 5,528 bytes and the compressed external overlay remains
 222,318 bytes. `ROCKNIX_AUDIT.md` records the retained closure, known upstream
 script defects and the next fixed-profile replacements.
 
+The v6.15 hardware result confirms brightness stability and `ksm_run=0`.
+Visible shutdown is roughly 1.8--2.0 seconds, while its exact config checkpoint
+takes 40 ms. Autostart falls from the previous roughly eight seconds to 3.58
+seconds (8.681--12.263 kernel uptime). The same test reported selections stuck
+in the pre-storage queue, although the final returned boot retained p6 at 2.888
+seconds and contains no selection event before shutdown.
+
+Stock-root v6.16 makes that edge fail-safe. Selection forces a synchronous
+directory revalidation, while a 50 ms recovery probe backs up the FIFO only
+until storage succeeds. It replaces the generic 11.5 KiB Sway generator with
+the exact `/dev/dri/card1` and `DSI-1` files captured from the working card;
+ordinary sessions no longer scan HDMI/DP, launch `output_monitor`, or unmask
+the already-running Bird service. The two inconsistent latency writers are
+no-ops against the pinned value 64. RF-kill activation is likewise absent from
+offline boot and condition-released only inside Bird's network transaction.
+
+Two independent v6.16 builds reproduce all 40 card payloads byte-for-byte. The
+normal launcher is 633,656 bytes, the early launcher is 635,200 bytes, the
+fixed Sway installer is 1,308 bytes and the compressed overlay is 222,355
+bytes. KERNEL and DTB remain byte-identical to v6.15 and the release.
+
 The exact final common-autostart action now also publishes a timestamped
 `/run/bird/application-contract-ready` marker after Sway configuration exists.
 An initramfs game/media/PortMaster request remains on disk, and its handoff

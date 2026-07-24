@@ -243,6 +243,8 @@ static u8 favorites[(CATALOG_ENTRY_COUNT + 7U) / 8U];
 static char live_path[LIVE_PATH_BYTES];
 static u64 next_storage_probe;
 static struct pending_launch_state pending_launch;
+
+static void probe_storage(void);
 static const char *selected_status = "DIRECT FRAMEBUFFER READY";
 
 static const char *menu_item[4] = {"PLAY", "LISTEN", "READ", "WATCH"};
@@ -1447,6 +1449,13 @@ static int select_current(void) {
     } else if (view == VIEW_GAMES || view == VIEW_FAVORITES) {
         u32 catalog_index = current_catalog_index();
         if (catalog_index < CATALOG_ENTRY_COUNT) {
+            /* A retained initramfs process normally learns storage through the
+             * FIFO. Revalidate synchronously on selection as a recovery path:
+             * a missed/stale readiness edge must never strand a real file. */
+            if (!storage_ready) {
+                next_storage_probe = 0;
+                probe_storage();
+            }
             if (storage_ready) {
                 cancel_pending_launch("direct-selection");
                 action = launch_catalog_entry(catalog_index);
@@ -1468,6 +1477,10 @@ static int select_current(void) {
     } else if (view == VIEW_MEDIA_ENTRIES) {
         if (active_media_category < CATALOG_MEDIA_CATEGORY_COUNT &&
             selection < catalog_media_categories[active_media_category].count) {
+            if (!storage_ready) {
+                next_storage_probe = 0;
+                probe_storage();
+            }
             if (storage_ready) {
                 cancel_pending_launch("direct-selection");
                 action = launch_media_entry(active_media_category, selection);
@@ -1852,14 +1865,17 @@ static int application(void) {
             storage_timeout.sec = 0;
             storage_timeout.nsec = 0;
             timeout = &storage_timeout;
-        } else if (!storage_ready && storage_signal_fd >= 0) {
-            storage_index = (int)poll_count;
-            polls[poll_count].fd = storage_signal_fd;
-            polls[poll_count].events = POLLIN;
-            polls[poll_count].revents = 0;
-            poll_count++;
         } else if (!storage_ready) {
-            /* Recovery fallback when the explicit initramfs FIFO is absent. */
+            if (storage_signal_fd >= 0) {
+                storage_index = (int)poll_count;
+                polls[poll_count].fd = storage_signal_fd;
+                polls[poll_count].events = POLLIN;
+                polls[poll_count].revents = 0;
+                poll_count++;
+            }
+            /* The FIFO remains the immediate path. A bounded probe also runs
+             * until success so a lost writer edge cannot create a permanent
+             * "queued" state. It stops forever once storage is retained. */
             storage_timeout.sec = 0;
             storage_timeout.nsec = 50000000L;
             timeout = &storage_timeout;

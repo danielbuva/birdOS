@@ -70,6 +70,32 @@ The power worker's low-battery red-status threshold is now exactly 41 percent.
 Charging remains kernel/PMIC-owned and the green LED remains the ordinary
 power indicator.
 
+## v6.15 physical result and v6.16 correction
+
+The physical gate passed brightness stability and visible shutdown at roughly
+1.8--2.0 seconds. The shutdown log places its exact config compare/copy at
+40 ms. The memory capture proves `ksm_run=0`, with every KSM sharing counter at
+zero. Generic autostart now enters at 8.681 seconds and completes at 12.263
+seconds: 3.58 seconds instead of the prior roughly eight-second tail.
+
+Content selections were reported as permanently queued for storage. The final
+returned boot itself recorded a successful FIFO, retained storage at 2.888
+seconds, the complete p6 mounts and no A-selection log before shutdown, so that
+trace cannot identify the failed edge. v6.16 removes the possibility anyway:
+selection synchronously revalidates the real retained directory, and a bounded
+50 ms probe backs up the FIFO only until storage succeeds. There is no ongoing
+storage polling afterward.
+
+V6.16 also replaces `111-sway-init` with the exact output captured from the
+working card: `/dev/dri/card1`, `DSI-1`, DRM/libinput, zero transform and the
+existing tearing/render-time policy. HDMI/DP discovery and `output_monitor`
+leave the ordinary application session. The fixed script never masks or
+unmasks `essway.service`. Both mismatched audio-latency scripts are suppressed
+because the pinned writable image already contains the required value 64.
+Finally, systemd's RF-kill process and activation socket leave offline boot;
+the exact process is condition-released with the existing PortMaster network
+transaction.
+
 ## Bugs and inefficiencies found
 
 These remain after v6.15 and are ordered for later fixed replacements:
@@ -97,10 +123,10 @@ These remain after v6.15 and are ordered for later fixed replacements:
 
 ## Next active order
 
-1. Physically gate v6.15: brightness stability, menu/content suite, suspend,
+1. Physically gate v6.16: storage recovery, fixed Sway content suite, suspend,
    PortMaster, charging indicator, low-battery LED policy and shutdown time.
-2. Generate and verify a fixed Sway/application profile, then replace the
-   generic 11.5 KiB connector script.
+2. If the v6.16 Sway profile passes, remove the generic connector generator
+   permanently from the reproducible image.
 3. Replace generic audio setup with a fixed H700 route while preserving the
    already-warm asynchronous audio services.
 4. Audit udev coldplug output and let its manager exit if no retained feature

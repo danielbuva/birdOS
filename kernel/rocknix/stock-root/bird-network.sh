@@ -14,6 +14,7 @@ case "${1:-}" in
 		printf 'Bird network request start uptime='
 		cut -d ' ' -f 1 /proc/uptime
 		touch "$FLAG"
+		systemctl start systemd-rfkill.service || :
 		systemctl start dbus.service systemd-resolved.service \
 			systemd-timesyncd.service || :
 		systemctl start iwd.service NetworkManager.service || :
@@ -22,11 +23,12 @@ case "${1:-}" in
 			[ "$(systemctl is-active NetworkManager.service 2>/dev/null)" = active ] && break
 			usleep 50000
 		done
-		printf 'Bird network request ready nm=%s iwd=%s resolved=%s timesync=%s uptime=' \
+		printf 'Bird network request ready nm=%s iwd=%s resolved=%s timesync=%s rfkill=%s uptime=' \
 			"$(systemctl is-active NetworkManager.service 2>/dev/null || :)" \
 			"$(systemctl is-active iwd.service 2>/dev/null || :)" \
 			"$(systemctl is-active systemd-resolved.service 2>/dev/null || :)" \
-			"$(systemctl is-active systemd-timesyncd.service 2>/dev/null || :)"
+			"$(systemctl is-active systemd-timesyncd.service 2>/dev/null || :)" \
+			"$(systemctl is-active systemd-rfkill.service 2>/dev/null || :)"
 		cut -d ' ' -f 1 /proc/uptime
 		;;
 	stop)
@@ -34,7 +36,8 @@ case "${1:-}" in
 		cut -d ' ' -f 1 /proc/uptime
 		/usr/bin/wifictl disable || :
 		systemctl stop --no-block NetworkManager.service iwd.service \
-			systemd-resolved.service systemd-timesyncd.service || :
+			systemd-resolved.service systemd-timesyncd.service \
+			systemd-rfkill.service || :
 		rm -f "$FLAG"
 		printf 'Bird network release ready uptime='
 		cut -d ' ' -f 1 /proc/uptime

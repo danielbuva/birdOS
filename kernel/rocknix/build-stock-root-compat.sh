@@ -10,7 +10,7 @@ ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 SOURCE=${SOURCE:-/Volumes/BIRD}
 SYSTEM_SOURCE=${SYSTEM_SOURCE:-/Volumes/dani-sp/MUOS/runtime/ROCKNIX-SYSTEM}
 STORAGE=${STORAGE:-/Users/dani/rocknix-reference-result/storage.ext4}
-OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.15}
+OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.16}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
 LLD=${LLD:-/opt/homebrew/opt/lld/bin/ld.lld}
 READELF=${READELF:-/opt/homebrew/opt/llvm/bin/llvm-readelf}
@@ -131,11 +131,13 @@ for FILE in 090-ui_service 999-export essway.service rocknix.target \
 	rocknix-automount.service rocknix-autostart.service \
 	rocknix-report-stats.service \
 	NetworkManager.service iwd.service systemd-resolved.service \
-	systemd-timesyncd.service bird-fixed-controls.service \
+	systemd-timesyncd.service systemd-rfkill.service \
+	bird-fixed-controls.service \
 	bird-powerstate.service supervisor.sh run-content.sh \
 	prepare-ports.sh fixed-storage.sh first-frame-prep.sh \
 	capture-boot-state.sh bird-network.sh bird-fixed-control-exit.sh \
 	bird-save-config.sh bird-save-config.service bird-autostart-noop \
+	bird-fixed-sway.sh \
 	bird-swap.conf; do
 	cp -fp "$ROOT/kernel/rocknix/stock-root/$FILE" "$OUTPUT/card/bird/$FILE"
 done
@@ -157,7 +159,8 @@ chmod 0755 "$OUTPUT/card/post-flash.sh" "$OUTPUT/card/mount-storage.sh" \
 	"$OUTPUT/card/bird/bird-network.sh" \
 	"$OUTPUT/card/bird/bird-fixed-control-exit.sh" \
 	"$OUTPUT/card/bird/bird-save-config.sh" \
-	"$OUTPUT/card/bird/bird-autostart-noop"
+	"$OUTPUT/card/bird/bird-autostart-noop" \
+	"$OUTPUT/card/bird/bird-fixed-sway.sh"
 
 for SCRIPT in "$OUTPUT/card/post-flash.sh" \
 	"$OUTPUT/card/mount-storage.sh" \
@@ -172,7 +175,8 @@ for SCRIPT in "$OUTPUT/card/post-flash.sh" \
 	"$OUTPUT/card/bird/bird-network.sh" \
 	"$OUTPUT/card/bird/bird-fixed-control-exit.sh" \
 	"$OUTPUT/card/bird/bird-save-config.sh" \
-	"$OUTPUT/card/bird/bird-autostart-noop"; do
+	"$OUTPUT/card/bird/bird-autostart-noop" \
+	"$OUTPUT/card/bird/bird-fixed-sway.sh"; do
 	bash -n "$SCRIPT" || fail "shell syntax failed: $SCRIPT"
 done
 
@@ -195,8 +199,14 @@ grep -q '^ConditionPathExists=/run/bird/network-request$' \
 	"$OUTPUT/card/bird/systemd-resolved.service" || fail 'resolver gate missing'
 grep -q '^ConditionPathExists=/run/bird/network-request$' \
 	"$OUTPUT/card/bird/systemd-timesyncd.service" || fail 'time sync gate missing'
+grep -q '^ConditionPathExists=/run/bird/network-request$' \
+	"$OUTPUT/card/bird/systemd-rfkill.service" || fail 'rfkill gate missing'
 grep -q 'systemd-resolved.service systemd-timesyncd.service' \
 	"$OUTPUT/card/bird/bird-network.sh" || fail 'network release missing'
+grep -q 'systemd-rfkill.service' \
+	"$OUTPUT/card/bird/bird-network.sh" || fail 'rfkill release missing'
+grep -q 'systemd-rfkill.socket' \
+	"$OUTPUT/card/mount-storage.sh" || fail 'rfkill activation socket remained'
 grep -q '^After=rocknix-autostart.service$' \
 	"$OUTPUT/card/bird/rocknix-report-stats.service" || fail 'event-ordered snapshot missing'
 grep -q '^  INITRD /bird-initramfs.cpio.gz$' \
@@ -263,6 +273,16 @@ grep -q '^DEVICE_HAS_DUAL_SCREEN=false$' \
 	"$OUTPUT/card/bird/999-export" || fail 'fixed panel profile missing'
 grep -q 'bird-autostart-noop' \
 	"$OUTPUT/card/mount-storage.sh" || fail 'fixed autostart profile missing'
+grep -q '/flash/bird/bird-fixed-sway.sh' \
+	"$OUTPUT/card/mount-storage.sh" || fail 'fixed Sway profile missing'
+grep -q '^WLR_DRM_DEVICES=/dev/dri/card1$' \
+	"$OUTPUT/card/bird/bird-fixed-sway.sh" || fail 'fixed DRM card missing'
+grep -q '^WLR_CON=DSI-1$' \
+	"$OUTPUT/card/bird/bird-fixed-sway.sh" || fail 'fixed panel connector missing'
+if grep -q 'output_monitor\|DP-1\|HDMI' \
+	"$OUTPUT/card/bird/bird-fixed-sway.sh"; then
+	fail 'unused external-display path remained in fixed Sway profile'
+fi
 grep -q '/flash/bird/bird-save-config.service' \
 	"$OUTPUT/card/mount-storage.sh" || fail 'fixed shutdown checkpoint missing'
 grep -q 'systemctl --no-block poweroff' \
@@ -271,6 +291,8 @@ grep -q 'for PROPERTY in run pages_to_scan' \
 	"$OUTPUT/card/bird/capture-boot-state.sh" || fail 'KSM diagnostic missing'
 grep -q '^#define LOW_PERCENT 41$' \
 	"$ROOT/launcher/bird-powerstate.c" || fail 'fixed low-battery threshold missing'
+grep -q 'lost writer edge' \
+	"$ROOT/launcher/dani-launcher.c" || fail 'storage recovery probe missing'
 
 {
 	printf '%s  KERNEL\n' "$KERNEL_SHA"

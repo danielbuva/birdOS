@@ -31,7 +31,7 @@ The long-term centerpiece would be a tiny custom launcher—ideally a small stat
 Clean-root v5.4 proved the desired fast architecture but also proved that an
 application stack cannot be reconstructed reliably by copying binaries and
 guessing its hidden service and configuration contract one failure at a time.
-Stock-root v6.15 now optimizes the proven software baseline:
+Stock-root v6.16 now optimizes the proven software baseline:
 
 - exact ROCKNIX 20260701 KERNEL, DTB, SYSTEM and configured STORAGE;
 - complete systemd, udev, D-Bus, PipeWire, WirePlumber and H700 autostart path;
@@ -83,7 +83,15 @@ gate passed. The latest trace painted at 1.340 seconds, accepted H700 input at
 1.454 seconds and retained the real 5,953-game library at 2.810 seconds.
 V6.15 begins the measured ROCKNIX audit: it prevents two late brightness
 owners, suppresses fixed-profile autostart no-ops, fixes the low-battery red
-LED policy at 41 percent and shortens the safe shutdown/config checkpoint.
+LED policy at 41 percent and shortens the safe shutdown/config checkpoint. Its
+physical result proves brightness stability, `ksm_run=0`, a 40 ms config-save
+checkpoint and roughly 1.8--2.0-second visible shutdown. The generic
+application tail fell from about 8.0 to 3.58 seconds. Content selection reported
+a queued-storage regression, although the final returned boot recorded storage
+anchored at 2.888 seconds and no selection event. V6.16 makes readiness
+self-healing, replaces the 11.5 KiB multi-device Sway generator with the exact
+card1/DSI-1 files, removes duplicate broken latency writes and moves RF-kill
+state management out of offline boot.
 
 The gate order is compatibility first, then early Bird handoff, then service
 deferral/removal, then kernel trimming. No component is removed from the full
@@ -96,7 +104,7 @@ not discarded ideas.
 
 1. **ROCKNIX implementation audit — active.** Classify every retained startup
    script, service, output file, dependency and idle wake-up. Remove or replace
-   only measured fixed-profile work. v6.15 is the first physical gate; details
+   only measured fixed-profile work. v6.16 is the current physical gate; details
    and discovered bugs live in [`ROCKNIX_AUDIT.md`](ROCKNIX_AUDIT.md).
 2. **Finish fixed userspace contracts.** Generate the exact RG34XX-SP Sway and
    audio configuration, reduce the remaining autostart runner, then reassess
@@ -267,21 +275,30 @@ removes the handoff entirely while keeping the verified menu-first boundary.
   `simple_ondemand` at a 420--600 MHz bound. The 5,528-byte candidate never
   rewrites content policy and retains one 40-second capacity safety check only
   on battery because the AXP717 driver emits no capacity-change event.
-- [ ] [v6.14 functionality passed; v6.15 state proof staged] Disable KSM on the fixed 2 GiB
+- [x] [v6.15 state proof passed] Disable KSM on the fixed 2 GiB
   profile while retaining ROCKNIX's one-shot VM tuning. The idle snapshot had
   about 1.8 GiB available, only about 24 MiB anonymous memory and no workload
   that justifies a one-second same-page scan. V6.15 records the live KSM `run`
-  value and counters so the next card read can close the policy gate rather
-  than infer it from the presence of the dormant kernel thread.
-- [ ] [v6.15 staged] Prevent post-frame brightness resets. The early fixed
+  value and counters. The physical result is `ksm_run=0` with all sharing
+  counters at zero; the dormant kernel thread performs no scan.
+- [x] [v6.15 physical gate passed] Prevent post-frame brightness resets. The early fixed
   five-percent value and manual controls are the only writers; generic
   `006-display` and the old preparation write are removed from the boot path.
-- [ ] [v6.15 staged] Replace fixed-profile generic autostart work while retaining
+- [ ] [v6.15 first subtraction passed; v6.16 staged] Replace fixed-profile generic autostart work while retaining
   controller, audio, emulator configuration and Sway compatibility. Audit and
   measured follow-ups are recorded in `ROCKNIX_AUDIT.md`.
-- [ ] [v6.15 staged] Shorten shutdown without bypassing ordered unmounts. Use an
+- [x] [v6.15 physical gate passed] Shorten shutdown without bypassing ordered unmounts. Use an
   exact compare/copy config checkpoint and submit poweroff asynchronously;
-  record request, save and final timing on hardware.
+  record request, save and final timing on hardware. Config preservation took
+  40 ms and visible shutdown measured roughly 1.8--2.0 seconds.
+- [ ] [v6.16 staged] Make storage readiness self-healing. A content selection
+  synchronously revalidates the retained directory and a 50 ms fallback probe
+  runs only until success, so a stale/missed FIFO edge cannot strand the queue.
+- [ ] [v6.16 staged] Replace generic Sway display discovery with the physically
+  generated `card1`/`DSI-1` profile, remove external-display polling from normal
+  content sessions and stop unmasking/restarting the live Bird service.
+- [ ] [v6.16 staged] Keep systemd RF-kill state and its activation socket out of
+  offline boot; start the exact manager inside explicit PortMaster networking.
 - [ ] [migration gate planned] Remove muOS-to-ROCKNIX shims only after cached
   catalogue paths, runtime markers, state directories, BIOS and Ports all use
   canonical Bird/ROCKNIX namespaces in one coherent transaction.
@@ -976,9 +993,9 @@ Your next concrete milestones should be:
 15. [done: 128 ms Linux-DTB hardware proof] Reduce the PMIC cold-power hold
     from 512 ms to its minimum; quick-tap power-on is verified, while earlier
     green-LED/display response remains a later bootloader/firmware boundary
-16. [active: v6.15] Audit and reduce the retained ROCKNIX userspace contract;
-    stop late brightness ownership, remove fixed-profile no-ops and time safe
-    shutdown
+16. [active: v6.16] Audit and reduce the retained ROCKNIX userspace contract;
+    v6.15 passed brightness/KSM/shutdown and cut the application tail, while
+    v6.16 hardens storage and fixes the Sway/RF-kill profiles
 17. [planned coherent migration] Remove muOS-to-ROCKNIX namespace shims
 18. [guarded bootloader gate] Use PI12 green during boot and reserve PI11 red
     for the 41-percent low-battery policy

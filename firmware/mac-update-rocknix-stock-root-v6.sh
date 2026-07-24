@@ -1,7 +1,7 @@
 #!/bin/sh
 # Guarded deployment of the compatibility-first stock-root milestone. P5 and
-# content bytes stay untouched. V6.15 prevents late brightness ownership,
-# removes fixed-profile autostart no-ops and shortens the safe shutdown path.
+# content bytes stay untouched. V6.16 makes storage readiness self-healing and
+# replaces generic multi-display Sway generation with the fixed DSI-1 profile.
 # It retains the exact kernel and complete working ROCKNIX userspace.
 # The exact ROCKNIX writable filesystem remains a loop image on p6, and the
 # accepted v5.4 kernel remains on p1 as a fallback.
@@ -11,7 +11,7 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 BIRD=${BIRD:-/Volumes/BIRD}
 DATA=${DATA:-/Volumes/dani-sp}
-CANDIDATE=${CANDIDATE:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.15/card}
+CANDIDATE=${CANDIDATE:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.16/card}
 STORAGE_SOURCE=${STORAGE_SOURCE:-/Users/dani/rocknix-reference-result/storage.ext4}
 PORTMASTER_ARCHIVE=${PORTMASTER_ARCHIVE:-$ROOT/kernel/work/rocknix-system-exact-20260701/usr/config/PortMaster/release/PortMaster.zip}
 RUNTIME=$DATA/MUOS/runtime/ROCKNIX-SYSTEM
@@ -72,11 +72,12 @@ for FILE in post-flash.sh mount-storage.sh SYSTEM KERNEL dtb.img \
 	bird/rocknix-autostart.service bird/rocknix-report-stats.service \
 	bird/NetworkManager.service bird/iwd.service \
 	bird/systemd-resolved.service bird/systemd-timesyncd.service \
+	bird/systemd-rfkill.service \
 	bird/bird-fixed-controls bird/bird-fixed-controls.service \
 	bird/bird-fixed-control-exit.sh \
 	bird/bird-powerstate bird/bird-powerstate.service \
 	bird/bird-autostart-noop bird/bird-save-config.sh \
-	bird/bird-save-config.service \
+	bird/bird-save-config.service bird/bird-fixed-sway.sh \
 	bird/bird-swap.conf \
 	bird/supervisor.sh bird/run-content.sh \
 	bird/prepare-ports.sh bird/fixed-storage.sh \
@@ -215,10 +216,11 @@ for FILE in 090-ui_service 999-export dani-launcher bird-pidwait essway.service 
 	rocknix-automount.service rocknix-autostart.service \
 	rocknix-report-stats.service \
 	NetworkManager.service iwd.service systemd-resolved.service \
-	systemd-timesyncd.service bird-fixed-controls \
+	systemd-timesyncd.service systemd-rfkill.service bird-fixed-controls \
 	bird-fixed-controls.service bird-fixed-control-exit.sh \
 	bird-powerstate bird-powerstate.service bird-swap.conf \
 	bird-autostart-noop bird-save-config.sh bird-save-config.service \
+	bird-fixed-sway.sh \
 	supervisor.sh run-content.sh \
 	prepare-ports.sh fixed-storage.sh first-frame-prep.sh \
 	capture-boot-state.sh bird-network.sh mpv-input.conf; do
@@ -264,7 +266,7 @@ sync
 cmp "$CANDIDATE/extlinux/extlinux.conf" "$BIRD/extlinux/extlinux.conf" || fail 'active extlinux verification failed'
 cmp "$CANDIDATE/bird-initramfs.cpio.gz" "$BIRD/bird-initramfs.cpio.gz" || fail 'early initramfs verification failed'
 
-printf 'Bird stock-root v6.15 staged on /dev/%s.\n' "$WHOLE"
+printf 'Bird stock-root v6.16 staged on /dev/%s.\n' "$WHOLE"
 printf 'Moved %s Port data directories into the native ROCKNIX tree.\n' "$MOVED_PORTS"
 printf 'Generic storage discovery replaced by the fixed p6 Bird view.\n'
 printf 'MPV physical volume ownership is system-only.\n'
@@ -281,6 +283,9 @@ printf 'Early content selections remain queued until the app contract is ready.\
 printf 'Late generic display ownership and fixed-profile autostart no-ops are removed.\n'
 printf 'Shutdown keeps the config checkpoint without a full interactive-profile load.\n'
 printf 'The low-battery red LED threshold is fixed at 41 percent.\n'
+printf 'Storage readiness has a bounded self-healing probe until success.\n'
+printf 'The application compositor uses one fixed card1/DSI-1 profile.\n'
+printf 'RF-kill state management now exists only inside network sessions.\n'
 printf 'p5 was not modified; p6 content bytes were preserved by same-volume moves.\n'
 printf 'Exact ROCKNIX KERNEL: %s\n' "$ROCKNIX_KERNEL_SHA"
 printf 'Automatic fallback KERNEL: %s\n' "$V54_KERNEL_SHA"

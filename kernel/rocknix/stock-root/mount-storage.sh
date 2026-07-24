@@ -95,14 +95,31 @@ mount --bind /flash/bird/bird-save-config.service \
 # hardware/features absent from this one-user RG34XX-SP profile. The remaining
 # autostart sequence is unchanged for this physical gate.
 for SCRIPT in 003-upgrade 006-display 007-rootpw 009-bluetooth 010-moonlight \
-	010-uimode 055-hdmi-check 080-dual_screen_mode 080-network 081-usbgadget \
-	098-deviceutils 099-networkservices; do
+	010-uimode 020-set_audio_latency 055-hdmi-check 080-dual_screen_mode \
+	080-network 081-usbgadget 098-deviceutils 099-networkservices; do
 	mount --bind /flash/bird/bird-autostart-noop \
 		"/sysroot/usr/lib/autostart/common/$SCRIPT" || {
 		error bird-fixed-autostart "Could not suppress $SCRIPT"
 		return 1
 	}
 done
+
+# Replace the 11.5 KiB multi-product DRM/EDID generator with the already-proven
+# card1/DSI-1 contract. It does not touch essway.service, so Bird ownership is
+# not restarted while the menu is live.
+mount --bind /flash/bird/bird-fixed-sway.sh \
+	/sysroot/usr/lib/autostart/common/111-sway-init || {
+	error bird-fixed-sway "Could not install fixed internal-panel profile"
+	return 1
+}
+
+# H700 repeats the same mismatched latency read/write as the common script.
+# The pinned writable image already contains the required global value of 64.
+mount --bind /flash/bird/bird-autostart-noop \
+	/sysroot/usr/lib/autostart/quirks/platforms/H700/020-set_audio_latency || {
+	error bird-fixed-audio-latency "Could not suppress duplicate latency write"
+	return 1
+}
 
 # The four network providers keep their exact implementations but their boot
 # jobs are condition-gated. Bird raises the request only around PortMaster.
@@ -114,6 +131,11 @@ for UNIT in NetworkManager.service iwd.service systemd-resolved.service \
 		return 1
 	}
 done
+mount --bind /flash/bird/systemd-rfkill.service \
+	/sysroot/usr/lib/systemd/system/systemd-rfkill.service || {
+	error bird-network-gate "Could not gate systemd-rfkill.service"
+	return 1
+}
 
 # Reuse the release's dormant statistics-service slot for one event-ordered
 # diagnostic snapshot. Its periodic timer is masked below.
@@ -152,6 +174,7 @@ for UNIT in \
 	hdmi-hotplug.path \
 	video.service \
 	sixaxis@.service \
+	systemd-rfkill.socket \
 	rocknix-report-stats.timer; do
 	mount --bind /dev/null "/sysroot/usr/lib/systemd/system/$UNIT" || {
 		error bird-unused-unit "Could not mask $UNIT"

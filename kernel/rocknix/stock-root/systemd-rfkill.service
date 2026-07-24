@@ -1,0 +1,16 @@
+[Unit]
+Description=Bird on-demand RF kill state
+Documentation=man:systemd-rfkill.service(8)
+ConditionPathExists=/run/bird/network-request
+DefaultDependencies=no
+BindsTo=sys-devices-virtual-misc-rfkill.device
+Conflicts=shutdown.target
+After=sys-devices-virtual-misc-rfkill.device
+Before=shutdown.target
+
+[Service]
+ExecStart=/usr/lib/systemd/systemd-rfkill
+NoNewPrivileges=yes
+StateDirectory=systemd/rfkill
+TimeoutSec=5s
+Type=notify
