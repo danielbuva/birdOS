@@ -1047,6 +1047,23 @@ normal launcher is 633,816 bytes, the early launcher is 635,360 bytes and the
 compressed overlay is 222,624 bytes. KERNEL and DTB remain byte-identical to
 v6.17 and the release.
 
+The v6.18 physical gate passed the broad suite and removed the redraw. Its
+early trace painted at 1.347 seconds, accepted input at 1.463 and anchored the
+full library at 2.479; init's final-tree acknowledgement required no wait. The
+remaining PortMaster failure is narrower: NetworkManager loaded the valid WPA
+profile but `wlan0` stayed disconnected because the transaction omitted the
+release connector's iwd-registration wait and Wi-Fi scan.
+
+Stock-root v6.19 adds that exact readiness/scan sequence while keeping every
+network process outside offline boot. It removes the coordinator's redundant
+fixed-storage request and four proven common-script no-ops, including a 548 KiB
+module tree already byte-identical in the pinned writable image. One checked
+Bird transaction replaces seven scripts that only rewrite constant H700
+profile files. The next post-frame snapshot records the ALSA/PipeWire graph,
+udev settled state and retained udev/logind/seatd/journal costs. Two independent
+v6.19 builds reproduce all 42 card payloads byte-for-byte; the release KERNEL,
+DTB, early launcher and early overlay remain unchanged.
+
 The exact final common-autostart action now also publishes a timestamped
 `/run/bird/application-contract-ready` marker after Sway configuration exists.
 An initramfs game/media/PortMaster request remains on disk, and its handoff

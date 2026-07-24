@@ -24,6 +24,34 @@ LOG=/storage/bird-data/MUOS/Bird/log/stock-root-boot-state-latest.log
 	systemctl --failed --no-pager 2>&1 || :
 	printf '%s\n' '--- remaining jobs ---'
 	systemctl list-jobs --no-pager 2>&1 || :
+	printf '%s\n' '--- retained manager audit ---'
+	for UNIT in systemd-udevd.service systemd-logind.service seatd.service \
+		systemd-journald.service pipewire.service wireplumber.service \
+		sway.service; do
+		systemctl show "$UNIT" --no-pager -p Id -p ActiveState -p SubState \
+			-p MainPID -p MemoryCurrent -p TasksCurrent -p NRestarts 2>&1 || :
+	done
+	printf '%s\n' '--- udev settled state ---'
+	if udevadm settle --timeout=1; then
+		printf '%s\n' 'udev_queue=settled'
+	else
+		printf '%s\n' 'udev_queue=busy'
+	fi
+	printf 'udev_database_records='
+	find /run/udev/data -type f 2>/dev/null | wc -l
+	for CLASS in input sound drm power_supply backlight net block; do
+		printf 'sys_class_%s=' "$CLASS"
+		find "/sys/class/$CLASS" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l
+	done
+	printf '%s\n' '--- journal policy ---'
+	systemctl show systemd-journald.service --no-pager \
+		-p MainPID -p MemoryCurrent -p TasksCurrent 2>&1 || :
+	journalctl --disk-usage 2>&1 || :
+	printf '%s\n' '--- audio graph ---'
+	pactl info 2>&1 || :
+	pactl list short sinks 2>&1 || :
+	pactl list short modules 2>&1 || :
+	amixer -c 0 contents 2>&1 || :
 	printf '%s\n' '--- processes ---'
 	ps -eo pid,ppid,stat,rss,comm,args 2>&1 || :
 	printf '%s\n' '--- input devices ---'

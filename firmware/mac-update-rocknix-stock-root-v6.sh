@@ -1,7 +1,7 @@
 #!/bin/sh
 # Guarded deployment of the compatibility-first stock-root milestone. P5 and
-# content bytes stay untouched. V6.18 anchors storage after prepare_sysroot,
-# removes the redundant UI start and explicitly activates saved networking.
+# content bytes stay untouched. V6.19 fixes the on-demand Wi-Fi state machine,
+# removes redundant compatibility-tail work and fixes the H700 profile.
 # It retains the exact kernel and complete working ROCKNIX userspace.
 # The exact ROCKNIX writable filesystem remains a loop image on p6, and the
 # accepted v5.4 kernel remains on p1 as a fallback.
@@ -11,7 +11,7 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 BIRD=${BIRD:-/Volumes/BIRD}
 DATA=${DATA:-/Volumes/dani-sp}
-CANDIDATE=${CANDIDATE:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.18/card}
+CANDIDATE=${CANDIDATE:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.19/card}
 STORAGE_SOURCE=${STORAGE_SOURCE:-/Users/dani/rocknix-reference-result/storage.ext4}
 PORTMASTER_ARCHIVE=${PORTMASTER_ARCHIVE:-$ROOT/kernel/work/rocknix-system-exact-20260701/usr/config/PortMaster/release/PortMaster.zip}
 RUNTIME=$DATA/MUOS/runtime/ROCKNIX-SYSTEM
@@ -78,6 +78,7 @@ for FILE in post-flash.sh mount-storage.sh SYSTEM KERNEL dtb.img \
 	bird/bird-powerstate bird/bird-powerstate.service \
 	bird/bird-autostart bird/bird-autostart-noop bird/bird-save-config.sh \
 	bird/bird-save-config.service bird/bird-fixed-sway.sh \
+	bird/bird-fixed-platform.sh \
 	bird/bird-swap.conf \
 	bird/supervisor.sh bird/run-content.sh \
 	bird/prepare-ports.sh bird/fixed-storage.sh \
@@ -220,7 +221,7 @@ for FILE in 090-ui_service 999-export dani-launcher bird-pidwait essway.service 
 	bird-fixed-controls.service bird-fixed-control-exit.sh \
 	bird-powerstate bird-powerstate.service bird-swap.conf \
 	bird-autostart bird-autostart-noop bird-save-config.sh bird-save-config.service \
-	bird-fixed-sway.sh \
+	bird-fixed-sway.sh bird-fixed-platform.sh \
 	supervisor.sh run-content.sh \
 	prepare-ports.sh fixed-storage.sh first-frame-prep.sh \
 	capture-boot-state.sh bird-network.sh mpv-input.conf; do
@@ -266,7 +267,7 @@ sync
 cmp "$CANDIDATE/extlinux/extlinux.conf" "$BIRD/extlinux/extlinux.conf" || fail 'active extlinux verification failed'
 cmp "$CANDIDATE/bird-initramfs.cpio.gz" "$BIRD/bird-initramfs.cpio.gz" || fail 'early initramfs verification failed'
 
-printf 'Bird stock-root v6.18 staged on /dev/%s.\n' "$WHOLE"
+printf 'Bird stock-root v6.19 staged on /dev/%s.\n' "$WHOLE"
 printf 'Moved %s Port data directories into the native ROCKNIX tree.\n' "$MOVED_PORTS"
 printf 'Generic storage discovery replaced by the fixed p6 Bird view.\n'
 printf 'MPV physical volume ownership is system-only.\n'
@@ -291,6 +292,9 @@ printf 'RF-kill state management now exists only inside network sessions.\n'
 printf 'PortMaster networking waits for one usable NetworkManager link.\n'
 printf 'The saved Wi-Fi profile is explicitly activated only for PortMaster.\n'
 printf 'Generic autostart no longer starts the already-running Bird UI again.\n'
+printf 'Generic autostart no longer requests already-completed fixed storage.\n'
+printf 'Constant H700 profile writers are collapsed into one fixed transaction.\n'
+printf 'PortMaster networking waits for iwd registration and a fresh Wi-Fi scan.\n'
 printf 'p5 was not modified; p6 content bytes were preserved by same-volume moves.\n'
 printf 'Exact ROCKNIX KERNEL: %s\n' "$ROCKNIX_KERNEL_SHA"
 printf 'Automatic fallback KERNEL: %s\n' "$V54_KERNEL_SHA"

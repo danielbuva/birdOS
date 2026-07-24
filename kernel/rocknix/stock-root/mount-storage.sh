@@ -94,12 +94,34 @@ mount --bind /flash/bird/bird-save-config.service \
 # These generic jobs either duplicate fixed Bird ownership or configure
 # hardware/features absent from this one-user RG34XX-SP profile. The remaining
 # autostart sequence is unchanged for this physical gate.
-for SCRIPT in 003-upgrade 006-display 007-rootpw 009-bluetooth 010-moonlight \
-	010-uimode 020-set_audio_latency 055-hdmi-check 080-dual_screen_mode \
-	080-network 081-usbgadget 098-deviceutils 099-networkservices; do
+for SCRIPT in 001-emulationstation 001-sync-modules 002-device-switch \
+	003-upgrade 006-display 007-rootpw 009-bluetooth 010-moonlight \
+	010-uimode 020-configs 020-set_audio_latency 055-hdmi-check \
+	080-dual_screen_mode 080-network 081-usbgadget 098-deviceutils \
+	099-networkservices; do
 	mount --bind /flash/bird/bird-autostart-noop \
 		"/sysroot/usr/lib/autostart/common/$SCRIPT" || {
 		error bird-fixed-autostart "Could not suppress $SCRIPT"
+		return 1
+	}
+done
+
+# The pinned STORAGE already contains the release-matched 54-file module tree,
+# the EmulationStation compatibility link and no applicable platform/device
+# config overlay. Avoid re-copying 548 KiB or forking a known-empty rsync job.
+
+# Seven H700 scripts only rewrite immutable profile constants. Publish those
+# constants once and replace the remaining writers with the common no-op.
+mount --bind /flash/bird/bird-fixed-platform.sh \
+	/sysroot/usr/lib/autostart/quirks/platforms/H700/001-device_config || {
+	error bird-fixed-platform "Could not install fixed H700 profile"
+	return 1
+}
+for SCRIPT in 002-turbo-mode_config 010-governors 010-led_control \
+	020-fan_control 030-analog_leds 050-modifiers 091-ui_shader; do
+	mount --bind /flash/bird/bird-autostart-noop \
+		"/sysroot/usr/lib/autostart/quirks/platforms/H700/$SCRIPT" || {
+		error bird-fixed-platform "Could not suppress H700 $SCRIPT"
 		return 1
 	}
 done

@@ -70,7 +70,7 @@ The power worker's low-battery red-status threshold is now exactly 41 percent.
 Charging remains kernel/PMIC-owned and the green LED remains the ordinary
 power indicator.
 
-## v6.15 result through the v6.18 correction
+## v6.15 result through the v6.19 correction
 
 The physical gate passed brightness stability and visible shutdown at roughly
 1.8--2.0 seconds. The shutdown log places its exact config compare/copy at
@@ -116,6 +116,25 @@ reloads the saved keyfiles, explicitly activates the sole Wi-Fi profile, waits
 for connectivity and records connection/device/reason/route data without the
 PSK. Neither credentials nor network work enter offline boot.
 
+The v6.18 physical gate passed every tested menu, storage, application, media,
+brightness, control and shutdown path with no redraw regression. Storage became
+usable at 2.479 seconds; the post-`prepare_sysroot` acknowledgement took zero
+wait iterations. PortMaster remained offline. Its trace proves the saved WPA
+keyfile is valid and visible, but Bird requested activation without ROCKNIX's
+required iwd-device wait and NetworkManager scan; `wlan0` remained disconnected
+with no route.
+
+V6.19 reproduces the necessary fixed connection sequence: unblock the radio,
+start iwd and NetworkManager in order, wait for iwd to register `wlan0`, scan,
+then activate the sole saved profile on that interface. Failure evidence now
+includes rfkill, scan and the two relevant journals. Offline boot is unchanged.
+The coordinator also drops its already-completed storage request. Four common
+slots are now proven no-ops for the pinned image: its 54-file, 548 KiB module
+tree is byte-identical, the compatibility link already exists, no device switch
+is present and H700/RG34XX-SP has no config overlay. Seven constant H700 writers
+become one checked Bird profile transaction. Suspend-mode and GPU-overclock
+side effects remain exact until separately audited.
+
 ## Bugs and inefficiencies found
 
 These remain after v6.15 and are ordered for later fixed replacements:
@@ -143,20 +162,18 @@ These remain after v6.15 and are ordered for later fixed replacements:
 
 ## Next active order
 
-1. Physically gate v6.18: retained storage, fixed Sway content suite, suspend,
-   PortMaster, charging indicator, low-battery LED policy and shutdown time.
-2. If the v6.18 Sway profile passes, remove the generic connector generator
-   permanently from the reproducible image.
-3. Replace generic audio setup with a fixed H700 route while preserving the
+1. Physically gate v6.19: PortMaster connectivity, retained storage, fixed
+   profile outputs, content suite, suspend and shutdown.
+2. Replace generic audio setup with a fixed H700 route while preserving the
    already-warm asynchronous audio services.
-4. Audit udev coldplug output and let its manager exit if no retained feature
+3. Audit udev coldplug output and let its manager exit if no retained feature
    needs runtime hotplug; keep fixed hardware initialization separate from
    Bird.
-5. Audit logind versus seatd, journald policy, and remaining idle wakeups.
-6. Remove the muOS-to-ROCKNIX compatibility namespace as an explicit migration:
+4. Audit logind versus seatd, journald policy, and remaining idle wakeups.
+5. Remove the muOS-to-ROCKNIX compatibility namespace as an explicit migration:
    canonical `/storage/roms`, `/run/bird`, Bird-owned data/config directories,
    native BIOS/Ports paths and no launcher-time path rewriting.
-7. Re-measure menu, storage and application-contract boundaries before kernel
+6. Re-measure menu, storage and application-contract boundaries before kernel
    or U-Boot subtraction.
 
 ## Deliberately deferred

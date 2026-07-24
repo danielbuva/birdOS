@@ -130,7 +130,9 @@ run_selected() {
 	if [ "$PORTMASTER_ONLY" -eq 1 ]; then
 		"$PORT_PREP" || return 1
 		"$NETWORK" start || :
-		/usr/bin/start_portmaster.sh
+		# PortMaster is English-only on this fixed profile. Disable X11 compose
+		# parsing so xkbcommon does not load unrelated legacy encodings.
+		XCOMPOSEFILE=/dev/null /usr/bin/start_portmaster.sh
 		STATUS=$?
 		"$NETWORK" stop || :
 		return "$STATUS"

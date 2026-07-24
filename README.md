@@ -119,7 +119,7 @@ card-side patches.
 
 ## Current changes
 
-- The active experiment is stock-root v6.18. V6.3 established the coherent
+- The active experiment is stock-root v6.19. V6.3 established the coherent
   ROCKNIX application environment and v6.4 passed early-systemd subtraction;
   v6.5 put Bird pixels before `switch_root`, v6.6 made that early frame
   interactive and v6.9 removed the remaining input-owner blackout without
@@ -159,8 +159,14 @@ card-side patches.
   exactly after `prepare_sysroot`, when the final tree is stable at
   `/sysroot/storage`; it also removes the redundant UI start. PortMaster-only
   networking explicitly activates the saved profile and records sanitized
-  connection diagnostics. The personal Wi-Fi keyfile remains card state rather
-  than repository data.
+  connection diagnostics. Its physical gate passed the entire storage, menu,
+  content, media and system-control suite without redraws. The one failure was
+  networking: NetworkManager saw both `wlan0` and the valid saved profile but
+  activation occurred before iwd registration or a Wi-Fi scan. V6.19 adds that
+  fixed readiness/scan boundary. It also removes the redundant storage start,
+  four proven no-op common scripts and the repeated 548 KiB module sync, then
+  replaces seven constant H700 profile writers with one Bird transaction. The
+  personal Wi-Fi keyfile remains card state rather than repository data.
 - Bird's first initramfs instance is now the long-lived UI process. The normal
   systemd UI service adopts its PID instead of creating another launcher. The
   unchanged Sway compositor still starts

@@ -11,7 +11,7 @@ SOURCE=${SOURCE:-/Volumes/BIRD}
 SYSTEM_SOURCE=${SYSTEM_SOURCE:-/Volumes/dani-sp/MUOS/runtime/ROCKNIX-SYSTEM}
 STORAGE=${STORAGE:-/Users/dani/rocknix-reference-result/storage.ext4}
 SYSTEM_TREE=${SYSTEM_TREE:-$ROOT/kernel/work/rocknix-system-exact-20260701}
-OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.18}
+OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.19}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
 LLD=${LLD:-/opt/homebrew/opt/lld/bin/ld.lld}
 READELF=${READELF:-/opt/homebrew/opt/llvm/bin/llvm-readelf}
@@ -47,10 +47,13 @@ sha256() {
 
 mkdir -p "$OUTPUT/card/bird" "$OUTPUT/card/extlinux" "$OUTPUT/build"
 
-# Keep the exact compatibility coordinator for this gate, but remove its final
-# request to start the UI a second time and its private-console clear. Bird is
-# already a rocknix.target dependency; application Sway remains on demand.
+# Keep the exact compatibility coordinator for this gate, but remove requests
+# for fixed storage and Bird that systemd has already completed. Application
+# Sway remains on demand and the coordinator retains its compatibility work.
 awk '
+	$0 == "### Start the automount service" { next }
+	$0 == "tocon \"Starting storage services...\"" { next }
+	$0 == "systemctl start rocknix-automount" { next }
 	$0 == "log \"Starting ${UI_SERVICE}...\"" { next }
 	$0 == "systemctl start ${UI_SERVICE} 2>&1 >>${BOOTLOG} &" { next }
 	$0 == "clear >/dev/console" { next }
@@ -149,7 +152,7 @@ for FILE in 090-ui_service 999-export essway.service rocknix.target \
 	prepare-ports.sh fixed-storage.sh first-frame-prep.sh \
 	capture-boot-state.sh bird-network.sh bird-fixed-control-exit.sh \
 	bird-save-config.sh bird-save-config.service bird-autostart-noop \
-	bird-fixed-sway.sh \
+	bird-fixed-sway.sh bird-fixed-platform.sh \
 	bird-swap.conf; do
 	cp -fp "$ROOT/kernel/rocknix/stock-root/$FILE" "$OUTPUT/card/bird/$FILE"
 done
@@ -173,7 +176,8 @@ chmod 0755 "$OUTPUT/card/post-flash.sh" "$OUTPUT/card/mount-storage.sh" \
 	"$OUTPUT/card/bird/bird-save-config.sh" \
 	"$OUTPUT/card/bird/bird-autostart-noop" \
 	"$OUTPUT/card/bird/bird-autostart" \
-	"$OUTPUT/card/bird/bird-fixed-sway.sh"
+	"$OUTPUT/card/bird/bird-fixed-sway.sh" \
+	"$OUTPUT/card/bird/bird-fixed-platform.sh"
 
 for SCRIPT in "$OUTPUT/card/post-flash.sh" \
 	"$OUTPUT/card/mount-storage.sh" \
@@ -190,7 +194,8 @@ for SCRIPT in "$OUTPUT/card/post-flash.sh" \
 	"$OUTPUT/card/bird/bird-save-config.sh" \
 	"$OUTPUT/card/bird/bird-autostart-noop" \
 	"$OUTPUT/card/bird/bird-autostart" \
-	"$OUTPUT/card/bird/bird-fixed-sway.sh"; do
+	"$OUTPUT/card/bird/bird-fixed-sway.sh" \
+	"$OUTPUT/card/bird/bird-fixed-platform.sh"; do
 	bash -n "$SCRIPT" || fail "shell syntax failed: $SCRIPT"
 done
 
@@ -214,6 +219,9 @@ grep -q '### Run common start scripts' \
 if grep -q 'systemctl start ${UI_SERVICE}' "$OUTPUT/card/bird/bird-autostart"; then
 	fail 'redundant final UI start remained'
 fi
+if grep -q 'systemctl start rocknix-automount' "$OUTPUT/card/bird/bird-autostart"; then
+	fail 'redundant fixed storage start remained'
+fi
 grep -q '^ConditionPathExists=/run/bird/network-request$' \
 	"$OUTPUT/card/bird/NetworkManager.service" || fail 'NetworkManager gate missing'
 grep -q '^ConditionPathExists=/run/bird/network-request$' \
@@ -228,8 +236,10 @@ grep -q 'systemd-rfkill.service' \
 	"$OUTPUT/card/bird/bird-network.sh" || fail 'rfkill release missing'
 grep -q '/usr/bin/nm-online -q --timeout=10' \
 	"$OUTPUT/card/bird/bird-network.sh" || fail 'network readiness join missing'
-grep -q '/usr/bin/nmcli -w 20 connection up' \
+grep -q '/usr/bin/nmcli -w 30 connection up' \
 	"$OUTPUT/card/bird/bird-network.sh" || fail 'saved Wi-Fi activation missing'
+grep -q 'device wifi rescan' \
+	"$OUTPUT/card/bird/bird-network.sh" || fail 'Wi-Fi scan barrier missing'
 grep -q 'systemd-rfkill.socket' \
 	"$OUTPUT/card/mount-storage.sh" || fail 'rfkill activation socket remained'
 grep -q '^After=rocknix-autostart.service$' \
@@ -306,6 +316,16 @@ grep -q 'bird-autostart-noop' \
 	"$OUTPUT/card/mount-storage.sh" || fail 'fixed autostart profile missing'
 grep -q '/flash/bird/bird-fixed-sway.sh' \
 	"$OUTPUT/card/mount-storage.sh" || fail 'fixed Sway profile missing'
+grep -q '/flash/bird/bird-fixed-platform.sh' \
+	"$OUTPUT/card/mount-storage.sh" || fail 'fixed H700 profile missing'
+grep -q 'DEVICE_TEMP_SENSOR=.*thermal_zone2/temp' \
+	"$OUTPUT/card/bird/bird-fixed-platform.sh" || fail 'fixed thermal profile missing'
+grep -q '001-sync-modules' \
+	"$OUTPUT/card/mount-storage.sh" || fail 'immutable module sync remained active'
+grep -q 'XCOMPOSEFILE=/dev/null' \
+	"$OUTPUT/card/bird/run-content.sh" || fail 'English PortMaster policy missing'
+grep -q -- '--- audio graph ---' \
+	"$OUTPUT/card/bird/capture-boot-state.sh" || fail 'audio audit missing'
 grep -q '^WLR_DRM_DEVICES=/dev/dri/card1$' \
 	"$OUTPUT/card/bird/bird-fixed-sway.sh" || fail 'fixed DRM card missing'
 grep -q '^WLR_CON=DSI-1$' \
