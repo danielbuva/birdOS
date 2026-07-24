@@ -11,7 +11,7 @@ SOURCE=${SOURCE:-/Volumes/BIRD}
 SYSTEM_SOURCE=${SYSTEM_SOURCE:-/Volumes/dani-sp/MUOS/runtime/ROCKNIX-SYSTEM}
 STORAGE=${STORAGE:-/Users/dani/rocknix-reference-result/storage.ext4}
 SYSTEM_TREE=${SYSTEM_TREE:-$ROOT/kernel/work/rocknix-system-exact-20260701}
-OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.20}
+OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.21}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
 LLD=${LLD:-/opt/homebrew/opt/lld/bin/ld.lld}
 READELF=${READELF:-/opt/homebrew/opt/llvm/bin/llvm-readelf}
@@ -71,6 +71,7 @@ awk '
 	'-DFAVORITES_TEMP="/storage/.config/bird/favorites.tmp"' \
 	'-DRECENT_PATH="/storage/.config/bird/recent.txt"' \
 	'-DRECENT_TEMP="/storage/.config/bird/recent.tmp"' \
+	-DPERSIST_UI_STATE \
 	-c "$ROOT/launcher/dani-launcher.c" \
 	-o "$OUTPUT/build/dani-launcher.o"
 "$LLD" -static --gc-sections --build-id=none -z noexecstack -s \
@@ -151,7 +152,7 @@ for FILE in 090-ui_service 999-export essway.service rocknix.target \
 	bird-powerstate.service supervisor.sh run-content.sh \
 	prepare-ports.sh fixed-storage.sh first-frame-prep.sh \
 	capture-boot-state.sh bird-network.sh bird-fixed-control-exit.sh \
-	bird-save-config.sh bird-save-config.service bird-autostart-noop \
+	bird-save-config.sh bird-save-config.service bird-suspend.sh bird-autostart-noop \
 	bird-fixed-sway.sh bird-fixed-platform.sh \
 	bird-swap.conf; do
 	cp -fp "$ROOT/kernel/rocknix/stock-root/$FILE" "$OUTPUT/card/bird/$FILE"
@@ -174,6 +175,7 @@ chmod 0755 "$OUTPUT/card/post-flash.sh" "$OUTPUT/card/mount-storage.sh" \
 	"$OUTPUT/card/bird/bird-network.sh" \
 	"$OUTPUT/card/bird/bird-fixed-control-exit.sh" \
 	"$OUTPUT/card/bird/bird-save-config.sh" \
+	"$OUTPUT/card/bird/bird-suspend.sh" \
 	"$OUTPUT/card/bird/bird-autostart-noop" \
 	"$OUTPUT/card/bird/bird-autostart" \
 	"$OUTPUT/card/bird/bird-fixed-sway.sh" \
@@ -192,6 +194,7 @@ for SCRIPT in "$OUTPUT/card/post-flash.sh" \
 	"$OUTPUT/card/bird/bird-network.sh" \
 	"$OUTPUT/card/bird/bird-fixed-control-exit.sh" \
 	"$OUTPUT/card/bird/bird-save-config.sh" \
+	"$OUTPUT/card/bird/bird-suspend.sh" \
 	"$OUTPUT/card/bird/bird-autostart-noop" \
 	"$OUTPUT/card/bird/bird-autostart" \
 	"$OUTPUT/card/bird/bird-fixed-sway.sh" \
@@ -248,6 +251,10 @@ grep -q '^After=rocknix-autostart.service$' \
 	"$OUTPUT/card/bird/rocknix-report-stats.service" || fail 'event-ordered snapshot missing'
 grep -q '^Type=simple$' \
 	"$OUTPUT/card/bird/rocknix-report-stats.service" || fail 'nonblocking snapshot missing'
+grep -q '^RuntimeMaxSec=20s$' \
+	"$OUTPUT/card/bird/rocknix-report-stats.service" || fail 'bounded snapshot runtime missing'
+grep -q 'timeout 2s pactl info' \
+	"$OUTPUT/card/bird/capture-boot-state.sh" || fail 'bounded audio diagnostic missing'
 grep -q '^  INITRD /bird-initramfs.cpio.gz$' \
 	"$OUTPUT/card/extlinux/extlinux.conf" || fail 'external early initramfs missing'
 grep -q 'persistent-owner' \
@@ -306,6 +313,19 @@ grep -q '/flash/bird/bird-powerstate.service' \
 	"$OUTPUT/card/mount-storage.sh" || fail 'stock powerstate replacement missing'
 grep -q 'BTN_TL' \
 	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'fixed exit chord missing'
+grep -q '#define INPUT_EVENT_SCAN_COUNT 32' \
+	"$ROOT/launcher/dani-launcher.c" || fail 'complete fixed input search missing'
+grep -q '#define EVENT_SCAN_COUNT 32' \
+	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'complete global input search missing'
+grep -q -- '-DPERSIST_UI_STATE' "$0" || fail 'launcher recovery state missing'
+grep -q 'SUSPEND_PROGRAM "/storage/.config/bird/bird-suspend.sh"' \
+	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'fixed suspend wrapper missing'
+grep -q 'raw = 1U' \
+	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'hardware minimum brightness missing'
+grep -q 'bird-pre-suspend-brightness' \
+	"$OUTPUT/card/bird/bird-suspend.sh" || fail 'suspend brightness preservation missing'
+grep -q 'suspend-latest.log' \
+	"$OUTPUT/card/bird/bird-suspend.sh" || fail 'suspend brightness evidence missing'
 grep -q 'NETLINK_KOBJECT_UEVENT' \
 	"$ROOT/launcher/bird-powerstate.c" || fail 'event-driven power source missing'
 grep -q '^KSM_ENABLE="disable"$' \

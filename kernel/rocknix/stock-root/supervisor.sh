@@ -17,12 +17,25 @@ ATTEMPTS=/storage/bird-data/MUOS/Bird/boot-state/stock-root-attempts
 LOG_DIR=/storage/bird-data/MUOS/Bird/log
 LOG=$LOG_DIR/stock-root-supervisor.log
 LOG_BOOT_ID=$LOG_DIR/stock-root-supervisor.boot-id
+EARLY_LATEST=$LOG_DIR/early-initramfs-latest.log
+BOOT_STATE_LATEST=$LOG_DIR/stock-root-boot-state-latest.log
 SHUTDOWN_LOG=$LOG_DIR/shutdown-latest.log
 
 mkdir -p /run/muos "$LOG_DIR" "${ATTEMPTS%/*}"
 BOOT_ID=$(cut -c1-8 /proc/sys/kernel/random/boot_id 2>/dev/null || :)
 [ -n "$BOOT_ID" ] || BOOT_ID=unknown
-if [ "$(cat "$LOG_BOOT_ID" 2>/dev/null || :)" != "$BOOT_ID" ]; then
+OLD_BOOT_ID=$(cat "$LOG_BOOT_ID" 2>/dev/null || :)
+if [ "$OLD_BOOT_ID" != "$BOOT_ID" ]; then
+	case "$OLD_BOOT_ID" in
+		????????)
+			[ -s "$LOG" ] && cp -f "$LOG" \
+				"$LOG_DIR/stock-root-supervisor-$OLD_BOOT_ID.log"
+			[ -s "$EARLY_LATEST" ] && cp -f "$EARLY_LATEST" \
+				"$LOG_DIR/early-initramfs-$OLD_BOOT_ID.log"
+			[ -s "$BOOT_STATE_LATEST" ] && cp -f "$BOOT_STATE_LATEST" \
+				"$LOG_DIR/stock-root-boot-state-$OLD_BOOT_ID.log"
+			;;
+	esac
 	: >"$LOG"
 	printf '%s\n' "$BOOT_ID" >"$LOG_BOOT_ID"
 fi

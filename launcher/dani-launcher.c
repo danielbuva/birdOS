@@ -48,6 +48,7 @@ typedef signed long s64;
 #define POLLIN 0x0001
 #define POLLERR 0x0008
 #define POLLHUP 0x0010
+#define POLLNVAL 0x0020
 #define AF_NETLINK 16
 #define SOCK_DGRAM 2
 #define SOCK_NONBLOCK 04000
@@ -112,6 +113,7 @@ typedef signed long s64;
 #define PENDING_LAUNCH_NONE 0U
 #define PENDING_LAUNCH_GAME 1U
 #define PENDING_LAUNCH_MEDIA 2U
+#define INPUT_EVENT_SCAN_COUNT 32
 
 struct fb_bitfield {
     u32 offset;
@@ -228,7 +230,7 @@ static int power_dir_fd = -1;
 static int storage_dir_fd = -1;
 static int config_dir_fd = -1;
 static int storage_signal_fd = -1;
-static char input_path[] = "/dev/input/event0";
+static char input_path[32] = "/dev/input/event0";
 static u32 view;
 static u32 selection;
 static u32 active_system;
@@ -744,7 +746,7 @@ static int save_ui_resume(void) {
 }
 
 static void preserve_early_handoff_state(void) {
-#ifdef EARLY_HANDOFF_STATE
+#ifdef PERSIST_UI_STATE
     (void)save_ui_resume();
 #endif
 }
@@ -1679,14 +1681,26 @@ static void probe_storage(void) {
     log_text("\n");
 }
 
+static void set_input_path(int index) {
+    static const char prefix[] = "/dev/input/event";
+    int position = 0;
+    while (prefix[position]) {
+        input_path[position] = prefix[position];
+        position++;
+    }
+    if (index >= 10) input_path[position++] = (char)('0' + index / 10);
+    input_path[position++] = (char)('0' + index % 10);
+    input_path[position] = 0;
+}
+
 static int open_fixed_input(void) {
     char name[128];
     u64 deadline = boot_ms() + DEVICE_WAIT_MS;
     int index;
 
     while (boot_ms() < deadline) {
-        for (index = 0; index < 8; index++) {
-            input_path[16] = (char)('0' + index);
+        for (index = 0; index < INPUT_EVENT_SCAN_COUNT; index++) {
+            set_input_path(index);
             input_fd = (int)fixed_open(input_path, O_RDONLY | O_NONBLOCK);
             if (input_fd < 0) continue;
 
@@ -1798,9 +1812,10 @@ static int application(void) {
      * input gate: the watchdog is cancelled only when the menu is usable.
     */
     load_ui_resume();
-#ifdef EARLY_HANDOFF_STATE
+#ifdef PERSIST_UI_STATE
     /* load_ui_resume consumes its file. Keep the bridge transaction armed
-     * even when no button is pressed between two process owners. */
+     * even when no button is pressed between two process owners or a device
+     * reconnect causes the supervisor to recover Bird. */
     (void)save_ui_resume();
 #endif
     power_event_fd = open_power_events();
@@ -1890,7 +1905,7 @@ static int application(void) {
         }
         sys_ppoll(polls, poll_count, timeout);
 
-        if (polls[0].revents & (POLLERR | POLLHUP)) {
+        if (polls[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
             log_text("input reconnect boot_ms=");
             log_number(boot_ms());
             log_text("\n");

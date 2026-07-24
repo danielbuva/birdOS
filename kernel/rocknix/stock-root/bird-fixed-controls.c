@@ -7,7 +7,8 @@
  * global policy used by Bird:
  *
  *   - dedicated volume keys, including 300 ms / 100 ms hold repeat;
- *   - Menu + volume for one 5 percent brightness step;
+ *   - Menu + volume for a direct fixed-panel brightness step, including the
+ *     hardware's lowest nonzero raw level;
  *   - power and lid events through ROCKNIX's proven fake-suspend helper; and
  *   - L1 + Select + Start through ROCKNIX's current process-kill contract.
  *
@@ -57,8 +58,9 @@ typedef signed long s64;
 #define LID_NAME "gpio-keys-lid"
 
 #define VOLUME_PROGRAM "/usr/bin/volume"
-#define BRIGHTNESS_PROGRAM "/usr/bin/brightness"
-#define SUSPEND_PROGRAM "/usr/bin/rocknix-fake-suspend"
+#define BRIGHTNESS_CURRENT "/sys/class/backlight/backlight/brightness"
+#define BRIGHTNESS_MAX "/sys/class/backlight/backlight/max_brightness"
+#define SUSPEND_PROGRAM "/storage/.config/bird/bird-suspend.sh"
 #define EXIT_HELPER "/storage/.config/bird/bird-fixed-control-exit.sh"
 #define KMSG_DEVICE "/dev/kmsg"
 
@@ -67,7 +69,7 @@ typedef signed long s64;
 #define SOURCE_POWER 2
 #define SOURCE_LID 3
 #define SOURCE_COUNT 4
-#define EVENT_SCAN_COUNT 8
+#define EVENT_SCAN_COUNT 32
 
 #define VOLUME_REPEAT_DELAY_NS 300000000L
 #define VOLUME_REPEAT_INTERVAL_NS 100000000L
@@ -207,6 +209,47 @@ static void write_all(int fd, const char *text, u64 length) {
     }
 }
 
+static int read_number(const char *path, u64 *value) {
+    char buffer[32];
+    long fd = sys_open(path, O_RDONLY | O_CLOEXEC);
+    long count;
+    u64 parsed = 0;
+    int digits = 0;
+    int index;
+    if (fd < 0) return 0;
+    count = sys_read((int)fd, buffer, sizeof(buffer));
+    sys_close((int)fd);
+    if (count <= 0) return 0;
+    for (index = 0; index < count; index++) {
+        char c = buffer[index];
+        if (c < '0' || c > '9') break;
+        parsed = parsed * 10U + (u64)(c - '0');
+        digits++;
+    }
+    if (!digits) return 0;
+    *value = parsed;
+    return 1;
+}
+
+static int write_number(const char *path, u64 value) {
+    char buffer[32];
+    int position = 31;
+    long fd;
+    long length;
+    long written;
+    buffer[--position] = '\n';
+    do {
+        buffer[--position] = (char)('0' + value % 10U);
+        value /= 10U;
+    } while (value);
+    fd = sys_open(path, O_WRONLY | O_CLOEXEC);
+    if (fd < 0) return 0;
+    length = 31 - position;
+    written = sys_write((int)fd, buffer + position, (u64)length);
+    sys_close((int)fd);
+    return written == length;
+}
+
 static void log_text(const char *text) {
     u64 length = string_length(text);
     write_all(1, text, length);
@@ -269,13 +312,37 @@ static void run_volume(int direction) {
 }
 
 static void run_brightness(int direction) {
-    if (spawn_action(BRIGHTNESS_PROGRAM,
-                     direction > 0 ? "up" : "down", 0))
+    u64 current;
+    u64 maximum;
+    u64 percent;
+    u64 target;
+    u64 raw;
+    if (!read_number(BRIGHTNESS_CURRENT, &current) ||
+        !read_number(BRIGHTNESS_MAX, &maximum) || !maximum) {
+        log_text("bird-fixed-controls: brightness-read-failed\n");
+        return;
+    }
+    percent = (current * 100U + maximum / 2U) / maximum;
+    if (direction > 0) {
+        target = percent < 5U ? 5U : percent + 5U;
+        if (target > 100U) target = 100U;
+        raw = (target * maximum + 50U) / 100U;
+    } else if (percent <= 5U) {
+        /* Raw one is the fixed panel's lowest lit level. It is intentionally
+         * distinct from zero, which belongs to display power-off. */
+        raw = 1U;
+    } else {
+        target = percent - 5U;
+        raw = (target * maximum + 50U) / 100U;
+    }
+    if (raw < 1U) raw = 1U;
+    if (raw > maximum) raw = maximum;
+    if (write_number(BRIGHTNESS_CURRENT, raw))
         log_text(direction > 0
-                     ? "bird-fixed-controls: brightness-up\n"
-                     : "bird-fixed-controls: brightness-down\n");
+                     ? "bird-fixed-controls: brightness-up-direct\n"
+                     : "bird-fixed-controls: brightness-down-direct\n");
     else
-        log_text("bird-fixed-controls: brightness-spawn-failed\n");
+        log_text("bird-fixed-controls: brightness-write-failed\n");
 }
 
 static void run_suspend(const char *source, const char *action) {

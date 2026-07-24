@@ -78,6 +78,7 @@ mkdir -p "$PAYLOAD/opt/bird" "$VERIFY"
 	'-DHANDOFF_ACTION_PATH="/run/muos/dani-launch-action"' \
 	'-DSTORAGE_ANCHOR_MARKER="/run/muos/dani-storage-anchor-ready"' \
 	'-DSTORAGE_READY_SIGNAL="/run/muos/dani-storage-ready"' \
+	-DPERSIST_UI_STATE \
 	-DDEVICE_WAIT_MS=20000UL \
 	-c "$ROOT/launcher/dani-launcher.c" -o "$OBJECT"
 "$LLD" -static --gc-sections --build-id=none -z noexecstack -s \

@@ -48,10 +48,10 @@ LOG=/storage/bird-data/MUOS/Bird/log/stock-root-boot-state-latest.log
 		-p MainPID -p MemoryCurrent -p TasksCurrent 2>&1 || :
 	journalctl --disk-usage 2>&1 || :
 	printf '%s\n' '--- audio graph ---'
-	pactl info 2>&1 || :
-	pactl list short sinks 2>&1 || :
-	pactl list short modules 2>&1 || :
-	amixer -c 0 contents 2>&1 || :
+	timeout 2s pactl info 2>&1 || :
+	timeout 2s pactl list short sinks 2>&1 || :
+	timeout 2s pactl list short modules 2>&1 || :
+	timeout 2s amixer -c 0 contents 2>&1 || :
 	printf '%s\n' '--- processes ---'
 	ps -eo pid,ppid,stat,rss,comm,args 2>&1 || :
 	printf '%s\n' '--- input devices ---'

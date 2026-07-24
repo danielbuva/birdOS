@@ -70,7 +70,7 @@ The power worker's low-battery red-status threshold is now exactly 41 percent.
 Charging remains kernel/PMIC-owned and the green LED remains the ordinary
 power indicator.
 
-## v6.15 result through the v6.20 correction
+## v6.15 result through the v6.21 hardening pass
 
 The physical gate passed brightness stability and visible shutdown at roughly
 1.8--2.0 seconds. The shutdown log places its exact config compare/copy at
@@ -151,6 +151,23 @@ owner until one stable final supervisor adopts it. The audit becomes an
 idle-priority `Type=simple` service: systemd considers it started immediately,
 so diagnostics cannot trigger the boot watchdog.
 
+The v6.20 physical gate passed without either reboot or movie black-screen
+failure. One Library selection froze and recovered at Home before a reboot;
+the latest-only logs had already overwritten that failed boot. The launcher
+also bounded its fixed input search at `event7` even though the snapshot saw 11
+input classes, and the intended continuous volatile UI checkpoint was not
+enabled by either build. V6.21 searches `event0` through `event31`, enables the
+checkpoint in both launcher binaries and archives supervisor, early-launcher
+and boot-state logs by boot ID. A recovery therefore returns to the exact view
+and retains its own evidence instead of silently looking like a Home reset.
+
+Lid wake also changed visible brightness because the retained generic fake
+suspend toggles `bl_power` without owning Bird's exact raw level. A separate
+Bird wrapper now saves that value before the provider transaction and restores
+it after resume. The fixed controls binary writes the known backlight sysfs
+directly instead of spawning the generic Bash/find/bc/settings stack; its last
+down-step reaches raw level one while zero remains reserved for display-off.
+
 ## Bugs and inefficiencies found
 
 These remain after v6.15 and are ordered for later fixed replacements:
@@ -178,8 +195,9 @@ These remain after v6.15 and are ordered for later fixed replacements:
 
 ## Next active order
 
-1. Physically gate v6.20: no idle reboot, no request replay/redraw, retained
-   storage/profile outputs, content suite, suspend and shutdown.
+1. Physically gate v6.21: repeat Library entry before and after the graphical
+   boundary, exact brightness across both suspend paths, raw-one recovery,
+   retained content suite and shutdown.
 2. Replace generic audio setup with a fixed H700 route while preserving the
    already-warm asynchronous audio services.
 3. Audit udev coldplug output and let its manager exit if no retained feature

@@ -1080,6 +1080,23 @@ The diagnostic service is now `Type=simple`, nice 19 and idle-I/O scheduled.
 It still captures the requested evidence but no longer participates in target
 completion. The v6.19 fixed-profile and immutable-module reductions remain.
 
+The v6.20 physical gate passed with no reboot, no movie black screen and a
+complete functional suite. One transient Library entry froze and returned to
+Home, but rebooting replaced all three latest-only diagnostic files. V6.21
+closes both weaknesses behind that symptom: Bird searches the bounded
+`event0`--`event31` range instead of only eight nodes, and both launcher builds
+continuously checkpoint the current view in `/run`. Any supervisor recovery
+therefore redraws the exact screen rather than Home. The supervisor also
+archives its log, the early log and boot snapshot under the previous boot ID.
+
+The same gate showed that fake-suspend wake can alter perceived brightness.
+V6.21 wraps the retained provider with an exact raw-level save/restore, while
+the fixed controls process now performs brightness arithmetic and one sysfs
+write itself. This removes generic Bash, `find`, `bc` and settings parsing from
+each manual step and exposes raw level one as the lowest lit panel state.
+Post-frame diagnostics inherit the real PipeWire runtime environment, bound
+each audio query to two seconds and have a 20-second absolute runtime ceiling.
+
 The exact final common-autostart action now also publishes a timestamped
 `/run/bird/application-contract-ready` marker after Sway configuration exists.
 An initramfs game/media/PortMaster request remains on disk, and its handoff

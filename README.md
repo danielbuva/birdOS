@@ -119,7 +119,7 @@ card-side patches.
 
 ## Current changes
 
-- The active experiment is stock-root v6.20. V6.3 established the coherent
+- The active experiment is stock-root v6.21. V6.3 established the coherent
   ROCKNIX application environment and v6.4 passed early-systemd subtraction;
   v6.5 put Bird pixels before `switch_root`, v6.6 made that early frame
   interactive and v6.9 removed the remaining input-owner blackout without
@@ -174,6 +174,12 @@ card-side patches.
   supervisor only after `graphical.target` and makes the low-priority snapshot
   a nonblocking simple service. Wi-Fi activation remains deferred until a
   connection created by the stock ROCKNIX UI can be captured and reduced.
+  Its physical gate had no reboot or movie black-screen regression and passed
+  the remaining suite. One transient Library selection returned to Home, and
+  lid wake exposed an unowned backlight-level transition. V6.21 searches the
+  complete fixed input-event range, continuously retains the exact volatile UI
+  screen, archives evidence by boot ID, restores the exact pre-suspend raw
+  level and replaces generic brightness Bash with direct fixed-control sysfs.
 - Bird's first initramfs instance is now the long-lived UI process. The normal
   systemd UI service adopts its PID instead of creating another launcher. The
   unchanged Sway compositor still starts

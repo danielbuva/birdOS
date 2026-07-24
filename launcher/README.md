@@ -268,6 +268,13 @@ the content and config descriptors before init may move the mount. This is a
 readiness check for storage ownership, not a dependency of first paint or
 input.
 
+Stock-root v6.21 also treats launcher recovery as a product invariant. Both the
+initramfs and final-root binaries retain the current view in the volatile
+16-byte record after navigation, and input discovery covers `event0` through
+`event31`. A transient device re-enumeration or process recovery returns to the
+same highlighted screen; reboot still clears `/run` and intentionally begins
+at Home.
+
 ## Real-cache deployment
 
 The v11 build replaces the five-title proof with the real 5,953-title card
