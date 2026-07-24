@@ -31,7 +31,7 @@ The long-term centerpiece would be a tiny custom launcher—ideally a small stat
 Clean-root v5.4 proved the desired fast architecture but also proved that an
 application stack cannot be reconstructed reliably by copying binaries and
 guessing its hidden service and configuration contract one failure at a time.
-Stock-root v6.13 now optimizes the proven software baseline:
+Stock-root v6.14 now optimizes the proven software baseline:
 
 - exact ROCKNIX 20260701 KERNEL, DTB, SYSTEM and configured STORAGE;
 - complete systemd, udev, D-Bus, PipeWire, WirePlumber and H700 autostart path;
@@ -73,7 +73,12 @@ that storage anchoring could still depend on incidental button activity because
 the raw `ppoll` timeout did not wake Bird. V6.12 replaces that polling path with
 one explicit FIFO event from init after storage completes. Its physical trace
 showed the FIFO was never created because this exact BusyBox omits `mkfifo`.
-V6.13 uses and checksum-gates its available `mknod` applet instead.
+V6.13 uses and checksum-gates its available `mknod` applet instead. Its broad
+physical gate passed with Bird interactive at kernel uptime 1.520 seconds and
+storage anchored at 2.563 seconds. V6.14 is the first fixed-resident-service
+pass: early selections become one-shot queued intents, one static process
+replaces the generic input graph, one static event process replaces power
+polling, and the fixed 2 GiB profile disables KSM scanning.
 
 The gate order is compatibility first, then early Bird handoff, then service
 deferral/removal, then kernel trimming. No component is removed from the full
@@ -207,14 +212,26 @@ removes the handoff entirely while keeping the verified menu-first boundary.
 - [ ] [v6.11 retained; network session still needs physical gate] Keep resolver and network time synchronization stopped in
   ordinary offline sessions, then start and release their exact providers with
   the existing PortMaster-only network transaction.
-- [ ] Replace the seven-process generic `input_sense` shell/`evtest` graph with
-  one fixed RG34XX-SP control process. V6.11 captured the exact fixed map:
+- [ ] [v6.14 staged; physical gate pending] Replace the generic `input_sense`
+  shell/`grep`/four-`evtest` graph with one fixed RG34XX-SP control process.
+  V6.11 captured the exact fixed map:
   event0 `axp20x-pek`, event2 `gpio-keys-volume`, event3 `gpio-keys-lid` and
-  event4 `H700 Gamepad`; event1 is only the codec headphone switch.
-- [ ] Replace `powerstate`'s two-second battery polling with fixed initial
-  policy plus kernel power-supply events. V6.11 captured idle CPU `ondemand`
-  at 480--1,416 MHz and GPU `simple_ondemand` at a 420--600 MHz bound.
-- [ ] [v6.13 staged after v6.12 missing-applet trace] Verify an untouched idle
+  event4 `H700 Gamepad`; event1 is only the codec headphone switch. The
+  5,184-byte candidate preserves volume repeat, Menu+volume brightness,
+  power/lid fake suspend and L1+Select+Start global exit without grabbing the
+  gamepad.
+- [ ] [v6.14 staged; physical gate pending] Replace `powerstate`'s two-second
+  battery polling with fixed initial policy plus kernel power-supply events.
+  V6.11 captured idle CPU `ondemand` at 480--1,416 MHz and GPU
+  `simple_ondemand` at a 420--600 MHz bound. The 5,528-byte candidate never
+  rewrites content policy and retains one 40-second capacity safety check only
+  on battery because the AXP717 driver emits no capacity-change event.
+- [ ] [v6.14 staged; physical gate pending] Disable KSM on the fixed 2 GiB
+  profile while retaining ROCKNIX's one-shot VM tuning. The idle snapshot had
+  about 1.8 GiB available, only about 24 MiB anonymous memory and no workload
+  that justifies a one-second same-page scan.
+- [ ] [v6.13 physical functionality passed; untouched FIFO wake proof pending]
+  Verify an untouched idle
   boot logs `early_storage_fifo=ready`, `storage_signal_received`,
   `storage_anchor_ready` and an acknowledged marker, then launches content
   without requiring any earlier input event.

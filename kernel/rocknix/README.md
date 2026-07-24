@@ -936,6 +936,27 @@ Two independent v6.13 builds reproduce every card payload byte-for-byte. The
 static launcher remains 631,696 bytes; the corrected compressed overlay is
 221,427 bytes.
 
+The v6.13 physical gate closes the storage failure: Bird records its
+input-ready frame at kernel uptime 1.520 seconds, retains fixed storage at
+2.563 seconds and passes games, media, Ports, controls and shutdown. Stock-root
+v6.14 uses the now-reliable interval rather than displaying a dead-end status.
+An A press before storage snapshots one exact game or media row; B or any
+navigation cancels it, and storage readiness dispatches it at most once after
+buffered cancellation input is sampled. Favorites restoration likewise waits
+for the real storage anchor instead of caching a failed early read.
+
+V6.14 also begins fixed resident-service replacement. A 5,184-byte static
+`ppoll` process replaces the Bash/grep/four-evtest input graph while retaining
+volume repeat, Menu+volume brightness, H700 fake suspend and the release's
+L1+Select+Start process-kill chord. A 5,528-byte static power process applies
+the fixed CPU/GPU policy once, consumes plug/status uevents and performs one
+capacity read every 40 seconds only while discharging; this is required because
+the exact AXP717 driver has no capacity-change event. The fixed 2 GiB memory
+configuration also leaves KSM off while preserving the release's other
+one-shot VM values. Two independent v6.14 builds reproduce every card payload
+byte-for-byte; the normal launcher is 633,528 bytes and the compressed external
+overlay is 222,318 bytes.
+
 The exact final common-autostart action now also publishes a timestamped
 `/run/bird/application-contract-ready` marker after Sway configuration exists.
 An initramfs game/media/PortMaster request remains on disk, and its handoff
@@ -959,7 +980,7 @@ unchanged `sway.service`, calls the release's `runemu.sh` with the release
 platform/emulator/core identity, waits for the application, stops Sway and
 redraws Bird. PortMaster and MPV continue to use their release wrappers.
 
-`build-stock-root-compat.sh` builds the two static Bird binaries and external
+`build-stock-root-compat.sh` builds the four static Bird binaries and external
 overlay, then copies the checksummed release files. Two independent v6.5 builds
 reproduce all 40 files byte-for-byte; offline extraction also verifies the
 overlay merges cleanly over the complete 7,474,688-byte official archive.

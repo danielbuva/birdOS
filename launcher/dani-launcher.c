@@ -109,6 +109,10 @@ typedef signed long s64;
 #define ACTION_SHUTDOWN 11
 #define ACTION_PORTMASTER 12
 
+#define PENDING_LAUNCH_NONE 0U
+#define PENDING_LAUNCH_GAME 1U
+#define PENDING_LAUNCH_MEDIA 2U
+
 struct fb_bitfield {
     u32 offset;
     u32 length;
@@ -203,6 +207,12 @@ struct ui_resume_state {
     u32 selection;
 };
 
+struct pending_launch_state {
+    u32 kind;
+    u32 index;
+    u32 active_index;
+};
+
 static struct fb_var_screeninfo fb_var;
 static struct fb_fix_screeninfo fb_fix;
 static volatile u8 *fb;
@@ -232,6 +242,7 @@ static u32 favorite_count;
 static u8 favorites[(CATALOG_ENTRY_COUNT + 7U) / 8U];
 static char live_path[LIVE_PATH_BYTES];
 static u64 next_storage_probe;
+static struct pending_launch_state pending_launch;
 static const char *selected_status = "DIRECT FRAMEBUFFER READY";
 
 static const char *menu_item[4] = {"PLAY", "LISTEN", "READ", "WATCH"};
@@ -648,6 +659,12 @@ static void load_favorites(void) {
     long count;
 
     if (favorites_loaded) return;
+    if (!storage_ready) {
+        log_text("favorites_load boot_ms=");
+        log_number(boot_ms());
+        log_text(" result=deferred-storage\n");
+        return;
+    }
     for (i = 0; i < sizeof(favorites); i++) favorites[i] = 0;
     favorite_count = 0;
     favorites_loaded = 1;
@@ -765,8 +782,11 @@ static int load_ui_resume(void) {
             return 0;
     } else if (state.view == VIEW_FAVORITES) {
         load_favorites();
-        if (!favorite_count) state.selection = 0;
-        else if (state.selection >= favorite_count) state.selection = favorite_count - 1U;
+        if (favorites_loaded) {
+            if (!favorite_count) state.selection = 0;
+            else if (state.selection >= favorite_count)
+                state.selection = favorite_count - 1U;
+        }
     } else if (state.view == VIEW_MEDIA_ENTRIES) {
         if (state.active_index >= CATALOG_MEDIA_CATEGORY_COUNT ||
             state.selection >= catalog_media_categories[state.active_index].count)
@@ -1226,17 +1246,17 @@ static int launch_catalog_entry(u32 catalog_index) {
     return ACTION_NONE;
 }
 
-static int launch_media_entry(void) {
+static int launch_media_entry(u32 category_index, u32 item_index) {
     const struct catalog_media_category *category;
     const struct catalog_media_entry *entry;
     const char *path;
     u32 entry_index;
     long fd;
-    if (active_media_category >= CATALOG_MEDIA_CATEGORY_COUNT)
+    if (category_index >= CATALOG_MEDIA_CATEGORY_COUNT)
         return ACTION_NONE;
-    category = &catalog_media_categories[active_media_category];
-    if (selection >= category->count) return ACTION_NONE;
-    entry_index = category->first + selection;
+    category = &catalog_media_categories[category_index];
+    if (item_index >= category->count) return ACTION_NONE;
+    entry_index = category->first + item_index;
     entry = &catalog_media_entries[entry_index];
     path = resolve_live_path(entry->path);
     fd = path ? fixed_open(path, O_RDONLY | O_NONBLOCK) : -1;
@@ -1257,6 +1277,82 @@ static int launch_media_entry(void) {
     selected_status = "WAITING FOR MEDIA STORAGE";
     log_text(" result=not-ready\n");
     return ACTION_NONE;
+}
+
+static void log_pending_identity(const struct pending_launch_state *pending) {
+    if (pending->kind == PENDING_LAUNCH_GAME) {
+        log_text(" kind=game catalog_index=");
+        log_number(pending->index);
+    } else if (pending->kind == PENDING_LAUNCH_MEDIA) {
+        log_text(" kind=media category_index=");
+        log_number(pending->active_index);
+        log_text(" selection=");
+        log_number(pending->index);
+    }
+}
+
+static void queue_game_launch(u32 catalog_index) {
+    pending_launch.kind = PENDING_LAUNCH_GAME;
+    pending_launch.index = catalog_index;
+    pending_launch.active_index = 0U;
+    selected_status = "GAME QUEUED // STORAGE MOUNTING";
+    log_text("pending_launch boot_ms=");
+    log_number(boot_ms());
+    log_text(" event=queued");
+    log_pending_identity(&pending_launch);
+    log_text("\n");
+}
+
+static void queue_media_launch(u32 category_index, u32 item_index) {
+    pending_launch.kind = PENDING_LAUNCH_MEDIA;
+    pending_launch.index = item_index;
+    pending_launch.active_index = category_index;
+    selected_status = "MEDIA QUEUED // STORAGE MOUNTING";
+    log_text("pending_launch boot_ms=");
+    log_number(boot_ms());
+    log_text(" event=queued");
+    log_pending_identity(&pending_launch);
+    log_text("\n");
+}
+
+static void cancel_pending_launch(const char *reason) {
+    if (pending_launch.kind == PENDING_LAUNCH_NONE) return;
+    log_text("pending_launch boot_ms=");
+    log_number(boot_ms());
+    log_text(" event=cancelled reason=");
+    log_text(reason);
+    log_pending_identity(&pending_launch);
+    log_text("\n");
+    pending_launch.kind = PENDING_LAUNCH_NONE;
+    pending_launch.index = 0U;
+    pending_launch.active_index = 0U;
+}
+
+static int dispatch_pending_launch(void) {
+    struct pending_launch_state request;
+    int action;
+    if (pending_launch.kind == PENDING_LAUNCH_NONE) return ACTION_NONE;
+    request = pending_launch;
+    pending_launch.kind = PENDING_LAUNCH_NONE;
+    pending_launch.index = 0U;
+    pending_launch.active_index = 0U;
+    log_text("pending_launch boot_ms=");
+    log_number(boot_ms());
+    log_text(" event=dispatch");
+    log_pending_identity(&request);
+    log_text("\n");
+    if (request.kind == PENDING_LAUNCH_GAME)
+        action = launch_catalog_entry(request.index);
+    else if (request.kind == PENDING_LAUNCH_MEDIA)
+        action = launch_media_entry(request.active_index, request.index);
+    else
+        action = ACTION_NONE;
+    log_text("pending_launch boot_ms=");
+    log_number(boot_ms());
+    log_text(" event=dispatch-result action=");
+    log_number((u64)action);
+    log_text("\n");
+    return action;
 }
 
 static void toggle_current_favorite(void) {
@@ -1350,10 +1446,16 @@ static int select_current(void) {
         selected_status = storage_ready ? "ROM STORAGE READY" : "CATALOG READY // ROMS MOUNTING";
     } else if (view == VIEW_GAMES || view == VIEW_FAVORITES) {
         u32 catalog_index = current_catalog_index();
-        if (catalog_index < CATALOG_ENTRY_COUNT)
-            action = launch_catalog_entry(catalog_index);
-        else
+        if (catalog_index < CATALOG_ENTRY_COUNT) {
+            if (storage_ready) {
+                cancel_pending_launch("direct-selection");
+                action = launch_catalog_entry(catalog_index);
+            } else {
+                queue_game_launch(catalog_index);
+            }
+        } else {
             selected_status = "NO GAME SELECTED";
+        }
     } else if (view == VIEW_MEDIA_CATEGORIES) {
         if (selection < media_category_count()) {
             active_media_category = media_category_first() + selection;
@@ -1364,7 +1466,15 @@ static int select_current(void) {
             selected_status = empty_media_text();
         }
     } else if (view == VIEW_MEDIA_ENTRIES) {
-        action = launch_media_entry();
+        if (active_media_category < CATALOG_MEDIA_CATEGORY_COUNT &&
+            selection < catalog_media_categories[active_media_category].count) {
+            if (storage_ready) {
+                cancel_pending_launch("direct-selection");
+                action = launch_media_entry(active_media_category, selection);
+            } else {
+                queue_media_launch(active_media_category, selection);
+            }
+        }
     }
     if (action == ACTION_NONE) preserve_early_handoff_state();
     draw_screen();
@@ -1373,6 +1483,7 @@ static int select_current(void) {
 
 static void move_selection(int direction, u32 steps) {
     u32 count = current_count();
+    cancel_pending_launch("navigation");
     if (!count) return;
     while (steps--) {
         if (direction < 0) selection = selection > 0U ? selection - 1U : count - 1U;
@@ -1389,6 +1500,7 @@ static int handle_direction(int direction) {
 }
 
 static int handle_back(void) {
+    cancel_pending_launch("back");
     if (view == VIEW_FAVORITES) {
         view = VIEW_PLAY;
         selection = 1U;
@@ -1532,9 +1644,18 @@ static void probe_storage(void) {
     }
     storage_ready = 1;
     load_favorites();
+    if (view == VIEW_FAVORITES) {
+        if (!favorite_count)
+            selection = 0U;
+        else if (selection >= favorite_count)
+            selection = favorite_count - 1U;
+        draw_screen();
+    }
     log_text("storage_ready boot_ms=");
     log_number(now);
-    log_text(" path=" ROM_ROOT " ui_redraw=deferred\n");
+    log_text(" path=" ROM_ROOT " ui_redraw=");
+    log_text(view == VIEW_FAVORITES ? "favorites" : "deferred");
+    log_text("\n");
 }
 
 static int open_fixed_input(void) {
@@ -1726,7 +1847,12 @@ static int application(void) {
             polls[poll_count].revents = 0;
             poll_count++;
         }
-        if (!storage_ready && storage_signal_fd >= 0) {
+        if (storage_ready && pending_launch.kind != PENDING_LAUNCH_NONE) {
+            /* Sample already-buffered B/navigation before automatic dispatch. */
+            storage_timeout.sec = 0;
+            storage_timeout.nsec = 0;
+            timeout = &storage_timeout;
+        } else if (!storage_ready && storage_signal_fd >= 0) {
             storage_index = (int)poll_count;
             polls[poll_count].fd = storage_signal_fd;
             polls[poll_count].events = POLLIN;
@@ -1802,6 +1928,9 @@ static int application(void) {
                 break;
             }
         }
+        if (exit_action == ACTION_NONE && storage_ready &&
+            pending_launch.kind != PENDING_LAUNCH_NONE)
+            exit_action = dispatch_pending_launch();
     }
 
     if (exit_action == ACTION_LAUNCH)

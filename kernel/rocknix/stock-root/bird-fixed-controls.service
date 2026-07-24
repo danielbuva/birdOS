@@ -1,0 +1,18 @@
+[Unit]
+Description=Bird fixed RG34XX-SP global controls
+DefaultDependencies=no
+Conflicts=shutdown.target
+Before=rocknix.target shutdown.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Environment=HOME=/storage
+ExecStart=/storage/.config/bird/bird-fixed-controls
+Restart=always
+RestartSec=250ms
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=rocknix.target

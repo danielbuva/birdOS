@@ -10,7 +10,7 @@ ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 SOURCE=${SOURCE:-/Volumes/BIRD}
 SYSTEM_SOURCE=${SYSTEM_SOURCE:-/Volumes/dani-sp/MUOS/runtime/ROCKNIX-SYSTEM}
 STORAGE=${STORAGE:-/Users/dani/rocknix-reference-result/storage.ext4}
-OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.13}
+OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.14}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
 LLD=${LLD:-/opt/homebrew/opt/lld/bin/ld.lld}
 READELF=${READELF:-/opt/homebrew/opt/llvm/bin/llvm-readelf}
@@ -85,6 +85,40 @@ if "$READELF" -l "$OUTPUT/card/bird/bird-pidwait" | grep -q ' INTERP '; then
 	fail 'pid waiter unexpectedly has an interpreter'
 fi
 
+"$CLANG" --target=aarch64-linux-gnu -mcpu=cortex-a53 -Os \
+	-ffreestanding -ffunction-sections -fdata-sections \
+	-fno-builtin -fno-stack-protector -fno-unwind-tables \
+	-fno-asynchronous-unwind-tables -fno-ident -fvisibility=hidden \
+	-nostdlib -Wall -Wextra -Werror \
+	-c "$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" \
+	-o "$OUTPUT/build/bird-fixed-controls.o"
+"$LLD" -static --gc-sections --build-id=none -z noexecstack -s \
+	-e _start -o "$OUTPUT/card/bird/bird-fixed-controls" \
+	"$OUTPUT/build/bird-fixed-controls.o"
+chmod 0755 "$OUTPUT/card/bird/bird-fixed-controls"
+file "$OUTPUT/card/bird/bird-fixed-controls" | \
+	grep -q 'ARM aarch64.*statically linked' || fail 'fixed controls are not static AArch64'
+if "$READELF" -l "$OUTPUT/card/bird/bird-fixed-controls" | grep -q ' INTERP '; then
+	fail 'fixed controls unexpectedly have an interpreter'
+fi
+
+"$CLANG" --target=aarch64-linux-gnu -mcpu=cortex-a53 -Os \
+	-ffreestanding -ffunction-sections -fdata-sections \
+	-fno-builtin -fno-stack-protector -fno-unwind-tables \
+	-fno-asynchronous-unwind-tables -fno-ident -fvisibility=hidden \
+	-nostdlib -Wall -Wextra -Werror \
+	-c "$ROOT/launcher/bird-powerstate.c" \
+	-o "$OUTPUT/build/bird-powerstate.o"
+"$LLD" -static --gc-sections --build-id=none -z noexecstack -s \
+	-e _start -o "$OUTPUT/card/bird/bird-powerstate" \
+	"$OUTPUT/build/bird-powerstate.o"
+chmod 0755 "$OUTPUT/card/bird/bird-powerstate"
+file "$OUTPUT/card/bird/bird-powerstate" | \
+	grep -q 'ARM aarch64.*statically linked' || fail 'fixed powerstate is not static AArch64'
+if "$READELF" -l "$OUTPUT/card/bird/bird-powerstate" | grep -q ' INTERP '; then
+	fail 'fixed powerstate unexpectedly has an interpreter'
+fi
+
 OUTPUT="$OUTPUT" "$ROOT/kernel/rocknix/build-stock-root-early-initramfs.sh"
 
 cp -fp "$SOURCE/KERNEL" "$OUTPUT/card/KERNEL"
@@ -97,9 +131,11 @@ for FILE in 090-ui_service 999-export essway.service rocknix.target \
 	rocknix-automount.service rocknix-autostart.service \
 	rocknix-report-stats.service \
 	NetworkManager.service iwd.service systemd-resolved.service \
-	systemd-timesyncd.service supervisor.sh run-content.sh \
+	systemd-timesyncd.service bird-fixed-controls.service \
+	bird-powerstate.service supervisor.sh run-content.sh \
 	prepare-ports.sh fixed-storage.sh first-frame-prep.sh \
-	capture-boot-state.sh bird-network.sh; do
+	capture-boot-state.sh bird-network.sh bird-fixed-control-exit.sh \
+	bird-swap.conf; do
 	cp -fp "$ROOT/kernel/rocknix/stock-root/$FILE" "$OUTPUT/card/bird/$FILE"
 done
 cp -fp "$ROOT/kernel/rocknix/stock-root/mpv-input.conf" \
@@ -117,7 +153,8 @@ chmod 0755 "$OUTPUT/card/post-flash.sh" "$OUTPUT/card/mount-storage.sh" \
 	"$OUTPUT/card/bird/fixed-storage.sh" \
 	"$OUTPUT/card/bird/first-frame-prep.sh" \
 	"$OUTPUT/card/bird/capture-boot-state.sh" \
-	"$OUTPUT/card/bird/bird-network.sh"
+	"$OUTPUT/card/bird/bird-network.sh" \
+	"$OUTPUT/card/bird/bird-fixed-control-exit.sh"
 
 for SCRIPT in "$OUTPUT/card/post-flash.sh" \
 	"$OUTPUT/card/mount-storage.sh" \
@@ -129,7 +166,8 @@ for SCRIPT in "$OUTPUT/card/post-flash.sh" \
 	"$OUTPUT/card/bird/fixed-storage.sh" \
 	"$OUTPUT/card/bird/first-frame-prep.sh" \
 	"$OUTPUT/card/bird/capture-boot-state.sh" \
-	"$OUTPUT/card/bird/bird-network.sh"; do
+	"$OUTPUT/card/bird/bird-network.sh" \
+	"$OUTPUT/card/bird/bird-fixed-control-exit.sh"; do
 	bash -n "$SCRIPT" || fail "shell syntax failed: $SCRIPT"
 done
 
@@ -194,6 +232,26 @@ grep -q '^UI_SERVICE="essway.service"$' \
 	"$OUTPUT/card/bird/090-ui_service" || fail 'boot compositor deferral missing'
 grep -q '^JobTimeoutAction=reboot-force$' \
 	"$OUTPUT/card/bird/rocknix.target" || fail 'target watchdog missing'
+grep -q 'queue_game_launch' \
+	"$ROOT/launcher/dani-launcher.c" || fail 'pre-storage selection queue missing'
+grep -q '^Wants=.*input.service.*powerstate.service' \
+	"$OUTPUT/card/bird/rocknix.target" || fail 'fixed control/power target requests missing'
+grep -q 'ExecStart=/storage/.config/bird/bird-fixed-controls$' \
+	"$OUTPUT/card/bird/bird-fixed-controls.service" || fail 'fixed controls unit missing'
+grep -q 'ExecStart=/storage/.config/bird/bird-powerstate$' \
+	"$OUTPUT/card/bird/bird-powerstate.service" || fail 'fixed powerstate unit missing'
+grep -q '/flash/bird/bird-fixed-controls.service' \
+	"$OUTPUT/card/mount-storage.sh" || fail 'stock input replacement missing'
+grep -q '/flash/bird/bird-powerstate.service' \
+	"$OUTPUT/card/mount-storage.sh" || fail 'stock powerstate replacement missing'
+grep -q 'BTN_TL' \
+	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'fixed exit chord missing'
+grep -q 'NETLINK_KOBJECT_UEVENT' \
+	"$ROOT/launcher/bird-powerstate.c" || fail 'event-driven power source missing'
+grep -q '^KSM_ENABLE="disable"$' \
+	"$OUTPUT/card/bird/bird-swap.conf" || fail 'fixed KSM policy missing'
+grep -q '/flash/bird/bird-swap.conf' \
+	"$OUTPUT/card/mount-storage.sh" || fail 'fixed memory policy install missing'
 
 {
 	printf '%s  KERNEL\n' "$KERNEL_SHA"
@@ -206,6 +264,10 @@ grep -q '^JobTimeoutAction=reboot-force$' \
 		"$(sha256 "$OUTPUT/card/bird/dani-launcher")"
 	printf '%s  bird/bird-pidwait\n' \
 		"$(sha256 "$OUTPUT/card/bird/bird-pidwait")"
+	printf '%s  bird/bird-fixed-controls\n' \
+		"$(sha256 "$OUTPUT/card/bird/bird-fixed-controls")"
+	printf '%s  bird/bird-powerstate\n' \
+		"$(sha256 "$OUTPUT/card/bird/bird-powerstate")"
 } >"$OUTPUT/manifest.sha256"
 
 printf 'Built exact ROCKNIX compatibility baseline: %s\n' "$OUTPUT"

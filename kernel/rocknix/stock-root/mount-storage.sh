@@ -26,13 +26,18 @@ mount --bind /storage/bird-data/MUOS/bios /storage/roms/bios || {
 
 # These are deliberately copied after /storage exists. Bird is a normal
 # userspace UI service in this compatibility milestone, not initramfs payload.
-for FILE in dani-launcher bird-pidwait supervisor.sh run-content.sh prepare-ports.sh \
+for FILE in dani-launcher bird-pidwait bird-fixed-controls bird-powerstate \
+	bird-fixed-control-exit.sh supervisor.sh run-content.sh prepare-ports.sh \
 	fixed-storage.sh first-frame-prep.sh capture-boot-state.sh \
 	bird-network.sh; do
 	cp -f "/flash/bird/$FILE" "/storage/.config/bird/$FILE" || return 1
 done
+cp -f /flash/bird/bird-swap.conf /storage/.config/swap.conf || return 1
 chmod 0755 /storage/.config/bird/dani-launcher \
 	/storage/.config/bird/bird-pidwait \
+	/storage/.config/bird/bird-fixed-controls \
+	/storage/.config/bird/bird-powerstate \
+	/storage/.config/bird/bird-fixed-control-exit.sh \
 	/storage/.config/bird/supervisor.sh \
 	/storage/.config/bird/run-content.sh \
 	/storage/.config/bird/prepare-ports.sh \
@@ -55,6 +60,24 @@ mount --bind /flash/bird/rocknix-automount.service \
 mount --bind /flash/bird/rocknix-autostart.service \
 	/sysroot/usr/lib/systemd/system/rocknix-autostart.service || {
 	error bird-background-autostart "Could not isolate compatibility autostart"
+	return 1
+}
+
+# Replace the generic Bash/grep/evtest input graph with one fixed event
+# process. The H700 gamepad remains ungrabbed; Bird and applications continue
+# to read it directly while this process owns only system-global actions.
+mount --bind /flash/bird/bird-fixed-controls.service \
+	/sysroot/usr/lib/systemd/system/input.service || {
+	error bird-fixed-controls "Could not replace generic input service"
+	return 1
+}
+
+# Replace two-second battery polling with the fixed H700 policy plus kernel
+# power-supply events. It never rewrites application performance policy after
+# startup; one 40-second capacity safety timer exists only while discharging.
+mount --bind /flash/bird/bird-powerstate.service \
+	/sysroot/usr/lib/systemd/system/powerstate.service || {
+	error bird-fixed-powerstate "Could not replace polling power service"
 	return 1
 }
 

@@ -119,7 +119,7 @@ card-side patches.
 
 ## Current changes
 
-- The active experiment is stock-root v6.13. V6.3 established the coherent
+- The active experiment is stock-root v6.14. V6.3 established the coherent
   ROCKNIX application environment and v6.4 passed early-systemd subtraction;
   v6.5 put Bird pixels before `switch_root`, v6.6 made that early frame
   interactive and v6.9 removed the remaining input-owner blackout without
@@ -133,7 +133,12 @@ card-side patches.
   probe with one init-to-Bird FIFO readiness event and bounded acknowledgement.
   Its first physical trace found that the pinned BusyBox has `mknod` but no
   `mkfifo`; v6.13 creates the same pipe with the supported, checksum-gated
-  applet and records creation success explicitly.
+  applet and records creation success explicitly. Its physical gate passed:
+  Bird was interactive at kernel uptime 1.520 seconds, fixed storage anchored
+  at 2.563 seconds and the complete launch/functionality suite passed. V6.14
+  queues an exact game or media selection made during that short gap, replaces
+  the generic input and power watchers with fixed 5 KiB event processes, and
+  disables KSM's unnecessary idle memory scan.
 - Bird's first initramfs instance is now the long-lived UI process. The normal
   systemd UI service adopts its PID instead of creating another launcher. The
   unchanged Sway compositor still starts
@@ -195,7 +200,10 @@ card-side patches.
   without a polling timer. The exact 7.0 driver exposes the raw AXP717 fuel-gauge
   register as capacity and explicitly documents an unknown current-channel
   offset; 100 percent and 492 mA are therefore observations, not yet calibrated
-  charge measurements. The post-frame snapshot
+  charge measurements. Because that driver emits no capacity-change event, the
+  fixed power process performs one raw capacity read every 40 seconds only
+  while discharging, instead of the release service's two-second shell polling.
+  The post-frame snapshot
   records status, capacity, current, voltage, charger online state and relevant
   kernel messages for physical validation.
 - Port preparation remains a separate, selection-time process. It does not run
