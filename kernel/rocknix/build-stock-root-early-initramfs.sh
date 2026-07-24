@@ -5,7 +5,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
-OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.11}
+OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.12}
 OFFICIAL_INIT=${OFFICIAL_INIT:-$ROOT/kernel/work/rocknix-official-initramfs-20260701/ramdisk/init}
 JOYPAD=${JOYPAD:-$ROOT/kernel/work/rocknix-system-exact-20260701/usr/lib/kernel-overlays/base/lib/modules/7.0.11/rocknix-joypad/rocknix-singleadc-joypad.ko}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
@@ -67,6 +67,7 @@ mkdir -p "$PAYLOAD/opt/bird" "$VERIFY"
 	'-DRECENT_TEMP="/storage/.config/bird/recent.tmp"' \
 	'-DHANDOFF_ACTION_PATH="/run/muos/dani-launch-action"' \
 	'-DSTORAGE_ANCHOR_MARKER="/run/muos/dani-storage-anchor-ready"' \
+	'-DSTORAGE_READY_SIGNAL="/run/muos/dani-storage-ready"' \
 	-DDEVICE_WAIT_MS=20000UL \
 	-c "$ROOT/launcher/dani-launcher.c" -o "$OBJECT"
 "$LLD" -static --gc-sections --build-id=none -z noexecstack -s \

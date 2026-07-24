@@ -11,6 +11,7 @@ LAUNCHER=/opt/bird/dani-launcher
 JOYPAD=/opt/bird/rocknix-singleadc-joypad.ko
 BACKLIGHT=/sys/class/backlight/backlight
 STORAGE_MARKER=$RUN/dani-storage-anchor-ready
+STORAGE_SIGNAL=$RUN/dani-storage-ready
 
 log_leds() {
 	STAGE=$1
@@ -28,7 +29,8 @@ log_leds() {
 case "${1:-}" in
 	start)
 		$BUSYBOX mkdir -p "$RUN"
-		$BUSYBOX rm -f "$STORAGE_MARKER"
+		$BUSYBOX rm -f "$STORAGE_MARKER" "$STORAGE_SIGNAL"
+		$BUSYBOX mkfifo -m 0600 "$STORAGE_SIGNAL"
 		{
 			printf 'Bird early-init start uptime='
 			$BUSYBOX cut -d ' ' -f 1 /proc/uptime
@@ -58,6 +60,16 @@ case "${1:-}" in
 		printf '%s\n' "$!" >"$PID_FILE"
 		;;
 	storage)
+		if [ -p "$STORAGE_SIGNAL" ]; then
+			# Keep the read/write endpoint open through the acknowledgement
+			# wait, so the byte remains queued even if Bird opens a moment later.
+			exec 4<>"$STORAGE_SIGNAL"
+			printf '%s\n' ready >&4
+			printf 'Bird storage readiness signalled uptime=' >>"$LOG"
+			$BUSYBOX cut -d ' ' -f 1 /proc/uptime >>"$LOG"
+		else
+			printf '%s\n' 'Bird storage readiness FIFO missing' >>"$LOG"
+		fi
 		COUNT=0
 		while [ "$COUNT" -lt 250 ]; do
 			if [ -s "$STORAGE_MARKER" ]; then

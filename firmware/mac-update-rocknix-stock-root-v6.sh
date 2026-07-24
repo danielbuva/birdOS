@@ -1,7 +1,7 @@
 #!/bin/sh
 # Guarded deployment of the compatibility-first stock-root milestone. P5 and
-# content bytes stay untouched. V6.11 keeps the proven persistent Bird process
-# and removes resolver/time synchronization from ordinary offline sessions.
+# content bytes stay untouched. V6.12 explicitly wakes the persistent Bird
+# process when storage is complete; idle boot no longer depends on timer luck.
 # It retains the exact kernel and complete working ROCKNIX userspace.
 # The exact ROCKNIX writable filesystem remains a loop image on p6, and the
 # accepted v5.4 kernel remains on p1 as a fallback.
@@ -11,7 +11,7 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 BIRD=${BIRD:-/Volumes/BIRD}
 DATA=${DATA:-/Volumes/dani-sp}
-CANDIDATE=${CANDIDATE:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.11/card}
+CANDIDATE=${CANDIDATE:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.12/card}
 STORAGE_SOURCE=${STORAGE_SOURCE:-/Users/dani/rocknix-reference-result/storage.ext4}
 PORTMASTER_ARCHIVE=${PORTMASTER_ARCHIVE:-$ROOT/kernel/work/rocknix-system-exact-20260701/usr/config/PortMaster/release/PortMaster.zip}
 RUNTIME=$DATA/MUOS/runtime/ROCKNIX-SYSTEM
@@ -252,7 +252,7 @@ sync
 cmp "$CANDIDATE/extlinux/extlinux.conf" "$BIRD/extlinux/extlinux.conf" || fail 'active extlinux verification failed'
 cmp "$CANDIDATE/bird-initramfs.cpio.gz" "$BIRD/bird-initramfs.cpio.gz" || fail 'early initramfs verification failed'
 
-printf 'Bird stock-root v6.11 staged on /dev/%s.\n' "$WHOLE"
+printf 'Bird stock-root v6.12 staged on /dev/%s.\n' "$WHOLE"
 printf 'Moved %s Port data directories into the native ROCKNIX tree.\n' "$MOVED_PORTS"
 printf 'Generic storage discovery replaced by the fixed p6 Bird view.\n'
 printf 'MPV physical volume ownership is system-only.\n'
@@ -263,6 +263,7 @@ printf 'Bird and the release-matched H700 input module now begin in external ini
 printf 'Battery percentage is kernel-driven, uevent-fed and shown in Bird.\n'
 printf 'The original pidfd-adopted Bird owns input continuously across switch_root.\n'
 printf 'Storage and config descriptors are acknowledged before their mount moves.\n'
+printf 'The acknowledgement is driven by an explicit FIFO event, including idle boots.\n'
 printf 'Early content selections remain queued until the app contract is ready.\n'
 printf 'p5 was not modified; p6 content bytes were preserved by same-volume moves.\n'
 printf 'Exact ROCKNIX KERNEL: %s\n' "$ROCKNIX_KERNEL_SHA"

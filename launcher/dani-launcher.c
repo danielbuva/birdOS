@@ -90,6 +90,9 @@ typedef signed long s64;
 #ifndef STORAGE_ANCHOR_MARKER
 #define STORAGE_ANCHOR_MARKER ""
 #endif
+#ifndef STORAGE_READY_SIGNAL
+#define STORAGE_READY_SIGNAL ""
+#endif
 
 #define VIEW_MAIN 0U
 #define VIEW_PLAY 1U
@@ -214,6 +217,7 @@ static int input_dir_fd = -1;
 static int power_dir_fd = -1;
 static int storage_dir_fd = -1;
 static int config_dir_fd = -1;
+static int storage_signal_fd = -1;
 static char input_path[] = "/dev/input/event0";
 static u32 view;
 static u32 selection;
@@ -1575,6 +1579,7 @@ found:
     log_text(" ready_boot_ms=");
     log_number(boot_ms());
     log_text("\n");
+
     return 0;
 }
 
@@ -1682,6 +1687,15 @@ static int application(void) {
         sys_close(fb_fd);
         return 6;
     }
+    if (STORAGE_READY_SIGNAL[0]) {
+        storage_signal_fd = (int)fixed_open(STORAGE_READY_SIGNAL,
+                                            O_RDWR | O_NONBLOCK);
+        log_text("storage_signal=");
+        log_text(storage_signal_fd >= 0 ? "ready" : "missing");
+        log_text(" boot_ms=");
+        log_number(boot_ms());
+        log_text("\n");
+    }
     mark_first_frame();
     log_text("first_frame boot_ms=");
     log_number(boot_ms());
@@ -1692,24 +1706,34 @@ static int application(void) {
     log_text("\n");
 
     while (exit_action == ACTION_NONE) {
-        struct pollfd polls[2];
+        struct pollfd polls[3];
         struct timespec storage_timeout;
         struct timespec *timeout = 0;
         struct input_event event;
         long count;
         u64 poll_count = 1;
+        int power_index = -1;
+        int storage_index = -1;
 
         probe_storage();
         polls[0].fd = input_fd;
         polls[0].events = POLLIN;
         polls[0].revents = 0;
         if (power_event_fd >= 0) {
-            polls[1].fd = power_event_fd;
-            polls[1].events = POLLIN;
-            polls[1].revents = 0;
-            poll_count = 2;
+            power_index = (int)poll_count;
+            polls[poll_count].fd = power_event_fd;
+            polls[poll_count].events = POLLIN;
+            polls[poll_count].revents = 0;
+            poll_count++;
         }
-        if (!storage_ready) {
+        if (!storage_ready && storage_signal_fd >= 0) {
+            storage_index = (int)poll_count;
+            polls[poll_count].fd = storage_signal_fd;
+            polls[poll_count].events = POLLIN;
+            polls[poll_count].revents = 0;
+            poll_count++;
+        } else if (!storage_ready) {
+            /* Recovery fallback when the explicit initramfs FIFO is absent. */
             storage_timeout.sec = 0;
             storage_timeout.nsec = 50000000L;
             timeout = &storage_timeout;
@@ -1729,7 +1753,18 @@ static int application(void) {
             continue;
         }
 
-        if (power_event_fd >= 0 && (polls[1].revents & POLLIN)) {
+        if (storage_index >= 0 && (polls[storage_index].revents & POLLIN)) {
+            char storage_event[32];
+            while (sys_read(storage_signal_fd, storage_event,
+                            sizeof(storage_event)) > 0) {}
+            next_storage_probe = 0;
+            log_text("storage_signal_received boot_ms=");
+            log_number(boot_ms());
+            log_text("\n");
+            probe_storage();
+        }
+
+        if (power_index >= 0 && (polls[power_index].revents & POLLIN)) {
             char uevent[2049];
             int previous = charging_state;
             int previous_percent = battery_percent;
@@ -1781,6 +1816,7 @@ static int application(void) {
     log_text("\n");
     write_handoff_action(exit_action);
     if (power_event_fd >= 0) sys_close(power_event_fd);
+    if (storage_signal_fd >= 0) sys_close(storage_signal_fd);
     sys_close(input_fd);
     sys_munmap((void *)fb, fb_fix.smem_len);
     sys_close(fb_fd);

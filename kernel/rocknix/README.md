@@ -911,6 +911,20 @@ launcher and 220,847-byte early overlay are unchanged from v6.10. Its one-shot
 snapshot also records input identities/udev properties, loaded modules and
 CPU/GPU frequency policy for the next fixed-control subtraction.
 
+The deliberately idle v6.11 gate proved that the v6.10 success still depended
+on early button activity. With no input or power event, the launcher's raw
+`ppoll` timeout did not return; init reached its bounded 250 ms acknowledgement
+timeout and moved storage before Bird retained it. The later root mounted all
+files and both v6.11 network units correctly, so this was not a storage or unit
+bind failure. Stock-root v6.12 creates one fixed FIFO before Bird starts. Init
+writes it after `mount_storage`; Bird's existing blocking poll wakes, opens the
+content/config directories and writes the existing acknowledgement before the
+mount move. The parent keeps its FIFO endpoint open throughout the bounded wait,
+so even a delayed listener cannot lose the event. Ordinary idle operation has
+no storage timer or polling wake-up. Two independent v6.12 builds reproduce
+every card payload byte-for-byte; its static early launcher is 631,696 bytes
+and the compressed overlay is 221,385 bytes.
+
 The exact final common-autostart action now also publishes a timestamped
 `/run/bird/application-contract-ready` marker after Sway configuration exists.
 An initramfs game/media/PortMaster request remains on disk, and its handoff

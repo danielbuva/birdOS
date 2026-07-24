@@ -10,7 +10,7 @@ ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 SOURCE=${SOURCE:-/Volumes/BIRD}
 SYSTEM_SOURCE=${SYSTEM_SOURCE:-/Volumes/dani-sp/MUOS/runtime/ROCKNIX-SYSTEM}
 STORAGE=${STORAGE:-/Users/dani/rocknix-reference-result/storage.ext4}
-OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.11}
+OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.12}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
 LLD=${LLD:-/opt/homebrew/opt/lld/bin/ld.lld}
 READELF=${READELF:-/opt/homebrew/opt/llvm/bin/llvm-readelf}
@@ -164,6 +164,9 @@ grep -q 'persistent-owner' \
 grep -q 'storage anchor acknowledged' \
 	"$OUTPUT/build/early-initramfs/payload/bird-early.sh" || \
 	fail 'storage anchor readiness barrier missing'
+grep -q 'storage readiness signalled' \
+	"$OUTPUT/build/early-initramfs/payload/bird-early.sh" || \
+	fail 'explicit storage readiness signal missing'
 if grep -q '^/bird-early.sh resume$' \
 	"$OUTPUT/build/early-initramfs/payload/init"; then
 	fail 'obsolete chroot bridge remained'

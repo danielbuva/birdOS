@@ -31,7 +31,7 @@ The long-term centerpiece would be a tiny custom launcher—ideally a small stat
 Clean-root v5.4 proved the desired fast architecture but also proved that an
 application stack cannot be reconstructed reliably by copying binaries and
 guessing its hidden service and configuration contract one failure at a time.
-Stock-root v6.11 now optimizes the proven software baseline:
+Stock-root v6.12 now optimizes the proven software baseline:
 
 - exact ROCKNIX 20260701 KERNEL, DTB, SYSTEM and configured STORAGE;
 - complete systemd, udev, D-Bus, PipeWire, WirePlumber and H700 autostart path;
@@ -68,7 +68,10 @@ Early selections remain queued until the provider's generated application
 contract is ready. V6.10 physically passed the complete menu, content and
 system-control gate. V6.11 begins post-menu resident cleanup by keeping name
 resolution and network time synchronization inside explicit PortMaster
-sessions rather than every offline play session.
+sessions rather than every offline play session. Its idle physical test exposed
+that storage anchoring could still depend on incidental button activity because
+the raw `ppoll` timeout did not wake Bird. V6.12 replaces that polling path with
+one explicit FIFO event from init after storage completes.
 
 The gate order is compatibility first, then early Bird handoff, then service
 deferral/removal, then kernel trimming. No component is removed from the full
@@ -128,7 +131,7 @@ application and move everything unrelated to an interactive menu behind it.
 - [x] Remove the next set of redundant fixed-startup work: per-boot
   immutable policy/geometry writes, obsolete update-file cleanup, zero-swap
   probing and the unnecessary squashfs module request.
-- [ ] [stock-root v6.10 broad gate passed; v6.11 service subtraction staged] Bake
+- [ ] [stock-root v6.10 broad gate passed; v6.12 deterministic storage staged] Bake
   changes into the image and remove the card-side development user-init
   delivery path. The successful path is entirely embedded and does not enter
   p5. V5.0 physically proved the menu at 1.135 seconds, H700 input at 1.290 and
@@ -199,15 +202,19 @@ removes the handoff entirely while keeping the verified menu-first boundary.
 - [x] [v6.10 physical gate passed] Verify that game and media rows become ready after the
   bounded pre-move storage acknowledgement. Select content both before and
   after the provider milestone and confirm the queued request launches.
-- [ ] [v6.11 staged] Keep resolver and network time synchronization stopped in
+- [ ] [v6.11 retained; network session still needs physical gate] Keep resolver and network time synchronization stopped in
   ordinary offline sessions, then start and release their exact providers with
   the existing PortMaster-only network transaction.
 - [ ] Replace the seven-process generic `input_sense` shell/`evtest` graph with
-  one fixed RG34XX-SP control process. V6.11 captures exact event identities and
-  udev properties before that implementation is written.
+  one fixed RG34XX-SP control process. V6.11 captured the exact fixed map:
+  event0 `axp20x-pek`, event2 `gpio-keys-volume`, event3 `gpio-keys-lid` and
+  event4 `H700 Gamepad`; event1 is only the codec headphone switch.
 - [ ] Replace `powerstate`'s two-second battery polling with fixed initial
-  policy plus kernel power-supply events. V6.11 captures the applied CPU/GPU
-  governors and frequency bounds first.
+  policy plus kernel power-supply events. V6.11 captured idle CPU `ondemand`
+  at 480--1,416 MHz and GPU `simple_ondemand` at a 420--600 MHz bound.
+- [ ] [v6.12 staged] Verify an untouched idle boot logs
+  `storage_signal_received`, `storage_anchor_ready` and an acknowledged marker,
+  then launches content without requiring any earlier input event.
 - [x] Replace the generic initramfs shell with a tiny static fixed-device init
   while retaining the existing root PID 1 as the fallback second phase.
 - [x] Replace the root BusyBox PID 1 with a blocking 5,128-byte static init;
