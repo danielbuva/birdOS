@@ -1,7 +1,7 @@
 #!/bin/sh
 # Guarded deployment of the compatibility-first stock-root milestone. P5 and
-# content bytes stay untouched. V6.19 fixes the on-demand Wi-Fi state machine,
-# removes redundant compatibility-tail work and fixes the H700 profile.
+# content bytes stay untouched. V6.20 removes the provisional supervisor race
+# and prevents post-frame diagnostics from holding the boot watchdog open.
 # It retains the exact kernel and complete working ROCKNIX userspace.
 # The exact ROCKNIX writable filesystem remains a loop image on p6, and the
 # accepted v5.4 kernel remains on p1 as a fallback.
@@ -11,7 +11,7 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 BIRD=${BIRD:-/Volumes/BIRD}
 DATA=${DATA:-/Volumes/dani-sp}
-CANDIDATE=${CANDIDATE:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.19/card}
+CANDIDATE=${CANDIDATE:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.20/card}
 STORAGE_SOURCE=${STORAGE_SOURCE:-/Users/dani/rocknix-reference-result/storage.ext4}
 PORTMASTER_ARCHIVE=${PORTMASTER_ARCHIVE:-$ROOT/kernel/work/rocknix-system-exact-20260701/usr/config/PortMaster/release/PortMaster.zip}
 RUNTIME=$DATA/MUOS/runtime/ROCKNIX-SYSTEM
@@ -267,7 +267,7 @@ sync
 cmp "$CANDIDATE/extlinux/extlinux.conf" "$BIRD/extlinux/extlinux.conf" || fail 'active extlinux verification failed'
 cmp "$CANDIDATE/bird-initramfs.cpio.gz" "$BIRD/bird-initramfs.cpio.gz" || fail 'early initramfs verification failed'
 
-printf 'Bird stock-root v6.19 staged on /dev/%s.\n' "$WHOLE"
+printf 'Bird stock-root v6.20 staged on /dev/%s.\n' "$WHOLE"
 printf 'Moved %s Port data directories into the native ROCKNIX tree.\n' "$MOVED_PORTS"
 printf 'Generic storage discovery replaced by the fixed p6 Bird view.\n'
 printf 'MPV physical volume ownership is system-only.\n'
@@ -295,6 +295,8 @@ printf 'Generic autostart no longer starts the already-running Bird UI again.\n'
 printf 'Generic autostart no longer requests already-completed fixed storage.\n'
 printf 'Constant H700 profile writers are collapsed into one fixed transaction.\n'
 printf 'PortMaster networking waits for iwd registration and a fresh Wi-Fi scan.\n'
+printf 'The final-root supervisor starts once at the stable graphical boundary.\n'
+printf 'Post-frame diagnostics cannot hold the target reboot watchdog open.\n'
 printf 'p5 was not modified; p6 content bytes were preserved by same-volume moves.\n'
 printf 'Exact ROCKNIX KERNEL: %s\n' "$ROCKNIX_KERNEL_SHA"
 printf 'Automatic fallback KERNEL: %s\n' "$V54_KERNEL_SHA"

@@ -3,5 +3,7 @@ Description=Bird one-shot post-frame boot snapshot
 After=rocknix-autostart.service
 
 [Service]
-Type=oneshot
+Type=simple
+Nice=19
+IOSchedulingClass=idle
 ExecStart=/storage/.config/bird/capture-boot-state.sh

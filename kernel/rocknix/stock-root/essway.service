@@ -1,8 +1,8 @@
 [Unit]
-Description=Bird launcher before the generic ROCKNIX userspace graph
+Description=Bird launcher handoff at the stable ROCKNIX graphical boundary
 DefaultDependencies=no
 Requires=rocknix-automount.service
-After=rocknix-automount.service
+After=rocknix-automount.service graphical.target
 Conflicts=shutdown.target
 Before=shutdown.target
 

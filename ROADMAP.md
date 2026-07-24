@@ -104,6 +104,12 @@ physical gate passed without redraws and restored every tested function except
 networking. V6.19 waits for iwd, scans through NetworkManager and activates the
 saved profile on the fixed `wlan0`; it also removes repeated immutable module,
 profile, storage-start and known-empty compatibility work.
+Its physical trace showed the access point in NetworkManager's scan but the
+manually provisioned profile still failed immediately. It also exposed an
+existing provisional-supervisor replay and a new diagnostic/watchdog coupling.
+V6.20 orders the one final supervisor after `graphical.target` and takes the
+audit process out of target completion. Network configuration is deferred until
+the stock ROCKNIX UI produces a known-working connection to copy and trim.
 
 The gate order is compatibility first, then early Bird handoff, then service
 deferral/removal, then kernel trimming. No component is removed from the full
@@ -116,7 +122,7 @@ not discarded ideas.
 
 1. **ROCKNIX implementation audit — active.** Classify every retained startup
    script, service, output file, dependency and idle wake-up. Remove or replace
-   only measured fixed-profile work. v6.19 is the current physical gate; details
+   only measured fixed-profile work. v6.20 is the current physical gate; details
    and discovered bugs live in [`ROCKNIX_AUDIT.md`](ROCKNIX_AUDIT.md).
 2. **Finish fixed userspace contracts.** Generate the exact RG34XX-SP Sway and
    audio configuration, reduce the remaining autostart runner, then reassess
@@ -296,7 +302,7 @@ removes the handoff entirely while keeping the verified menu-first boundary.
 - [x] [v6.15 physical gate passed] Prevent post-frame brightness resets. The early fixed
   five-percent value and manual controls are the only writers; generic
   `006-display` and the old preparation write are removed from the boot path.
-- [ ] [v6.19 second subtraction staged] Replace fixed-profile generic autostart work while retaining
+- [ ] [v6.20 lifecycle correction staged] Replace fixed-profile generic autostart work while retaining
   controller, audio, emulator configuration and Sway compatibility. Audit and
   measured follow-ups are recorded in `ROCKNIX_AUDIT.md`.
 - [x] [v6.15 physical gate passed] Shorten shutdown without bypassing ordered unmounts. Use an
@@ -310,7 +316,7 @@ removes the handoff entirely while keeping the verified menu-first boundary.
 - [x] [v6.18 physical gate passed] Replace generic Sway display discovery with the physically
   generated `card1`/`DSI-1` profile, remove external-display polling from normal
   content sessions and stop unmasking/restarting the live Bird service.
-- [ ] [v6.18 activation failed before scan; v6.19 scan gate] Keep systemd RF-kill state and its activation socket out of
+- [ ] [deferred: capture stock-created profile] Keep systemd RF-kill state and its activation socket out of
   offline boot; start the exact manager inside explicit PortMaster networking
   and join a usable NetworkManager link only inside that session.
 - [ ] [migration gate planned] Remove muOS-to-ROCKNIX shims only after cached
@@ -1007,10 +1013,11 @@ Your next concrete milestones should be:
 15. [done: 128 ms Linux-DTB hardware proof] Reduce the PMIC cold-power hold
     from 512 ms to its minimum; quick-tap power-on is verified, while earlier
     green-LED/display response remains a later bootloader/firmware boundary
-16. [active: v6.19] Audit and reduce the retained ROCKNIX userspace contract;
+16. [active: v6.20] Audit and reduce the retained ROCKNIX userspace contract;
     v6.15 passed brightness/KSM/shutdown and cut the application tail, while
     v6.16 fixed Sway/RF-kill profiles, v6.18 hardens retained storage/UI and
-    v6.19 removes repeated fixed-profile/module work while correcting Wi-Fi
+    v6.19 removes repeated fixed-profile/module work and v6.20 fixes its
+    supervisor/diagnostic lifecycle regressions; Wi-Fi profile capture is deferred
 17. [planned coherent migration] Remove muOS-to-ROCKNIX namespace shims
 18. [guarded bootloader gate] Use PI12 green during boot and reserve PI11 red
     for the 41-percent low-battery policy

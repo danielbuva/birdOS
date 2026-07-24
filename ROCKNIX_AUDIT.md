@@ -70,7 +70,7 @@ The power worker's low-battery red-status threshold is now exactly 41 percent.
 Charging remains kernel/PMIC-owned and the green LED remains the ordinary
 power indicator.
 
-## v6.15 result through the v6.19 correction
+## v6.15 result through the v6.20 correction
 
 The physical gate passed brightness stability and visible shutdown at roughly
 1.8--2.0 seconds. The shutdown log places its exact config compare/copy at
@@ -135,6 +135,22 @@ is present and H700/RG34XX-SP has no config overlay. Seven constant H700 writers
 become one checked Bird profile transaction. Suspend-mode and GPU-overclock
 side effects remain exact until separately audited.
 
+The v6.19 physical trace proves scanning itself is correct: `BC9FFE` appeared
+at 65-percent signal, the radio was unblocked and iwd registered `wlan0`.
+NetworkManager nevertheless rejected the manually created profile immediately
+at its prepare transition with no reason. Further Wi-Fi work is deferred until
+the stock UI creates a working profile whose exact state can be copied.
+
+More importantly, the trace explains the redraw and reboot regressions. A
+provisional `essway` supervisor started near 5.6 seconds, was terminated at the
+graphical transition near 8.4 and then replayed the still-armed request. The
+post-frame audit was a oneshot wanted by `rocknix.target`; any slow diagnostic
+there kept the target job open until `JobTimeoutAction=reboot-force`. V6.20
+orders `essway` after `graphical.target`, so the initramfs Bird remains sole
+owner until one stable final supervisor adopts it. The audit becomes an
+idle-priority `Type=simple` service: systemd considers it started immediately,
+so diagnostics cannot trigger the boot watchdog.
+
 ## Bugs and inefficiencies found
 
 These remain after v6.15 and are ordered for later fixed replacements:
@@ -162,8 +178,8 @@ These remain after v6.15 and are ordered for later fixed replacements:
 
 ## Next active order
 
-1. Physically gate v6.19: PortMaster connectivity, retained storage, fixed
-   profile outputs, content suite, suspend and shutdown.
+1. Physically gate v6.20: no idle reboot, no request replay/redraw, retained
+   storage/profile outputs, content suite, suspend and shutdown.
 2. Replace generic audio setup with a fixed H700 route while preserving the
    already-warm asynchronous audio services.
 3. Audit udev coldplug output and let its manager exit if no retained feature

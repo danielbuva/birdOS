@@ -119,7 +119,7 @@ card-side patches.
 
 ## Current changes
 
-- The active experiment is stock-root v6.19. V6.3 established the coherent
+- The active experiment is stock-root v6.20. V6.3 established the coherent
   ROCKNIX application environment and v6.4 passed early-systemd subtraction;
   v6.5 put Bird pixels before `switch_root`, v6.6 made that early frame
   interactive and v6.9 removed the remaining input-owner blackout without
@@ -167,6 +167,13 @@ card-side patches.
   four proven no-op common scripts and the repeated 548 KiB module sync, then
   replaces seven constant H700 profile writers with one Bird transaction. The
   personal Wi-Fi keyfile remains card state rather than repository data.
+  V6.19's physical trace then exposed two lifecycle defects: the provisional
+  final-root supervisor was terminated at the graphical transition and replayed
+  early requests, while the expanded diagnostic oneshot remained part of target
+  completion and could trip its forced-reboot watchdog. V6.20 starts the
+  supervisor only after `graphical.target` and makes the low-priority snapshot
+  a nonblocking simple service. Wi-Fi activation remains deferred until a
+  connection created by the stock ROCKNIX UI can be captured and reduced.
 - Bird's first initramfs instance is now the long-lived UI process. The normal
   systemd UI service adopts its PID instead of creating another launcher. The
   unchanged Sway compositor still starts

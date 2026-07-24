@@ -1,6 +1,7 @@
 #!/bin/bash
 # Bird stays a small UI process. ROCKNIX owns all hardware, service and content
-# setup; this supervisor only exchanges the launch request and redraws Bird.
+# setup; this supervisor begins at the stable graphical boundary, adopts the
+# original initramfs process and dispatches each request exactly once.
 
 set -u
 

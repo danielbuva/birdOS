@@ -1064,6 +1064,22 @@ udev settled state and retained udev/logind/seatd/journal costs. Two independent
 v6.19 builds reproduce all 42 card payloads byte-for-byte; the release KERNEL,
 DTB, early launcher and early overlay remain unchanged.
 
+The v6.19 physical trace found the access point at 65-percent signal with an
+unblocked radio and a registered `wlan0`, but NetworkManager still rejected the
+manually authored profile at its prepare transition. This is deferred until a
+profile created by the stock ROCKNIX UI can be captured. The same trace exposed
+the user-visible regressions: a provisional supervisor started before the
+graphical boundary, received `TERM` there and replayed an early request, while
+the expanded diagnostic oneshot could hold `rocknix.target` open until its
+forced-reboot watchdog fired.
+
+Stock-root v6.20 orders `essway.service` after `graphical.target`. The original
+initramfs Bird remains sole owner until one stable supervisor adopts it; an
+early content request cannot be launched and killed by a provisional owner.
+The diagnostic service is now `Type=simple`, nice 19 and idle-I/O scheduled.
+It still captures the requested evidence but no longer participates in target
+completion. The v6.19 fixed-profile and immutable-module reductions remain.
+
 The exact final common-autostart action now also publishes a timestamped
 `/run/bird/application-contract-ready` marker after Sway configuration exists.
 An initramfs game/media/PortMaster request remains on disk, and its handoff

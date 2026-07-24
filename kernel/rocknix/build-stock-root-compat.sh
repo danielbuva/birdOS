@@ -11,7 +11,7 @@ SOURCE=${SOURCE:-/Volumes/BIRD}
 SYSTEM_SOURCE=${SYSTEM_SOURCE:-/Volumes/dani-sp/MUOS/runtime/ROCKNIX-SYSTEM}
 STORAGE=${STORAGE:-/Users/dani/rocknix-reference-result/storage.ext4}
 SYSTEM_TREE=${SYSTEM_TREE:-$ROOT/kernel/work/rocknix-system-exact-20260701}
-OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.19}
+OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.20}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
 LLD=${LLD:-/opt/homebrew/opt/lld/bin/ld.lld}
 READELF=${READELF:-/opt/homebrew/opt/llvm/bin/llvm-readelf}
@@ -208,6 +208,8 @@ grep -q 'ExecStart=/storage/.config/bird/fixed-storage.sh' \
 	"$OUTPUT/card/bird/rocknix-automount.service" || fail 'fixed storage unit missing'
 grep -q '^DefaultDependencies=no$' \
 	"$OUTPUT/card/bird/essway.service" || fail 'early Bird ordering missing'
+grep -q '^After=rocknix-automount.service graphical.target$' \
+	"$OUTPUT/card/bird/essway.service" || fail 'stable supervisor boundary missing'
 grep -q '^Wants=.*essway.service' \
 	"$OUTPUT/card/bird/rocknix.target" || fail 'early Bird target request missing'
 grep -q '^BindPaths=/dev/null:/dev/console$' \
@@ -244,6 +246,8 @@ grep -q 'systemd-rfkill.socket' \
 	"$OUTPUT/card/mount-storage.sh" || fail 'rfkill activation socket remained'
 grep -q '^After=rocknix-autostart.service$' \
 	"$OUTPUT/card/bird/rocknix-report-stats.service" || fail 'event-ordered snapshot missing'
+grep -q '^Type=simple$' \
+	"$OUTPUT/card/bird/rocknix-report-stats.service" || fail 'nonblocking snapshot missing'
 grep -q '^  INITRD /bird-initramfs.cpio.gz$' \
 	"$OUTPUT/card/extlinux/extlinux.conf" || fail 'external early initramfs missing'
 grep -q 'persistent-owner' \
