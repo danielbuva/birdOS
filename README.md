@@ -119,7 +119,7 @@ card-side patches.
 
 ## Current changes
 
-- The active experiment is stock-root v6.12. V6.3 established the coherent
+- The active experiment is stock-root v6.13. V6.3 established the coherent
   ROCKNIX application environment and v6.4 passed early-systemd subtraction;
   v6.5 put Bird pixels before `switch_root`, v6.6 made that early frame
   interactive and v6.9 removed the remaining input-owner blackout without
@@ -131,6 +131,9 @@ card-side patches.
   needed to replace the generic input and power watchers next. Its deliberately
   idle test exposed the last storage race; v6.12 replaces the ineffective timed
   probe with one init-to-Bird FIFO readiness event and bounded acknowledgement.
+  Its first physical trace found that the pinned BusyBox has `mknod` but no
+  `mkfifo`; v6.13 creates the same pipe with the supported, checksum-gated
+  applet and records creation success explicitly.
 - Bird's first initramfs instance is now the long-lived UI process. The normal
   systemd UI service adopts its PID instead of creating another launcher. The
   unchanged Sway compositor still starts

@@ -5,12 +5,13 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
-OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.12}
+OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.13}
 OFFICIAL_INIT=${OFFICIAL_INIT:-$ROOT/kernel/work/rocknix-official-initramfs-20260701/ramdisk/init}
 JOYPAD=${JOYPAD:-$ROOT/kernel/work/rocknix-system-exact-20260701/usr/lib/kernel-overlays/base/lib/modules/7.0.11/rocknix-joypad/rocknix-singleadc-joypad.ko}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
 LLD=${LLD:-/opt/homebrew/opt/lld/bin/ld.lld}
 READELF=${READELF:-/opt/homebrew/opt/llvm/bin/llvm-readelf}
+INIT_BUSYBOX=$ROOT/kernel/work/rocknix-official-initramfs-20260701/ramdisk/usr/bin/busybox
 
 case "$OUTPUT" in
 	/*) ;;
@@ -19,6 +20,7 @@ esac
 
 OFFICIAL_INIT_SHA=3473415af0cf5df44e70259c3392817b1df421a12a617ec083ec018ff51dbc48
 JOYPAD_SHA=a8ac6cacfa89672fa08dec7fa02179bb108a4a2303fd5c1eb5834f916089b79b
+INIT_BUSYBOX_SHA=5ee3d20d8ea5fd9b3ba5109da80599eaf46a5a337d9e40d4c67d28eef44d5dc8
 
 fail() {
 	printf 'error: %s\n' "$*" >&2
@@ -38,6 +40,14 @@ sha256() {
 strings "$JOYPAD" | grep -Fqx \
 	'vermagic=7.0.11 SMP preempt mod_unload modversions aarch64' || \
 	fail 'exact H700 input module ABI changed'
+[ -f "$INIT_BUSYBOX" ] || fail 'exact initramfs BusyBox missing'
+[ "$(sha256 "$INIT_BUSYBOX")" = "$INIT_BUSYBOX_SHA" ] || \
+	fail 'exact initramfs BusyBox changed'
+strings "$INIT_BUSYBOX" | grep -Fqx mknod || \
+	fail 'initramfs BusyBox lacks the required mknod applet'
+if strings "$INIT_BUSYBOX" | grep -Fqx mkfifo; then
+	fail 'unexpected mkfifo applet appeared; reassess the fixed FIFO creation path'
+fi
 [ -x "$CLANG" ] || fail 'LLVM clang missing'
 [ -x "$LLD" ] || fail 'LLVM lld missing'
 [ -x "$READELF" ] || fail 'LLVM readelf missing'

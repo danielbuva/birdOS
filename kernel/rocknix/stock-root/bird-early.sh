@@ -30,10 +30,15 @@ case "${1:-}" in
 	start)
 		$BUSYBOX mkdir -p "$RUN"
 		$BUSYBOX rm -f "$STORAGE_MARKER" "$STORAGE_SIGNAL"
-		$BUSYBOX mkfifo -m 0600 "$STORAGE_SIGNAL"
+		if $BUSYBOX mknod -m 0600 "$STORAGE_SIGNAL" p; then
+			STORAGE_FIFO=ready
+		else
+			STORAGE_FIFO=failed
+		fi
 		{
 			printf 'Bird early-init start uptime='
 			$BUSYBOX cut -d ' ' -f 1 /proc/uptime
+			printf 'early_storage_fifo=%s\n' "$STORAGE_FIFO"
 			if $BUSYBOX insmod "$JOYPAD" 2>&1; then
 				printf '%s\n' 'early_input_module=loaded'
 			else

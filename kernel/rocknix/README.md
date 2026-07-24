@@ -925,6 +925,17 @@ no storage timer or polling wake-up. Two independent v6.12 builds reproduce
 every card payload byte-for-byte; its static early launcher is 631,696 bytes
 and the compressed overlay is 221,385 bytes.
 
+The first v6.12 physical trace reported both `storage_signal=missing` and
+`Bird storage readiness FIFO missing`. The exact 396,976-byte initramfs BusyBox
+contains `mknod` but was compiled without `mkfifo`; the unchecked applet call
+therefore created nothing. Stock-root v6.13 checksum-gates that BusyBox,
+requires its `mknod` applet, rejects a silently changed applet set and creates
+the FIFO as `mknod -m 0600 … p`. The hook now logs creation as
+`early_storage_fifo=ready` before Bird starts.
+Two independent v6.13 builds reproduce every card payload byte-for-byte. The
+static launcher remains 631,696 bytes; the corrected compressed overlay is
+221,427 bytes.
+
 The exact final common-autostart action now also publishes a timestamped
 `/run/bird/application-contract-ready` marker after Sway configuration exists.
 An initramfs game/media/PortMaster request remains on disk, and its handoff
