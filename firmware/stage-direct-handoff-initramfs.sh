@@ -2,9 +2,9 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
-CARD=${1:-/Volumes/dani-sp}
+CARD=${1:-/Volumes/BIRD-DATA}
 BUILD=${2:-$ROOT/firmware/work/direct-handoff-initramfs}
-CANDIDATE="$BUILD/dani-boot-trimmed-initramfs.img"
+CANDIDATE="$BUILD/bird-boot-trimmed-initramfs.img"
 CHECKSUM="$BUILD/candidate.sha256"
 WORK_DIR="$CARD/.firmware-work"
 INSTALLER="$CARD/MUOS/init/58-install-direct-handoff-initramfs.sh"
@@ -17,7 +17,7 @@ fail() {
 	exit 1
 }
 
-[ -d "$CARD/MUOS/init" ] || fail "mounted Dani SP card not found: $CARD"
+[ -d "$CARD/MUOS/init" ] || fail "mounted birdOS card not found: $CARD"
 [ -f "$CANDIDATE" ] || fail "candidate missing: $CANDIDATE"
 [ -f "$CHECKSUM" ] || fail "candidate checksum missing: $CHECKSUM"
 read -r EXPECTED_SHA _ <"$CHECKSUM"
@@ -26,7 +26,7 @@ read -r EXPECTED_SHA _ <"$CHECKSUM"
 [ "$(stat -f %z "$CANDIDATE")" -eq "$BOOT_BYTES" ] ||
 	fail "candidate is not exactly 64 MiB"
 
-NEW_DIAGNOSTICS_SHA=$(shasum -a 256 "$ROOT/userspace/99dani-diagnostics.sh" |
+NEW_DIAGNOSTICS_SHA=$(shasum -a 256 "$ROOT/userspace/99bird-diagnostics.sh" |
 	awk '{print $1}')
 CURRENT_DIAGNOSTICS_SHA=$(shasum -a 256 "$DIAGNOSTICS" | awk '{print $1}')
 case "$CURRENT_DIAGNOSTICS_SHA" in
@@ -36,25 +36,25 @@ esac
 
 mkdir -p "$WORK_DIR"
 COPYFILE_DISABLE=1 cp -f "$CANDIDATE" \
-	"$WORK_DIR/.dani-boot-direct-handoff-initramfs.new"
+	"$WORK_DIR/.bird-boot-direct-handoff-initramfs.new"
 COPYFILE_DISABLE=1 cp -f "$CHECKSUM" \
-	"$WORK_DIR/.dani-boot-direct-handoff-initramfs.sha256.new"
+	"$WORK_DIR/.bird-boot-direct-handoff-initramfs.sha256.new"
 COPYFILE_DISABLE=1 cp -f "$ROOT/firmware/device-install-direct-handoff-initramfs.sh" \
 	"$CARD/MUOS/init/.58-install-direct-handoff-initramfs.new"
-COPYFILE_DISABLE=1 cp -f "$ROOT/userspace/99dani-diagnostics.sh" \
+COPYFILE_DISABLE=1 cp -f "$ROOT/userspace/99bird-diagnostics.sh" \
 	"$CARD/MUOS/init/.99-boot-timing-marker.direct-new"
 
-[ "$(shasum -a 256 "$WORK_DIR/.dani-boot-direct-handoff-initramfs.new" |
+[ "$(shasum -a 256 "$WORK_DIR/.bird-boot-direct-handoff-initramfs.new" |
 	awk '{print $1}')" = "$EXPECTED_SHA" ] || fail "staged candidate mismatch"
 cmp "$ROOT/firmware/device-install-direct-handoff-initramfs.sh" \
 	"$CARD/MUOS/init/.58-install-direct-handoff-initramfs.new"
-cmp "$ROOT/userspace/99dani-diagnostics.sh" \
+cmp "$ROOT/userspace/99bird-diagnostics.sh" \
 	"$CARD/MUOS/init/.99-boot-timing-marker.direct-new"
 
-mv -f "$WORK_DIR/.dani-boot-direct-handoff-initramfs.new" \
-	"$WORK_DIR/dani-boot-direct-handoff-initramfs.img"
-mv -f "$WORK_DIR/.dani-boot-direct-handoff-initramfs.sha256.new" \
-	"$WORK_DIR/dani-boot-direct-handoff-initramfs.sha256"
+mv -f "$WORK_DIR/.bird-boot-direct-handoff-initramfs.new" \
+	"$WORK_DIR/bird-boot-direct-handoff-initramfs.img"
+mv -f "$WORK_DIR/.bird-boot-direct-handoff-initramfs.sha256.new" \
+	"$WORK_DIR/bird-boot-direct-handoff-initramfs.sha256"
 mv -f "$CARD/MUOS/init/.58-install-direct-handoff-initramfs.new" "$INSTALLER"
 mv -f "$CARD/MUOS/init/.99-boot-timing-marker.direct-new" "$DIAGNOSTICS"
 chmod 755 "$INSTALLER" "$DIAGNOSTICS"

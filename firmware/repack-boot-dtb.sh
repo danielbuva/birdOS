@@ -59,7 +59,7 @@ ID_OFFSET=576
 [ "$NEW_DTB_PAGES" -le "$OLD_DTB_PAGES" ] || \
 	fail "new DTB needs $NEW_DTB_PAGES pages; fixed layout has $OLD_DTB_PAGES"
 
-DIGEST=$(mktemp -t dani-boot-sha1)
+DIGEST=$(mktemp -t bird-boot-sha1)
 trap 'rm -f "$DIGEST"' EXIT HUP INT TERM
 
 cp "$BOOT" "$OUTPUT"

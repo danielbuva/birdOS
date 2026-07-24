@@ -1,5 +1,5 @@
 /*
- * Dani's fixed-device RG34XX-SP launcher.
+ * birdOS fixed-device RG34XX-SP launcher.
  *
  * Freestanding AArch64 Linux: no libc, dynamic loader, SDL, font engine,
  * image decoder, locale database, configuration parser or storage scan.
@@ -67,12 +67,12 @@ typedef signed long s64;
 #define CATALOG_STORAGE_ROOT "/mnt/mmc"
 #define LIVE_PATH_BYTES 4096U
 #ifndef LAUNCH_REQUEST
-#define LAUNCH_REQUEST "/run/muos/dani-launch-request"
+#define LAUNCH_REQUEST "/run/muos/bird-launch-request"
 #endif
 #ifndef UI_RESUME_PATH
-#define UI_RESUME_PATH "/run/muos/dani-launcher-ui-resume"
+#define UI_RESUME_PATH "/run/muos/bird-launcher-ui-resume"
 #endif
-#define UI_RESUME_MAGIC 0x44414e4aU
+#define UI_RESUME_MAGIC 0x42495244U
 #ifndef FAVORITES_PATH
 #define FAVORITES_PATH "/mnt/mmc/MUOS/bespoke-launcher/favorites.txt"
 #endif
@@ -86,7 +86,7 @@ typedef signed long s64;
 #define RECENT_TEMP "/mnt/mmc/MUOS/bespoke-launcher/recent.tmp"
 #endif
 #ifndef FIRST_FRAME_MARKER
-#define FIRST_FRAME_MARKER "/run/muos/dani-first-frame-ready"
+#define FIRST_FRAME_MARKER "/run/muos/bird-first-frame-ready"
 #endif
 #ifndef STORAGE_ANCHOR_MARKER
 #define STORAGE_ANCHOR_MARKER ""
@@ -1056,7 +1056,7 @@ static void draw_screen(void) {
 
     if (view == VIEW_MAIN || view == VIEW_PLAY) {
         const char **items = view == VIEW_MAIN ? menu_item : play_item;
-        draw_text(32, 22, view == VIEW_MAIN ? "DANI // RG34-SP" : "PLAY", 4, primary);
+        draw_text(32, 22, view == VIEW_MAIN ? "BIRDOS // RG34-SP" : "PLAY", 4, primary);
         draw_text(34, 62,
                   view == VIEW_MAIN ? "BESPOKE CONSOLE" : "LIBRARY // TOOLS // POWER",
                   2, muted);

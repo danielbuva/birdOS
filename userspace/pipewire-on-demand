@@ -1,11 +1,11 @@
 #!/bin/sh
 
-REAL="/opt/muos/script/system/pipewire.sh.dani-real"
+REAL="/opt/muos/script/system/pipewire.sh.bird-real"
 DBUS="/opt/muos/script/init/S30dbus"
-DEMAND="/run/muos/dani-audio-demand"
-START_LOCK="/run/muos/dani-audio-starting"
-WARM_SCHEDULED="/run/muos/dani-audio-warm-scheduled"
-SYSTEM_READY="/run/muos/dani-system-ready"
+DEMAND="/run/muos/bird-audio-demand"
+START_LOCK="/run/muos/bird-audio-starting"
+WARM_SCHEDULED="/run/muos/bird-audio-warm-scheduled"
+SYSTEM_READY="/run/muos/bird-system-ready"
 STAGES="/tmp/muos/audio-on-demand.tsv"
 RESULTS="/mnt/mmc/MUOS/boot-timing/audio-on-demand/results"
 

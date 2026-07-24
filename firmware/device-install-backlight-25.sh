@@ -6,7 +6,7 @@ set -eu
 ROM_MOUNT="/mnt/mmc"
 WORK_DIR="$ROM_MOUNT/.firmware-work"
 BOOT_DEVICE="/dev/mmcblk0p4"
-CANDIDATE="$WORK_DIR/dani-boot-backlight-25.img"
+CANDIDATE="$WORK_DIR/bird-boot-backlight-25.img"
 BACKUP="$WORK_DIR/device-boot-before-backlight.img"
 BACKUP_TEMP="$WORK_DIR/.device-boot-before-backlight.tmp"
 MARKER="$WORK_DIR/backlight-25-installed"

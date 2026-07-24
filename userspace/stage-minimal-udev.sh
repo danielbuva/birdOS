@@ -2,7 +2,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
-CARD=${1:-/Volumes/dani-sp}
+CARD=${1:-/Volumes/BIRD-DATA}
 PAYLOAD="$ROOT/userspace/S10minimal-udev"
 INSTALL_SOURCE="$ROOT/userspace/device-install-minimal-udev.sh"
 WORK_DIR="$CARD/MUOS/boot-timing/udev-minimal"
@@ -11,7 +11,7 @@ INSTALL_TARGET="$CARD/MUOS/init/86-install-minimal-udev.sh"
 TIMING_TARGET="$CARD/MUOS/init/99-boot-timing-marker.sh"
 
 [ -d "$CARD/MUOS/init" ] || {
-	printf 'error: mounted Dani SP card not found: %s\n' "$CARD" >&2
+	printf 'error: mounted birdOS card not found: %s\n' "$CARD" >&2
 	exit 1
 }
 sh -n "$PAYLOAD"

@@ -1,6 +1,6 @@
 #!/bin/sh
-# DANI_FIXED_RG34XXSP_STARTUP_V2
-# Fixed startup contract for Dani's RG34XX-SP.  The initramfs launcher is
+# BIRD_FIXED_RG34XXSP_STARTUP_V2
+# Fixed startup contract for the birdOS RG34XX-SP profile. The initramfs launcher is
 # already interactive when this runs; this script prepares only the services
 # needed by that one device and publishes runtime readiness for content.
 # These completed-state markers keep the temporary card-side migration hook
@@ -8,7 +8,7 @@
 # BOOT_TIMING_QUIET_STARTUP_V1
 # BOOT_TIMING_BESPOKE_BACKGROUND_V1
 # BOOT_TIMING_RESTORE_EARLY_ENTROPY_V2
-# DANI_EARLY_LAUNCHER_V1
+# BIRD_EARLY_LAUNCHER_V1
 
 . /opt/muos/script/var/func.sh
 
@@ -69,8 +69,8 @@ mark storage-ready
 LED_CONTROL_CHANGE
 mark charge-and-led-ready
 
-: >"$RUN_DIR/dani-system-ready"
-if [ ! -e "$RUN_DIR/dani-launcher-active" ]; then
+: >"$RUN_DIR/bird-system-ready"
+if [ ! -e "$RUN_DIR/bird-launcher-active" ]; then
 	FRONTEND start
 fi
 mark system-ready

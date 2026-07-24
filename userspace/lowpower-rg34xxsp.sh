@@ -1,5 +1,5 @@
 #!/bin/sh
-# DANI_FIXED_RG34XXSP_LOWPOWER_V1
+# BIRD_FIXED_RG34XXSP_LOWPOWER_V1
 
 CHARGER="/sys/class/power_supply/axp2202-usb/online"
 CAPACITY="/sys/class/power_supply/axp2202-battery/capacity"

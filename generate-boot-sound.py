@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate Dani's tiny codec-free RG34XX-SP boot chime."""
+"""Generate the user's tiny codec-free RG34XX-SP boot chime."""
 
 from __future__ import annotations
 

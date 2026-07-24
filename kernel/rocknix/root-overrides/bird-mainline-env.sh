@@ -1,6 +1,6 @@
 #!/bin/sh
 # On-demand userspace bridge for Bird's source kernel. Nothing in this file is
-# executed on the visible boot path: S03danilauncher calls PREPARE only after a
+# executed on the visible boot path: S03birdlauncher calls PREPARE only after a
 # content or PortMaster selection.
 
 BIRD_RUNTIME_IMAGE="/mnt/mmc/MUOS/runtime/ROCKNIX-SYSTEM"

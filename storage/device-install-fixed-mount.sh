@@ -14,10 +14,10 @@ LOG_FILE="$WORK_DIR/fixed-mount-install.log"
 CARD_INSTALLER="$ROM_MOUNT/MUOS/init/81-install-fixed-mount.sh"
 STORAGE_OLD_SHA="9bc10f44ef86c0a1043679d6aeb9d07394ce4ce1fbfce3dc23d92dc065a8dce9"
 START_OLD_SHA="9a21c3d26eab162a482adec2f82f6fe03a9ec72a1e131d192b8e57f87069c950"
-STORAGE_NEW_SHA="fd22f192ab70c3b405598611307d8450d056de18a0d95a1a18471ef32d33372e"
+STORAGE_NEW_SHA="f5b4ed818140a7dbc6f6b9d27ff7d2d164d2534b6f2da6be0937ccd870b5e904"
 START_NEW_SHA="6ce5ef2d96ec3af819df4b109e1fb8e47c473dad4477d614ed6f9e95d45454f2"
-STORAGE_TEMP="/opt/muos/script/mount/.storage.sh.dani-fixed-new"
-START_TEMP="/opt/muos/script/mount/.start.sh.dani-fixed-new"
+STORAGE_TEMP="/opt/muos/script/mount/.storage.sh.bird-fixed-new"
+START_TEMP="/opt/muos/script/mount/.start.sh.bird-fixed-new"
 
 mkdir -p "$WORK_DIR/backup"
 exec >>"$LOG_FILE" 2>&1
@@ -80,4 +80,3 @@ sync
 printf '%s %s\n' "$STORAGE_NEW_SHA" "$START_NEW_SHA" >"$MARKER"
 disable_installer
 printf 'SUCCESS: fixed ROM mount and storage orchestration installed; active next boot\n'
-

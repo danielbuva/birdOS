@@ -6,13 +6,13 @@ WORK_DIR="$ROM_MOUNT/MUOS/boot-timing/audio-on-demand"
 PW_SOURCE="$WORK_DIR/pipewire-on-demand"
 DBUS_SOURCE="$WORK_DIR/S30dbus-on-demand"
 PATCH_SOURCE="$WORK_DIR/patch-postmenu-audio-sysinit.sh"
-LAUNCHER_SOURCE="$ROM_MOUNT/MUOS/bespoke-launcher/S03danilauncher"
+LAUNCHER_SOURCE="$ROM_MOUNT/MUOS/bespoke-launcher/S03birdlauncher"
 PW_TARGET="/opt/muos/script/system/pipewire.sh"
-PW_REAL="$PW_TARGET.dani-real"
+PW_REAL="$PW_TARGET.bird-real"
 DBUS_TARGET="/opt/muos/script/init/S30dbus"
-DBUS_VISIBLE_REAL="/opt/muos/script/init/S30dbus.dani-real"
-DBUS_HIDDEN_REAL="/opt/muos/script/init/.S30dbus.dani-real"
-LAUNCHER_TARGET="/opt/muos/script/init/S03danilauncher"
+DBUS_VISIBLE_REAL="/opt/muos/script/init/S30dbus.bird-real"
+DBUS_HIDDEN_REAL="/opt/muos/script/init/.S30dbus.bird-real"
+LAUNCHER_TARGET="/opt/muos/script/init/S03birdlauncher"
 SYSINIT_TARGET="/opt/muos/script/init/sysinit"
 BACKUP_DIR="$WORK_DIR/backup/postmenu-warm"
 MARKER="$WORK_DIR/postmenu-audio-installed"
@@ -26,17 +26,17 @@ SYSINIT_OLD_SHA="a92e44ddc06d0ddf2d6b2279cfc74f270e980d0568ba99fbfd08493f4bdced7
 PW_STOCK_SHA="81c6890f17deafec9d9afe214fba0badcb2b2c42a334ef3e57a74f3810a4d79d"
 DBUS_STOCK_SHA="726c0803e66157bbb9aca253b3d0c5146d577a8264032a6cd82deebdb870cd37"
 
-PW_NEW_SHA="54aae202d0ca514dfc63d426d651bb4be99b7f5983936e49cb51575290782e62"
-DBUS_NEW_SHA="b942c2877db0be3012ec46cfdbe3c555982dcf9dfeaf658fc21ca5d3169f9817"
-LAUNCHER_NEW_SHA="ef3ae835a1ef9c74156967a9e52f7398ccb2f96e282773df0416cd771ee9c05a"
-PATCH_SHA="f8e377affe5505146d28c03df9ab0b5234053be28bd8e99ffa59052d20982033"
+PW_NEW_SHA="5968e2f62690a02a5381c8c93dea82d331436955b2ac133309c9725773374458"
+DBUS_NEW_SHA="b6cf14a09951faa58b7633727860bc04462c722e33dd04840048d58b8404d7bd"
+LAUNCHER_NEW_SHA="d0ba91284f8705947163a28589456eb29d3255037cb6263442b502b4004f598d"
+PATCH_SHA="1fb6fdf56e8b9a7fa1d26f8af714e7dd5d6c1ce2df8e3f23cf7d9875ba998c87"
 SYSINIT_NEW_SHA="e0226ca38bc4127f2ac2ed2ce2f6d39483ca4ce8e962d9a63be5f7cf9b4d91a1"
 
-PW_TEMP="$PW_TARGET.dani-postmenu-new"
-DBUS_TEMP="$DBUS_TARGET.dani-postmenu-new"
-DBUS_REAL_TEMP="/opt/muos/script/init/.S30dbus.dani-real-new"
-LAUNCHER_TEMP="$LAUNCHER_TARGET.dani-postmenu-new"
-SYSINIT_TEMP="$SYSINIT_TARGET.dani-postmenu-new"
+PW_TEMP="$PW_TARGET.bird-postmenu-new"
+DBUS_TEMP="$DBUS_TARGET.bird-postmenu-new"
+DBUS_REAL_TEMP="/opt/muos/script/init/.S30dbus.bird-real-new"
+LAUNCHER_TEMP="$LAUNCHER_TARGET.bird-postmenu-new"
+SYSINIT_TEMP="$SYSINIT_TARGET.bird-postmenu-new"
 INSTALL_STARTED=0
 
 mkdir -p "$BACKUP_DIR"
@@ -55,7 +55,7 @@ rollback() {
 	printf 'rollback: restoring pre-post-menu audio files\n'
 	cp -f "$BACKUP_DIR/pipewire.sh" "$PW_TARGET" 2>/dev/null || :
 	cp -f "$BACKUP_DIR/S30dbus" "$DBUS_TARGET" 2>/dev/null || :
-	cp -f "$BACKUP_DIR/S03danilauncher" "$LAUNCHER_TARGET" 2>/dev/null || :
+	cp -f "$BACKUP_DIR/S03birdlauncher" "$LAUNCHER_TARGET" 2>/dev/null || :
 	cp -f "$BACKUP_DIR/sysinit" "$SYSINIT_TARGET" 2>/dev/null || :
 	cp -f "$WORK_DIR/backup/S30dbus.stock" "$DBUS_VISIBLE_REAL" 2>/dev/null || :
 	chmod 755 "$PW_TARGET" "$DBUS_TARGET" "$DBUS_VISIBLE_REAL" \
@@ -118,7 +118,7 @@ fi
 for PAIR in \
 	"$PW_TARGET|$BACKUP_DIR/pipewire.sh|$PW_OLD_SHA" \
 	"$DBUS_TARGET|$BACKUP_DIR/S30dbus|$DBUS_OLD_SHA" \
-	"$LAUNCHER_TARGET|$BACKUP_DIR/S03danilauncher|$LAUNCHER_OLD_SHA" \
+	"$LAUNCHER_TARGET|$BACKUP_DIR/S03birdlauncher|$LAUNCHER_OLD_SHA" \
 	"$SYSINIT_TARGET|$BACKUP_DIR/sysinit|$SYSINIT_OLD_SHA"; do
 	SOURCE=${PAIR%%|*}
 	REST=${PAIR#*|}

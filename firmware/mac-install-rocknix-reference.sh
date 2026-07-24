@@ -5,11 +5,11 @@
 
 set -eu
 
-CARD=${1:-/Volumes/dani-sp}
+CARD=${1:-/Volumes/BIRD-DATA}
 ACTION=${2:-}
 GDD=${GDD:-/opt/homebrew/bin/gdd}
-IMAGE=${IMAGE:-/Users/dani/ROCKNIX-H700.aarch64-20260701-DDR4-rg34xxsp-safe.img}
-LOCAL_PREFIX=${LOCAL_PREFIX:-/Users/dani/Downloads/dani-sp-before-rocknix-prefix.img}
+IMAGE=${IMAGE:-$HOME/ROCKNIX-H700.aarch64-20260701-DDR4-rg34xxsp-safe.img}
+LOCAL_PREFIX=${LOCAL_PREFIX:-$HOME/Downloads/bird-sp-before-rocknix-prefix.img}
 IMAGE_BYTES=2432696320
 IMAGE_SHA=4d5c16452c7e45970f60bb4897c45a4e10f0e4fb10957927fb02405810b45dc7
 PREFIX_BYTES=163577856
@@ -23,7 +23,7 @@ fail() {
 }
 
 [ "$ACTION" = '--install-reference' ] || \
-	fail "usage: $0 /Volumes/dani-sp --install-reference"
+	fail "usage: $0 /Volumes/BIRD-DATA --install-reference"
 [ -d "$CARD" ] || fail "card volume not mounted: $CARD"
 [ -x "$GDD" ] || fail 'GNU dd is required; install it with: brew install coreutils'
 command -v diskutil >/dev/null 2>&1 || fail 'diskutil is required'
@@ -53,7 +53,7 @@ PREFIX_BOOT_SHA=$("$GDD" if="$LOCAL_PREFIX" bs=1M skip=92 count=64 \
 [ "$PREFIX_BOOT_SHA" = "$ACCEPTED_BOOT_SHA" ] || \
 	fail "checkpoint does not contain the accepted Bird boot image: $PREFIX_BOOT_SHA"
 
-INFO=$(mktemp -t dani-card-info)
+INFO=$(mktemp -t bird-card-info)
 MOUNTED=1
 cleanup() {
 	if [ "$MOUNTED" -eq 0 ]; then

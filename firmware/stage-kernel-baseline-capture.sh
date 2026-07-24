@@ -2,7 +2,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
-CARD=${1:-/Volumes/dani-sp}
+CARD=${1:-/Volumes/BIRD-DATA}
 SOURCE="$ROOT/userspace/57capture-kernel-baseline.sh"
 TARGET="$CARD/MUOS/init/57-capture-kernel-baseline.sh"
 TEMP="$CARD/MUOS/init/.57-capture-kernel-baseline.new"
@@ -12,7 +12,7 @@ fail() {
 	exit 1
 }
 
-[ -d "$CARD/MUOS/init" ] || fail "mounted Dani SP card not found: $CARD"
+[ -d "$CARD/MUOS/init" ] || fail "mounted birdOS card not found: $CARD"
 [ -f "$SOURCE" ] || fail "kernel baseline collector missing: $SOURCE"
 
 for OLD in "$TARGET" "$TARGET.done" "$TARGET.failed"; do

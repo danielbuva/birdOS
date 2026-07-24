@@ -2,9 +2,9 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
-CARD=${1:-/Volumes/dani-sp}
+CARD=${1:-/Volumes/BIRD-DATA}
 BUILD=${2:-$ROOT/firmware/work/mainline-diagnostic-boot}
-CANDIDATE="$BUILD/dani-boot-mainline-diagnostic.img"
+CANDIDATE="$BUILD/bird-boot-mainline-diagnostic.img"
 WORK_DIR="$CARD/.firmware-work"
 INSTALLER="$CARD/MUOS/init/58-install-mainline-diagnostic.sh"
 COLLECTOR="$CARD/MUOS/init/57-capture-mainline-diagnostic.sh"
@@ -16,7 +16,7 @@ fail() {
 	exit 1
 }
 
-[ -d "$CARD/MUOS/init" ] || fail "mounted Dani SP card not found: $CARD"
+[ -d "$CARD/MUOS/init" ] || fail "mounted birdOS card not found: $CARD"
 [ -f "$CANDIDATE" ] || fail "candidate missing: $CANDIDATE"
 [ "$(shasum -a 256 "$CANDIDATE" | awk '{print $1}')" = "$EXPECTED_SHA" ] || \
 	fail 'candidate checksum mismatch'
@@ -36,7 +36,7 @@ grep -q "^CANDIDATE_SHA=$EXPECTED_SHA$" \
 
 mkdir -p "$WORK_DIR"
 COPYFILE_DISABLE=1 cp -f "$CANDIDATE" \
-	"$WORK_DIR/.dani-boot-mainline-diagnostic.new"
+	"$WORK_DIR/.bird-boot-mainline-diagnostic.new"
 COPYFILE_DISABLE=1 cp -f "$ROOT/firmware/device-install-mainline-diagnostic.sh" \
 	"$CARD/MUOS/init/.58-install-mainline-diagnostic.new"
 COPYFILE_DISABLE=1 cp -f "$ROOT/userspace/57capture-mainline-diagnostic.sh" \
@@ -44,7 +44,7 @@ COPYFILE_DISABLE=1 cp -f "$ROOT/userspace/57capture-mainline-diagnostic.sh" \
 COPYFILE_DISABLE=1 cp -f "$ROOT/firmware/mac-restore-mainline-diagnostic.sh" \
 	"$WORK_DIR/.mac-restore-mainline-diagnostic.new"
 
-[ "$(shasum -a 256 "$WORK_DIR/.dani-boot-mainline-diagnostic.new" | awk '{print $1}')" = \
+[ "$(shasum -a 256 "$WORK_DIR/.bird-boot-mainline-diagnostic.new" | awk '{print $1}')" = \
 	"$EXPECTED_SHA" ] || fail 'staged candidate mismatch'
 cmp "$ROOT/firmware/device-install-mainline-diagnostic.sh" \
 	"$CARD/MUOS/init/.58-install-mainline-diagnostic.new"
@@ -63,8 +63,8 @@ for OLD in \
 	[ ! -e "$OLD" ] || rm -f "$OLD"
 done
 
-mv -f "$WORK_DIR/.dani-boot-mainline-diagnostic.new" \
-	"$WORK_DIR/dani-boot-mainline-diagnostic.img"
+mv -f "$WORK_DIR/.bird-boot-mainline-diagnostic.new" \
+	"$WORK_DIR/bird-boot-mainline-diagnostic.img"
 mv -f "$CARD/MUOS/init/.58-install-mainline-diagnostic.new" "$INSTALLER"
 mv -f "$CARD/MUOS/init/.57-capture-mainline-diagnostic.new" "$COLLECTOR"
 mv -f "$WORK_DIR/.mac-restore-mainline-diagnostic.new" \

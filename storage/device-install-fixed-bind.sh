@@ -12,7 +12,7 @@ CARD_INSTALLER="$ROM_MOUNT/MUOS/init/79-install-fixed-bind-final-log.sh"
 OLD_SHA="293620ae45db8b04de3b99bccfb3946fee4e05df025a618da2859d274d2ff675"
 INTERMEDIATE_SHA="924b2dd081f3f8c511794a9a2755180b7e7165b7d612ec4a2e0884179d1a71d0"
 NEW_SHA="9976be2843cc6606f7d5af88da51034fc87691cb8c857754bb19ecc9914e4799"
-TEMP="/opt/muos/script/mount/.bind.sh.dani-fixed-new"
+TEMP="/opt/muos/script/mount/.bind.sh.bird-fixed-new"
 
 mkdir -p "$WORK_DIR/backup"
 exec >>"$LOG_FILE" 2>&1

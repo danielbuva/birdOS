@@ -7,7 +7,7 @@ set -eu
 DEVICE=${1:-}
 ACTION=${2:-}
 GDD=${GDD:-/opt/homebrew/bin/gdd}
-RECOVERY_PREFIX=${RECOVERY_PREFIX:-/Users/dani/muos-kernel-source/checkpoints/20260721-bird-current-prefix.img}
+RECOVERY_PREFIX=${RECOVERY_PREFIX:-$HOME/muos-kernel-source/checkpoints/20260721-bird-current-prefix.img}
 
 PREFIX_BYTES=163577856
 RECOVERY_SHA=0bcacc83bf7345306ef7615be1012b5c7dd0a92630cf764f34b049f88e9b9f78

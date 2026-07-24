@@ -11,7 +11,7 @@ LOG_FILE="$WORK_DIR/install.log"
 CARD_INSTALLER="$ROM_MOUNT/MUOS/init/87-install-fixed-devices.sh"
 PROFILE_SHA="cdef27f4e6cb77641364de29008dd5a469e06f2c046333ec352fb76c68b25cec"
 FIXED_SHA="de60cebfb559f7a9e7abb6ed7ec1781047425d22043db97d63d6c87713b78773"
-TEMP="/opt/muos/script/init/.S10udev.dani-fixed-new"
+TEMP="/opt/muos/script/init/.S10udev.bird-fixed-new"
 
 mkdir -p "$WORK_DIR/backup"
 exec >>"$LOG_FILE" 2>&1

@@ -5,10 +5,10 @@
 set -eu
 
 URL=https://github.com/ROCKNIX/distribution/releases/download/20260701/ROCKNIX-H700.aarch64-20260701-DDR4.img.gz
-OUTPUT=${1:-/Users/dani/Downloads/ROCKNIX-H700.aarch64-20260701-DDR4.img.gz}
+OUTPUT=${1:-$HOME/Downloads/ROCKNIX-H700.aarch64-20260701-DDR4.img.gz}
 TOTAL=1221786248
 EXPECTED_SHA=5b26c704ddab59e61eb7ead115879ad5370c20973be7118b823e32726bed24dc
-PARTS=${TMPDIR:-/tmp}/dani-rocknix-release-parts
+PARTS=${TMPDIR:-/tmp}/bird-rocknix-release-parts
 GDD=${GDD:-/opt/homebrew/bin/gdd}
 
 fail() {

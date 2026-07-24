@@ -2,7 +2,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
-IMAGE=${DANI_KERNEL_BUILD_IMAGE:-dani-rg34xxsp-kernel-build:4.9.170}
+IMAGE=${BIRD_KERNEL_BUILD_IMAGE:-bird-rg34xxsp-kernel-build:4.9.170}
 OUTPUT="$ROOT/kernel/work/vendor-baseline"
 JOBS=${JOBS:-4}
 

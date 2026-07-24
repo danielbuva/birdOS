@@ -7,7 +7,7 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 BIRD=${BIRD:-/Volumes/BIRD}
-DATA=${DATA:-/Volumes/dani-sp}
+DATA=${DATA:-/Volumes/BIRD-DATA}
 CONFIG=${CONFIG:-$ROOT/kernel/rocknix/extlinux-bird.conf}
 PORT_POLICY=${PORT_POLICY:-$ROOT/kernel/rocknix/root-overrides/portmaster-libgl-mainline.sh}
 RUNTIME_TARGET="$DATA/MUOS/runtime/ROCKNIX-SYSTEM"

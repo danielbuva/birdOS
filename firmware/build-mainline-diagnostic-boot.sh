@@ -2,7 +2,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
-BASE=${1:-$ROOT/firmware/work/fixed-device-dtb-v1/dani-boot-fixed-device-dtb-v1.img}
+BASE=${1:-$ROOT/firmware/work/fixed-device-dtb-v1/bird-boot-fixed-device-dtb-v1.img}
 KERNEL=${2:-$ROOT/kernel/work/mainline-compat/Image}
 DTB=${3:-$ROOT/kernel/work/mainline-diagnostic/diagnostic.dtb}
 WORK=${4:-$ROOT/firmware/work/mainline-diagnostic-boot}
@@ -10,7 +10,7 @@ case "$WORK" in
 	/*) ;;
 	*) WORK="$PWD/$WORK" ;;
 esac
-OUTPUT="$WORK/dani-boot-mainline-diagnostic.img"
+OUTPUT="$WORK/bird-boot-mainline-diagnostic.img"
 BASE_SHA=872a3d0d99ad6883942632f7adde9ffaa7c99eb922dca11f5efa2e89b8e7764f
 KERNEL_SHA=2294fca4c88834d379d063eb08c606224fea2d4eb6a77edd50b6e1b320ab3150
 BOOT_BYTES=67108864
@@ -38,9 +38,9 @@ BASE_UNPACK="$WORK/base"
 VERIFY="$WORK/verify"
 RAMDISK="$BASE_UNPACK/ramdisk"
 FIRST_INIT="$RAMDISK/init"
-FIRST_OBJECT="$WORK/dani-fixed-init-diagnostic.o"
-RAMDISK_CPIO="$WORK/dani-mainline-diagnostic.cpio"
-RAMDISK_GZ="$WORK/dani-mainline-diagnostic.gz"
+FIRST_OBJECT="$WORK/bird-fixed-init-diagnostic.o"
+RAMDISK_CPIO="$WORK/bird-mainline-diagnostic.cpio"
+RAMDISK_GZ="$WORK/bird-mainline-diagnostic.gz"
 RAMDISK_BOOT="$WORK/ramdisk-diagnostic.img"
 
 mkdir -p "$WORK"
@@ -59,9 +59,9 @@ mkdir -p "$WORK"
 	-fvisibility=hidden \
 	-nostdlib \
 	-Wall -Wextra -Werror \
-	-DDANI_STATIC_ROOT_INIT=1 \
-	-DDANI_BOOT_DIAGNOSTICS=1 \
-	-c "$ROOT/firmware/dani-fixed-init.c" \
+	-DBIRD_STATIC_ROOT_INIT=1 \
+	-DBIRD_BOOT_DIAGNOSTICS=1 \
+	-c "$ROOT/firmware/bird-fixed-init.c" \
 	-o "$FIRST_OBJECT"
 "$LLD" -static --build-id=none -z noexecstack -s -e _start \
 	-o "$FIRST_INIT" "$FIRST_OBJECT"
@@ -94,10 +94,10 @@ cmp "$DTB" "$VERIFY/device-tree.dtb" || fail 'diagnostic DTB changed during repa
 cmp "$FIRST_INIT" "$VERIFY/ramdisk/init" || fail 'diagnostic /init changed during repack'
 cmp "$BASE_UNPACK/ramdisk/init.stock" "$VERIFY/ramdisk/init.stock" || \
 	fail 'stock init fallback changed'
-cmp "$BASE_UNPACK/ramdisk/opt/dani-launcher" \
-	"$VERIFY/ramdisk/opt/dani-launcher" || fail 'launcher changed'
-cmp "$BASE_UNPACK/ramdisk/opt/dani-root-init" \
-	"$VERIFY/ramdisk/opt/dani-root-init" || fail 'root PID 1 changed'
+cmp "$BASE_UNPACK/ramdisk/opt/bird-launcher" \
+	"$VERIFY/ramdisk/opt/bird-launcher" || fail 'launcher changed'
+cmp "$BASE_UNPACK/ramdisk/opt/bird-root-init" \
+	"$VERIFY/ramdisk/opt/bird-root-init" || fail 'root PID 1 changed'
 [ "$(stat -f %z "$OUTPUT")" -eq "$BOOT_BYTES" ] || \
 	fail 'candidate is not exactly 64 MiB'
 

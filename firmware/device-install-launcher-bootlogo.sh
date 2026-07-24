@@ -1,9 +1,9 @@
 #!/bin/sh
 set -eu
 
-SOURCE="/mnt/mmc/.firmware-work/boot-resource/dani-boot-resource.img"
+SOURCE="/mnt/mmc/.firmware-work/boot-resource/bird-boot-resource.img"
 WORK_DIR="/mnt/mmc/.firmware-work/boot-resource"
-BACKUP="$WORK_DIR/device-boot-resource-before-dani.img"
+BACKUP="$WORK_DIR/device-boot-resource-before-bird.img"
 MARKER="$WORK_DIR/launcher-bootlogo-installed"
 LOG_DIR="/mnt/mmc/MUOS/log"
 LOG="$LOG_DIR/firmware-launcher-bootlogo-install.log"

@@ -1,5 +1,5 @@
 #!/bin/sh
-# DANI_FIXED_USER_INIT_V1
+# BIRD_FIXED_USER_INIT_V1
 
 SCRIPT_DIR="/run/muos/storage/init"
 LOG="/mnt/mmc/MUOS/log/user_init.log"

@@ -58,7 +58,7 @@ default case-insensitive macOS filesystem.
 Successful output is placed under ignored `kernel/work/mainline-compat/`:
 
 - `Image`
-- `sun50i-h700-anbernic-rg34xx-sp-dani.dtb`
+- `sun50i-h700-anbernic-rg34xx-sp-bird.dtb`
 - `built.config`
 - `built.dts` and `kernel.release`
 - `System.map` and `Module.symvers`

@@ -3,10 +3,10 @@
 # muOS imports: the four-line request written by the static launcher is the
 # complete interface between UI and application policy.
 
-TARGET=/opt/dani-launcher
+TARGET=/opt/bird-launcher
 RUN=/run/muos
 BIRD_RUN=/run/bird
-REQUEST=$RUN/dani-launch-request
+REQUEST=$RUN/bird-launch-request
 READY=$BIRD_RUN/runtime-ready
 LOG=/tmp/bird-supervisor.log
 

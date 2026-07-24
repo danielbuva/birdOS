@@ -2,7 +2,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
-BASE_BOOT=${1:-/Volumes/dani-sp/.firmware-work/dani-boot-backlight-25.img}
+BASE_BOOT=${1:-/Volumes/BIRD-DATA/.firmware-work/bird-boot-backlight-25.img}
 OUTPUT_DIR=${2:-$ROOT/firmware/work/initramfs-launcher}
 LLD=${LLD:-/opt/homebrew/opt/lld/bin/ld.lld}
 BASE_SHA="eab1f16833a69c8e9a04297d87d0dee1b86980d27edc8e027ae3966b352865bd"
@@ -23,16 +23,16 @@ ACTUAL_BASE_SHA=$(shasum -a 256 "$BASE_BOOT" | awk '{print $1}')
 UNPACKED="$OUTPUT_DIR/base"
 VERIFY="$OUTPUT_DIR/verify"
 RAMDISK="$UNPACKED/ramdisk"
-LAUNCHER="$RAMDISK/opt/dani-launcher"
-RAMDISK_CPIO="$OUTPUT_DIR/dani-initramfs.cpio"
-RAMDISK_GZ="$OUTPUT_DIR/dani-initramfs.gz"
-CANDIDATE="$OUTPUT_DIR/dani-boot-initramfs-launcher.img"
+LAUNCHER="$RAMDISK/opt/bird-launcher"
+RAMDISK_CPIO="$OUTPUT_DIR/bird-initramfs.cpio"
+RAMDISK_GZ="$OUTPUT_DIR/bird-initramfs.gz"
+CANDIDATE="$OUTPUT_DIR/bird-boot-initramfs-launcher.img"
 
 mkdir -p "$OUTPUT_DIR"
 "$ROOT/firmware/unpack-boot.sh" "$BASE_BOOT" "$UNPACKED"
 
 "$LLD" -static --build-id=none -z noexecstack -s -e _start \
-	-o "$LAUNCHER" "$ROOT/launcher/dani-launcher.o"
+	-o "$LAUNCHER" "$ROOT/launcher/bird-launcher.o"
 chmod 755 "$LAUNCHER"
 "$ROOT/firmware/patch-initramfs-early-launcher.sh" "$RAMDISK/init"
 touch -t 202601010000 "$LAUNCHER" "$RAMDISK/init"
@@ -49,8 +49,8 @@ gzip -n -9 -c "$RAMDISK_CPIO" >"$RAMDISK_GZ"
 
 cmp "$UNPACKED/kernel.img" "$VERIFY/kernel.img" || fail "kernel changed"
 cmp "$UNPACKED/device-tree.dtb" "$VERIFY/device-tree.dtb" || fail "DTB changed"
-cmp "$LAUNCHER" "$VERIFY/ramdisk/opt/dani-launcher" || fail "embedded launcher changed"
-grep -q 'DANI_INITRAMFS_LAUNCHER_V1' "$VERIFY/ramdisk/init" || fail "init patch missing"
+cmp "$LAUNCHER" "$VERIFY/ramdisk/opt/bird-launcher" || fail "embedded launcher changed"
+grep -q 'BIRD_INITRAMFS_LAUNCHER_V1' "$VERIFY/ramdisk/init" || fail "init patch missing"
 sh -n "$VERIFY/ramdisk/init" || fail "patched init syntax invalid"
 
 CANDIDATE_SHA=$(shasum -a 256 "$CANDIDATE" | awk '{print $1}')

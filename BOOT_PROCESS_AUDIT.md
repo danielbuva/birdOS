@@ -22,7 +22,7 @@ runtime scripts passed hardware acceptance, the latest ordinary frame is again
 | 1.852--2.20 s | fixed early-root handoff, then root BusyBox setup | menu cost is now 105--128 ms | The launcher draws at 1.957--1.980 s before root dispatch begins at 2.18--2.20 s. |
 | 2.08 s | `S01entropy` starts `haveged` | ~10 ms to dispatch; CRNG ready at 4.07 s and generator stopped at 4.10 s | Retain early and concurrent. Deferral caused CRNG/audio stalls; the revised service now exits after readiness. |
 | 2.18--2.22 s | `S02rgb` | ~40 ms, `rc=1` | Remove. This fixed device has no requested RGB experience and the hook fails. |
-| 2.22--2.24 s | `S03danilauncher` supervisor dispatch | ~20 ms | Move ahead of all asynchronous observers and optional init hooks. |
+| 2.22--2.24 s | `S03birdlauncher` supervisor dispatch | ~20 ms | Move ahead of all asynchronous observers and optional init hooks. |
 | 2.253--2.286 s | open fixed framebuffer/input and draw | 33 ms | Already appropriately narrow; profile after the init-order change. |
 
 The staged critical-UI revision dispatches the launcher before entropy, ROM

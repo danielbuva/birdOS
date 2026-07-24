@@ -1,8 +1,8 @@
 #!/bin/sh
 
-REAL="/opt/muos/script/init/.S30dbus.dani-real"
-DEMAND="/run/muos/dani-audio-demand"
-START_LOCK="/run/muos/dani-dbus-starting"
+REAL="/opt/muos/script/init/.S30dbus.bird-real"
+DEMAND="/run/muos/bird-audio-demand"
+START_LOCK="/run/muos/bird-dbus-starting"
 STAGES="/tmp/muos/audio-on-demand.tsv"
 RESULTS="/mnt/mmc/MUOS/boot-timing/audio-on-demand/results"
 

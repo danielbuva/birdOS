@@ -2,7 +2,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
-BASE_BOOT=${1:-$ROOT/firmware/work/power-key-128-build/dani-boot-power-key-128.img}
+BASE_BOOT=${1:-$ROOT/firmware/work/power-key-128-build/bird-boot-power-key-128.img}
 OUTPUT_DIR=${2:-$ROOT/firmware/work/trimmed-initramfs}
 REMOVE_LIST="$ROOT/firmware/trimmed-initramfs-remove.list"
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
@@ -71,12 +71,12 @@ UNPACKED="$OUTPUT_DIR/base"
 VERIFY="$OUTPUT_DIR/verify"
 RAMDISK="$UNPACKED/ramdisk"
 FIRST_INIT="$RAMDISK/init"
-ROOT_INIT="$RAMDISK/opt/dani-root-init"
-FIRST_OBJECT="$OUTPUT_DIR/dani-fixed-init-trimmed.o"
-ROOT_OBJECT="$OUTPUT_DIR/dani-root-init.o"
-RAMDISK_CPIO="$OUTPUT_DIR/dani-trimmed-initramfs.cpio"
-RAMDISK_GZ="$OUTPUT_DIR/dani-trimmed-initramfs.gz"
-CANDIDATE="$OUTPUT_DIR/dani-boot-trimmed-initramfs.img"
+ROOT_INIT="$RAMDISK/opt/bird-root-init"
+FIRST_OBJECT="$OUTPUT_DIR/bird-fixed-init-trimmed.o"
+ROOT_OBJECT="$OUTPUT_DIR/bird-root-init.o"
+RAMDISK_CPIO="$OUTPUT_DIR/bird-trimmed-initramfs.cpio"
+RAMDISK_GZ="$OUTPUT_DIR/bird-trimmed-initramfs.gz"
+CANDIDATE="$OUTPUT_DIR/bird-boot-trimmed-initramfs.img"
 
 mkdir -p "$OUTPUT_DIR"
 "$ROOT/firmware/unpack-boot.sh" "$BASE_BOOT" "$UNPACKED"
@@ -92,9 +92,9 @@ while read -r KIND RELATIVE; do
 	esac
 done <"$REMOVE_LIST"
 
-compile_static "$ROOT/firmware/dani-fixed-init.c" "$FIRST_OBJECT" \
-	"$FIRST_INIT" -DDANI_STATIC_ROOT_INIT=1
-compile_static "$ROOT/firmware/dani-root-init.c" "$ROOT_OBJECT" "$ROOT_INIT"
+compile_static "$ROOT/firmware/bird-fixed-init.c" "$FIRST_OBJECT" \
+	"$FIRST_INIT" -DBIRD_STATIC_ROOT_INIT=1
+compile_static "$ROOT/firmware/bird-root-init.c" "$ROOT_OBJECT" "$ROOT_INIT"
 
 # Preserve only the exact ext4 repair implementation and its dependency
 # closure alongside BusyBox, which remains the deliberate shell fallback.
@@ -143,12 +143,12 @@ gzip -n -9 -c "$RAMDISK_CPIO" >"$RAMDISK_GZ"
 
 cmp "$UNPACKED/kernel.img" "$VERIFY/kernel.img" || fail "kernel changed"
 cmp "$UNPACKED/device-tree.dtb" "$VERIFY/device-tree.dtb" || fail "DTB changed"
-cmp "$UNPACKED/ramdisk/opt/dani-launcher" \
-	"$VERIFY/ramdisk/opt/dani-launcher" || fail "launcher changed"
+cmp "$UNPACKED/ramdisk/opt/bird-launcher" \
+	"$VERIFY/ramdisk/opt/bird-launcher" || fail "launcher changed"
 cmp "$UNPACKED/ramdisk/init.stock" \
 	"$VERIFY/ramdisk/init.stock" || fail "shell recovery changed"
 cmp "$FIRST_INIT" "$VERIFY/ramdisk/init" || fail "first-stage init changed"
-cmp "$ROOT_INIT" "$VERIFY/ramdisk/opt/dani-root-init" || fail "root init changed"
+cmp "$ROOT_INIT" "$VERIFY/ramdisk/opt/bird-root-init" || fail "root init changed"
 [ ! -e "$VERIFY/ramdisk/usr/share/misc/magic.mgc" ] || fail "magic returned"
 [ ! -e "$VERIFY/ramdisk/usr/share/alsa" ] || fail "ALSA profiles returned"
 [ "$(stat -f %z "$CANDIDATE")" -eq "$BOOT_BYTES" ] ||
@@ -156,11 +156,11 @@ cmp "$ROOT_INIT" "$VERIFY/ramdisk/opt/dani-root-init" || fail "root init changed
 
 strings "$VERIFY/ramdisk/init" | grep -q 'fsck-clean-skip' ||
 	fail "clean-filesystem policy missing"
-strings "$VERIFY/ramdisk/init" | grep -q 'dani-trimmed-initramfs-v1' ||
+strings "$VERIFY/ramdisk/init" | grep -q 'bird-trimmed-initramfs-v1' ||
 	fail "trimmed-initramfs marker missing"
 strings "$VERIFY/ramdisk/init" | grep -q 'direct-handoff-static-pid1' ||
 	fail "direct static PID 1 handoff missing"
-strings "$VERIFY/ramdisk/opt/dani-root-init" | grep -q 'dani-root-init-active' ||
+strings "$VERIFY/ramdisk/opt/bird-root-init" | grep -q 'bird-root-init-active' ||
 	fail "static root PID 1 marker missing"
 
 CANDIDATE_SHA=$(shasum -a 256 "$CANDIDATE" | awk '{print $1}')

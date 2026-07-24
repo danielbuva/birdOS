@@ -2,7 +2,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
-DTB=${1:-"$ROOT/kernel/work/mainline-compat/sun50i-h700-anbernic-rg34xx-sp-dani.dtb"}
+DTB=${1:-"$ROOT/kernel/work/mainline-compat/sun50i-h700-anbernic-rg34xx-sp-bird.dtb"}
 UBOOT_DTB=${UBOOT_DTB:-"$ROOT/firmware/work/bootloader/stock-uboot.dtb"}
 FDTGET=${FDTGET:-fdtget}
 FDTPUT=${FDTPUT:-fdtput}
@@ -35,7 +35,7 @@ $FDTGET -l "$DTB" / | grep -qx dram \
 test "$($FDTGET -t s "$DTB" /dram device_type)" = dram \
 	|| fail 'invalid /dram handoff node'
 
-WORK=$(mktemp -d -t dani-uboot-handoff)
+WORK=$(mktemp -d -t bird-uboot-handoff)
 trap 'rm -rf "$WORK"' EXIT HUP INT TERM
 MUTATED="$WORK/mutated.dtb"
 cp "$DTB" "$MUTATED"

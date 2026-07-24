@@ -8,7 +8,7 @@ SELF="$ROM_MOUNT/MUOS/init/57-capture-mainline-compat.sh"
 RESULT_ROOT="$ROM_MOUNT/MUOS/boot-timing/mainline-compat"
 
 [ -f "$MARKER" ] || exit 0
-[ "$(uname -r)" = '7.0.11-dani-compat' ] || exit 0
+[ "$(uname -r)" = '7.0.11-bird-compat' ] || exit 0
 
 BOOT_ID=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || printf unknown)
 OUTPUT="$RESULT_ROOT/$BOOT_ID"

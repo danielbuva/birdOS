@@ -2,7 +2,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
-CARD=${1:-/Volumes/dani-sp}
+CARD=${1:-/Volumes/BIRD-DATA}
 BUILD=${2:-$ROOT/firmware/work/bootloader-backlight-3}
 CANDIDATE="$BUILD/toc1-backlight-3.bin"
 CHECKSUM="$BUILD/candidate.sha256"
@@ -10,7 +10,7 @@ WORK_DIR="$CARD/.firmware-work/bootloader"
 INSTALLER="$CARD/MUOS/init/92-install-uboot-backlight-3.sh"
 
 [ -d "$CARD/MUOS/init" ] || {
-	printf 'error: mounted Dani SP card not found: %s\n' "$CARD" >&2
+	printf 'error: mounted birdOS card not found: %s\n' "$CARD" >&2
 	exit 1
 }
 [ -f "$CANDIDATE" ] && [ -f "$CHECKSUM" ] || {

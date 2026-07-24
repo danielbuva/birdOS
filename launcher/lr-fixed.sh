@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# Fixed libretro bridge for Dani's RG34XX-SP. The mutable muOS launcher has
+# Fixed libretro bridge for the birdOS RG34XX-SP profile. The mutable muOS launcher has
 # already produced the required RetroArch files; this path contains only the
 # exact constant environment and controller map used by this device.
 

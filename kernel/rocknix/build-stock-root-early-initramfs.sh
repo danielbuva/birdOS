@@ -58,8 +58,8 @@ PAYLOAD=$WORK/payload
 VERIFY=$WORK/verify
 CPIO=$WORK/bird-initramfs.cpio
 GZIP=$OUTPUT/card/bird-initramfs.cpio.gz
-OBJECT=$WORK/dani-launcher.o
-LAUNCHER=$PAYLOAD/opt/bird/dani-launcher
+OBJECT=$WORK/bird-launcher.o
+LAUNCHER=$PAYLOAD/opt/bird/bird-launcher
 
 [ ! -e "$WORK" ] || fail "early initramfs work already exists: $WORK"
 mkdir -p "$PAYLOAD/opt/bird" "$VERIFY"
@@ -75,12 +75,12 @@ mkdir -p "$PAYLOAD/opt/bird" "$VERIFY"
 	'-DFAVORITES_TEMP="/storage/.config/bird/favorites.tmp"' \
 	'-DRECENT_PATH="/storage/.config/bird/recent.txt"' \
 	'-DRECENT_TEMP="/storage/.config/bird/recent.tmp"' \
-	'-DHANDOFF_ACTION_PATH="/run/muos/dani-launch-action"' \
-	'-DSTORAGE_ANCHOR_MARKER="/run/muos/dani-storage-anchor-ready"' \
-	'-DSTORAGE_READY_SIGNAL="/run/muos/dani-storage-ready"' \
+	'-DHANDOFF_ACTION_PATH="/run/muos/bird-launch-action"' \
+	'-DSTORAGE_ANCHOR_MARKER="/run/muos/bird-storage-anchor-ready"' \
+	'-DSTORAGE_READY_SIGNAL="/run/muos/bird-storage-ready"' \
 	-DPERSIST_UI_STATE \
 	-DDEVICE_WAIT_MS=20000UL \
-	-c "$ROOT/launcher/dani-launcher.c" -o "$OBJECT"
+	-c "$ROOT/launcher/bird-launcher.c" -o "$OBJECT"
 "$LLD" -static --gc-sections --build-id=none -z noexecstack -s \
 	-e _start -o "$LAUNCHER" "$OBJECT"
 chmod 0755 "$LAUNCHER"
@@ -145,7 +145,7 @@ gzip -dc "$GZIP" | (cd "$VERIFY" && cpio -idm 2>"$WORK/verify.log")
 cmp "$PAYLOAD/init" "$VERIFY/init" || fail 'verified init changed'
 cmp "$PAYLOAD/bird-early.sh" "$VERIFY/bird-early.sh" || \
 	fail 'verified early hook changed'
-cmp "$LAUNCHER" "$VERIFY/opt/bird/dani-launcher" || \
+cmp "$LAUNCHER" "$VERIFY/opt/bird/bird-launcher" || \
 	fail 'verified early launcher changed'
 cmp "$JOYPAD" "$VERIFY/opt/bird/rocknix-singleadc-joypad.ko" || \
 	fail 'verified H700 input module changed'
@@ -153,7 +153,7 @@ cmp "$JOYPAD" "$VERIFY/opt/bird/rocknix-singleadc-joypad.ko" || \
 {
 	printf '%s  bird-initramfs.cpio\n' "$(sha256 "$CPIO")"
 	printf '%s  bird-initramfs.cpio.gz\n' "$(sha256 "$GZIP")"
-	printf '%s  early-dani-launcher\n' "$(sha256 "$LAUNCHER")"
+	printf '%s  early-bird-launcher\n' "$(sha256 "$LAUNCHER")"
 } >"$WORK/manifest.sha256"
 
 printf 'Built external Bird early-initramfs overlay: %s\n' "$GZIP"

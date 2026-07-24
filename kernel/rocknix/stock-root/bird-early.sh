@@ -7,11 +7,11 @@ BUSYBOX=/usr/bin/busybox
 RUN=/run/muos
 PID_FILE=$RUN/initramfs-launcher.pid
 LOG=$RUN/initramfs-launcher.log
-LAUNCHER=/opt/bird/dani-launcher
+LAUNCHER=/opt/bird/bird-launcher
 JOYPAD=/opt/bird/rocknix-singleadc-joypad.ko
 BACKLIGHT=/sys/class/backlight/backlight
-STORAGE_MARKER=$RUN/dani-storage-anchor-ready
-STORAGE_SIGNAL=$RUN/dani-storage-ready
+STORAGE_MARKER=$RUN/bird-storage-anchor-ready
+STORAGE_SIGNAL=$RUN/bird-storage-ready
 
 log_leds() {
 	STAGE=$1

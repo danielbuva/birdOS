@@ -5,7 +5,7 @@ ROM_MOUNT=/mnt/mmc
 WORK_DIR="$ROM_MOUNT/.firmware-work"
 MARKER="$WORK_DIR/mainline-diagnostic-installed"
 EXPECTED_SHA=8b9ba42467b9879b94a7f61241fc5065c31206b71da1f29c21c6c13e993f9078
-EXPECTED_RELEASE=7.0.11-dani-compat
+EXPECTED_RELEASE=7.0.11-bird-compat
 
 [ -f "$MARKER" ] || exit 0
 [ "$(cat "$MARKER")" = "$EXPECTED_SHA" ] || exit 0

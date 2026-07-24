@@ -6,7 +6,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
-BOOT_PREFIX=${BOOT_PREFIX:-/Users/dani/rocknix-reference-result/boot-prefix-16m.bin}
+BOOT_PREFIX=${BOOT_PREFIX:-$HOME/rocknix-reference-result/boot-prefix-16m.bin}
 KERNEL_BUILD=${KERNEL_BUILD:-$ROOT/kernel/work/rocknix-bird-kernel-compat-v3/build}
 OUTPUT=${OUTPUT:-$ROOT/kernel/work/rocknix-bird-prefix-compat-v3}
 GDD=${GDD:-/opt/homebrew/bin/gdd}

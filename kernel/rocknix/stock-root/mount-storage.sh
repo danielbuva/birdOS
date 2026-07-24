@@ -27,14 +27,14 @@ mount --bind /storage/bird-data/MUOS/bios /storage/roms/bios || {
 # These are deliberately copied after /storage exists. The first Bird process
 # already runs from initramfs; this is the persistent final-root toolset used
 # by its supervisor, content sessions and fixed hardware workers.
-for FILE in dani-launcher bird-pidwait bird-fixed-controls bird-powerstate \
+for FILE in bird-launcher bird-pidwait bird-fixed-controls bird-powerstate \
 	bird-fixed-control-exit.sh bird-save-config.sh supervisor.sh run-content.sh prepare-ports.sh \
 		fixed-storage.sh first-frame-prep.sh capture-boot-state.sh \
 		bird-network.sh bird-suspend.sh; do
 	cp -f "/flash/bird/$FILE" "/storage/.config/bird/$FILE" || return 1
 done
 cp -f /flash/bird/bird-swap.conf /storage/.config/swap.conf || return 1
-chmod 0755 /storage/.config/bird/dani-launcher \
+chmod 0755 /storage/.config/bird/bird-launcher \
 	/storage/.config/bird/bird-pidwait \
 	/storage/.config/bird/bird-fixed-controls \
 	/storage/.config/bird/bird-powerstate \

@@ -3,17 +3,17 @@ set -eu
 
 ROM_MOUNT="/mnt/mmc"
 WORK_DIR="$ROM_MOUNT/MUOS/boot-timing/audio-profile/fixed"
-MAIN_SOURCE="$WORK_DIR/89-dani-fixed-main.lua"
-BLUETOOTH_SOURCE="$WORK_DIR/89-dani-fixed-bluetooth.lua"
-MAIN_TARGET="/usr/share/wireplumber/main.lua.d/89-dani-fixed-device.lua"
-BLUETOOTH_TARGET="/usr/share/wireplumber/bluetooth.lua.d/89-dani-fixed-device.lua"
+MAIN_SOURCE="$WORK_DIR/89-bird-fixed-main.lua"
+BLUETOOTH_SOURCE="$WORK_DIR/89-bird-fixed-bluetooth.lua"
+MAIN_TARGET="/usr/share/wireplumber/main.lua.d/89-bird-fixed-device.lua"
+BLUETOOTH_TARGET="/usr/share/wireplumber/bluetooth.lua.d/89-bird-fixed-device.lua"
 MARKER="$WORK_DIR/fixed-audio-profile-installed"
 LOG_FILE="$WORK_DIR/install.log"
 CARD_INSTALLER="$ROM_MOUNT/MUOS/init/73-install-fixed-audio-profile.sh"
 MAIN_SHA="b5d07c1ac663d4c7b1bc18fd3d3814e02af76c03b6598efe8abfb5a4f4df7e2d"
 BLUETOOTH_SHA="22e81c52689f7662a7481692421d7d8341b042453950bb5440889810da78c6e6"
-MAIN_TEMP="$MAIN_TARGET.dani-new"
-BLUETOOTH_TEMP="$BLUETOOTH_TARGET.dani-new"
+MAIN_TEMP="$MAIN_TARGET.bird-new"
+BLUETOOTH_TEMP="$BLUETOOTH_TARGET.bird-new"
 INSTALL_STARTED=0
 
 mkdir -p "$WORK_DIR"

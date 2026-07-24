@@ -11,7 +11,7 @@ GDD=${GDD:-/opt/homebrew/bin/gdd}
 PREFIX_BYTES=163577856
 ROOTFS_BYTES=8589934592
 DISK_BYTES=512074186752
-LOCAL_PREFIX=${LOCAL_PREFIX:-/Users/dani/Downloads/dani-sp-before-rocknix-prefix.img}
+LOCAL_PREFIX=${LOCAL_PREFIX:-$HOME/Downloads/bird-sp-before-rocknix-prefix.img}
 
 fail() {
 	printf 'error: %s\n' "$*" >&2
@@ -32,7 +32,7 @@ disk[0-9]*) ;;
 *) fail 'device must be a whole disk such as /dev/disk4' ;;
 esac
 
-INFO=$(mktemp -t dani-card-info)
+INFO=$(mktemp -t bird-card-info)
 MOUNTED=1
 cleanup() {
 	if [ "$MOUNTED" -eq 0 ]; then
@@ -64,11 +64,11 @@ DEVICE_PREFIX_SHA=$(sudo "$GDD" if="$RAW_DISK" bs=1M count=156 \
 
 diskutil mountDisk "/dev/$WHOLE" >/dev/null
 MOUNTED=1
-CARD=/Volumes/dani-sp
+CARD=/Volumes/BIRD-DATA
 CHECKPOINT_DIR="$CARD/.firmware-work/source-kernel-checkpoint"
 ROOTFS_IMAGE="$CHECKPOINT_DIR/current-rootfs.ext4"
 MANIFEST="$CHECKPOINT_DIR/manifest.sha256"
-[ -d "$CARD" ] || fail 'restored partition 6 did not mount as /Volumes/dani-sp'
+[ -d "$CARD" ] || fail 'restored partition 6 did not mount as /Volumes/BIRD-DATA'
 [ -f "$ROOTFS_IMAGE" ] || fail "rootfs recovery image missing: $ROOTFS_IMAGE"
 [ -f "$MANIFEST" ] || fail "checkpoint manifest missing: $MANIFEST"
 [ "$(stat -f %z "$ROOTFS_IMAGE")" -eq "$ROOTFS_BYTES" ] || \

@@ -8,8 +8,8 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 SOURCE=${SOURCE:-/Volumes/BIRD}
-SYSTEM_SOURCE=${SYSTEM_SOURCE:-/Volumes/dani-sp/MUOS/runtime/ROCKNIX-SYSTEM}
-STORAGE=${STORAGE:-/Users/dani/rocknix-reference-result/storage.ext4}
+SYSTEM_SOURCE=${SYSTEM_SOURCE:-/Volumes/BIRD-DATA/MUOS/runtime/ROCKNIX-SYSTEM}
+STORAGE=${STORAGE:-$HOME/rocknix-reference-result/storage.ext4}
 SYSTEM_TREE=${SYSTEM_TREE:-$ROOT/kernel/work/rocknix-system-exact-20260701}
 OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.22}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
@@ -72,15 +72,15 @@ awk '
 	'-DRECENT_PATH="/storage/.config/bird/recent.txt"' \
 	'-DRECENT_TEMP="/storage/.config/bird/recent.tmp"' \
 	-DPERSIST_UI_STATE \
-	-c "$ROOT/launcher/dani-launcher.c" \
-	-o "$OUTPUT/build/dani-launcher.o"
+	-c "$ROOT/launcher/bird-launcher.c" \
+	-o "$OUTPUT/build/bird-launcher.o"
 "$LLD" -static --gc-sections --build-id=none -z noexecstack -s \
-	-e _start -o "$OUTPUT/card/bird/dani-launcher" \
-	"$OUTPUT/build/dani-launcher.o"
-chmod 0755 "$OUTPUT/card/bird/dani-launcher"
-file "$OUTPUT/card/bird/dani-launcher" | \
+	-e _start -o "$OUTPUT/card/bird/bird-launcher" \
+	"$OUTPUT/build/bird-launcher.o"
+chmod 0755 "$OUTPUT/card/bird/bird-launcher"
+file "$OUTPUT/card/bird/bird-launcher" | \
 	grep -q 'ARM aarch64.*statically linked' || fail 'launcher is not static AArch64'
-if "$READELF" -l "$OUTPUT/card/bird/dani-launcher" | grep -q ' INTERP '; then
+if "$READELF" -l "$OUTPUT/card/bird/bird-launcher" | grep -q ' INTERP '; then
 	fail 'launcher unexpectedly has an interpreter'
 fi
 
@@ -270,7 +270,7 @@ grep -q 'final-root timeout retired' \
 	"$OUTPUT/build/early-initramfs/payload/bird-early.sh" || \
 	fail 'failed early launcher retirement missing'
 grep -q '/sysroot/storage/bird-data' \
-	"$ROOT/launcher/dani-launcher.c" || \
+	"$ROOT/launcher/bird-launcher.c" || \
 	fail 'post-prepare_sysroot storage path missing'
 grep -q 'mknod -m 0600.*STORAGE_SIGNAL.* p' \
 	"$OUTPUT/build/early-initramfs/payload/bird-early.sh" || \
@@ -280,7 +280,7 @@ if grep -q '^/bird-early.sh resume$' \
 	fail 'obsolete chroot bridge remained'
 fi
 grep -q 'power_supply/battery/status' \
-	"$ROOT/launcher/dani-launcher.c" || fail 'battery indicator missing'
+	"$ROOT/launcher/bird-launcher.c" || fail 'battery indicator missing'
 grep -q 'pidfd_open' \
 	"$ROOT/launcher/bird-pidwait.c" || fail 'pidfd waiter missing'
 grep -q 'power supplies' \
@@ -300,7 +300,7 @@ grep -q '^UI_SERVICE="essway.service"$' \
 grep -q '^JobTimeoutAction=reboot-force$' \
 	"$OUTPUT/card/bird/rocknix.target" || fail 'target watchdog missing'
 grep -q 'queue_game_launch' \
-	"$ROOT/launcher/dani-launcher.c" || fail 'pre-storage selection queue missing'
+	"$ROOT/launcher/bird-launcher.c" || fail 'pre-storage selection queue missing'
 grep -q '^Wants=.*input.service.*powerstate.service' \
 	"$OUTPUT/card/bird/rocknix.target" || fail 'fixed control/power target requests missing'
 grep -q 'ExecStart=/storage/.config/bird/bird-fixed-controls$' \
@@ -321,7 +321,7 @@ grep -q 'SESSION_PID=/run/bird/content-session.pid' \
 grep -q 'retroarch fmsx' \
 	"$OUTPUT/card/bird/run-content.sh" || fail 'fixed MSX provider missing'
 grep -q '#define INPUT_EVENT_SCAN_COUNT 32' \
-	"$ROOT/launcher/dani-launcher.c" || fail 'complete fixed input search missing'
+	"$ROOT/launcher/bird-launcher.c" || fail 'complete fixed input search missing'
 grep -q '#define EVENT_SCAN_COUNT 32' \
 	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'complete global input search missing'
 grep -q -- '-DPERSIST_UI_STATE' "$0" || fail 'launcher recovery state missing'
@@ -374,7 +374,7 @@ grep -q 'for PROPERTY in run pages_to_scan' \
 grep -q '^#define LOW_PERCENT 41$' \
 	"$ROOT/launcher/bird-powerstate.c" || fail 'fixed low-battery threshold missing'
 grep -q 'lost writer edge' \
-	"$ROOT/launcher/dani-launcher.c" || fail 'storage recovery probe missing'
+	"$ROOT/launcher/bird-launcher.c" || fail 'storage recovery probe missing'
 
 {
 	printf '%s  KERNEL\n' "$KERNEL_SHA"
@@ -383,8 +383,8 @@ grep -q 'lost writer edge' \
 	printf '%s  ROCKNIX-STORAGE\n' "$STORAGE_SHA"
 	printf '%s  bird-initramfs.cpio.gz\n' \
 		"$(sha256 "$OUTPUT/card/bird-initramfs.cpio.gz")"
-	printf '%s  bird/dani-launcher\n' \
-		"$(sha256 "$OUTPUT/card/bird/dani-launcher")"
+	printf '%s  bird/bird-launcher\n' \
+		"$(sha256 "$OUTPUT/card/bird/bird-launcher")"
 	printf '%s  bird/bird-pidwait\n' \
 		"$(sha256 "$OUTPUT/card/bird/bird-pidwait")"
 	printf '%s  bird/bird-fixed-controls\n' \
@@ -395,5 +395,5 @@ grep -q 'lost writer edge' \
 
 printf 'Built exact ROCKNIX compatibility baseline: %s\n' "$OUTPUT"
 printf 'KERNEL remains byte-identical to release 20260701: %s\n' "$KERNEL_SHA"
-printf 'Bird launcher: %s\n' "$(sha256 "$OUTPUT/card/bird/dani-launcher")"
+printf 'Bird launcher: %s\n' "$(sha256 "$OUTPUT/card/bird/bird-launcher")"
 printf 'Early overlay: %s\n' "$(sha256 "$OUTPUT/card/bird-initramfs.cpio.gz")"

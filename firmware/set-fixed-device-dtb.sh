@@ -19,7 +19,7 @@ command -v fdtput >/dev/null 2>&1 || fail "fdtput is required"
 
 cp "$INPUT" "$OUTPUT"
 
-# DANI_RG34XXSP_FIXED_DEVICE_DTB_V1
+# BIRD_RG34XXSP_FIXED_DEVICE_DTB_V1
 #
 # Keep USB controller 0 for the USB-C device/charging path. Keep sdc0 for the
 # only populated card and sdc1/WLAN for explicitly requested on-demand network.

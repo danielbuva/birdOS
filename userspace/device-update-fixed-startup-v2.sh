@@ -10,8 +10,8 @@ MARKER="$WORK_DIR/fixed-startup-v2-installed"
 LOG_FILE="$WORK_DIR/v2-install.log"
 CARD_INSTALLER="$ROM_MOUNT/MUOS/init/60-install-fixed-startup-v2.sh"
 OLD_SHA="8c18047f9ef36b6edf82f3e5b1197d26ce2bdda7bde5551ad942ed900944323e"
-NEW_SHA="ee35b4e6034db25949d8a9c829852990078a265aef863597e98d86c2e199ac9e"
-TEMP="$TARGET.dani-v2"
+NEW_SHA="ab769b0ac647e0f71be729296ace613c3e432d912b14d31749cb2710bba1d0a1"
+TEMP="$TARGET.bird-v2"
 
 mkdir -p "$WORK_DIR/backup"
 exec >>"$LOG_FILE" 2>&1

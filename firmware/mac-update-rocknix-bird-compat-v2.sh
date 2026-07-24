@@ -6,7 +6,7 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 BIRD=${BIRD:-/Volumes/BIRD}
-DATA=${DATA:-/Volumes/dani-sp}
+DATA=${DATA:-/Volumes/BIRD-DATA}
 KERNEL=${KERNEL:-$ROOT/kernel/work/rocknix-bird-kernel-compat-v2/build/Image}
 CONFIG=${CONFIG:-$ROOT/kernel/rocknix/extlinux-bird.conf}
 

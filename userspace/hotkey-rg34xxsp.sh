@@ -1,5 +1,5 @@
 #!/bin/sh
-# DANI_FIXED_RG34XXSP_HOTKEY_V1
+# BIRD_FIXED_RG34XXSP_HOTKEY_V1
 
 RUN_DIR="/run/muos"
 FIFO="$RUN_DIR/hotkey"

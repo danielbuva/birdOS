@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-CARD=${1:-/Volumes/dani-sp}
+CARD=${1:-/Volumes/BIRD-DATA}
 ACTION=${2:-}
 GDD=${GDD:-/opt/homebrew/bin/gdd}
 BASE_SHA=872a3d0d99ad6883942632f7adde9ffaa7c99eb922dca11f5efa2e89b8e7764f
@@ -13,14 +13,14 @@ fail() {
 	exit 1
 }
 
-[ "$ACTION" = '--restore' ] || fail "usage: $0 /Volumes/dani-sp --restore"
+[ "$ACTION" = '--restore' ] || fail "usage: $0 /Volumes/BIRD-DATA --restore"
 [ -d "$CARD" ] || fail "card volume not mounted: $CARD"
 [ -x "$GDD" ] || fail 'GNU dd is required; install it with: brew install coreutils'
 command -v diskutil >/dev/null 2>&1 || fail 'diskutil is required'
 command -v plutil >/dev/null 2>&1 || fail 'plutil is required'
 
-INFO=$(mktemp -t dani-card-info)
-RECOVERY=$(mktemp -t dani-mainline-recovery)
+INFO=$(mktemp -t bird-card-info)
+RECOVERY=$(mktemp -t bird-mainline-recovery)
 MOUNTED=1
 cleanup() {
 	if [ "$MOUNTED" -eq 0 ]; then

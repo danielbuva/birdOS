@@ -2,9 +2,9 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
-CARD=${1:-/Volumes/dani-sp}
+CARD=${1:-/Volumes/BIRD-DATA}
 BUILD=${2:-$ROOT/firmware/work/trimmed-initramfs}
-CANDIDATE="$BUILD/dani-boot-trimmed-initramfs.img"
+CANDIDATE="$BUILD/bird-boot-trimmed-initramfs.img"
 CHECKSUM="$BUILD/candidate.sha256"
 WORK_DIR="$CARD/.firmware-work"
 INSTALLER="$CARD/MUOS/init/59-install-trimmed-initramfs.sh"
@@ -17,7 +17,7 @@ fail() {
 	exit 1
 }
 
-[ -d "$CARD/MUOS/init" ] || fail "mounted Dani SP card not found: $CARD"
+[ -d "$CARD/MUOS/init" ] || fail "mounted birdOS card not found: $CARD"
 [ -f "$CANDIDATE" ] || fail "candidate missing: $CANDIDATE"
 [ -f "$CHECKSUM" ] || fail "candidate checksum missing: $CHECKSUM"
 
@@ -27,7 +27,7 @@ read -r EXPECTED_SHA _ <"$CHECKSUM"
 [ "$(stat -f %z "$CANDIDATE")" -eq "$BOOT_BYTES" ] ||
 	fail "candidate is not exactly 64 MiB"
 
-NEW_DIAGNOSTICS_SHA=$(shasum -a 256 "$ROOT/userspace/99dani-diagnostics.sh" |
+NEW_DIAGNOSTICS_SHA=$(shasum -a 256 "$ROOT/userspace/99bird-diagnostics.sh" |
 	awk '{print $1}')
 CURRENT_DIAGNOSTICS_SHA=$(shasum -a 256 "$DIAGNOSTICS" | awk '{print $1}')
 case "$CURRENT_DIAGNOSTICS_SHA" in
@@ -37,25 +37,25 @@ esac
 
 mkdir -p "$WORK_DIR"
 COPYFILE_DISABLE=1 cp -f "$CANDIDATE" \
-	"$WORK_DIR/.dani-boot-trimmed-initramfs.new"
+	"$WORK_DIR/.bird-boot-trimmed-initramfs.new"
 COPYFILE_DISABLE=1 cp -f "$CHECKSUM" \
-	"$WORK_DIR/.dani-boot-trimmed-initramfs.sha256.new"
+	"$WORK_DIR/.bird-boot-trimmed-initramfs.sha256.new"
 COPYFILE_DISABLE=1 cp -f "$ROOT/firmware/device-install-trimmed-initramfs.sh" \
 	"$CARD/MUOS/init/.59-install-trimmed-initramfs.new"
-COPYFILE_DISABLE=1 cp -f "$ROOT/userspace/99dani-diagnostics.sh" \
+COPYFILE_DISABLE=1 cp -f "$ROOT/userspace/99bird-diagnostics.sh" \
 	"$CARD/MUOS/init/.99-boot-timing-marker.trimmed-new"
 
-[ "$(shasum -a 256 "$WORK_DIR/.dani-boot-trimmed-initramfs.new" |
+[ "$(shasum -a 256 "$WORK_DIR/.bird-boot-trimmed-initramfs.new" |
 	awk '{print $1}')" = "$EXPECTED_SHA" ] || fail "staged candidate mismatch"
 cmp "$ROOT/firmware/device-install-trimmed-initramfs.sh" \
 	"$CARD/MUOS/init/.59-install-trimmed-initramfs.new"
-cmp "$ROOT/userspace/99dani-diagnostics.sh" \
+cmp "$ROOT/userspace/99bird-diagnostics.sh" \
 	"$CARD/MUOS/init/.99-boot-timing-marker.trimmed-new"
 
-mv -f "$WORK_DIR/.dani-boot-trimmed-initramfs.new" \
-	"$WORK_DIR/dani-boot-trimmed-initramfs.img"
-mv -f "$WORK_DIR/.dani-boot-trimmed-initramfs.sha256.new" \
-	"$WORK_DIR/dani-boot-trimmed-initramfs.sha256"
+mv -f "$WORK_DIR/.bird-boot-trimmed-initramfs.new" \
+	"$WORK_DIR/bird-boot-trimmed-initramfs.img"
+mv -f "$WORK_DIR/.bird-boot-trimmed-initramfs.sha256.new" \
+	"$WORK_DIR/bird-boot-trimmed-initramfs.sha256"
 mv -f "$CARD/MUOS/init/.59-install-trimmed-initramfs.new" "$INSTALLER"
 mv -f "$CARD/MUOS/init/.99-boot-timing-marker.trimmed-new" "$DIAGNOSTICS"
 chmod 755 "$INSTALLER" "$DIAGNOSTICS"

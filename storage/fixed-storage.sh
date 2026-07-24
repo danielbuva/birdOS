@@ -33,7 +33,7 @@ post_mount_policy() {
 	# Apply them after the mount is visible to the launcher.
 	. /opt/muos/script/var/func.sh
 	SET_VAR "device" "storage/rom/active" "1"
-	SET_VAR "device" "storage/rom/label" "dani-sp"
+	SET_VAR "device" "storage/rom/label" "bird-sp"
 
 	CARD_MODE=$(GET_VAR "config" "danger/cardmode")
 	if [ -e "/sys/block/$DISK/queue/scheduler" ]; then

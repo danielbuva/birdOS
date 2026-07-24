@@ -61,7 +61,7 @@ CLEAR_END=$OLD_END
 [ "$NEW_END" -le "$CLEAR_END" ] || CLEAR_END=$NEW_END
 [ "$NEW_END" -le "$BOOT_SIZE" ] || fail "new payload exceeds the $BOOT_SIZE-byte boot partition"
 
-WORK=$(mktemp -d -t dani-ramdisk-pack)
+WORK=$(mktemp -d -t bird-ramdisk-pack)
 trap 'rm -rf "$WORK"' EXIT HUP INT TERM
 KERNEL="$WORK/kernel.img"
 DTB="$WORK/device-tree.dtb"

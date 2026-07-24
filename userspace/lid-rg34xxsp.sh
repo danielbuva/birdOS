@@ -1,5 +1,5 @@
 #!/bin/sh
-# DANI_FIXED_RG34XXSP_LID_V1
+# BIRD_FIXED_RG34XXSP_LID_V1
 
 RUN_DIR="/run/muos"
 QUIT="$RUN_DIR/quit_lid_proc"

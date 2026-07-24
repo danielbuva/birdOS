@@ -24,7 +24,7 @@ CANDIDATE_SHA="6330ac906f69a283e76e4a2c4387f6480becefdc1abbadd79fbefd585dccd737"
 # values. Replacing the file cannot affect the already-running observer.
 PROBE_SOURCE="$ROM_MOUNT/.firmware-work/device-backlight-probe.sh"
 PROBE_TARGET="/opt/muos/script/init/async/S04backlightprobe.sh"
-PROBE_NEW="$PROBE_TARGET.dani-new"
+PROBE_NEW="$PROBE_TARGET.bird-new"
 PROBE_SHA="a7ec727e80c2f55c79d09f5f0bec0a7a48d6aea3cf9c3b9c59f1930c8b792bdf"
 
 mkdir -p "$WORK_DIR" "$LOG_DIR"

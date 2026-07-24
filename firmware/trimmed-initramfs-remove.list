@@ -1,4 +1,4 @@
-# Exact payloads excluded from Dani's fixed RG34XX-SP initramfs.
+# Exact payloads excluded from the birdOS fixed RG34XX-SP initramfs.
 # D removes a directory tree; F removes one file or symlink.
 D usr/share/alsa
 D usr/share/misc

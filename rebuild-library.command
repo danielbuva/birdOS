@@ -3,15 +3,15 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
-CARD=${1:-/Volumes/dani-sp}
+CARD=${1:-/Volumes/BIRD-DATA}
 PAYLOAD="$CARD/MUOS/bespoke-launcher"
-HOST_BIOS_ROOT=${DANI_BIOS_ROOT:-"$HOME/Games/bios"}
-HOST_RUNTIME_ROOT=${DANI_RUNTIME_ROOT:-"$HOME/Games/runtimes"}
+HOST_BIOS_ROOT=${BIRD_BIOS_ROOT:-"$HOME/Games/bios"}
+HOST_RUNTIME_ROOT=${BIRD_RUNTIME_ROOT:-"$HOME/Games/runtimes"}
 MONO_RUNTIME="mono-6.12.0.122-aarch64.squashfs"
 MONO_MD5="dc7145731bf17610c13c07d6e69de550"
 
 if [ ! -d "$CARD/ROMS" ] || [ ! -d "$CARD/MUOS" ]; then
-	printf 'Dani SP card not found at %s\n' "$CARD" >&2
+	printf 'birdOS card not found at %s\n' "$CARD" >&2
 	printf 'Insert the card, or pass its mount path as the first argument.\n' >&2
 	exit 1
 fi
@@ -60,11 +60,11 @@ stage_tree_if_missing() {
 	mv "$temporary_dir" "$destination_dir"
 }
 
-stage_file "$ROOT/launcher/dani-launcher.o" "$PAYLOAD/dani-launcher.o"
+stage_file "$ROOT/launcher/bird-launcher.o" "$PAYLOAD/bird-launcher.o"
 stage_file "$ROOT/launcher/catalog.revision" "$PAYLOAD/catalog.revision"
 stage_file "$ROOT/launcher/library.inventory.tsv" "$PAYLOAD/library.inventory.tsv"
-stage_file "$ROOT/launcher/S03danilauncher" "$PAYLOAD/S03danilauncher"
-stage_file "$ROOT/launcher/dani-earliest-ui.sh" "$PAYLOAD/dani-earliest-ui.sh"
+stage_file "$ROOT/launcher/S03birdlauncher" "$PAYLOAD/S03birdlauncher"
+stage_file "$ROOT/launcher/bird-earliest-ui.sh" "$PAYLOAD/bird-earliest-ui.sh"
 stage_file "$ROOT/launcher/patch-earliest-ui-inittab.sh" \
 	"$PAYLOAD/patch-earliest-ui-inittab.sh"
 stage_file "$ROOT/launcher/patch-critical-ui-sysinit.sh" \
@@ -106,7 +106,7 @@ if [ -f "$CARD/ROMS/Ports/StardewValley.sh" ]; then
 	chmod 755 "$CARD/ROMS/Ports/StardewValley.sh"
 fi
 
-chmod 755 "$PAYLOAD/S03danilauncher" "$PAYLOAD/dani-earliest-ui.sh" \
+chmod 755 "$PAYLOAD/S03birdlauncher" "$PAYLOAD/bird-earliest-ui.sh" \
 	"$PAYLOAD/patch-earliest-ui-inittab.sh" \
 	"$PAYLOAD/patch-critical-ui-sysinit.sh" \
 	"$CARD/MUOS/init/99-boot-timing-marker.sh"

@@ -4,7 +4,7 @@ set -eu
 ROM_MOUNT=/mnt/mmc
 WORK_DIR="$ROM_MOUNT/.firmware-work"
 BOOT_DEVICE=/dev/mmcblk0p4
-CANDIDATE="$WORK_DIR/dani-boot-mainline-compat.img"
+CANDIDATE="$WORK_DIR/bird-boot-mainline-compat.img"
 BACKUP="$WORK_DIR/device-boot-before-mainline-compat.img"
 BACKUP_TEMP="$WORK_DIR/.device-boot-before-mainline-compat.tmp"
 MARKER="$WORK_DIR/mainline-compat-installed"

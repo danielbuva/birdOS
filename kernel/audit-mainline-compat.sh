@@ -17,7 +17,7 @@ require_config() {
 
 for file in \
 	Image \
-	sun50i-h700-anbernic-rg34xx-sp-dani.dtb \
+	sun50i-h700-anbernic-rg34xx-sp-bird.dtb \
 	built.config \
 	built.dts \
 	kernel.release \
@@ -30,15 +30,15 @@ for file in \
 	test -s "$OUTPUT/$file" || fail "missing or empty $file"
 done
 
-test "$(cat "$OUTPUT/kernel.release")" = '7.0.11-dani-compat' \
+test "$(cat "$OUTPUT/kernel.release")" = '7.0.11-bird-compat' \
 	|| fail 'unexpected kernel release'
 ! grep -q '@[^@]*@' "$CONFIG" \
 	|| fail 'unexpanded configuration placeholder'
-grep -qx 'CONFIG_DEFAULT_HOSTNAME="dani-sp"' "$CONFIG" \
+grep -qx 'CONFIG_DEFAULT_HOSTNAME="bird-sp"' "$CONFIG" \
 	|| fail 'fixed hostname missing'
 grep -qx 'CONFIG_INITRAMFS_SOURCE=""' "$CONFIG" \
 	|| fail 'unexpected kernel-embedded initramfs'
-grep -qx 'CONFIG_LOCALVERSION="-dani-compat"' "$CONFIG" \
+grep -qx 'CONFIG_LOCALVERSION="-bird-compat"' "$CONFIG" \
 	|| fail 'fixed local version missing'
 grep -qx '# CONFIG_LOCALVERSION_AUTO is not set' "$CONFIG" \
 	|| fail 'automatic SCM release suffix is enabled'
@@ -73,7 +73,7 @@ done
 # compatibility build still carries it as a module for a later on-demand path.
 require_config CONFIG_BT m
 
-grep -Fq 'Anbernic RG34XX-SP (Dani fixed device)' "$DTS" \
+grep -Fq 'Anbernic RG34XX-SP (birdOS fixed device)' "$DTS" \
 	|| fail 'fixed board model missing from DTB'
 grep -Fq 'anbernic,rg34xx-sp-panel' "$DTS" \
 	|| fail 'RG34XX-SP panel identity missing from DTB'
@@ -90,6 +90,6 @@ grep -Eq '^\s*dram \{' "$DTS" \
 )
 
 "$ROOT/kernel/audit-mainline-uboot-handoff.sh" \
-	"$OUTPUT/sun50i-h700-anbernic-rg34xx-sp-dani.dtb"
+	"$OUTPUT/sun50i-h700-anbernic-rg34xx-sp-bird.dtb"
 
 printf 'Compatibility audit passed: %s\n' "$OUTPUT"

@@ -9,10 +9,10 @@ BACKUP="$WORK_DIR/backup/startup.sh.pre-fixed-tail"
 MARKER="$WORK_DIR/fixed-startup-tail-installed"
 LOG_FILE="$WORK_DIR/install.log"
 CARD_INSTALLER="$ROM_MOUNT/MUOS/init/72-install-fixed-startup-tail.sh"
-PATCH_SHA="3c7364c2bd67f3b94b348ac94c5573e8ec849452ae308cd7e5c0149f0eab9829"
+PATCH_SHA="69d0a7e1cec99134f36acf76fc1f71da722b0330cf74c46f77cac7d6aaee427d"
 OLD_SHA="889a1eb899b04815ae873495abfa59c61a0ae19fcf7f3afa5c7d95eb61b8ff02"
 NEW_SHA="880051ffe89a134798a2f72ac4690530b3cecb8eb492c10195be9f6240ad3e3a"
-TEMP="$TARGET.dani-fixed-tail-new"
+TEMP="$TARGET.bird-fixed-tail-new"
 
 mkdir -p "$WORK_DIR/backup"
 exec >>"$LOG_FILE" 2>&1
@@ -62,4 +62,3 @@ sync
 printf '%s\n' "$NEW_SHA" >"$MARKER"
 disable_installer
 printf 'SUCCESS: delayed generic startup jobs removed; active next boot\n'
-

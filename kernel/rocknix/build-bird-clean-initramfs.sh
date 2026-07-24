@@ -5,7 +5,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
-BASE=${BASE:-$ROOT/firmware/work/direct-handoff-from-power/dani-trimmed-initramfs.cpio}
+BASE=${BASE:-$ROOT/firmware/work/direct-handoff-from-power/bird-trimmed-initramfs.cpio}
 MODULE_DIR=${MODULE_DIR:-$ROOT/kernel/work/rocknix-bird-kernel-compat-v4-5-native-ra-deploy/build}
 JOYPAD=${JOYPAD:-$ROOT/kernel/work/rocknix-bird-kernel-v2-joypad/build/rocknix-singleadc-joypad.ko}
 OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-clean-root-v5-4-initramfs}
@@ -70,21 +70,21 @@ mkdir -p "$RAMDISK"
 )
 mkdir -p "$BIRD"
 
-compile_static "$ROOT/firmware/dani-fixed-init.c" \
+compile_static "$ROOT/firmware/bird-fixed-init.c" \
 	"$OUTPUT/fixed-init.o" "$RAMDISK/init" \
-	-DDANI_CLEAN_ROOT=1 \
-	-DDANI_MAINLINE_INPUT_MODULE=1 \
-	-DDANI_BOOT_TIMEOUT_SECONDS="$WATCHDOG_SECONDS"
-compile_static "$ROOT/firmware/dani-root-init.c" \
-	"$OUTPUT/root-init.o" "$RAMDISK/opt/dani-root-init" \
-	-DDANI_CLEAN_ROOT=1
+	-DBIRD_CLEAN_ROOT=1 \
+	-DBIRD_MAINLINE_INPUT_MODULE=1 \
+	-DBIRD_BOOT_TIMEOUT_SECONDS="$WATCHDOG_SECONDS"
+compile_static "$ROOT/firmware/bird-root-init.c" \
+	"$OUTPUT/root-init.o" "$RAMDISK/opt/bird-root-init" \
+	-DBIRD_CLEAN_ROOT=1
 compile_static "$ROOT/kernel/rocknix/root-overrides/bird-controls.c" \
 	"$OUTPUT/controls.o" "$BIRD/controls" \
-	-DDANI_CLEAN_ROOT=1
+	-DBIRD_CLEAN_ROOT=1
 
 "$LLD" -static --gc-sections --build-id=none -z noexecstack -s -e _start \
-	-o "$RAMDISK/opt/dani-launcher" "$ROOT/launcher/dani-launcher.o"
-chmod 755 "$RAMDISK/opt/dani-launcher"
+	-o "$RAMDISK/opt/bird-launcher" "$ROOT/launcher/bird-launcher.o"
+chmod 755 "$RAMDISK/opt/bird-launcher"
 
 cp -fp "$JOYPAD" "$BIRD/rocknix-singleadc-joypad.ko"
 cp -fp "$MODULE_DIR/drm_shmem_helper.ko" "$BIRD/drm_shmem_helper.ko"
@@ -111,7 +111,7 @@ strings "$RAMDISK/init" | grep -q 'watchdog-reboot' || \
 	fail 'clean-root watchdog missing'
 strings "$RAMDISK/init" | grep -q '/opt/bird/rocknix-singleadc-joypad.ko' || \
 	fail 'clean-root input path missing'
-strings "$RAMDISK/opt/dani-root-init" | grep -q '/opt/bird/post-frame.sh' || \
+strings "$RAMDISK/opt/bird-root-init" | grep -q '/opt/bird/post-frame.sh' || \
 	fail 'clean post-frame dispatch missing'
 grep -q 'complete interface between UI and application policy' \
 	"$BIRD/supervisor.sh" || \
@@ -235,8 +235,8 @@ cpio -it <"$CPIO" >"$OUTPUT/payload.txt" 2>"$OUTPUT/verify.log"
 for FILE in \
 	./init \
 	./init.stock \
-	./opt/dani-launcher \
-	./opt/dani-root-init \
+	./opt/bird-launcher \
+	./opt/bird-root-init \
 	./opt/bird/supervisor.sh \
 	./opt/bird/post-frame.sh \
 	./opt/bird/run-content.sh \
@@ -257,10 +257,10 @@ done
 
 (
 	cd "$OUTPUT"
-	wc -c bird-clean-root-v5-4.cpio ramdisk/init ramdisk/opt/dani-root-init \
-		ramdisk/opt/dani-launcher ramdisk/opt/bird/controls >sizes.txt
+	wc -c bird-clean-root-v5-4.cpio ramdisk/init ramdisk/opt/bird-root-init \
+		ramdisk/opt/bird-launcher ramdisk/opt/bird/controls >sizes.txt
 	shasum -a 256 bird-clean-root-v5-4.cpio ramdisk/init \
-		ramdisk/opt/dani-root-init ramdisk/opt/dani-launcher \
+		ramdisk/opt/bird-root-init ramdisk/opt/bird-launcher \
 		ramdisk/opt/bird/* >sha256sums.txt
 )
 

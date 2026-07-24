@@ -11,7 +11,7 @@ LOG_FILE="$WORK_DIR/install.log"
 CARD_INSTALLER="$ROM_MOUNT/MUOS/init/85-install-udev-once.sh"
 MINIMAL_SHA="65409a71180644525425ee9e0f6dac3c74234022523ebc3411275b89d711aecd"
 ONCE_SHA="39d962fbefca6b4f241c89b4afce79c9257fa0a93a84b0dfb95cab4c7a306a5f"
-TEMP="/opt/muos/script/init/.S10udev.dani-once-new"
+TEMP="/opt/muos/script/init/.S10udev.bird-once-new"
 
 mkdir -p "$WORK_DIR/backup"
 exec >>"$LOG_FILE" 2>&1

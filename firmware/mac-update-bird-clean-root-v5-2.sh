@@ -7,7 +7,7 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 BIRD=${BIRD:-/Volumes/BIRD}
-DATA=${DATA:-/Volumes/dani-sp}
+DATA=${DATA:-/Volumes/BIRD-DATA}
 KERNEL=${KERNEL:-$ROOT/kernel/work/bird-clean-root-v5-2-kernel-release-a/build/Image}
 DTB=${DTB:-$ROOT/kernel/work/bird-clean-root-v5-2-kernel-release-a/build/sun50i-h700-anbernic-rg34xx-sp.dtb}
 RUNTIME=$DATA/MUOS/runtime/ROCKNIX-SYSTEM

@@ -7,7 +7,7 @@ set -eu
 DEVICE=${1:-}
 ACTION=${2:-}
 GDD=${GDD:-/opt/homebrew/bin/gdd}
-RESULT=${RESULT:-/Users/dani/rocknix-reference-result}
+RESULT=${RESULT:-$HOME/rocknix-reference-result}
 DISK_BYTES=512074186752
 PREFIX_BYTES=16777216
 STORAGE_BYTES=268435456
@@ -29,8 +29,8 @@ disk[0-9]*) ;;
 *) fail 'device must be a whole disk such as /dev/disk4' ;;
 esac
 
-INFO=$(mktemp -t dani-card-info)
-P2_INFO=$(mktemp -t dani-card-p2-info)
+INFO=$(mktemp -t bird-card-info)
+P2_INFO=$(mktemp -t bird-card-p2-info)
 cleanup() {
 	find "$INFO" "$P2_INFO" -delete
 }

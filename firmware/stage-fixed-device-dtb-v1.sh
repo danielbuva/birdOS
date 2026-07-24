@@ -2,9 +2,9 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
-CARD=${1:-/Volumes/dani-sp}
+CARD=${1:-/Volumes/BIRD-DATA}
 BUILD=${2:-$ROOT/firmware/work/fixed-device-dtb-v1}
-CANDIDATE="$BUILD/dani-boot-fixed-device-dtb-v1.img"
+CANDIDATE="$BUILD/bird-boot-fixed-device-dtb-v1.img"
 CHECKSUM="$BUILD/candidate.sha256"
 WORK_DIR="$CARD/.firmware-work"
 INSTALLER="$CARD/MUOS/init/58-install-fixed-device-dtb-v1.sh"
@@ -16,7 +16,7 @@ fail() {
 	exit 1
 }
 
-[ -d "$CARD/MUOS/init" ] || fail "mounted Dani SP card not found: $CARD"
+[ -d "$CARD/MUOS/init" ] || fail "mounted birdOS card not found: $CARD"
 [ -f "$CANDIDATE" ] || fail "candidate missing: $CANDIDATE"
 [ -f "$CHECKSUM" ] || fail "candidate checksum missing: $CHECKSUM"
 read -r EXPECTED_SHA _ <"$CHECKSUM"
@@ -30,15 +30,15 @@ read -r EXPECTED_SHA _ <"$CHECKSUM"
 
 mkdir -p "$WORK_DIR"
 COPYFILE_DISABLE=1 cp -f "$CANDIDATE" \
-	"$WORK_DIR/.dani-boot-fixed-device-dtb-v1.new"
+	"$WORK_DIR/.bird-boot-fixed-device-dtb-v1.new"
 COPYFILE_DISABLE=1 cp -f "$CHECKSUM" \
-	"$WORK_DIR/.dani-boot-fixed-device-dtb-v1.sha256.new"
+	"$WORK_DIR/.bird-boot-fixed-device-dtb-v1.sha256.new"
 COPYFILE_DISABLE=1 cp -f "$ROOT/firmware/device-install-fixed-device-dtb-v1.sh" \
 	"$CARD/MUOS/init/.58-install-fixed-device-dtb-v1.new"
 COPYFILE_DISABLE=1 cp -f "$ROOT/userspace/57capture-fixed-device-dtb-v1.sh" \
 	"$CARD/MUOS/init/.57-capture-fixed-device-dtb-v1.new"
 
-[ "$(shasum -a 256 "$WORK_DIR/.dani-boot-fixed-device-dtb-v1.new" |
+[ "$(shasum -a 256 "$WORK_DIR/.bird-boot-fixed-device-dtb-v1.new" |
 	awk '{print $1}')" = "$EXPECTED_SHA" ] || fail "staged candidate mismatch"
 cmp "$ROOT/firmware/device-install-fixed-device-dtb-v1.sh" \
 	"$CARD/MUOS/init/.58-install-fixed-device-dtb-v1.new"
@@ -50,10 +50,10 @@ for OLD in "$INSTALLER" "$INSTALLER.done" "$INSTALLER.failed" \
 	[ ! -e "$OLD" ] || rm -f "$OLD"
 done
 
-mv -f "$WORK_DIR/.dani-boot-fixed-device-dtb-v1.new" \
-	"$WORK_DIR/dani-boot-fixed-device-dtb-v1.img"
-mv -f "$WORK_DIR/.dani-boot-fixed-device-dtb-v1.sha256.new" \
-	"$WORK_DIR/dani-boot-fixed-device-dtb-v1.sha256"
+mv -f "$WORK_DIR/.bird-boot-fixed-device-dtb-v1.new" \
+	"$WORK_DIR/bird-boot-fixed-device-dtb-v1.img"
+mv -f "$WORK_DIR/.bird-boot-fixed-device-dtb-v1.sha256.new" \
+	"$WORK_DIR/bird-boot-fixed-device-dtb-v1.sha256"
 mv -f "$CARD/MUOS/init/.58-install-fixed-device-dtb-v1.new" "$INSTALLER"
 mv -f "$CARD/MUOS/init/.57-capture-fixed-device-dtb-v1.new" "$COLLECTOR"
 chmod 755 "$INSTALLER" "$COLLECTOR"

@@ -18,14 +18,14 @@ ROOT=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
     -fvisibility=hidden \
     -nostdlib \
     -Wall -Wextra -Werror \
-    -c "$ROOT/launcher/dani-launcher.c" \
-    -o "$ROOT/launcher/dani-launcher.o"
+    -c "$ROOT/launcher/bird-launcher.c" \
+    -o "$ROOT/launcher/bird-launcher.o"
 
-file "$ROOT/launcher/dani-launcher.o"
-OBJECT_HASH=$(shasum -a 256 "$ROOT/launcher/dani-launcher.o" | cut -d ' ' -f 1)
-INIT_HASH=$(shasum -a 256 "$ROOT/launcher/S03danilauncher" | cut -d ' ' -f 1)
+file "$ROOT/launcher/bird-launcher.o"
+OBJECT_HASH=$(shasum -a 256 "$ROOT/launcher/bird-launcher.o" | cut -d ' ' -f 1)
+INIT_HASH=$(shasum -a 256 "$ROOT/launcher/S03birdlauncher" | cut -d ' ' -f 1)
 ORDER_HASH=$(shasum -a 256 "$ROOT/launcher/patch-critical-ui-sysinit.sh" | cut -d ' ' -f 1)
-EARLIEST_HASH=$(shasum -a 256 "$ROOT/launcher/dani-earliest-ui.sh" | cut -d ' ' -f 1)
+EARLIEST_HASH=$(shasum -a 256 "$ROOT/launcher/bird-earliest-ui.sh" | cut -d ' ' -f 1)
 INITTAB_HASH=$(shasum -a 256 "$ROOT/launcher/patch-earliest-ui-inittab.sh" | cut -d ' ' -f 1)
 {
 	printf '%s\n%s\n%s\n%s\n%s\n' \

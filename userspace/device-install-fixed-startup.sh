@@ -9,9 +9,9 @@ BACKUP="$WORK_DIR/backup/startup.sh.pre-fixed-rg34xxsp"
 MARKER="$WORK_DIR/fixed-startup-installed"
 LOG_FILE="$WORK_DIR/install.log"
 CARD_INSTALLER="$ROM_MOUNT/MUOS/init/68-install-fixed-startup.sh"
-SOURCE_SHA="8c18047f9ef36b6edf82f3e5b1197d26ce2bdda7bde5551ad942ed900944323e"
+SOURCE_SHA="ab769b0ac647e0f71be729296ace613c3e432d912b14d31749cb2710bba1d0a1"
 OLD_SHA="880051ffe89a134798a2f72ac4690530b3cecb8eb492c10195be9f6240ad3e3a"
-TEMP="$TARGET.dani-new"
+TEMP="$TARGET.bird-new"
 
 mkdir -p "$WORK_DIR/backup"
 exec >>"$LOG_FILE" 2>&1

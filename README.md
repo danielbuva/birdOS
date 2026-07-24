@@ -1,6 +1,6 @@
 # birdOS
 
-birdOS is a fixed-purpose operating system for Dani's RG34XX-SP. This
+birdOS is a fixed-purpose operating system for the Anbernic RG34XX-SP. This
 repository contains the host-side sources and installation hooks that
 began by profiling and converting muOS 2601.1 into a fixed-purpose RG34XX-SP
 operating system. The active compatibility-reset candidate boots the exact
@@ -490,7 +490,7 @@ Run `./build-font-stubs.sh` on macOS to compile the five AArch64 relocatable
 objects. The device-side user-init hook links them with the target system's own
 GNU linker, then installs the resulting shared libraries.
 
-Double-click `/Users/dani/Desktop/Rebuild Dani SP Library.command` whenever the
+Double-click `$HOME/Desktop/Rebuild birdOS Library.command` whenever the
 card's library changes. It inventories the mounted card, regenerates the
 embedded cache, compiles the AArch64 object, verifies every staged copy and
 writes a content revision that user-init installs on the next boot.
@@ -500,7 +500,7 @@ writes a content revision that user-init installs on the next boot.
 - `99-frontend-native-log.sh`: development-only persistent installer; it will
   disappear from the production image after rootfs changes are baked in.
 - `PortMaster.sh`: captured PortMaster reference; the on-demand network boundary
-  lives in `launcher/S03danilauncher`.
+  lives in `launcher/S03birdlauncher`.
 - `font-stubs/`: source and AArch64 object payloads for unused language fonts.
 - `userspace/`: fixed-service profiling and replacement stages, beginning with
   the behavior-preserving udev pre/post inventory.

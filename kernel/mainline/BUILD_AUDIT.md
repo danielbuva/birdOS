@@ -12,7 +12,7 @@ The second build passed `kernel/audit-mainline-compat.sh`, including the exact
 release, fixed-device DT, embedded panel stream and every required built-in
 first-frame driver.
 
-- release: `7.0.11-dani-compat`
+- release: `7.0.11-bird-compat`
 - Linux commit: `bb532bfaf7919c7c98caab81864e9ce2646e11e3`
 - ROCKNIX evidence commit: `d88cf6393e55364ec6470d625737125fc0d32cd4`
 - `Image`: 28,043,272 bytes,

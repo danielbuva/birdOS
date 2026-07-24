@@ -2,7 +2,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
-BASE_BOOT=${1:-$ROOT/firmware/work/initramfs-launcher/dani-boot-initramfs-launcher.img}
+BASE_BOOT=${1:-$ROOT/firmware/work/initramfs-launcher/bird-boot-initramfs-launcher.img}
 OUTPUT_DIR=${2:-$ROOT/firmware/work/fixed-initramfs}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
 LLD=${LLD:-/opt/homebrew/opt/lld/bin/ld.lld}
@@ -32,10 +32,10 @@ VERIFY="$OUTPUT_DIR/verify"
 RAMDISK="$UNPACKED/ramdisk"
 STOCK_INIT="$RAMDISK/init.stock"
 FIXED_INIT="$RAMDISK/init"
-FIXED_INIT_OBJECT="$OUTPUT_DIR/dani-fixed-init.o"
-RAMDISK_CPIO="$OUTPUT_DIR/dani-fixed-initramfs.cpio"
-RAMDISK_GZ="$OUTPUT_DIR/dani-fixed-initramfs.gz"
-CANDIDATE="$OUTPUT_DIR/dani-boot-fixed-initramfs.img"
+FIXED_INIT_OBJECT="$OUTPUT_DIR/bird-fixed-init.o"
+RAMDISK_CPIO="$OUTPUT_DIR/bird-fixed-initramfs.cpio"
+RAMDISK_GZ="$OUTPUT_DIR/bird-fixed-initramfs.gz"
+CANDIDATE="$OUTPUT_DIR/bird-boot-fixed-initramfs.img"
 
 mkdir -p "$OUTPUT_DIR"
 "$ROOT/firmware/unpack-boot.sh" "$BASE_BOOT" "$UNPACKED"
@@ -54,7 +54,7 @@ cp -p "$FIXED_INIT" "$STOCK_INIT"
 	-fvisibility=hidden \
 	-nostdlib \
 	-Wall -Wextra -Werror \
-	-c "$ROOT/firmware/dani-fixed-init.c" \
+	-c "$ROOT/firmware/bird-fixed-init.c" \
 	-o "$FIXED_INIT_OBJECT"
 
 "$LLD" -static --build-id=none -z noexecstack -s -e _start \
@@ -85,11 +85,11 @@ gzip -n -9 -c "$RAMDISK_CPIO" >"$RAMDISK_GZ"
 
 cmp "$UNPACKED/kernel.img" "$VERIFY/kernel.img" || fail "kernel changed"
 cmp "$UNPACKED/device-tree.dtb" "$VERIFY/device-tree.dtb" || fail "DTB changed"
-cmp "$UNPACKED/ramdisk/opt/dani-launcher" \
-	"$VERIFY/ramdisk/opt/dani-launcher" || fail "embedded launcher changed"
+cmp "$UNPACKED/ramdisk/opt/bird-launcher" \
+	"$VERIFY/ramdisk/opt/bird-launcher" || fail "embedded launcher changed"
 cmp "$FIXED_INIT" "$VERIFY/ramdisk/init" || fail "fixed init changed during repack"
 cmp "$STOCK_INIT" "$VERIFY/ramdisk/init.stock" || fail "stock fallback changed during repack"
-grep -q 'DANI_INITRAMFS_LAUNCHER_V1' "$VERIFY/ramdisk/init.stock" ||
+grep -q 'BIRD_INITRAMFS_LAUNCHER_V1' "$VERIFY/ramdisk/init.stock" ||
 	fail "verified shell fallback marker missing"
 [ "$(stat -f %z "$CANDIDATE")" -eq "$BOOT_BYTES" ] ||
 	fail "candidate is not exactly 64 MiB"

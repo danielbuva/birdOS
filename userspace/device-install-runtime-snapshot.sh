@@ -3,12 +3,12 @@ set -eu
 
 ROM_MOUNT="/mnt/mmc"
 WORK_DIR="$ROM_MOUNT/MUOS/boot-timing/stable-runtime"
-SOURCE="$WORK_DIR/S98dani-stable-snapshot"
-TARGET="/opt/muos/script/init/async/S98dani-stable-snapshot"
+SOURCE="$WORK_DIR/S98bird-stable-snapshot"
+TARGET="/opt/muos/script/init/async/S98bird-stable-snapshot"
 LOG_FILE="$WORK_DIR/rearm.log"
 CARD_INSTALLER="$ROM_MOUNT/MUOS/init/61-install-runtime-snapshot.sh"
-SOURCE_SHA="2970f4077db1a75ab45509b3ffa8c66ecd014d59ba716ad151b512ae4a35c4ba"
-TEMP="$TARGET.dani-new"
+SOURCE_SHA="8b4ed7d52d3592cefc968d3dcbad7502d802e6dd0319078029233a7737087d64"
+TEMP="$TARGET.bird-new"
 
 mkdir -p "${TARGET%/*}" "$WORK_DIR"
 exec >>"$LOG_FILE" 2>&1

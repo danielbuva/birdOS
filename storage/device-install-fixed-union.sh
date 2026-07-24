@@ -11,7 +11,7 @@ LOG_FILE="$WORK_DIR/install.log"
 CARD_INSTALLER="$ROM_MOUNT/MUOS/init/84-install-fixed-union.sh"
 STOCK_SHA="813a874a1476008601b2284beab245aac66a5046a32b7b524ace50f7a9a9f633"
 FIXED_SHA="3c7b804789b865d6f088ad738ff26b293f03513d9291419a601f71b6f4305c0f"
-TEMP="/opt/muos/script/mount/.union.sh.dani-fixed-new"
+TEMP="/opt/muos/script/mount/.union.sh.bird-fixed-new"
 
 mkdir -p "$WORK_DIR/backup"
 exec >>"$LOG_FILE" 2>&1

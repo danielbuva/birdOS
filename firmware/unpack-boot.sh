@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-BOOT=${1:-/Volumes/dani-sp/.firmware-work/stock-boot.img}
+BOOT=${1:-/Volumes/BIRD-DATA/.firmware-work/stock-boot.img}
 OUTPUT=${2:-$(pwd)/firmware/work/boot-unpacked}
 GDD=${GDD:-/opt/homebrew/bin/gdd}
 GTRUNCATE=${GTRUNCATE:-/opt/homebrew/bin/gtruncate}

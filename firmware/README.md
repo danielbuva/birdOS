@@ -1,14 +1,14 @@
 # RG34XX-SP firmware workspace
 
 This directory records the exact lower-layer layout of the muOS 2601.1 image
-used for Dani's RG34XX-SP. Generated images stay outside Git; scripts and
+used for the target RG34XX-SP. Generated images stay outside Git; scripts and
 checksums make the analysis repeatable.
 
 ## Trusted source
 
 Source archive:
 
-`/Users/dani/Downloads/MustardOS_RG34XX-SP_2601.1_FUNKY_JACARANDA-bc38efa0.img.gz`
+`$HOME/Downloads/MustardOS_RG34XX-SP_2601.1_FUNKY_JACARANDA-bc38efa0.img.gz`
 
 SHA-256:
 
@@ -353,7 +353,7 @@ Validate sizes, ext4 integrity and optionally all checksums:
 
 ```sh
 ./firmware/inspect-stock.sh
-./firmware/inspect-stock.sh /Volumes/dani-sp/.firmware-work --checksums
+./firmware/inspect-stock.sh /Volumes/BIRD-DATA/.firmware-work --checksums
 ```
 
 Unpack and decompile the Android boot image without changing it:
@@ -521,10 +521,10 @@ accepted kernel after a reset. An opt-in initramfs watchdog will cover the
 narrower case where Linux starts but no first-frame-ready marker arrives; it
 cannot execute during a pre-kernel hang.
 
-The watchdog code in `dani-fixed-init.c` is absent unless a candidate is built
-with `DANI_BOOT_TIMEOUT_SECONDS`. It forks before the first mount attempt,
+The watchdog code in `bird-fixed-init.c` is absent unless a candidate is built
+with `BIRD_BOOT_TIMEOUT_SECONDS`. It forks before the first mount attempt,
 issues the Linux restart syscall when the deadline expires, and is killed and
-reaped only after `dani-first-frame-ready` is observed. Production builds do
+reaped only after `bird-first-frame-ready` is observed. Production builds do
 not arm it. `fat16-file.py add` is similarly constrained: it accepts only the
 exact physical 32 MiB image, a root-level 8.3 name and one contiguous run that
 is free in every FAT copy, then performs an exact readback before emitting the
@@ -534,7 +534,7 @@ new image. This avoids trusting the misleading 128 MiB size in the FAT BPB.
 
 The hidden card workspace contains:
 
-- `dani-boot-backlight-25.img` — SHA-256
+- `bird-boot-backlight-25.img` — SHA-256
   `eab1f16833a69c8e9a04297d87d0dee1b86980d27edc8e027ae3966b352865bd`
 - `rg34xxsp-backlight-25.dtb` — SHA-256
   `8e16058b184bdc7ae46b2d57cc293c9c2f542f5bc7023de501a7d76d69c3c427`

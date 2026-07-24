@@ -43,7 +43,7 @@ typedef signed long s64;
 #define BRIGHT_RAW_MAX "/sys/class/backlight/backlight/max_brightness"
 #define BRIGHT_RAW_CURRENT "/sys/class/backlight/backlight/brightness"
 
-#ifdef DANI_CLEAN_ROOT
+#ifdef BIRD_CLEAN_ROOT
 #define VOLUME_SCRIPT "/opt/bird/volume.sh"
 #define SUSPEND_SCRIPT "/opt/bird/suspend.sh"
 #define EXIT_CONTENT_SCRIPT "/opt/bird/exit-content.sh"
@@ -96,7 +96,7 @@ static char *const fixed_env[] = {
 };
 
 static int kmsg_fd = -1;
-#ifdef DANI_CLEAN_ROOT
+#ifdef BIRD_CLEAN_ROOT
 static int clean_brightness = -1;
 #endif
 
@@ -260,7 +260,7 @@ static int clamp(int value, int minimum, int maximum) {
 }
 
 static int adjust_brightness(int direction) {
-#ifdef DANI_CLEAN_ROOT
+#ifdef BIRD_CLEAN_ROOT
     int raw_max = read_integer(BRIGHT_RAW_MAX, 255);
     int raw_current = read_integer(BRIGHT_RAW_CURRENT, 1);
     int raw;
@@ -313,7 +313,7 @@ static int run_action(const char *path, const char *argument) {
 }
 
 static int adjust_volume(int direction) {
-#ifdef DANI_CLEAN_ROOT
+#ifdef BIRD_CLEAN_ROOT
     return run_action(VOLUME_SCRIPT, direction > 0 ? "U" : "D") == 0;
 #else
     int current = read_integer(VOLUME_CURRENT, 45);
@@ -379,7 +379,7 @@ static void discover_inputs(struct input_source *sources, int count) {
                 sources[source].fd = (int)fd;
                 fd = -1;
                 missing--;
-#ifdef DANI_CLEAN_ROOT
+#ifdef BIRD_CLEAN_ROOT
                 if (source == 1 &&
                     sys_ioctl(sources[source].fd, EVIOCGRAB, (void *)1) < 0)
                     log_kernel("<3>bird-controls: volume-grab-failed\n");
@@ -410,7 +410,7 @@ static void handle_gamepad(const struct input_event *event, int *menu_held,
         else if (event->value == 0)
             log_kernel("<6>bird-controls: menu-released\n");
     }
-#ifdef DANI_CLEAN_ROOT
+#ifdef BIRD_CLEAN_ROOT
     if (event->type != EV_KEY) return;
     if (event->code == BTN_SELECT)
         *select_held = event->value != 0;

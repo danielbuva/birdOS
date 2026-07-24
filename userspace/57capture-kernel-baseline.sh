@@ -1,5 +1,5 @@
 #!/bin/sh
-# DANI_RG34XXSP_KERNEL_BASELINE_V1
+# BIRD_RG34XXSP_KERNEL_BASELINE_V1
 #
 # This is a one-boot, post-menu inventory.  It records the running kernel's
 # exact configuration and the hardware/resources it actually exposes before

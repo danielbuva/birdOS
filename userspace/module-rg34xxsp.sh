@@ -1,5 +1,5 @@
 #!/bin/sh
-# DANI_FIXED_RG34XXSP_MODULE_V1
+# BIRD_FIXED_RG34XXSP_MODULE_V1
 
 # Networking owns rtl8821cs explicitly and on demand. SquashFS is built into
 # this kernel, so this suspend/resume helper owns only the Mali module.

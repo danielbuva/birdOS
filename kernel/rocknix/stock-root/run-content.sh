@@ -8,7 +8,7 @@ set -u
 . /etc/profile
 . /etc/os-release
 
-REQUEST=${1:-/run/muos/dani-launch-request}
+REQUEST=${1:-/run/muos/bird-launch-request}
 LOG_DIR=/storage/bird-data/MUOS/Bird/log
 LOG=$LOG_DIR/stock-root-content-latest.log
 SWAY_SOCKET=/var/run/0-runtime-dir/sway-ipc.0.sock

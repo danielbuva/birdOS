@@ -1,5 +1,5 @@
 /*
- * Permanent fixed-device PID 1 for Dani's RG34XX-SP.
+ * Permanent fixed-device PID 1 for the birdOS RG34XX-SP profile.
  *
  * The first-stage init has already mounted and moved proc, sysfs, devtmpfs,
  * /run and /tmp before switch_root. This process completes only the exact
@@ -38,12 +38,12 @@ typedef signed long s64;
 #define REBOOT_HALT 0xcdef0123UL
 #define REBOOT_POWER_OFF 0x4321fedcUL
 
-#ifdef DANI_CLEAN_ROOT
+#ifdef BIRD_CLEAN_ROOT
 #define ROOT_INIT_MARKER "/run/bird/clean-root-v1"
 #define SYSINIT_SCRIPT "/opt/bird/post-frame.sh"
 #define SHUTDOWN_SCRIPT "/opt/bird/shutdown.sh"
 #else
-#define ROOT_INIT_MARKER "/run/muos/dani-root-init-active"
+#define ROOT_INIT_MARKER "/run/muos/bird-root-init-active"
 #define SYSINIT_SCRIPT "/opt/muos/script/init/sysinit"
 #define SHUTDOWN_SCRIPT "/opt/muos/script/init/shutdown"
 #endif
@@ -60,7 +60,7 @@ struct pollfd {
 };
 
 static char *const fixed_env[] = {
-    "DANI_STATIC_PID1=1",
+    "BIRD_STATIC_PID1=1",
     "HOME=/root",
     "LANG=C",
     "PATH=/sbin:/usr/sbin:/bin:/usr/bin:/opt/muos/bin",
@@ -279,7 +279,7 @@ static int setup_exact_root(void) {
     replace_symlink("/proc/self/fd/0", "/dev/stdin");
     replace_symlink("/proc/self/fd/1", "/dev/stdout");
     replace_symlink("/proc/self/fd/2", "/dev/stderr");
-#ifdef DANI_CLEAN_ROOT
+#ifdef BIRD_CLEAN_ROOT
     if (sys_sethostname("bird", 4) < 0) return -1;
 #else
     if (sys_sethostname("muos", 4) < 0) return -1;

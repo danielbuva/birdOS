@@ -4,8 +4,8 @@ set -eu
 ROM_MOUNT=/mnt/mmc
 WORK_DIR="$ROM_MOUNT/.firmware-work"
 BOOT_DEVICE=/dev/mmcblk0p4
-CANDIDATE="$WORK_DIR/dani-boot-fixed-device-dtb-v1.img"
-CANDIDATE_SHA_FILE="$WORK_DIR/dani-boot-fixed-device-dtb-v1.sha256"
+CANDIDATE="$WORK_DIR/bird-boot-fixed-device-dtb-v1.img"
+CANDIDATE_SHA_FILE="$WORK_DIR/bird-boot-fixed-device-dtb-v1.sha256"
 BACKUP="$WORK_DIR/device-boot-before-fixed-device-dtb-v1.img"
 BACKUP_TEMP="$WORK_DIR/.device-boot-before-fixed-device-dtb-v1.tmp"
 MARKER="$WORK_DIR/fixed-device-dtb-v1-installed"

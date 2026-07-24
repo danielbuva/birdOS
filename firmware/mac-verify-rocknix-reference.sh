@@ -27,7 +27,7 @@ disk[0-9]*) ;;
 *) fail 'device must be a whole disk such as /dev/disk4' ;;
 esac
 
-INFO=$(mktemp -t dani-card-info)
+INFO=$(mktemp -t bird-card-info)
 MOUNTED=1
 cleanup() {
 	if [ "$MOUNTED" -eq 0 ]; then

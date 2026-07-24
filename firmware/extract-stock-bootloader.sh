@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 
-SOURCE=${1:-/Users/dani/Downloads/MustardOS_RG34XX-SP_2601.1_FUNKY_JACARANDA-bc38efa0.img.gz}
-OUTPUT=${2:-/Volumes/dani-sp/.firmware-work/bootloader}
+SOURCE=${1:-$HOME/Downloads/MustardOS_RG34XX-SP_2601.1_FUNKY_JACARANDA-bc38efa0.img.gz}
+OUTPUT=${2:-/Volumes/BIRD-DATA/.firmware-work/bootloader}
 PREPARTITION="$OUTPUT/stock-prepartition.img"
 TOC1="$OUTPUT/stock-toc1.bin"
 DTB="$OUTPUT/stock-uboot.dtb"

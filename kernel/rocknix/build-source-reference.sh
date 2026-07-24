@@ -7,10 +7,10 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
-ROCKNIX_SOURCE=${ROCKNIX_SOURCE:-/Users/dani/rocknix-distribution-20260701}
-JOYPAD_SOURCE=${JOYPAD_SOURCE:-/Users/dani/muos-kernel-source/rocknix-joypad}
-FIRMWARE_SOURCE=${FIRMWARE_SOURCE:-/Users/dani/muos-kernel-source/linux-firmware-20260309}
-IMAGE=${DANI_MAINLINE_BUILD_IMAGE:-dani-rg34xxsp-kernel-build:7.0.11}
+ROCKNIX_SOURCE=${ROCKNIX_SOURCE:-$HOME/rocknix-distribution-20260701}
+JOYPAD_SOURCE=${JOYPAD_SOURCE:-$HOME/muos-kernel-source/rocknix-joypad}
+FIRMWARE_SOURCE=${FIRMWARE_SOURCE:-$HOME/muos-kernel-source/linux-firmware-20260309}
+IMAGE=${BIRD_MAINLINE_BUILD_IMAGE:-bird-rg34xxsp-kernel-build:7.0.11}
 OUTPUT=${OUTPUT:-$ROOT/kernel/work/rocknix-source-reference}
 BUILD_OUTPUT="$OUTPUT/build"
 SHIPPING_KERNEL=${SHIPPING_KERNEL:-$OUTPUT/shipping-KERNEL}

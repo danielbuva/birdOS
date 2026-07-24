@@ -2,7 +2,7 @@
 
 # Behavior-identical copy of muOS 2601.1 lr-general.sh with monotonic markers
 # around each generic setup phase. This is temporary measurement scaffolding;
-# the result will define Dani's fixed libretro launch bridge.
+# the result will define the birdOS fixed libretro launch bridge.
 
 PROFILE_STAGE() {
 	IFS=' ' read -r PROFILE_UPTIME _ </proc/uptime

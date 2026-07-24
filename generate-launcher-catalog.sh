@@ -3,7 +3,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
-ROM_ROOT=${1:-/Volumes/dani-sp/ROMS}
+ROM_ROOT=${1:-/Volumes/BIRD-DATA/ROMS}
 MEDIA_ROOT=${MEDIA_ROOT:-${ROM_ROOT%/ROMS}/MEDIA}
 
 if [ "$#" -ge 2 ] && [ -n "$2" ]; then

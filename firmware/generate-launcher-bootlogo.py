@@ -127,7 +127,7 @@ def main() -> None:
     pixels = bytearray(bytes((BACKGROUND[2], BACKGROUND[1], BACKGROUND[0])) * WIDTH * HEIGHT)
     rectangle(pixels, 0, 0, WIDTH, 92, PANEL)
     rectangle(pixels, 32, 86, 656, 3, ACCENT_IDLE)
-    draw_text(pixels, 32, 22, "DANI // RG34-SP", 4, PRIMARY)
+    draw_text(pixels, 32, 22, "BIRDOS // RG34-SP", 4, PRIMARY)
     draw_text(pixels, 34, 62, "BESPOKE CONSOLE", 2, MUTED)
 
     # BMP stores positive-height images bottom-up. Each 720x24-bit row is

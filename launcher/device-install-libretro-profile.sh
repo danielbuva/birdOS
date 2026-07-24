@@ -10,8 +10,8 @@ MARKER="$WORK_DIR/profile-installed"
 LOG_FILE="$WORK_DIR/install.log"
 CARD_INSTALLER="$ROM_MOUNT/MUOS/init/90-install-libretro-profile.sh"
 STOCK_SHA="2e5decf0a977258253f0e8bc56252d42a524ed607dc3dbd42ad0b39dc793c475"
-PROFILE_SHA="319a95a46f9c9bab4f3f513b5a39677db0a4a6d76ac7f672d7127cfd8e6070d8"
-TEMP="/opt/muos/script/launch/.lr-general.dani-profile-new"
+PROFILE_SHA="20747bbeb2ec6964997087754922594f470b7eb6ebd0b6ece094011098d5fc06"
+TEMP="/opt/muos/script/launch/.lr-general.bird-profile-new"
 
 mkdir -p "$WORK_DIR/backup"
 exec >>"$LOG_FILE" 2>&1

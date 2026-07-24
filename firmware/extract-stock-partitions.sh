@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 
-DEFAULT_SOURCE="/Users/dani/Downloads/MustardOS_RG34XX-SP_2601.1_FUNKY_JACARANDA-bc38efa0.img.gz"
-DEFAULT_OUTPUT="/Volumes/dani-sp/.firmware-work"
+DEFAULT_SOURCE="$HOME/Downloads/MustardOS_RG34XX-SP_2601.1_FUNKY_JACARANDA-bc38efa0.img.gz"
+DEFAULT_OUTPUT="/Volumes/BIRD-DATA/.firmware-work"
 SOURCE=${1:-$DEFAULT_SOURCE}
 OUTPUT=${2:-$DEFAULT_OUTPUT}
 SOURCE_SHA256="18c6e1e20421be2bf604cbaf920c3fc69b0ab49c758a0a42e04626499f1444ee"

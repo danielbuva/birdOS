@@ -10,9 +10,9 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 BIRD=${BIRD:-/Volumes/BIRD}
-DATA=${DATA:-/Volumes/dani-sp}
+DATA=${DATA:-/Volumes/BIRD-DATA}
 CANDIDATE=${CANDIDATE:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.22/card}
-STORAGE_SOURCE=${STORAGE_SOURCE:-/Users/dani/rocknix-reference-result/storage.ext4}
+STORAGE_SOURCE=${STORAGE_SOURCE:-$HOME/rocknix-reference-result/storage.ext4}
 PORTMASTER_ARCHIVE=${PORTMASTER_ARCHIVE:-$ROOT/kernel/work/rocknix-system-exact-20260701/usr/config/PortMaster/release/PortMaster.zip}
 RUNTIME=$DATA/MUOS/runtime/ROCKNIX-SYSTEM
 STORAGE_TARGET=$DATA/MUOS/runtime/ROCKNIX-STORAGE
@@ -67,7 +67,7 @@ ext4_magic() {
 for FILE in post-flash.sh mount-storage.sh SYSTEM KERNEL dtb.img \
 	bird-initramfs.cpio.gz \
 	extlinux/extlinux.conf extlinux/extlinux.fallback.conf \
-	bird/090-ui_service bird/999-export bird/dani-launcher bird/bird-pidwait bird/essway.service \
+	bird/090-ui_service bird/999-export bird/bird-launcher bird/bird-pidwait bird/essway.service \
 	bird/rocknix.target bird/rocknix-automount.service \
 	bird/rocknix-autostart.service bird/rocknix-report-stats.service \
 	bird/NetworkManager.service bird/iwd.service \
@@ -213,7 +213,7 @@ mkdir -p "$BIRD/bird" "$BIRD/extlinux" "$DATA/MUOS/Bird/boot-state"
 for FILE in post-flash.sh mount-storage.sh SYSTEM bird-initramfs.cpio.gz; do
 	COPYFILE_DISABLE=1 cp -f "$CANDIDATE/$FILE" "$BIRD/$FILE"
 done
-for FILE in 090-ui_service 999-export dani-launcher bird-pidwait essway.service rocknix.target \
+for FILE in 090-ui_service 999-export bird-launcher bird-pidwait essway.service rocknix.target \
 	rocknix-automount.service rocknix-autostart.service \
 	rocknix-report-stats.service \
 	NetworkManager.service iwd.service systemd-resolved.service \

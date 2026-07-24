@@ -2,7 +2,7 @@
 set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-WORKSPACE=${1:-/Volumes/dani-sp/.firmware-work}
+WORKSPACE=${1:-/Volumes/BIRD-DATA/.firmware-work}
 MODE=${2:-}
 DEBUGFS=${DEBUGFS:-/opt/homebrew/opt/e2fsprogs/sbin/debugfs}
 E2FSCK=${E2FSCK:-/opt/homebrew/opt/e2fsprogs/sbin/e2fsck}

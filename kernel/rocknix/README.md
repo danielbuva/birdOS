@@ -254,7 +254,7 @@ eventually trapped in its vendor JIT.
 
 V4 therefore does not add hardware setup to the launcher. The already separate
 post-frame udev process remains separate. On a content request only,
-`S03danilauncher` mounts the checksum-pinned ROCKNIX `SYSTEM` SquashFS from p6
+`S03birdlauncher` mounts the checksum-pinned ROCKNIX `SYSTEM` SquashFS from p6
 read-only and builds a private `/run/bird-mainline-lib` view containing modern
 SDL2 KMSDRM, GLVND/Mesa/Panfrost and only the protocol sonames required by that
 Mesa build. A dependency-free 1,824-byte `libmali.so.0` stub satisfies the old
@@ -668,7 +668,7 @@ explicit action token:
 
 ```sh
 firmware/mac-install-rocknix-bird-prefix.sh \
-  /Volumes/dani-sp --install-bird-prefix
+  /Volumes/BIRD-DATA --install-bird-prefix
 
 firmware/mac-restore-bird-prefix.sh \
   /dev/diskN --restore-bird-prefix
@@ -691,7 +691,7 @@ after those pass do kernel trimming and timing comparisons begin.
 as eight independent HTTP ranges and accepts the output only when both its
 published byte count and SHA-256 match.
 
-The guarded raw candidate is generated under `/Users/dani`, outside the
+The guarded raw candidate is generated under `$HOME`, outside the
 Downloads folder. macOS provenance scanning was observed blocking new opens of
 the otherwise verified multi-gigabyte image inside Downloads; an APFS clone at
 the fixed location opened and rehashed immediately with identical bytes.

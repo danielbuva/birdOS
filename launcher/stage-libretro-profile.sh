@@ -2,14 +2,14 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
-CARD=${1:-/Volumes/dani-sp}
+CARD=${1:-/Volumes/BIRD-DATA}
 PAYLOAD="$ROOT/launcher/lr-profiled.sh"
 INSTALL_SOURCE="$ROOT/launcher/device-install-libretro-profile.sh"
 PAYLOAD_TARGET="$CARD/MUOS/bespoke-launcher/lr-profiled.sh"
 INSTALL_TARGET="$CARD/MUOS/init/90-install-libretro-profile.sh"
 
 [ -d "$CARD/MUOS/init" ] && [ -d "$CARD/MUOS/bespoke-launcher" ] || {
-	printf 'error: mounted Dani SP card not found: %s\n' "$CARD" >&2
+	printf 'error: mounted birdOS card not found: %s\n' "$CARD" >&2
 	exit 1
 }
 sh -n "$PAYLOAD"

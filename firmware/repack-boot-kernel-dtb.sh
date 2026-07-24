@@ -74,7 +74,7 @@ CLEAR_END=$OLD_END
 [ $((KERNEL_ADDR + NEW_KERNEL_SIZE)) -le "$RAMDISK_ADDR" ] || \
 	fail 'loaded kernel overlaps the fixed ramdisk address'
 
-WORK=$(mktemp -d -t dani-kernel-dtb-pack)
+WORK=$(mktemp -d -t bird-kernel-dtb-pack)
 trap 'rm -rf "$WORK"' EXIT HUP INT TERM
 RAMDISK="$WORK/ramdisk.gz"
 DIGEST="$WORK/boot-id.sha1"

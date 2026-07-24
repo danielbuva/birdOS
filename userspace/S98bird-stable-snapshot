@@ -66,8 +66,8 @@ sha256sum \
 	/opt/muos/script/mux/idle.sh \
 	/opt/muos/script/system/lowpower.sh \
 	/opt/muos/script/system/user_init.sh \
-	/usr/share/wireplumber/main.lua.d/89-dani-fixed-device.lua \
-	/usr/share/wireplumber/bluetooth.lua.d/89-dani-fixed-device.lua \
+	/usr/share/wireplumber/main.lua.d/89-bird-fixed-device.lua \
+	/usr/share/wireplumber/bluetooth.lua.d/89-bird-fixed-device.lua \
 	>"$DEST/active-sha256sums.txt" 2>/dev/null || :
 
 [ ! -f /tmp/muos/fixed-startup.tsv ] || cp -f /tmp/muos/fixed-startup.tsv "$DEST/startup.tsv"
@@ -80,4 +80,4 @@ rm -f "$ARM"
 
 # This is an explicitly armed diagnostic, not a permanent boot service.  A
 # successful capture removes the rootfs hook as well as its arm file.
-rm -f /opt/muos/script/init/async/S98dani-stable-snapshot
+rm -f /opt/muos/script/init/async/S98bird-stable-snapshot

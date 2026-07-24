@@ -1,18 +1,18 @@
 #!/bin/sh
 
-TARGET="/opt/muos/bin/dani-launcher"
+TARGET="/opt/muos/bin/bird-launcher"
 RUN_DIR="/run/muos"
-ACTIVE="$RUN_DIR/dani-launcher-active"
-READY="$RUN_DIR/dani-system-ready"
-STOPPING="$RUN_DIR/dani-launcher-stopping"
-SUPERVISOR_PID="$RUN_DIR/dani-launcher-supervisor.pid"
-FIRST_FRAME_MARKER="$RUN_DIR/dani-first-frame-ready"
-EARLY_LOG="/tmp/dani-launcher-early.log"
+ACTIVE="$RUN_DIR/bird-launcher-active"
+READY="$RUN_DIR/bird-system-ready"
+STOPPING="$RUN_DIR/bird-launcher-stopping"
+SUPERVISOR_PID="$RUN_DIR/bird-launcher-supervisor.pid"
+FIRST_FRAME_MARKER="$RUN_DIR/bird-first-frame-ready"
+EARLY_LOG="/tmp/bird-launcher-early.log"
 PERSISTENT_LOG="/mnt/mmc/MUOS/bespoke-launcher/early-launcher-latest.log"
 BOOT_ID=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null)
 [ -n "$BOOT_ID" ] || BOOT_ID="unknown"
 ARCHIVE_LOG="/mnt/mmc/MUOS/bespoke-launcher/early-launcher-$BOOT_ID.log"
-LAUNCH_REQUEST="$RUN_DIR/dani-launch-request"
+LAUNCH_REQUEST="$RUN_DIR/bird-launch-request"
 AUDIO_CONTROL="/opt/muos/script/system/pipewire.sh"
 MAINLINE_ENV="/run/muos/bird-mainline-env"
 # Resolve from /opt/muos/share/core without writing to the preserved root.
@@ -78,7 +78,7 @@ START_AUDIO() {
 }
 
 STOP_AUDIO() {
-	[ -e "$RUN_DIR/dani-audio-demand" ] || return 0
+	[ -e "$RUN_DIR/bird-audio-demand" ] || return 0
 	printf 'audio demand stop uptime: '
 	cut -d ' ' -f 1 /proc/uptime
 	"$AUDIO_CONTROL" demand-stop || :
@@ -141,7 +141,7 @@ RUN_CONTENT() {
 	CONTENT_RESULT=$?
 
 	[ -n "$PREVIOUS_GOVERNOR" ] && printf '%s\n' "$PREVIOUS_GOVERNOR" >"$GOVERNOR_FILE"
-	SET_VAR "system" "foreground_process" "dani-launcher"
+	SET_VAR "system" "foreground_process" "bird-launcher"
 	printf 'content launch result: %s\n' "$CONTENT_RESULT"
 	printf 'content launch end uptime: '
 	cut -d ' ' -f 1 /proc/uptime
@@ -180,7 +180,7 @@ RUN_PORTMASTER() {
 	/opt/muos/script/system/network.sh disconnect
 	/opt/muos/script/init/S30dbus demand-stop || :
 	. /opt/muos/script/var/func.sh
-	SET_VAR "system" "foreground_process" "dani-launcher"
+	SET_VAR "system" "foreground_process" "bird-launcher"
 	printf 'portmaster network disconnected uptime: '
 	cut -d ' ' -f 1 /proc/uptime
 	SNAPSHOT_LOG
@@ -216,7 +216,7 @@ case "$1" in
 
 		(
 			{
-				if [ -e "$RUN_DIR/dani-fixed-initramfs-v1" ]; then
+				if [ -e "$RUN_DIR/bird-fixed-initramfs-v1" ]; then
 					printf '%s\n' 'fixed initramfs path: active'
 				fi
 				printf 'direct supervisor start uptime: '
@@ -256,7 +256,7 @@ case "$1" in
 		if [ -s "$SUPERVISOR_PID" ]; then
 			kill "$(cat "$SUPERVISOR_PID")" 2>/dev/null || :
 		fi
-		killall -TERM dani-launcher 2>/dev/null || :
+		killall -TERM bird-launcher 2>/dev/null || :
 		rm -f "$ACTIVE" "$SUPERVISOR_PID" "$FIRST_FRAME_MARKER"
 		;;
 	*)

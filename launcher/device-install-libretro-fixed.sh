@@ -9,8 +9,8 @@ MARKER="$WORK_DIR/fixed-installed"
 LOG_FILE="$WORK_DIR/fixed-install.log"
 CARD_INSTALLER="$ROM_MOUNT/MUOS/init/89-install-libretro-fixed.sh"
 PROFILE_SHA="319a95a46f9c9bab4f3f513b5a39677db0a4a6d76ac7f672d7127cfd8e6070d8"
-FIXED_SHA="a75526b7ec1d3787c24468fffc99a1dad24b1e8bf968de4e6fa98c88f8c2f2d9"
-TEMP="/opt/muos/script/launch/.lr-general.dani-fixed-new"
+FIXED_SHA="fa1734a4f1d41c87cba4a2038d1f6555545838c4b837c398ab77863c2124e1c2"
+TEMP="/opt/muos/script/launch/.lr-general.bird-fixed-new"
 
 mkdir -p "$WORK_DIR"
 exec >>"$LOG_FILE" 2>&1

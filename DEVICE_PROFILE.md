@@ -1,6 +1,6 @@
 # Fixed RG34XX-SP experience
 
-This is the build contract for Dani's console. Values here are deliberate
+This is the build contract for the target console. Values here are deliberate
 product decisions, not runtime options.
 
 ## Fixed hardware
@@ -82,7 +82,7 @@ Priorities are strict:
 2. Battery efficiency: eliminate polling, needless wake-ups and resident
    services.
 3. Memory efficiency: remove unused processes, libraries, caches and assets.
-4. Add only the exact features Dani chooses and uses.
+4. Add only the exact features selected for the fixed device profile.
 
 The launcher remains a prototype. Its architecture is proven, and its first
 idle pass now blocks on the fixed evdev descriptor instead of waking every

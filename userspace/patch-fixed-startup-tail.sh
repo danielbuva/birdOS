@@ -2,7 +2,7 @@
 set -eu
 
 TARGET=${1:-/opt/muos/script/system/startup.sh}
-MARKER="DANI_FIXED_STARTUP_TAIL_V1"
+MARKER="BIRD_FIXED_STARTUP_TAIL_V1"
 
 [ -f "$TARGET" ] || {
 	printf 'error: startup target missing: %s\n' "$TARGET" >&2
@@ -11,7 +11,7 @@ MARKER="DANI_FIXED_STARTUP_TAIL_V1"
 
 grep -q "$MARKER" "$TARGET" && exit 0
 
-PATCHED="$TARGET.dani-fixed-tail-new.$$"
+PATCHED="$TARGET.bird-fixed-tail-new.$$"
 cleanup() {
 	rm -f "$PATCHED"
 }

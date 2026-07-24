@@ -2,9 +2,9 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
-BASE=${1:-/Volumes/dani-sp/.firmware-work/dani-boot-static-pid1.img}
+BASE=${1:-/Volumes/BIRD-DATA/.firmware-work/bird-boot-static-pid1.img}
 WORK=${2:-$ROOT/firmware/work/power-key-128-build}
-OUTPUT="$WORK/dani-boot-power-key-128.img"
+OUTPUT="$WORK/bird-boot-power-key-128.img"
 
 fail() {
 	printf 'error: %s\n' "$*" >&2

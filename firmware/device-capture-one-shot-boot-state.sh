@@ -1,5 +1,5 @@
 #!/bin/sh
-# DANI_RG34XXSP_ONE_SHOT_BOOT_STATE_V1
+# BIRD_RG34XXSP_ONE_SHOT_BOOT_STATE_V1
 #
 # Capture the exact live FAT boot-resource and U-Boot environment partitions.
 # This script is deliberately read-only with respect to both raw partitions.

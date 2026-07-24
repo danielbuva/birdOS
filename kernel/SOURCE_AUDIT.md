@@ -71,7 +71,7 @@ gates. The accepted vendor image remains the recovery anchor throughout.
 
 The first compilation, static DT/config and reproducibility gates pass. Two
 clean container builds produced byte-identical artifact manifests; the kernel
-is exactly `7.0.11-dani-compat` and its `Image` SHA-256 is
+is exactly `7.0.11-bird-compat` and its `Image` SHA-256 is
 `2294fca4c88834d379d063eb08c606224fea2d4eb6a77edd50b6e1b320ab3150`.
 Both attempts to boot it through the vendor U-Boot/Android handoff stopped
 before Linux left any capture. This closes only the source-build gate and is

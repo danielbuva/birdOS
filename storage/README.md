@@ -13,7 +13,7 @@ isolates removal of the two resident UnionFS processes from later storage work.
 
 `device-install-fixed-union.sh` accepts only the measured stock `union.sh`
 checksum, preserves it, and atomically installs the candidate. Run
-`stage-fixed-union.sh /Volumes/dani-sp` on the Mac to deliver it. The first boot
+`stage-fixed-union.sh /Volumes/BIRD-DATA` on the Mac to deliver it. The first boot
 installs the candidate; the following cold boot exercises it.
 
 Acceptance requires the custom menu, every game wrapper, save/load, ports,

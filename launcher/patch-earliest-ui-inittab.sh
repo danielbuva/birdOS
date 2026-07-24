@@ -4,7 +4,7 @@ set -eu
 TARGET=${1:-/etc/inittab}
 BACKUP=${2:-/mnt/mmc/MUOS/boot-timing/bespoke-services/backup/inittab.pre-earliest-ui}
 INSTALL_LOG=${3:-/mnt/mmc/MUOS/boot-timing/bespoke-services/install.log}
-MARKER="DANI_EARLIEST_UI_V1"
+MARKER="BIRD_EARLIEST_UI_V1"
 
 [ -f "$TARGET" ] || {
 	printf 'error: inittab target missing: %s\n' "$TARGET" >&2
@@ -16,7 +16,7 @@ grep -q "$MARKER" "$TARGET" && exit 0
 mkdir -p "${BACKUP%/*}" "${INSTALL_LOG%/*}"
 [ -f "$BACKUP" ] || cp -p "$TARGET" "$BACKUP"
 
-PATCHED="${TARGET}.dani-earliest-new.$$"
+PATCHED="${TARGET}.bird-earliest-new.$$"
 CLEANUP() {
 	rm -f "$PATCHED"
 }
@@ -27,7 +27,7 @@ while IFS= read -r LINE; do
 	printf '%s\n' "$LINE"
 	if [ "$LINE" = '::sysinit:/bin/mkdir -p /run /run/lock /run/lock/subsys' ]; then
 		printf '# %s\n' "$MARKER"
-		printf '%s\n' '::sysinit:/opt/muos/script/init/dani-earliest-ui.sh'
+		printf '%s\n' '::sysinit:/opt/muos/script/init/bird-earliest-ui.sh'
 		MATCHES=$((MATCHES + 1))
 	fi
 done <"$TARGET" >"$PATCHED"

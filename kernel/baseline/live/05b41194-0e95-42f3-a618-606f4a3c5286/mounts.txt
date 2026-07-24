@@ -4,8 +4,8 @@ none /dev devtmpfs rw,relatime,size=978616k,nr_inodes=244654,mode=755 0 0
 /dev/mmcblk0p5 / ext4 rw,noatime,nodiratime,nobarrier,noauto_da_alloc,data=ordered 0 0
 tmpfs /run tmpfs rw,nosuid,nodev,relatime,mode=755 0 0
 tmpfs /tmp tmpfs rw,relatime 0 0
-rootfs /sbin/dani-root-init rootfs rw 0 0
-rootfs /opt/muos/bin/dani-launcher rootfs rw 0 0
+rootfs /sbin/bird-root-init rootfs rw 0 0
+rootfs /opt/muos/bin/bird-launcher rootfs rw 0 0
 devpts /dev/pts devpts rw,relatime,mode=600,ptmxmode=000 0 0
 tmpfs /dev/shm tmpfs rw,relatime 0 0
 debugfs /sys/kernel/debug debugfs rw,relatime 0 0

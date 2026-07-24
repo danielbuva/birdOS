@@ -1,5 +1,5 @@
 #!/bin/sh
-# DANI_FIXED_RG34XXSP_DEVICE_START_V1
+# BIRD_FIXED_RG34XXSP_DEVICE_START_V1
 
 # Brightness, suspend and manual display controls use Allwinner's debugfs
 # interface.  Mount it once; there is no per-board discovery.

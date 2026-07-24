@@ -4,11 +4,11 @@
 
 set -eu
 
-CARD=${1:-/Volumes/dani-sp}
+CARD=${1:-/Volumes/BIRD-DATA}
 ACTION=${2:-}
 GDD=${GDD:-/opt/homebrew/bin/gdd}
-PREFIX=${PREFIX:-/Users/dani/birdOS/kernel/work/rocknix-bird-prefix-compat-v2/bird-rocknix-prefix.img}
-RECOVERY_PREFIX=${RECOVERY_PREFIX:-/Users/dani/muos-kernel-source/checkpoints/20260721-bird-current-prefix.img}
+PREFIX=${PREFIX:-$HOME/birdOS/kernel/work/rocknix-bird-prefix-compat-v2/bird-rocknix-prefix.img}
+RECOVERY_PREFIX=${RECOVERY_PREFIX:-$HOME/muos-kernel-source/checkpoints/20260721-bird-current-prefix.img}
 
 PREFIX_BYTES=163577856
 PREFIX_SHA=b9828838e6197efa9108365493275a4ebc246c2e24725b7c852d650d42bbfb38
@@ -29,7 +29,7 @@ plist_value() {
 }
 
 [ "$ACTION" = '--install-bird-prefix' ] ||
-	fail "usage: $0 /Volumes/dani-sp --install-bird-prefix"
+	fail "usage: $0 /Volumes/BIRD-DATA --install-bird-prefix"
 [ -d "$CARD" ] || fail "card volume not mounted: $CARD"
 [ -x "$GDD" ] || fail 'GNU dd is required; install it with: brew install coreutils'
 command -v diskutil >/dev/null 2>&1 || fail 'diskutil is required'

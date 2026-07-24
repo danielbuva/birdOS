@@ -1,5 +1,5 @@
 #!/bin/sh
-# DANI_FIXED_RG34XXSP_CHARGE_V1
+# BIRD_FIXED_RG34XXSP_CHARGE_V1
 
 . /opt/muos/script/var/func.sh
 

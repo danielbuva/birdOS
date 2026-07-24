@@ -1,5 +1,5 @@
 /*
- * Fixed early init for Dani's RG34XX-SP.
+ * Fixed early init for the birdOS RG34XX-SP profile.
  *
  * This is deliberately a first-stage replacement only. It performs the exact
  * SD-card boot path with Linux syscalls, starts the already-proven launcher,
@@ -33,7 +33,7 @@ typedef signed long s64;
 #define SIGKILL 9
 #define CLOCK_BOOTTIME 7
 
-#ifdef DANI_BOOT_TIMEOUT_SECONDS
+#ifdef BIRD_BOOT_TIMEOUT_SECONDS
 #define LINUX_REBOOT_MAGIC1 0xfee1dead
 #define LINUX_REBOOT_MAGIC2 672274793
 #define LINUX_REBOOT_CMD_RESTART 0x01234567
@@ -41,38 +41,38 @@ typedef signed long s64;
 
 #define ROOT_DEVICE "/dev/mmcblk0p5"
 #define ROOT_MOUNT "/mnt"
-#define LAUNCHER_SOURCE "/opt/dani-launcher"
-#define LAUNCHER_TARGET "/mnt/opt/muos/bin/dani-launcher"
-#ifdef DANI_CLEAN_ROOT
+#define LAUNCHER_SOURCE "/opt/bird-launcher"
+#define LAUNCHER_TARGET "/mnt/opt/muos/bin/bird-launcher"
+#ifdef BIRD_CLEAN_ROOT
 #define ROOT_SUPERVISOR "/opt/bird/supervisor.sh"
-#define CLEAN_ROOT_INIT "/opt/dani-root-init"
-#define READY_MARKER "/run/muos/dani-first-frame-ready"
+#define CLEAN_ROOT_INIT "/opt/bird-root-init"
+#define READY_MARKER "/run/muos/bird-first-frame-ready"
 #else
-#define ROOT_SUPERVISOR "/opt/muos/script/init/S03danilauncher"
-#define READY_MARKER "/mnt/run/muos/dani-first-frame-ready"
+#define ROOT_SUPERVISOR "/opt/muos/script/init/S03birdlauncher"
+#define READY_MARKER "/mnt/run/muos/bird-first-frame-ready"
 #endif
-#define FIXED_INIT_MARKER "/mnt/run/muos/dani-fixed-initramfs-v1"
-#define TRIMMED_INIT_MARKER "/mnt/run/muos/dani-trimmed-initramfs-v1"
-#define DIRECT_HANDOFF_MARKER "/mnt/run/muos/dani-direct-handoff-v1"
-#define CLEAN_FS_MARKER "/mnt/run/muos/dani-fsck-clean-skip"
-#ifdef DANI_BOOT_DIAGNOSTICS
+#define FIXED_INIT_MARKER "/mnt/run/muos/bird-fixed-initramfs-v1"
+#define TRIMMED_INIT_MARKER "/mnt/run/muos/bird-trimmed-initramfs-v1"
+#define DIRECT_HANDOFF_MARKER "/mnt/run/muos/bird-direct-handoff-v1"
+#define CLEAN_FS_MARKER "/mnt/run/muos/bird-fsck-clean-skip"
+#ifdef BIRD_BOOT_DIAGNOSTICS
 #define STATUS_LED "/sys/class/leds/red:status"
 #define STATUS_TRIGGER STATUS_LED "/trigger"
 #define STATUS_BRIGHTNESS STATUS_LED "/brightness"
 #define STATUS_DELAY_ON STATUS_LED "/delay_on"
 #define STATUS_DELAY_OFF STATUS_LED "/delay_off"
 #endif
-#ifdef DANI_STATIC_ROOT_INIT
-#define ROOT_INIT_SOURCE "/opt/dani-root-init"
-#define ROOT_INIT_TARGET "/mnt/sbin/dani-root-init"
+#ifdef BIRD_STATIC_ROOT_INIT
+#define ROOT_INIT_SOURCE "/opt/bird-root-init"
+#define ROOT_INIT_TARGET "/mnt/sbin/bird-root-init"
 #endif
-#ifdef DANI_MAINLINE_ROOT_OVERRIDES
+#ifdef BIRD_MAINLINE_ROOT_OVERRIDES
 #define MAINLINE_UDEV_SOURCE "/opt/bird-mainline/S10udev"
 #define MAINLINE_UDEV_TARGET "/mnt/opt/muos/script/init/S10udev"
 #define MAINLINE_MODULE_SOURCE "/opt/bird-mainline/module.sh"
 #define MAINLINE_MODULE_TARGET "/mnt/opt/muos/script/device/module.sh"
-#define MAINLINE_SUPERVISOR_SOURCE "/opt/bird-mainline/S03danilauncher"
-#define MAINLINE_SUPERVISOR_TARGET "/mnt/opt/muos/script/init/S03danilauncher"
+#define MAINLINE_SUPERVISOR_SOURCE "/opt/bird-mainline/S03birdlauncher"
+#define MAINLINE_SUPERVISOR_TARGET "/mnt/opt/muos/script/init/S03birdlauncher"
 #define MAINLINE_ENV_SOURCE "/opt/bird-mainline/bird-mainline-env.sh"
 #define MAINLINE_ENV_TARGET "/mnt/run/muos/bird-mainline-env"
 #define MAINLINE_FUNC_SOURCE "/opt/bird-mainline/func-mainline.sh"
@@ -93,10 +93,10 @@ typedef signed long s64;
 #define MAINLINE_GPU_SCHED_TARGET "/mnt/run/muos/gpu-sched.ko"
 #define MAINLINE_PANFROST_SOURCE "/opt/bird-mainline/panfrost.ko"
 #define MAINLINE_PANFROST_TARGET "/mnt/run/muos/panfrost.ko"
-#define MAINLINE_OVERRIDE_MARKER "/mnt/run/muos/dani-mainline-overrides-v1"
+#define MAINLINE_OVERRIDE_MARKER "/mnt/run/muos/bird-mainline-overrides-v1"
 #endif
-#ifdef DANI_MAINLINE_INPUT_MODULE
-#ifdef DANI_CLEAN_ROOT
+#ifdef BIRD_MAINLINE_INPUT_MODULE
+#ifdef BIRD_CLEAN_ROOT
 #define MAINLINE_INPUT_SOURCE "/opt/bird/rocknix-singleadc-joypad.ko"
 #else
 #define MAINLINE_INPUT_SOURCE "/opt/bird-mainline/rocknix-singleadc-joypad.ko"
@@ -117,7 +117,7 @@ struct linux_dirent64 {
 };
 
 static char *const fixed_env[] = {
-    "DANI_FIXED_INITRAMFS=1",
+    "BIRD_FIXED_INITRAMFS=1",
     "HOME=/root",
     "LANG=C",
     "PATH=/sbin:/usr/sbin:/bin:/usr/bin:/opt/muos/bin",
@@ -126,7 +126,7 @@ static char *const fixed_env[] = {
     0,
 };
 
-#ifdef DANI_STATIC_ROOT_INIT
+#ifdef BIRD_STATIC_ROOT_INIT
 static int root_init_bound;
 #endif
 static int clean_root_skipped;
@@ -216,7 +216,7 @@ static long sys_wait4(long pid, int *status) {
     return syscall6(260, pid, (long)status, 0, 0, 0, 0);
 }
 
-#ifdef DANI_BOOT_TIMEOUT_SECONDS
+#ifdef BIRD_BOOT_TIMEOUT_SECONDS
 static long sys_kill(long pid, int signal) {
     return syscall6(129, pid, signal, 0, 0, 0, 0);
 }
@@ -308,7 +308,7 @@ static int create_marker(const char *path) {
     return 0;
 }
 
-#ifdef DANI_BOOT_DIAGNOSTICS
+#ifdef BIRD_BOOT_DIAGNOSTICS
 static void diagnostic_write(const char *path, const char *value) {
     long fd = sys_open(path, O_WRONLY | O_CLOEXEC, 0);
     if (fd < 0) return;
@@ -344,12 +344,12 @@ static void diagnostic_led_slow(void) {}
 static void diagnostic_led_off(void) {}
 #endif
 
-#ifdef DANI_BOOT_TIMEOUT_SECONDS
+#ifdef BIRD_BOOT_TIMEOUT_SECONDS
 static long start_boot_watchdog(void) {
     long pid = sys_clone();
 
     if (pid != 0) return pid;
-    sys_nanosleep((s64)DANI_BOOT_TIMEOUT_SECONDS * 1000000000L);
+    sys_nanosleep((s64)BIRD_BOOT_TIMEOUT_SECONDS * 1000000000L);
     log_stage("watchdog-reboot");
     sys_reboot();
     for (;;) sys_nanosleep(1000000000L);
@@ -508,7 +508,7 @@ static int start_launcher_supervisor(void) {
     return status;
 }
 
-#ifdef DANI_CLEAN_ROOT
+#ifdef BIRD_CLEAN_ROOT
 static int prepare_clean_root(void) {
     make_dir("/run", 0755);
     make_dir("/tmp", 01777);
@@ -541,7 +541,7 @@ __attribute__((noreturn)) static void handoff_clean_root_init(void) {
 }
 #endif
 
-#ifdef DANI_STATIC_ROOT_INIT
+#ifdef BIRD_STATIC_ROOT_INIT
 static void bind_static_root_init(void) {
     long target_fd;
 
@@ -565,7 +565,7 @@ static void bind_static_root_init(void) {
 }
 #endif
 
-#ifdef DANI_MAINLINE_ROOT_OVERRIDES
+#ifdef BIRD_MAINLINE_ROOT_OVERRIDES
 static int bind_root_override(const char *source, const char *target) {
     long target_fd;
 
@@ -616,7 +616,7 @@ static void bind_mainline_root_overrides(void) {
 }
 #endif
 
-#ifdef DANI_MAINLINE_INPUT_MODULE
+#ifdef BIRD_MAINLINE_INPUT_MODULE
 static void load_mainline_input_module(void) {
     char *const argv[] = {"/sbin/insmod", MAINLINE_INPUT_SOURCE, 0};
     int status;
@@ -711,15 +711,15 @@ static void delete_old_root_contents(int directory_fd, int preserve_mnt) {
 __attribute__((noreturn)) static void busybox_handoff_fallback(
     const char *reason) {
     char *const stock_argv[] = {"/sbin/switch_root", "/mnt", "/init", 0};
-#ifdef DANI_STATIC_ROOT_INIT
+#ifdef BIRD_STATIC_ROOT_INIT
     char *const fixed_argv[] = {
-        "/sbin/switch_root", "/mnt", "/sbin/dani-root-init", 0};
+        "/sbin/switch_root", "/mnt", "/sbin/bird-root-init", 0};
 #endif
 
     log_text("fixed-init direct-handoff-fallback=");
     log_text(reason);
     log_text("\n");
-#ifdef DANI_STATIC_ROOT_INIT
+#ifdef BIRD_STATIC_ROOT_INIT
     if (root_init_bound) sys_execve(fixed_argv[0], fixed_argv, fixed_env);
 #endif
     sys_execve(stock_argv[0], stock_argv, fixed_env);
@@ -729,8 +729,8 @@ __attribute__((noreturn)) static void busybox_handoff_fallback(
 __attribute__((noreturn)) static void handoff_root_init(void) {
     int old_root_fd;
     char *const stock_init_argv[] = {"/init", 0};
-#ifdef DANI_STATIC_ROOT_INIT
-    char *const fixed_init_argv[] = {"/sbin/dani-root-init", 0};
+#ifdef BIRD_STATIC_ROOT_INIT
+    char *const fixed_init_argv[] = {"/sbin/bird-root-init", 0};
 #endif
 
     old_root_fd = (int)sys_open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC, 0);
@@ -746,7 +746,7 @@ __attribute__((noreturn)) static void handoff_root_init(void) {
         log_stage("direct-handoff-root-failed");
         for (;;) sys_nanosleep(1000000000L);
     }
-#ifdef DANI_STATIC_ROOT_INIT
+#ifdef BIRD_STATIC_ROOT_INIT
     if (root_init_bound) {
         log_stage("direct-handoff-static-pid1");
         sys_execve(fixed_init_argv[0], fixed_init_argv, fixed_env);
@@ -759,7 +759,7 @@ __attribute__((noreturn)) static void handoff_root_init(void) {
 }
 
 static void application(void) {
-#ifdef DANI_CLEAN_ROOT
+#ifdef BIRD_CLEAN_ROOT
     int supervisor_status;
     long watchdog_pid = start_boot_watchdog();
 
@@ -773,7 +773,7 @@ static void application(void) {
     log_stage("clean-start");
     if (prepare_clean_root() < 0)
         stock_init_fallback("clean-root-setup");
-#ifdef DANI_MAINLINE_INPUT_MODULE
+#ifdef BIRD_MAINLINE_INPUT_MODULE
     load_mainline_input_module();
 #endif
     supervisor_status = start_clean_supervisor();
@@ -809,13 +809,13 @@ static void application(void) {
     }
     diagnostic_led_slow();
 
-#ifdef DANI_STATIC_ROOT_INIT
+#ifdef BIRD_STATIC_ROOT_INIT
     bind_static_root_init();
 #endif
-#ifdef DANI_MAINLINE_ROOT_OVERRIDES
+#ifdef BIRD_MAINLINE_ROOT_OVERRIDES
     bind_mainline_root_overrides();
 #endif
-#ifdef DANI_MAINLINE_INPUT_MODULE
+#ifdef BIRD_MAINLINE_INPUT_MODULE
     load_mainline_input_module();
 #endif
 

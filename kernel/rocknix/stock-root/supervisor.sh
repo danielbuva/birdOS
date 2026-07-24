@@ -5,11 +5,11 @@
 
 set -u
 
-LAUNCHER=/storage/.config/bird/dani-launcher
+LAUNCHER=/storage/.config/bird/bird-launcher
 RUNNER=/storage/.config/bird/run-content.sh
-REQUEST=/run/muos/dani-launch-request
-FIRST_FRAME=/run/muos/dani-first-frame-ready
-HANDOFF_ACTION=/run/muos/dani-launch-action
+REQUEST=/run/muos/bird-launch-request
+FIRST_FRAME=/run/muos/bird-first-frame-ready
+HANDOFF_ACTION=/run/muos/bird-launch-action
 EARLY_LOG=/run/muos/initramfs-launcher.log
 EARLY_PID=/run/muos/initramfs-launcher.pid
 PIDWAIT=/storage/.config/bird/bird-pidwait
@@ -97,7 +97,7 @@ adopt_early_launcher() {
 	kill -0 "$PID" 2>/dev/null || return 1
 	EXE=$(readlink "/proc/$PID/exe" 2>/dev/null || :)
 	case "$EXE" in
-		*/opt/bird/dani-launcher*) ;;
+		*/opt/bird/bird-launcher*) ;;
 		*) printf 'bird ignored stale early pid=%s exe=%s\n' "$PID" "$EXE"
 			return 1 ;;
 	esac

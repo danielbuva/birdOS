@@ -7,7 +7,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
-BASE=${BASE:-$ROOT/firmware/work/direct-handoff-from-power/dani-trimmed-initramfs.cpio}
+BASE=${BASE:-$ROOT/firmware/work/direct-handoff-from-power/bird-trimmed-initramfs.cpio}
 JOYPAD_MODULE=${JOYPAD_MODULE:-$ROOT/kernel/work/rocknix-bird-kernel-v2-joypad/build/rocknix-singleadc-joypad.ko}
 DRM_SHMEM_MODULE=${DRM_SHMEM_MODULE:-}
 GPU_SCHED_MODULE=${GPU_SCHED_MODULE:-}
@@ -16,10 +16,10 @@ OUTPUT=${OUTPUT:-$ROOT/kernel/work/rocknix-bird-initramfs}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
 LLD=${LLD:-/opt/homebrew/opt/lld/bin/ld.lld}
 READELF=${READELF:-/opt/homebrew/opt/llvm/bin/llvm-readelf}
-PROBE_IMAGE=${PROBE_IMAGE:-dani-rg34xxsp-kernel-build:7.0.11}
+PROBE_IMAGE=${PROBE_IMAGE:-bird-rg34xxsp-kernel-build:7.0.11}
 
 BASE_SHA=6db265a4adc75093799f3b2211b4298d001546854c3faa5015e9c0459be60cba
-LAUNCHER_SHA=840ab4cfd967f18687e624a3dd916ea6cb852a23db84f554d81e1b7c2bcecf2c
+LAUNCHER_SHA=1706e8fdd81bc02da63226488a0308627f60bc0f2f5ca52dc4f71c4899f086da
 JOYPAD_MODULE_SHA=fd2ceb95f0b3bdc1d68e7182a8ac5239b5286cc277a04980e53f65e0f73d3a05
 WATCHDOG_SECONDS=20
 
@@ -148,14 +148,14 @@ mkdir -p "$RAMDISK"
 	cpio -idm <"$BASE" 2>"$OUTPUT/extract.log"
 )
 
-compile_static "$ROOT/firmware/dani-fixed-init.c" "$FIRST_OBJECT" \
+compile_static "$ROOT/firmware/bird-fixed-init.c" "$FIRST_OBJECT" \
 	"$RAMDISK/init" \
-	-DDANI_STATIC_ROOT_INIT=1 \
-	-DDANI_MAINLINE_ROOT_OVERRIDES=1 \
-	-DDANI_MAINLINE_INPUT_MODULE=1 \
-	-DDANI_BOOT_TIMEOUT_SECONDS="$WATCHDOG_SECONDS"
-compile_static "$ROOT/firmware/dani-root-init.c" "$ROOT_OBJECT" \
-	"$RAMDISK/opt/dani-root-init"
+	-DBIRD_STATIC_ROOT_INIT=1 \
+	-DBIRD_MAINLINE_ROOT_OVERRIDES=1 \
+	-DBIRD_MAINLINE_INPUT_MODULE=1 \
+	-DBIRD_BOOT_TIMEOUT_SECONDS="$WATCHDOG_SECONDS"
+compile_static "$ROOT/firmware/bird-root-init.c" "$ROOT_OBJECT" \
+	"$RAMDISK/opt/bird-root-init"
 mkdir -p "$MAINLINE_OVERRIDE_DIR"
 compile_mali_stub \
 	"$ROOT/kernel/rocknix/root-overrides/libmali-stub.c" \
@@ -169,8 +169,8 @@ compile_graphics_probe \
 	"$ROOT/kernel/rocknix/root-overrides/bird-graphics-probe.c" \
 	"$MAINLINE_OVERRIDE_DIR/bird-graphics-probe"
 "$LLD" -static --build-id=none -z noexecstack -s -e _start \
-	-o "$RAMDISK/opt/dani-launcher" "$ROOT/launcher/dani-launcher.o"
-chmod 755 "$RAMDISK/opt/dani-launcher"
+	-o "$RAMDISK/opt/bird-launcher" "$ROOT/launcher/bird-launcher.o"
+chmod 755 "$RAMDISK/opt/bird-launcher"
 
 cp -fp "$JOYPAD_MODULE" \
 	"$MAINLINE_OVERRIDE_DIR/rocknix-singleadc-joypad.ko"
@@ -181,8 +181,8 @@ cp -fp "$ROOT/kernel/rocknix/root-overrides/S10udev" \
 	"$MAINLINE_OVERRIDE_DIR/S10udev"
 cp -fp "$ROOT/kernel/rocknix/root-overrides/module.sh" \
 	"$MAINLINE_OVERRIDE_DIR/module.sh"
-cp -fp "$ROOT/launcher/S03danilauncher" \
-	"$MAINLINE_OVERRIDE_DIR/S03danilauncher"
+cp -fp "$ROOT/launcher/S03birdlauncher" \
+	"$MAINLINE_OVERRIDE_DIR/S03birdlauncher"
 cp -fp "$ROOT/kernel/rocknix/root-overrides/bird-mainline-env.sh" \
 	"$MAINLINE_OVERRIDE_DIR/bird-mainline-env.sh"
 cp -fp "$ROOT/kernel/rocknix/root-overrides/func-mainline.sh" \
@@ -191,13 +191,13 @@ cp -fp "$ROOT/kernel/rocknix/root-overrides/bright-mainline.sh" \
 	"$MAINLINE_OVERRIDE_DIR/bright-mainline.sh"
 chmod 755 "$MAINLINE_OVERRIDE_DIR/S10udev" \
 	"$MAINLINE_OVERRIDE_DIR/module.sh" \
-	"$MAINLINE_OVERRIDE_DIR/S03danilauncher" \
+	"$MAINLINE_OVERRIDE_DIR/S03birdlauncher" \
 	"$MAINLINE_OVERRIDE_DIR/bird-mainline-env.sh" \
 	"$MAINLINE_OVERRIDE_DIR/func-mainline.sh" \
 	"$MAINLINE_OVERRIDE_DIR/bright-mainline.sh" \
 	"$MAINLINE_OVERRIDE_DIR/bird-graphics-probe"
 
-[ "$(shasum -a 256 "$RAMDISK/opt/dani-launcher" | awk '{print $1}')" = \
+[ "$(shasum -a 256 "$RAMDISK/opt/bird-launcher" | awk '{print $1}')" = \
 	"$LAUNCHER_SHA" ] || fail 'launcher no longer reproduces pinned executable'
 strings "$RAMDISK/init" | grep -q 'watchdog-reboot' || \
 	fail 'first-frame watchdog is missing'
@@ -229,15 +229,15 @@ strings "$MAINLINE_OVERRIDE_DIR/bird-graphics-probe" | \
 find "$RAMDISK" -type d -exec touch -t 202601010000 {} +
 touch -t 202601010000 \
 	"$RAMDISK/init" \
-	"$RAMDISK/opt/dani-root-init" \
-	"$RAMDISK/opt/dani-launcher" \
+	"$RAMDISK/opt/bird-root-init" \
+	"$RAMDISK/opt/bird-launcher" \
 	"$MAINLINE_OVERRIDE_DIR/rocknix-singleadc-joypad.ko" \
 	"$MAINLINE_OVERRIDE_DIR/drm_shmem_helper.ko" \
 	"$MAINLINE_OVERRIDE_DIR/gpu-sched.ko" \
 	"$MAINLINE_OVERRIDE_DIR/panfrost.ko" \
 	"$MAINLINE_OVERRIDE_DIR/S10udev" \
 	"$MAINLINE_OVERRIDE_DIR/module.sh" \
-	"$MAINLINE_OVERRIDE_DIR/S03danilauncher" \
+	"$MAINLINE_OVERRIDE_DIR/S03birdlauncher" \
 	"$MAINLINE_OVERRIDE_DIR/bird-mainline-env.sh" \
 	"$MAINLINE_OVERRIDE_DIR/func-mainline.sh" \
 	"$MAINLINE_OVERRIDE_DIR/bright-mainline.sh" \
@@ -254,16 +254,16 @@ gzip -n -9 -c "$CPIO" >"$GZIP"
 
 cpio -it <"$CPIO" >"$OUTPUT/payload.txt" 2>"$OUTPUT/verify.log"
 grep -qx './init' "$OUTPUT/payload.txt" || fail '/init missing from archive'
-grep -qx './opt/dani-launcher' "$OUTPUT/payload.txt" || \
+grep -qx './opt/bird-launcher' "$OUTPUT/payload.txt" || \
 	fail 'launcher missing from archive'
-grep -qx './opt/dani-root-init' "$OUTPUT/payload.txt" || \
+grep -qx './opt/bird-root-init' "$OUTPUT/payload.txt" || \
 	fail 'root PID 1 missing from archive'
 grep -qx './opt/bird-mainline/S10udev' "$OUTPUT/payload.txt" || \
 	fail 'mainline udev override missing from archive'
 grep -qx './opt/bird-mainline/module.sh' "$OUTPUT/payload.txt" || \
 	fail 'mainline module override missing from archive'
 for PAYLOAD in \
-	S03danilauncher \
+	S03birdlauncher \
 	bird-mainline-env.sh \
 	func-mainline.sh \
 	bright-mainline.sh \
@@ -285,14 +285,14 @@ grep -qx './opt/bird-mainline/panfrost.ko' \
 (
 	cd "$OUTPUT"
 	wc -c bird-initramfs.cpio bird-initramfs.cpio.gz ramdisk/init \
-		ramdisk/opt/dani-root-init ramdisk/opt/dani-launcher \
+		ramdisk/opt/bird-root-init ramdisk/opt/bird-launcher \
 		ramdisk/opt/bird-mainline/rocknix-singleadc-joypad.ko \
 		ramdisk/opt/bird-mainline/drm_shmem_helper.ko \
 		ramdisk/opt/bird-mainline/gpu-sched.ko \
 		ramdisk/opt/bird-mainline/panfrost.ko \
 		ramdisk/opt/bird-mainline/S10udev \
 		ramdisk/opt/bird-mainline/module.sh \
-		ramdisk/opt/bird-mainline/S03danilauncher \
+		ramdisk/opt/bird-mainline/S03birdlauncher \
 		ramdisk/opt/bird-mainline/bird-mainline-env.sh \
 		ramdisk/opt/bird-mainline/func-mainline.sh \
 		ramdisk/opt/bird-mainline/bright-mainline.sh \
@@ -306,12 +306,12 @@ grep -qx './opt/bird-mainline/panfrost.ko' \
 		bird-initramfs.cpio \
 		bird-initramfs.cpio.gz \
 		ramdisk/init \
-		ramdisk/opt/dani-root-init \
-		ramdisk/opt/dani-launcher \
+		ramdisk/opt/bird-root-init \
+		ramdisk/opt/bird-launcher \
 		ramdisk/opt/bird-mainline/rocknix-singleadc-joypad.ko \
 		ramdisk/opt/bird-mainline/S10udev \
 		ramdisk/opt/bird-mainline/module.sh \
-		ramdisk/opt/bird-mainline/S03danilauncher \
+		ramdisk/opt/bird-mainline/S03birdlauncher \
 		ramdisk/opt/bird-mainline/bird-mainline-env.sh \
 		ramdisk/opt/bird-mainline/func-mainline.sh \
 		ramdisk/opt/bird-mainline/bright-mainline.sh \

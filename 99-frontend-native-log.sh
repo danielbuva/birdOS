@@ -38,12 +38,12 @@ BESPOKE_BRIGHTNESS_DEVICE="$BESPOKE_ROOT/backup/device-start.sh.pre-no-brightnes
 BESPOKE_SYSINIT="$BESPOKE_ROOT/backup/sysinit.pre-bespoke-services"
 BESPOKE_STARTUP_MARKER="BOOT_TIMING_BESPOKE_BACKGROUND_V1"
 BESPOKE_DEVICE_MARKER="BOOT_TIMING_WIFI_ON_DEMAND_V1"
-BESPOKE_OLD_BRIGHTNESS_MARKER="DANI_BRIGHTNESS_READY_V1"
-BESPOKE_BRIGHTNESS_MARKER="DANI_DISABLE_ASYNC_BRIGHTNESS_RESTORE_V1"
+BESPOKE_OLD_BRIGHTNESS_MARKER="BIRD_BRIGHTNESS_READY_V1"
+BESPOKE_BRIGHTNESS_MARKER="BIRD_DISABLE_ASYNC_BRIGHTNESS_RESTORE_V1"
 BESPOKE_SYSINIT_MARKER="BOOT_TIMING_DEFER_CHRONY_ENTROPY_V1"
 BESPOKE_ENTROPY_FIX_MARKER="BOOT_TIMING_RESTORE_EARLY_ENTROPY_V2"
 CRITICAL_UI_BACKUP="$BESPOKE_ROOT/backup/sysinit.pre-critical-ui"
-LEAN_USERSPACE_STATE="/opt/muos/config/system/dani_lean_userspace_v1"
+LEAN_USERSPACE_STATE="/opt/muos/config/system/bird_lean_userspace_v1"
 WIFI_DIAG_ROOT="/mnt/mmc/MUOS/boot-timing/wifi-module-diagnostic"
 WIFI_DIAG_STATE="$WIFI_DIAG_ROOT/state"
 WIFI_MODULE_TARGET="/opt/muos/script/device/module.sh"
@@ -51,8 +51,8 @@ WIFI_MODULE_MARKER="BOOT_TIMING_WIFI_MODULE_ON_DEMAND_V1"
 DEPMOD_CACHE_MARKER="BOOT_TIMING_CACHE_DEPMOD_V1"
 DEPMOD_STATUS="/tmp/muos/depmod-status"
 LAUNCHER_ROOT="/mnt/mmc/MUOS/bespoke-launcher"
-LAUNCHER_OBJECT="$LAUNCHER_ROOT/dani-launcher.o"
-LAUNCHER_TARGET="/opt/muos/bin/dani-launcher"
+LAUNCHER_OBJECT="$LAUNCHER_ROOT/bird-launcher.o"
+LAUNCHER_TARGET="/opt/muos/bin/bird-launcher"
 OPTIONAL_CORE_SOURCE_DIR="$LAUNCHER_ROOT/optional-cores"
 OPTIONAL_CORE_TARGET_DIR="/opt/muos/share/core"
 OPTIONAL_CORE_NAMES="gw_libretro.so bluemsx_libretro.so fake08_libretro.so"
@@ -67,18 +67,18 @@ LAUNCHER_PROOF_LOG="$LAUNCHER_ROOT/proof-v4-remaining.log"
 EARLY_LAUNCHER_STATE="$LAUNCHER_ROOT/early-launcher-current.revision"
 EARLY_OLD_LAUNCHER_STATE="$LAUNCHER_ROOT/early-launcher-v11-real-catalog.revision"
 EARLY_LAUNCHER_REVISION_SOURCE="$LAUNCHER_ROOT/catalog.revision"
-EARLY_INIT_SOURCE="$LAUNCHER_ROOT/S03danilauncher"
-EARLY_INIT_TARGET="/opt/muos/script/init/S03danilauncher"
-EARLIEST_UI_SOURCE="$LAUNCHER_ROOT/dani-earliest-ui.sh"
-EARLIEST_UI_TARGET="/opt/muos/script/init/dani-earliest-ui.sh"
+EARLY_INIT_SOURCE="$LAUNCHER_ROOT/S03birdlauncher"
+EARLY_INIT_TARGET="/opt/muos/script/init/S03birdlauncher"
+EARLIEST_UI_SOURCE="$LAUNCHER_ROOT/bird-earliest-ui.sh"
+EARLIEST_UI_TARGET="/opt/muos/script/init/bird-earliest-ui.sh"
 EARLIEST_UI_INITTAB="/etc/inittab"
 EARLIEST_UI_INITTAB_BACKUP="$BESPOKE_ROOT/backup/inittab.pre-earliest-ui"
 EARLIEST_UI_PATCH_SOURCE="$LAUNCHER_ROOT/patch-earliest-ui-inittab.sh"
 CRITICAL_UI_PATCH_SOURCE="$LAUNCHER_ROOT/patch-critical-ui-sysinit.sh"
-EARLY_OLD_INIT_TARGET="/opt/muos/script/init/S11danilauncher"
+EARLY_OLD_INIT_TARGET="/opt/muos/script/init/S11birdlauncher"
 EARLY_STARTUP_TARGET="/opt/muos/script/system/startup.sh"
 EARLY_STARTUP_BACKUP="$LAUNCHER_ROOT/startup.pre-early-launcher"
-EARLY_STARTUP_MARKER="DANI_EARLY_LAUNCHER_V1"
+EARLY_STARTUP_MARKER="BIRD_EARLY_LAUNCHER_V1"
 UDEV_PROFILE_TMP="/tmp/muos/udev-profile"
 UDEV_PROFILE_ROOT="/mnt/mmc/MUOS/boot-timing/udev-profile/results"
 FIXED_DEVICE_TMP="/tmp/muos/fixed-device-init.tsv"
@@ -108,7 +108,7 @@ if [ -f "$TIMING_TMP" ]; then
 	IFS=' ' read -r UPTIME_S _ </proc/uptime
 	printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
 		"$BOOT_ID" "$UPTIME_S" "milestone" "user" "user_init_hook" "0" >>"$TIMING_TMP"
-	if [ -e /run/muos/dani-root-init-active ]; then
+	if [ -e /run/muos/bird-root-init-active ]; then
 		printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
 			"$BOOT_ID" "$UPTIME_S" "milestone" "init" "static_pid1_active" "0" >>"$TIMING_TMP"
 	fi
@@ -685,7 +685,7 @@ fi
 # stock. The next phase will move the proven binary earlier in the boot path.
 if [ -s "$LAUNCHER_OBJECT" ] && [ ! -f "$LAUNCHER_PROOF_STATE" ]; then
 	mkdir -p "$LAUNCHER_ROOT"
-	LAUNCHER_NEW="/tmp/dani-launcher.$$"
+	LAUNCHER_NEW="/tmp/bird-launcher.$$"
 	if /usr/bin/ld -static --build-id=none -z noexecstack -s -e _start \
 		-o "$LAUNCHER_NEW" "$LAUNCHER_OBJECT" >"$LAUNCHER_ROOT/link-v4-remaining.log" 2>&1; then
 		chmod 755 "$LAUNCHER_NEW"
@@ -740,7 +740,7 @@ if [ "$BESPOKE_BRIGHTNESS_POLICY_READY" -eq 1 ] &&
 	[ -s "$LAUNCHER_OBJECT" ] && [ -s "$EARLY_INIT_SOURCE" ] &&
 	[ -n "$EARLY_LAUNCHER_WANTED_REVISION" ] &&
 	[ "$EARLY_LAUNCHER_CURRENT_REVISION" != "$EARLY_LAUNCHER_WANTED_REVISION" ]; then
-	LAUNCHER_NEW="/tmp/dani-launcher-direct.$$"
+	LAUNCHER_NEW="/tmp/bird-launcher-direct.$$"
 	PATCHED="/tmp/startup-early-launcher.$$.sh"
 	STARTUP_READY=0
 	OPTIONAL_CORES_READY=1
@@ -750,7 +750,7 @@ if [ "$BESPOKE_BRIGHTNESS_POLICY_READY" -eq 1 ] &&
 	# during the early boot path itself.
 	for CORE_NAME in $OPTIONAL_CORE_NAMES; do
 		CORE_SOURCE="$OPTIONAL_CORE_SOURCE_DIR/$CORE_NAME"
-		CORE_NEW="$OPTIONAL_CORE_TARGET_DIR/.$CORE_NAME.dani-new"
+		CORE_NEW="$OPTIONAL_CORE_TARGET_DIR/.$CORE_NAME.bird-new"
 		CORE_TARGET="$OPTIONAL_CORE_TARGET_DIR/$CORE_NAME"
 		if [ ! -s "$CORE_SOURCE" ] ||
 			! cp -f "$CORE_SOURCE" "$CORE_NEW" ||
@@ -779,8 +779,8 @@ if [ "$BESPOKE_BRIGHTNESS_POLICY_READY" -eq 1 ] &&
 				if [ "$LINE" = 'FRONTEND start' ]; then
 					printf '# %s\n' "$EARLY_STARTUP_MARKER"
 					printf '%s\n' 'mkdir -p "/run/muos"'
-					printf '%s\n' ': >"/run/muos/dani-system-ready"'
-					printf '%s\n' 'if [ ! -e "/run/muos/dani-launcher-active" ]; then'
+					printf '%s\n' ': >"/run/muos/bird-system-ready"'
+					printf '%s\n' 'if [ ! -e "/run/muos/bird-launcher-active" ]; then'
 					printf '\t%s\n' 'FRONTEND start'
 					printf '%s\n' 'fi'
 				else
@@ -823,7 +823,7 @@ fi
 # invokes S03 as the normal fallback.
 if [ -s "$EARLIEST_UI_SOURCE" ] && [ -x "$EARLIEST_UI_PATCH_SOURCE" ] &&
 	[ -f "$EARLIEST_UI_INITTAB" ]; then
-	EARLIEST_UI_NEW="$EARLIEST_UI_TARGET.dani-new"
+	EARLIEST_UI_NEW="$EARLIEST_UI_TARGET.bird-new"
 	if ! cmp -s "$EARLIEST_UI_SOURCE" "$EARLIEST_UI_TARGET" 2>/dev/null; then
 		if cp -f "$EARLIEST_UI_SOURCE" "$EARLIEST_UI_NEW" &&
 			chmod 755 "$EARLIEST_UI_NEW"; then
@@ -846,7 +846,7 @@ OPTIONAL_EMULATOR_CURRENT=$(cat "$OPTIONAL_EMULATOR_STATE" 2>/dev/null)
 if [ "${#OPTIONAL_EMULATOR_WANTED}" -eq 64 ] &&
 	printf '%s\n' "$OPTIONAL_EMULATOR_WANTED" | grep -Eq '^[0-9a-f]{64}$' &&
 	[ "$OPTIONAL_EMULATOR_CURRENT" != "$OPTIONAL_EMULATOR_WANTED" ]; then
-	EMULATOR_WORK="/tmp/dani-optional-emulators.$$"
+	EMULATOR_WORK="/tmp/bird-optional-emulators.$$"
 	NDS_STAGE="$EMULATOR_WORK/nds/emulator/drastic-trngaje"
 	OPENBOR_STAGE="$EMULATOR_WORK/openbor"
 	OPTIONAL_EMULATOR_FAILED=0
@@ -881,7 +881,7 @@ if [ "${#OPTIONAL_EMULATOR_WANTED}" -eq 64 ] &&
 		OPTIONAL_EMULATOR_FAILED=1
 	else
 		NDS_TARGET="/opt/muos/share/emulator/drastic-trngaje"
-		NDS_NEW="/opt/muos/share/emulator/.drastic-trngaje.dani-new"
+		NDS_NEW="/opt/muos/share/emulator/.drastic-trngaje.bird-new"
 		if [ -f "$NDS_TARGET/config/drastic.cf2" ]; then
 			cp -f "$NDS_TARGET/config/drastic.cf2" "$NDS_STAGE/config/drastic.cf2"
 		fi
@@ -922,9 +922,9 @@ if [ "${#OPTIONAL_EMULATOR_WANTED}" -eq 64 ] &&
 			"$OPENBOR_DATA/system/configs/openbor" \
 			"/opt/muos/script/launch" "/opt/muos/script/control"
 		if ! cp -f "$OPENBOR_STAGE/emulator/openbor/OpenBOR7530" \
-			"$OPENBOR_TARGET/.OpenBOR7530.dani-new" ||
-			! chmod 755 "$OPENBOR_TARGET/.OpenBOR7530.dani-new" ||
-			! mv -f "$OPENBOR_TARGET/.OpenBOR7530.dani-new" "$OPENBOR_TARGET/OpenBOR7530"; then
+			"$OPENBOR_TARGET/.OpenBOR7530.bird-new" ||
+			! chmod 755 "$OPENBOR_TARGET/.OpenBOR7530.bird-new" ||
+			! mv -f "$OPENBOR_TARGET/.OpenBOR7530.bird-new" "$OPENBOR_TARGET/OpenBOR7530"; then
 			OPENBOR_INSTALL_FAILED=1
 		fi
 		if [ "$OPENBOR_INSTALL_FAILED" -eq 0 ]; then
@@ -933,9 +933,9 @@ if [ "${#OPTIONAL_EMULATOR_WANTED}" -eq 64 ] &&
 		fi
 		for OPENBOR_SCRIPT in launch/ext-openbor.sh control/openbor.sh; do
 			OPENBOR_SCRIPT_TARGET="/opt/muos/script/$OPENBOR_SCRIPT"
-			if ! cp -f "$OPENBOR_STAGE/script/$OPENBOR_SCRIPT" "$OPENBOR_SCRIPT_TARGET.dani-new" ||
-				! chmod 755 "$OPENBOR_SCRIPT_TARGET.dani-new" ||
-				! mv -f "$OPENBOR_SCRIPT_TARGET.dani-new" "$OPENBOR_SCRIPT_TARGET"; then
+			if ! cp -f "$OPENBOR_STAGE/script/$OPENBOR_SCRIPT" "$OPENBOR_SCRIPT_TARGET.bird-new" ||
+				! chmod 755 "$OPENBOR_SCRIPT_TARGET.bird-new" ||
+				! mv -f "$OPENBOR_SCRIPT_TARGET.bird-new" "$OPENBOR_SCRIPT_TARGET"; then
 				OPENBOR_INSTALL_FAILED=1
 			fi
 		done

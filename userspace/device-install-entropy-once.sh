@@ -12,7 +12,7 @@ CARD_INSTALLER="$ROM_MOUNT/MUOS/init/78-install-entropy-crng.sh"
 OLD_SHA="542385cc824591a1a6fddde078a339c2e8467341a65e025026f95ac4623fbe02"
 INTERMEDIATE_SHA="8c70010ae701961582f64199abd1c42905df11c0e8c780ed6cfb967b7e0d2799"
 NEW_SHA="aabd64646311c81d8fd18d24e9fcb8804896d652bf985fd59051e01934d2f312"
-TEMP="/opt/muos/script/init/.S01entropy.dani-once-new"
+TEMP="/opt/muos/script/init/.S01entropy.bird-once-new"
 
 mkdir -p "$WORK_DIR/backup"
 exec >>"$LOG_FILE" 2>&1

@@ -3,7 +3,7 @@
 # this file comes from the same mounted ROCKNIX runtime; no muOS wrapper,
 # binary, core, configuration or shared library is executed.
 
-REQUEST=${1:-/run/muos/dani-launch-request}
+REQUEST=${1:-/run/muos/bird-launch-request}
 RUNTIME=/run/bird-runtime
 LOG_DIR=/mnt/mmc/MUOS/Bird/log
 LATEST=$LOG_DIR/content-latest.log

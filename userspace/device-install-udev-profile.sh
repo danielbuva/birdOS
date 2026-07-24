@@ -11,7 +11,7 @@ LOG_FILE="$WORK_DIR/install.log"
 CARD_INSTALLER="$ROM_MOUNT/MUOS/init/88-install-udev-profile.sh"
 STOCK_SHA="0e4e4126489b6e41fe018ede4ad0858826a5ffdef902ccebe87a090421ba5a05"
 PROFILE_SHA="cdef27f4e6cb77641364de29008dd5a469e06f2c046333ec352fb76c68b25cec"
-TEMP="/opt/muos/script/init/.S10udev.dani-profile-new"
+TEMP="/opt/muos/script/init/.S10udev.bird-profile-new"
 
 mkdir -p "$WORK_DIR/backup"
 exec >>"$LOG_FILE" 2>&1

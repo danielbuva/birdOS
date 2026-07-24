@@ -2,7 +2,7 @@
 set -eu
 
 TARGET=${1:-}
-MARKER="DANI_INITRAMFS_LAUNCHER_V1"
+MARKER="BIRD_INITRAMFS_LAUNCHER_V1"
 
 [ -n "$TARGET" ] && [ -f "$TARGET" ] || {
 	printf 'usage: %s INITRAMFS_INIT\n' "$0" >&2
@@ -11,7 +11,7 @@ MARKER="DANI_INITRAMFS_LAUNCHER_V1"
 
 grep -q "$MARKER" "$TARGET" && exit 0
 
-PATCHED="$TARGET.dani-new.$$"
+PATCHED="$TARGET.bird-new.$$"
 CLEANUP() {
 	rm -f "$PATCHED"
 }
@@ -20,7 +20,7 @@ trap CLEANUP 0 1 2 15
 MATCHES=0
 while IFS= read -r LINE; do
 	if [ "$LINE" = '[ -x /mnt/init ] && mount -o noatime,move /dev /mnt/dev && exec switch_root /mnt /init' ]; then
-		printf '%s\n' '# DANI_INITRAMFS_LAUNCHER_V1'
+		printf '%s\n' '# BIRD_INITRAMFS_LAUNCHER_V1'
 		printf '%s\n' 'if [ -x /mnt/init ]; then'
 		printf '\t%s\n' 'mkdir -p /mnt/dev /mnt/proc /mnt/sys /mnt/run /mnt/tmp /mnt/opt/muos/bin'
 		printf '\t%s\n' 'mount -o noatime,move /dev /mnt/dev'
@@ -29,12 +29,12 @@ while IFS= read -r LINE; do
 		printf '\t%s\n' 'mount -t tmpfs -o mode=0755,nosuid,nodev tmpfs /mnt/run'
 		printf '\t%s\n' 'mount -t tmpfs -o mode=1777 tmpfs /mnt/tmp'
 		printf '\t%s\n' 'mkdir -p /mnt/run/muos'
-		printf '\t%s\n' 'if [ -x /opt/dani-launcher ] && [ -x /mnt/opt/muos/script/init/S03danilauncher ]; then'
-		printf '\t\t%s\n' '[ -e /mnt/opt/muos/bin/dani-launcher ] || : >/mnt/opt/muos/bin/dani-launcher'
-		printf '\t\t%s\n' 'if mount -o bind /opt/dani-launcher /mnt/opt/muos/bin/dani-launcher; then'
-		printf '\t\t\t%s\n' '/usr/sbin/chroot /mnt /opt/muos/script/init/S03danilauncher start || true'
+		printf '\t%s\n' 'if [ -x /opt/bird-launcher ] && [ -x /mnt/opt/muos/script/init/S03birdlauncher ]; then'
+		printf '\t\t%s\n' '[ -e /mnt/opt/muos/bin/bird-launcher ] || : >/mnt/opt/muos/bin/bird-launcher'
+		printf '\t\t%s\n' 'if mount -o bind /opt/bird-launcher /mnt/opt/muos/bin/bird-launcher; then'
+		printf '\t\t\t%s\n' '/usr/sbin/chroot /mnt /opt/muos/script/init/S03birdlauncher start || true'
 		printf '\t\t\t%s\n' 'COUNT=0'
-		printf '\t\t\t%s\n' 'while [ ! -e /mnt/run/muos/dani-first-frame-ready ]; do'
+		printf '\t\t\t%s\n' 'while [ ! -e /mnt/run/muos/bird-first-frame-ready ]; do'
 		printf '\t\t\t\t%s\n' 'COUNT=`expr "$COUNT" + 1`'
 		printf '\t\t\t\t%s\n' '[ "$COUNT" -ge 500 ] && break'
 		printf '\t\t\t\t%s\n' 'sleep 0.001'

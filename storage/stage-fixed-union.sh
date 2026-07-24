@@ -2,7 +2,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
-CARD=${1:-/Volumes/dani-sp}
+CARD=${1:-/Volumes/BIRD-DATA}
 PAYLOAD="$ROOT/storage/fixed-union.sh"
 INSTALL_SOURCE="$ROOT/storage/device-install-fixed-union.sh"
 WORK_DIR="$CARD/MUOS/boot-timing/fixed-storage"
@@ -11,7 +11,7 @@ INSTALL_TARGET="$CARD/MUOS/init/84-install-fixed-union.sh"
 TIMING_TARGET="$CARD/MUOS/init/99-boot-timing-marker.sh"
 
 [ -d "$CARD/MUOS/init" ] || {
-	printf 'error: mounted Dani SP card not found: %s\n' "$CARD" >&2
+	printf 'error: mounted birdOS card not found: %s\n' "$CARD" >&2
 	exit 1
 }
 sh -n "$PAYLOAD"

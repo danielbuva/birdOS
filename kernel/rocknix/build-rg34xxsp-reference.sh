@@ -7,10 +7,10 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
-SOURCE=${SOURCE:-/Users/dani/Downloads/ROCKNIX-H700.aarch64-20260701-DDR4.img}
+SOURCE=${SOURCE:-$HOME/Downloads/ROCKNIX-H700.aarch64-20260701-DDR4.img}
 # Keep the generated raw image outside Downloads. macOS provenance scanning can
 # block raw-image opens there for minutes even after its checksum was proven.
-OUTPUT=${OUTPUT:-/Users/dani/ROCKNIX-H700.aarch64-20260701-DDR4-rg34xxsp-safe.img}
+OUTPUT=${OUTPUT:-$HOME/ROCKNIX-H700.aarch64-20260701-DDR4-rg34xxsp-safe.img}
 SOURCE_BYTES=2198863872
 SOURCE_SHA=fce3fe81be706be795311b361db7b98eb1316befc5d543a1ad6ca184aedcc3d6
 FIXED_STORAGE_BYTES=268435456
@@ -32,7 +32,7 @@ command -v 7zz >/dev/null 2>&1 || fail '7zz is required'
 [ -x "$E2FS/e2fsck" ] || fail 'Homebrew e2fsprogs is required'
 [ -x "$E2FS/resize2fs" ] || fail 'Homebrew e2fsprogs is required'
 
-WORK=$(mktemp -d -t dani-rocknix-reference)
+WORK=$(mktemp -d -t bird-rocknix-reference)
 ATTACHED=
 cleanup() {
 	if [ -n "$ATTACHED" ]; then

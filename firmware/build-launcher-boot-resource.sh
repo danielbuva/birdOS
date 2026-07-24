@@ -2,7 +2,7 @@
 set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-STOCK=${1:-/Volumes/dani-sp/.firmware-work/stock-boot-resource.img}
+STOCK=${1:-/Volumes/BIRD-DATA/.firmware-work/stock-boot-resource.img}
 OUTPUT_DIR=${2:-$SCRIPT_DIR/work/boot-resource}
 
 fail() {
@@ -17,19 +17,19 @@ command -v python3 >/dev/null 2>&1 || fail "python3 is required"
 mkdir -p "$OUTPUT_DIR"
 STOCK_LOGO="$OUTPUT_DIR/stock-bootlogo.bmp"
 UNCHANGED="$OUTPUT_DIR/no-change-boot-resource.img"
-DANI_LOGO="$OUTPUT_DIR/dani-frame-zero.bmp"
-CANDIDATE="$OUTPUT_DIR/dani-boot-resource.img"
+BIRD_LOGO="$OUTPUT_DIR/bird-frame-zero.bmp"
+CANDIDATE="$OUTPUT_DIR/bird-boot-resource.img"
 
 python3 "$SCRIPT_DIR/fat16-file.py" extract "$STOCK" bootlogo.bmp "$STOCK_LOGO"
 python3 "$SCRIPT_DIR/fat16-file.py" replace "$STOCK" bootlogo.bmp "$STOCK_LOGO" "$UNCHANGED"
 cmp -s "$STOCK" "$UNCHANGED" || fail "no-change FAT16 replacement was not byte-identical"
 printf '%s\n' 'No-change FAT16 round trip: byte-identical'
 
-python3 "$SCRIPT_DIR/generate-launcher-bootlogo.py" "$DANI_LOGO"
-[ "$(stat -f %z "$DANI_LOGO")" -eq "$(stat -f %z "$STOCK_LOGO")" ] || \
+python3 "$SCRIPT_DIR/generate-launcher-bootlogo.py" "$BIRD_LOGO"
+[ "$(stat -f %z "$BIRD_LOGO")" -eq "$(stat -f %z "$STOCK_LOGO")" ] || \
 	fail "generated bootlogo does not preserve the stock file size"
-python3 "$SCRIPT_DIR/fat16-file.py" replace "$STOCK" bootlogo.bmp "$DANI_LOGO" "$CANDIDATE"
+python3 "$SCRIPT_DIR/fat16-file.py" replace "$STOCK" bootlogo.bmp "$BIRD_LOGO" "$CANDIDATE"
 
 printf '\nSHA-256:\n'
-shasum -a 256 "$STOCK" "$STOCK_LOGO" "$DANI_LOGO" "$CANDIDATE"
+shasum -a 256 "$STOCK" "$STOCK_LOGO" "$BIRD_LOGO" "$CANDIDATE"
 printf '\nBuilt candidate: %s\n' "$CANDIDATE"

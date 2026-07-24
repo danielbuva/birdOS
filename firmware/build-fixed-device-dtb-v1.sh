@@ -2,9 +2,9 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
-BASE=${1:-$ROOT/firmware/work/direct-handoff-initramfs/dani-boot-trimmed-initramfs.img}
+BASE=${1:-$ROOT/firmware/work/direct-handoff-initramfs/bird-boot-trimmed-initramfs.img}
 WORK=${2:-$ROOT/firmware/work/fixed-device-dtb-v1}
-OUTPUT="$WORK/dani-boot-fixed-device-dtb-v1.img"
+OUTPUT="$WORK/bird-boot-fixed-device-dtb-v1.img"
 
 fail() {
 	printf 'error: %s\n' "$*" >&2

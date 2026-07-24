@@ -8,13 +8,13 @@
 
 set -eu
 
-CARD=${1:-/Volumes/dani-sp}
+CARD=${1:-/Volumes/BIRD-DATA}
 ACTION=${2:-}
 GDD=${GDD:-/opt/homebrew/bin/gdd}
 PREFIX_BYTES=163577856
 ROOTFS_BYTES=8589934592
 DISK_BYTES=512074186752
-LOCAL_PREFIX=${LOCAL_PREFIX:-/Users/dani/Downloads/dani-sp-before-rocknix-prefix.img}
+LOCAL_PREFIX=${LOCAL_PREFIX:-$HOME/Downloads/bird-sp-before-rocknix-prefix.img}
 CHECKPOINT_DIR="$CARD/.firmware-work/source-kernel-checkpoint"
 ROOTFS_IMAGE="$CHECKPOINT_DIR/current-rootfs.ext4"
 MANIFEST="$CHECKPOINT_DIR/manifest.sha256"
@@ -25,14 +25,14 @@ fail() {
 }
 
 [ "$ACTION" = '--capture' ] || \
-	fail "usage: $0 /Volumes/dani-sp --capture"
+	fail "usage: $0 /Volumes/BIRD-DATA --capture"
 [ -d "$CARD" ] || fail "card volume not mounted: $CARD"
 [ -x "$GDD" ] || fail 'GNU dd is required; install it with: brew install coreutils'
 command -v diskutil >/dev/null 2>&1 || fail 'diskutil is required'
 command -v plutil >/dev/null 2>&1 || fail 'plutil is required'
 
-INFO=$(mktemp -t dani-card-info)
-ROOT_INFO=$(mktemp -t dani-root-info)
+INFO=$(mktemp -t bird-card-info)
+ROOT_INFO=$(mktemp -t bird-root-info)
 cleanup() {
 	rm -f "$INFO" "$ROOT_INFO"
 }

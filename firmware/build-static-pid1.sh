@@ -2,7 +2,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
-BASE_BOOT=${1:-$ROOT/firmware/work/fixed-initramfs/dani-boot-fixed-initramfs.img}
+BASE_BOOT=${1:-$ROOT/firmware/work/fixed-initramfs/bird-boot-fixed-initramfs.img}
 OUTPUT_DIR=${2:-$ROOT/firmware/work/static-pid1}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
 LLD=${LLD:-/opt/homebrew/opt/lld/bin/ld.lld}
@@ -60,19 +60,19 @@ UNPACKED="$OUTPUT_DIR/base"
 VERIFY="$OUTPUT_DIR/verify"
 RAMDISK="$UNPACKED/ramdisk"
 FIRST_INIT="$RAMDISK/init"
-ROOT_INIT="$RAMDISK/opt/dani-root-init"
-FIRST_OBJECT="$OUTPUT_DIR/dani-fixed-init-stage2.o"
-ROOT_OBJECT="$OUTPUT_DIR/dani-root-init.o"
-RAMDISK_CPIO="$OUTPUT_DIR/dani-static-pid1.cpio"
-RAMDISK_GZ="$OUTPUT_DIR/dani-static-pid1.gz"
-CANDIDATE="$OUTPUT_DIR/dani-boot-static-pid1.img"
+ROOT_INIT="$RAMDISK/opt/bird-root-init"
+FIRST_OBJECT="$OUTPUT_DIR/bird-fixed-init-stage2.o"
+ROOT_OBJECT="$OUTPUT_DIR/bird-root-init.o"
+RAMDISK_CPIO="$OUTPUT_DIR/bird-static-pid1.cpio"
+RAMDISK_GZ="$OUTPUT_DIR/bird-static-pid1.gz"
+CANDIDATE="$OUTPUT_DIR/bird-boot-static-pid1.img"
 
 mkdir -p "$OUTPUT_DIR"
 "$ROOT/firmware/unpack-boot.sh" "$BASE_BOOT" "$UNPACKED"
 
-compile_static "$ROOT/firmware/dani-fixed-init.c" "$FIRST_OBJECT" "$FIRST_INIT" \
-	-DDANI_STATIC_ROOT_INIT=1
-compile_static "$ROOT/firmware/dani-root-init.c" "$ROOT_OBJECT" "$ROOT_INIT"
+compile_static "$ROOT/firmware/bird-fixed-init.c" "$FIRST_OBJECT" "$FIRST_INIT" \
+	-DBIRD_STATIC_ROOT_INIT=1
+compile_static "$ROOT/firmware/bird-root-init.c" "$ROOT_OBJECT" "$ROOT_INIT"
 touch -t 202601010000 "$RAMDISK" "$RAMDISK/opt" "$FIRST_INIT" "$ROOT_INIT"
 
 (
@@ -88,18 +88,18 @@ gzip -n -9 -c "$RAMDISK_CPIO" >"$RAMDISK_GZ"
 
 cmp "$UNPACKED/kernel.img" "$VERIFY/kernel.img" || fail "kernel changed"
 cmp "$UNPACKED/device-tree.dtb" "$VERIFY/device-tree.dtb" || fail "DTB changed"
-cmp "$UNPACKED/ramdisk/opt/dani-launcher" \
-	"$VERIFY/ramdisk/opt/dani-launcher" || fail "launcher changed"
+cmp "$UNPACKED/ramdisk/opt/bird-launcher" \
+	"$VERIFY/ramdisk/opt/bird-launcher" || fail "launcher changed"
 cmp "$UNPACKED/ramdisk/init.stock" \
 	"$VERIFY/ramdisk/init.stock" || fail "shell recovery changed"
 cmp "$FIRST_INIT" "$VERIFY/ramdisk/init" || fail "first-stage init changed"
-cmp "$ROOT_INIT" "$VERIFY/ramdisk/opt/dani-root-init" || fail "root init changed"
+cmp "$ROOT_INIT" "$VERIFY/ramdisk/opt/bird-root-init" || fail "root init changed"
 [ "$(stat -f %z "$CANDIDATE")" -eq "$BOOT_BYTES" ] ||
 	fail "candidate is not exactly 64 MiB"
 
 strings "$VERIFY/ramdisk/init" | grep -q 'switch-root-static-pid1' ||
 	fail "static PID 1 handoff is missing from first-stage init"
-strings "$VERIFY/ramdisk/opt/dani-root-init" | grep -q 'dani-root-init-active' ||
+strings "$VERIFY/ramdisk/opt/bird-root-init" | grep -q 'bird-root-init-active' ||
 	fail "static PID 1 marker is missing"
 
 CANDIDATE_SHA=$(shasum -a 256 "$CANDIDATE" | awk '{print $1}')

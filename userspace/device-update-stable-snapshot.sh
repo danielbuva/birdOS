@@ -3,15 +3,15 @@ set -eu
 
 ROM_MOUNT="/mnt/mmc"
 WORK_DIR="$ROM_MOUNT/MUOS/boot-timing/stable-runtime"
-SOURCE="$WORK_DIR/S98dani-stable-snapshot"
-TARGET="/opt/muos/script/init/async/S98dani-stable-snapshot"
-BACKUP="$WORK_DIR/backup/S98dani-stable-snapshot.pre-mount-wait"
+SOURCE="$WORK_DIR/S98bird-stable-snapshot"
+TARGET="/opt/muos/script/init/async/S98bird-stable-snapshot"
+BACKUP="$WORK_DIR/backup/S98bird-stable-snapshot.pre-mount-wait"
 MARKER="$WORK_DIR/snapshot-hook-installed"
 LOG_FILE="$WORK_DIR/update.log"
 CARD_INSTALLER="$ROM_MOUNT/MUOS/init/67-update-stable-snapshot.sh"
-SOURCE_SHA="fc0f0df673e08682859c054336f1e2b3b6571604e180167c562fe0fe0ebf5a69"
+SOURCE_SHA="8b4ed7d52d3592cefc968d3dcbad7502d802e6dd0319078029233a7737087d64"
 OLD_SHA="89bddeeeea6557f756c3d1c079f4bb119b5d495eb221477eb8e746ca585f7aa7"
-TEMP="$TARGET.dani-new"
+TEMP="$TARGET.bird-new"
 
 mkdir -p "$WORK_DIR/backup" "${TARGET%/*}"
 exec >>"$LOG_FILE" 2>&1

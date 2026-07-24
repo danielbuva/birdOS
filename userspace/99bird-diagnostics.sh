@@ -1,5 +1,5 @@
 #!/bin/sh
-# DANI_FIXED_DIAGNOSTICS_COLLECTOR_V3
+# BIRD_FIXED_DIAGNOSTICS_COLLECTOR_V3
 
 BOOT_TMP="/tmp/muos/boot-timing.tsv"
 BOOT_DIR="/mnt/mmc/MUOS/log/boot"
@@ -15,16 +15,16 @@ if [ -f "$BOOT_TMP" ]; then
 	read -r NOW _ </proc/uptime
 	printf '%s\t%s\tmilestone\tuser\tuser_init_hook\t0\n' \
 		"$BOOT_ID" "$NOW" >>"$BOOT_TMP"
-	[ ! -e /run/muos/dani-root-init-active ] ||
+	[ ! -e /run/muos/bird-root-init-active ] ||
 		printf '%s\t%s\tmilestone\tinit\tstatic_pid1_active\t0\n' \
 			"$BOOT_ID" "$NOW" >>"$BOOT_TMP"
-	[ ! -e /run/muos/dani-trimmed-initramfs-v1 ] ||
+	[ ! -e /run/muos/bird-trimmed-initramfs-v1 ] ||
 		printf '%s\t%s\tmilestone\tinit\ttrimmed_initramfs_active\t0\n' \
 			"$BOOT_ID" "$NOW" >>"$BOOT_TMP"
-	[ ! -e /run/muos/dani-direct-handoff-v1 ] ||
+	[ ! -e /run/muos/bird-direct-handoff-v1 ] ||
 		printf '%s\t%s\tmilestone\tinit\tdirect_handoff_active\t0\n' \
 			"$BOOT_ID" "$NOW" >>"$BOOT_TMP"
-	[ ! -e /run/muos/dani-fsck-clean-skip ] ||
+	[ ! -e /run/muos/bird-fsck-clean-skip ] ||
 		printf '%s\t%s\tmilestone\tinit\tfsck_clean_skip\t0\n' \
 			"$BOOT_ID" "$NOW" >>"$BOOT_TMP"
 	mkdir -p "$BOOT_DIR"

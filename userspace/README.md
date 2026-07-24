@@ -49,11 +49,11 @@ work because the separate global hotkey service owns them.
 
 `device-install-fixed-devices.sh` accepts only the measured profiler checksum,
 backs it up and atomically installs the fixed candidate. Run
-`stage-fixed-devices.sh /Volumes/dani-sp` on the Mac to deliver it.
+`stage-fixed-devices.sh /Volumes/BIRD-DATA` on the Mac to deliver it.
 
 `device-install-minimal-udev.sh` accepts either the failed fixed-device proof or
 the rejected one-shot checksum, backs it up and atomically installs the narrow
-compatibility candidate. Run `stage-minimal-udev.sh /Volumes/dani-sp` to
+compatibility candidate. Run `stage-minimal-udev.sh /Volumes/BIRD-DATA` to
 restore or reproduce the verified checkpoint.
 
 `device-install-udev-once.sh` and `stage-udev-once.sh` are preserved only to
@@ -103,15 +103,15 @@ selected at 18.84 seconds therefore did not pay audio initialization. Games,
 MP3, movies and system controls remained functional.
 
 The original installer stored the stock D-Bus implementation at a visible
-`S30dbus.dani-real` name. The `S??*` dispatcher consequently ran that file as a
+`S30dbus.bird-real` name. The `S??*` dispatcher consequently ran that file as a
 second boot service and left D-Bus resident. The migration hides the preserved
-implementation as `.S30dbus.dani-real` and explicitly skips `S30dbus` in the
+implementation as `.S30dbus.bird-real` and explicitly skips `S30dbus` in the
 generic dispatcher. These D-Bus, PipeWire, launcher and dispatcher changes are
 checksum-gated and installed as one rollback unit.
 
 The captured default WirePlumber graph enables camera, V4L2, ALSA MIDI,
 Bluetooth and logind even though this fixed experience uses only built-in ALSA.
-`89-dani-fixed-main.lua` and `89-dani-fixed-bluetooth.lua` turn off those
+`89-bird-fixed-main.lua` and `89-bird-fixed-bluetooth.lua` turn off those
 monitors without replacing the proven sink, volume and stream-linking policy.
 
 `patch-fixed-startup-tail.sh` independently removed delayed generic jobs that
@@ -133,12 +133,12 @@ geometry writes to its one-time installer, removes the zero-swap probe and
 drops the redundant squashfs module request (the filesystem is already
 available without it).
 
-The first `S98dani-stable-snapshot` incorrectly checked its card-side arm file
+The first `S98bird-stable-snapshot` incorrectly checked its card-side arm file
 before `/mnt/mmc` had mounted. The revised explicitly armed hook waits for the
 ROM mount, captures the settled process/module/mount state once, clears the arm
 and deletes itself from the rootfs. It does not become a permanent service.
 
-Run `stage-fixed-init-orchestrator.sh /Volumes/dani-sp` to stage the fixed
+Run `stage-fixed-init-orchestrator.sh /Volumes/BIRD-DATA` to stage the fixed
 startup and repaired one-shot snapshot as independent installers.
 
 ## Fixed runtime policy
@@ -174,7 +174,7 @@ snapshot:
   without loading muOS configuration and formatting helpers.
 
 The migration engine has already been replaced in ordinary user-init by
-`99dani-diagnostics.sh`, a 1,504-byte collector for the boot, fixed-startup and
+`99bird-diagnostics.sh`, a 1,504-byte collector for the boot, fixed-startup and
 minimal-udev traces. This stage preserves that collector, installs startup v2,
 and rearms a self-removing snapshot to record the post-change process set on
 the following boot.

@@ -1,6 +1,6 @@
 # Direct-framebuffer launcher proof
 
-`dani-launcher.c` is an intentionally freestanding AArch64 Linux program. It
+`bird-launcher.c` is an intentionally freestanding AArch64 Linux program. It
 uses direct kernel syscalls and has no libc or dynamic-library dependencies.
 The macOS build produces a relocatable object; the RG34XX-SP's own GNU linker
 creates the final static executable during user-init.
@@ -45,7 +45,7 @@ in 7.28 seconds by stopwatch (5.581 seconds of kernel boot time). Its launcher
 rendered in 19 ms, while the stock `mufbset` helper consumed about 1.65 seconds.
 
 The direct-event version removes that helper and the joystick compatibility
-path. `S03danilauncher` starts before udev, and the binary waits only for the
+path. `S03birdlauncher` starts before udev, and the binary waits only for the
 fixed `/dev/fb0` and `/dev/input/event1` nodes. It reads the RG34XX-SP controls
 straight from evdev while stock initialization continues behind it. B hands
 off to stock after the system-ready marker. D-pad navigation wraps so every
@@ -71,10 +71,10 @@ items. v14 compiles both the game and media records into the executable; neither
 catalog is read from the card or regenerated during boot.
 
 Regenerate the complete cache and stage it on an inserted card by double-clicking
-`Rebuild Dani SP Library.command` on the Mac Desktop, or run:
+`Rebuild birdOS Library.command` on the Mac Desktop, or run:
 
 ```sh
-./rebuild-library.command /Volumes/dani-sp
+./rebuild-library.command /Volumes/BIRD-DATA
 ```
 
 The generator can still build a narrow diagnostic manifest by passing it as the
@@ -85,7 +85,7 @@ an eight-row scrolling list with L1/R1 paging, so all 27 systems remain visible.
 
 Selecting a ready title writes a four-line request containing launch kind, exact
 core, display name and exact ROM path, then exits cleanly to release framebuffer
-and evdev ownership. `S03danilauncher` waits for the already-dispatched startup,
+and evdev ownership. `S03birdlauncher` waits for the already-dispatched startup,
 PipeWire socket and fixed controller map. Libretro systems use the proven
 `lr-general.sh` bridge with the system's compiled core; PSP, Ports, NDS and
 OpenBOR use their dedicated muOS wrappers.
@@ -226,7 +226,7 @@ MPV chime from the active boot path. They demonstrated the intended policy but
 are not part of first-frame measurement; final animation and direct audio will
 return only after the earliest interactive menu point is established.
 
-The accepted vendor path creates `/run/muos/dani-first-frame-ready` immediately
+The accepted vendor path creates `/run/muos/bird-first-frame-ready` immediately
 after its framebuffer write barrier because its fixed input is already open.
 The source-kernel v3 path separates visibility from usability: it paints as
 soon as `/dev/fb0` is mapped, then publishes the same marker only after the
@@ -240,7 +240,7 @@ entropy remains enabled after the first frame because prior hardware tests
 proved that deferring it creates multi-second CRNG/audio stalls.
 
 The next staged proof moves the same supervisor ahead of `rcS`. A small BusyBox
-inittab entry runs `dani-earliest-ui.sh` immediately after essential mounts.
+inittab entry runs `bird-earliest-ui.sh` immediately after essential mounts.
 The supervisor refuses a duplicate start, so the later instrumented sysinit
 entry becomes a no-op when early launch succeeds. If the helper or launcher
 fails, BusyBox continues into normal `rcS`, which still contains the proven

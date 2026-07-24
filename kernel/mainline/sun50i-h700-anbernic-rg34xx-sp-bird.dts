@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
 /*
- * Fixed-device RG34XX-SP description for Dani's launcher OS.
+ * Fixed-device RG34XX-SP description for birdOS.
  *
  * The board, lid, RTC, PMIC, digital buttons and wireless hardware inherit
  * from the upstream RG35XX-SP description.  The RG34XX-SP-specific panel
@@ -12,8 +12,8 @@
 #include "sun50i-h700-anbernic-rg35xx-sp.dts"
 
 / {
-	model = "Anbernic RG34XX-SP (Dani fixed device)";
-	compatible = "dani,rg34xx-sp", "anbernic,rg34xx-sp",
+	model = "Anbernic RG34XX-SP (birdOS fixed device)";
+	compatible = "birdos,rg34xx-sp", "anbernic,rg34xx-sp",
 		     "allwinner,sun50i-h700";
 
 	/*
