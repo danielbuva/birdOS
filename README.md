@@ -1,10 +1,11 @@
-# Dani's fixed RG34XX-SP operating system
+# birdOS
 
-This repository contains the host-side sources and installation hooks that
+birdOS is a fixed-purpose operating system for Dani's RG34XX-SP. This
+repository contains the host-side sources and installation hooks that
 began by profiling and converting muOS 2601.1 into a fixed-purpose RG34XX-SP
 operating system. The active compatibility-reset candidate boots the exact
 ROCKNIX 20260701 kernel, immutable system, writable configuration baseline and
-service graph, but replaces its frontend with Bird. The accepted v5.4
+service graph, but replaces its frontend with birdOS. The accepted v5.4
 permanent-initramfs system remains the automatic recovery path while this full
 application contract is proven and then reduced.
 

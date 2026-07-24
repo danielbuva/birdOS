@@ -7,7 +7,7 @@ set -eu
 CARD=${1:-/Volumes/dani-sp}
 ACTION=${2:-}
 GDD=${GDD:-/opt/homebrew/bin/gdd}
-PREFIX=${PREFIX:-/Users/dani/muos-boot-timing-work/kernel/work/rocknix-bird-prefix-compat-v2/bird-rocknix-prefix.img}
+PREFIX=${PREFIX:-/Users/dani/birdOS/kernel/work/rocknix-bird-prefix-compat-v2/bird-rocknix-prefix.img}
 RECOVERY_PREFIX=${RECOVERY_PREFIX:-/Users/dani/muos-kernel-source/checkpoints/20260721-bird-current-prefix.img}
 
 PREFIX_BYTES=163577856

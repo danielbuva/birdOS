@@ -135,8 +135,9 @@ is present and H700/RG34XX-SP has no config overlay. Seven constant H700 writers
 become one checked Bird profile transaction. Suspend-mode and GPU-overclock
 side effects remain exact until separately audited.
 
-The v6.19 physical trace proves scanning itself is correct: `BC9FFE` appeared
-at 65-percent signal, the radio was unblocked and iwd registered `wlan0`.
+The v6.19 physical trace proves scanning itself is correct: the configured
+access point appeared at 65-percent signal, the radio was unblocked and iwd
+registered `wlan0`.
 NetworkManager nevertheless rejected the manually created profile immediately
 at its prepare transition with no reason. Further Wi-Fi work is deferred until
 the stock UI creates a working profile whose exact state can be copied.
