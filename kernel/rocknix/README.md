@@ -1,4 +1,22 @@
-# Source-kernel challenger: exact ROCKNIX chain
+# ROCKNIX integration record
+
+**Active path:** stock-root v6.23 is built by
+[`build-stock-root-compat.sh`](build-stock-root-compat.sh), deployed by
+[`firmware/mac-update-rocknix-stock-root-v6.sh`](../../firmware/mac-update-rocknix-stock-root-v6.sh),
+and defined end to end in [`ACTIVE_PATH.md`](../../ACTIVE_PATH.md). Stock-root
+v6.22 remains the last broad physical acceptance result until the v6.23
+hardening candidate is tested. The active path retains the exact ROCKNIX
+20260701 release kernel, DTB, immutable system and configured writable provider;
+birdOS supplies the external early overlay and fixed integration layer.
+
+The chronological source-kernel, clean-root and stock-root investigation below
+is preserved as evidence. It is not a menu of supported deployment paths. In
+particular, the source-kernel challenger and clean-root builders are historical;
+the clean-root v5.4 kernel is retained only as the validated automatic boot
+fallback. See [`docs/history/README.md`](../../docs/history/README.md) for the
+repository-wide history index.
+
+## Historical source-kernel challenger: exact ROCKNIX chain
 
 The replacement-kernel path begins with the complete boot chain known to run
 the RG34XX-SP, not with another hybrid Android handoff.  This directory pins

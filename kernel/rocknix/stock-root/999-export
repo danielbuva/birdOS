@@ -1,11 +1,85 @@
 #!/bin/sh
 # The RG34XX-SP has one fixed internal panel. Avoid modetest-based display
-# discovery, then publish the application/Sway compatibility milestone.
+# discovery, then publish the application/Sway compatibility milestone.  The
+# marker is a contract, not a progress hint: never leave an old or partial
+# marker behind when any required profile operation fails.
 
-mkdir -p /storage/.config/profile.d
-cat <<'EOF' >/storage/.config/profile.d/080-dual_screen_mode
+set -eu
+
+PROFILE_DIR=/storage/.config/profile.d
+SWAY_DIR=/storage/.config/sway
+PLATFORM_STAGE=/run/bird/fixed-platform
+SWAY_STAGE=/run/bird/fixed-sway
+PANEL_PROFILE=$PROFILE_DIR/080-dual_screen_mode
+UI_PROFILE=$PROFILE_DIR/090-ui_service
+SWAY_PROFILE=$PROFILE_DIR/095-sway
+SWAY_CONFIG=$SWAY_DIR/config
+SYSTEM_EXPORT=/etc/profile.d/999-export
+EXPORT_LINK=$PROFILE_DIR/999-export
+READY_DIR=/run/bird
+READY=$READY_DIR/application-contract-ready
+CONTRACT_REVISION=bird-application-v1
+PROFILE_TMP=$PROFILE_DIR/.080-dual_screen_mode.tmp.$$
+LINK_TMP=$PROFILE_DIR/.999-export.tmp.$$
+READY_TMP=$READY_DIR/.application-contract-ready.tmp.$$
+
+cleanup() {
+	rm -f "$PROFILE_TMP" "$LINK_TMP" "$READY_TMP" 2>/dev/null || :
+}
+trap cleanup 0
+trap 'exit 1' HUP INT TERM
+
+rm -f "$READY"
+mkdir -p "$PROFILE_DIR" "$READY_DIR"
+[ -r "$SYSTEM_EXPORT" ]
+[ ! -d "$PANEL_PROFILE" ]
+[ ! -d "$EXPORT_LINK" ]
+
+cat <<'EOF' >"$PROFILE_TMP"
 DEVICE_HAS_DUAL_SCREEN=false
 EOF
-ln -sf /etc/profile.d/999-export /storage/.config/profile.d/999-export
-mkdir -p /run/bird
-cut -d ' ' -f 1 /proc/uptime > /run/bird/application-contract-ready
+chmod 0644 "$PROFILE_TMP"
+mv -f "$PROFILE_TMP" "$PANEL_PROFILE"
+[ "$(wc -l <"$PANEL_PROFILE")" -eq 1 ]
+grep -qx 'DEVICE_HAS_DUAL_SCREEN=false' "$PANEL_PROFILE"
+
+ln -s "$SYSTEM_EXPORT" "$LINK_TMP"
+mv -f "$LINK_TMP" "$EXPORT_LINK"
+[ -L "$EXPORT_LINK" ]
+[ "$(readlink "$EXPORT_LINK")" = "$SYSTEM_EXPORT" ]
+[ -r "$EXPORT_LINK" ]
+
+# ROCKNIX's generic autostart coordinator deliberately continues after an
+# individual quirk fails.  This final marker must therefore validate the
+# outputs of every earlier fixed-profile producer that the application path
+# consumes, rather than assuming their position in the loop means success.
+for PROFILE_NAME in 001-device_config 002-turbo-mode_config 010-governors \
+	010-led_control 020-fan_control 050-modifiers 091-ui_shader; do
+	[ -r "$PLATFORM_STAGE/$PROFILE_NAME" ]
+	[ -r "$PROFILE_DIR/$PROFILE_NAME" ]
+	cmp -s "$PLATFORM_STAGE/$PROFILE_NAME" "$PROFILE_DIR/$PROFILE_NAME"
+done
+[ -r "$SWAY_STAGE/config" ]
+[ -r "$SWAY_CONFIG" ]
+cmp -s "$SWAY_STAGE/config" "$SWAY_CONFIG"
+[ -r "$SWAY_STAGE/095-sway" ]
+[ -r "$SWAY_PROFILE" ]
+cmp -s "$SWAY_STAGE/095-sway" "$SWAY_PROFILE"
+[ "$(wc -l <"$UI_PROFILE")" -eq 1 ]
+grep -qx 'UI_SERVICE="essway.service"' "$UI_PROFILE"
+
+UPTIME=$(cut -d ' ' -f 1 /proc/uptime)
+case "$UPTIME" in
+	''|*[!0-9.]*) exit 1 ;;
+esac
+{
+	printf 'contract_revision=%s\n' "$CONTRACT_REVISION"
+	printf 'published_uptime=%s\n' "$UPTIME"
+} >"$READY_TMP"
+chmod 0644 "$READY_TMP"
+[ "$(wc -l <"$READY_TMP")" -eq 2 ]
+grep -qx "contract_revision=$CONTRACT_REVISION" "$READY_TMP"
+grep -qx "published_uptime=$UPTIME" "$READY_TMP"
+mv -f "$READY_TMP" "$READY"
+
+trap - 0

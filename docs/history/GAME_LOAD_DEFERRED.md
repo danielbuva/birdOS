@@ -1,10 +1,16 @@
 # Deferred cold-game launch optimization
 
-This track is deliberately parked until the current boot, userspace, storage,
-audio and firmware-image roadmap is complete. The fixed direct bridge remains
-installed because it is smaller, deterministic and hardware-functional, but
-its perceived cold-load improvement was not meaningful enough to keep game
-startup on the active critical path.
+**Status:** this is the historical muOS direct-bridge profile. The active
+stock-root path dispatches through the pinned ROCKNIX provider; current
+cold-launch work is deferred in [`ROADMAP.md`](../../ROADMAP.md). These
+measurements remain evidence for that later optimization pass, not a description
+of the installed v6.23 dispatcher.
+
+This track was deliberately parked while the then-current boot, userspace,
+storage, audio and firmware-image work continued. The fixed direct bridge was
+smaller, deterministic and hardware-functional, but its perceived cold-load
+improvement was not meaningful enough to keep game startup on that stage's
+critical path.
 
 ## What the measurements proved
 
@@ -62,5 +68,7 @@ cold I/O and relocation work, not a fixed sleep that can simply be deleted.
    config flush, shader/cache and frontend shutdown before changing the
    launcher return path.
 
-The installed fixed bridge source remains in `launcher/lr-fixed.sh`; the
-behavior-preserving measurement wrapper remains in `launcher/lr-profiled.sh`.
+The then-installed fixed bridge source is retained at
+[`launcher/lr-fixed.sh`](../../launcher/lr-fixed.sh); its behavior-preserving
+measurement wrapper remains at
+[`launcher/lr-profiled.sh`](../../launcher/lr-profiled.sh).

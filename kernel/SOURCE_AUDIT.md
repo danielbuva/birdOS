@@ -1,5 +1,10 @@
 # RG34XX-SP kernel source audit
 
+**Status:** this is the historical vendor-4.9 source-gap audit that preceded the
+ROCKNIX stock-root decision. Its source evidence remains useful, but statements
+about the active kernel apply only to the dated muOS stage. The current boot
+path is defined by [`ACTIVE_PATH.md`](../ACTIVE_PATH.md).
+
 Audit date: 2026-07-21.
 
 The objective is a source-complete, reproducible kernel for this exact device.
@@ -8,9 +13,9 @@ baseline.
 
 | Candidate | Evidence | Result |
 | --- | --- | --- |
-| Active muOS kernel | Linux 4.9.170 `Image`, embedded 4,209-line config and exact Linaro compiler identity | Bootable reference; source is not contained in the firmware |
+| Then-active muOS kernel | Linux 4.9.170 `Image`, embedded 4,209-line config and exact Linaro compiler identity | Bootable reference; source is not contained in the firmware |
 | [Orange Pi sun50iw9 4.9 branch](https://github.com/orangepi-xunlong/linux-orangepi/tree/orange-pi-4.9-sun50iw9) | Correct version and obvious BSP lineage | Incomplete: `olddefconfig` changes 97 diff lines and removes active power, audio and exFAT symbols |
-| [KNULLI RG34XX-SP target](https://github.com/knulli-cfw/knulli-linux/tree/knulli-main/board/allwinner/h700/rg34xx-sp) at `099125a6e2c669b6f1287c7a193cebd3857ce630` | Exact device target, public H700 config and prebuilt device boot partitions | Still selects the Orange Pi 4.9 branch; its config differs from the active muOS config in 52 config records and lacks the later active power/audio/exFAT additions |
+| [KNULLI RG34XX-SP target](https://github.com/knulli-cfw/knulli-linux/tree/knulli-main/board/allwinner/h700/rg34xx-sp) at `099125a6e2c669b6f1287c7a193cebd3857ce630` | Exact device target, public H700 config and prebuilt device boot partitions | Still selects the Orange Pi 4.9 branch; its config differs from the then-active muOS config in 52 config records and lacks the later active power/audio/exFAT additions |
 | Public mustardroot external tree | H700 config and binary device assets | No matching downstream kernel source located |
 | [Linux stable v7.0.11](https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/tag/?h=v7.0.11) at `bb532bfaf7919c7c98caab81864e9ce2646e11e3` | Source-complete upstream H700/RG35XX-SP, AXP717 power, H616 audio, Panfrost, RTC and fixed-button support | Chosen replacement base; the RG34XX-SP panel/display and analog controls still need an exact device layer |
 | [ROCKNIX H700 stable release](https://github.com/ROCKNIX/distribution/tree/20260701/projects/ROCKNIX/devices/H700) at `3e4ee5852e6ca5ea73a38369d2639fad2262648b` | Exact public source tag for the verified `20260701` DDR4 artifact, including RG34XX-SP DTB, Linux 7.0.11 patches, U-Boot v2026.01 and TF-A v2.12.0 | Chosen complete boot-chain baseline; the shipping chain is reproduced before Bird or any trimming is introduced |
@@ -25,11 +30,12 @@ false baseline.
 
 ## Vendor-lineage decision
 
-No source-complete match was located in the public trees audited above. The
-accepted vendor `Image` therefore remains the only boot kernel and rollback
-anchor. It must not be replaced by the public lineage build.
+No source-complete match was located in the public trees audited above. At this
+audit stage, the accepted vendor `Image` therefore remained the only boot kernel
+and rollback anchor. It was not safe to replace it with the public lineage
+build.
 
-The installed userspace does contain literal `4.9.170` assumptions. The active
+The audited muOS userspace contained literal `4.9.170` assumptions. Its
 network profile names
 `/lib/modules/4.9.170/kernel/drivers/net/wireless/rtl8821cs/8821cs.ko`, and an
 older depmod migration guard tests `/lib/modules/4.9.170/modules.dep`. These are

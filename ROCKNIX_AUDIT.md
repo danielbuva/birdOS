@@ -70,7 +70,7 @@ The power worker's low-battery red-status threshold is now exactly 41 percent.
 Charging remains kernel/PMIC-owned and the green LED remains the ordinary
 power indicator.
 
-## v6.15 result through the v6.22 foreground-contract pass
+## v6.15 result through the v6.23 hardening candidate
 
 The physical gate passed brightness stability and visible shutdown at roughly
 1.8--2.0 seconds. The shutdown log places its exact config compare/copy at
@@ -181,37 +181,58 @@ that managed wrapper. Select+Start becomes the uniform Bird chord; because the
 fixed process never grabs the gamepad, generated RetroArch Menu+Start and all
 native application keybinds remain available.
 
-## Bugs and inefficiencies found
+V6.23 follows the accepted-functionality code review rather than adding a new
+feature. The complete payload manifest now owns candidate preflight, staging
+and destination verification; deployment and fallback activation use verified
+temporary files and atomic renames. Application readiness carries an exact
+revision and is published only after its profile transaction succeeds. The
+supervisor races first-frame creation against launcher exit and retries bounded
+recoverable failures locally. Every content provider runs in a transient
+systemd scope whose invocation identity is recorded for the fixed global-exit
+helper, while all runner exits reconcile Sway and optional networking. The same
+pass adds the controls exec handshake, one catalogue/favorites path limit,
+auxiliary-descriptor recovery and an atomic shutdown checkpoint. This is the
+active repository candidate; its combined physical gate is pending, so v6.22
+remains the last accepted hardware result.
 
-These remain after v6.15 and are ordered for later fixed replacements:
+## Audit findings and current disposition
 
-1. `111-sway-init` is an 11.5 KiB device-family script. It scans DRM connectors,
-   EDIDs, rotations, dual panels and many unrelated products, then rewrites the
-   Sway config every boot. A generated RG34XX-SP Sway profile is the largest
-   obvious application-contract target.
-2. `050-audio` uses `[ -n "/usr/sbin/quantum" ]`, which is always true; it
-   should test whether the executable exists. It also performs generic HDMI,
-   Bluetooth and route discovery on a fixed internal codec.
-3. `020-set_audio_latency` reads `audiolatency` but writes
-   `global.audiolatency`, an inconsistent key pair.
-4. `020-configs` tests relative `.quirk-*` marker paths while writing markers
-   under `/storage`, which can repeat expensive `rsync` work depending on its
-   working directory.
-5. `055-hdmi-check` performs two DRM scans and contains an unquoted numeric
-   test. Bird suppresses it because HDMI is not a boot feature.
-6. `098-deviceutils` and `099-networkservices` repeatedly ask systemd to start
-   or stop whole device-family service sets even when the fixed target and unit
-   masks already express the answer. Bird suppresses them in v6.15.
-7. The generic autostart runner serially visits platform, device and 27 common
-   script slots, then joins background work. Replace it only after every
-   retained output file and application consumer is catalogued.
+The v6.15 audit found the following generic work and defects. Only items marked
+**open** remain active replacement targets in v6.23:
+
+1. **Closed in v6.16:** `111-sway-init` scanned DRM connectors, EDIDs,
+   rotations, dual panels and unrelated products before rewriting Sway on every
+   boot. birdOS now bind-replaces it with the generated RG34XX-SP
+   `card1`/`DSI-1` profile.
+2. **Open:** `050-audio` uses `[ -n "/usr/sbin/quantum" ]`, which is always
+   true, instead of testing whether the executable exists. It also performs
+   generic HDMI, Bluetooth and route discovery for a fixed internal codec. A
+   measured fixed H700 audio route is the next large application-contract
+   target.
+3. **Closed in v6.16:** the two latency writers used inconsistent
+   `audiolatency` and `global.audiolatency` keys. Both are suppressed because
+   the pinned writable provider already contains the required value.
+4. **Closed in v6.19:** `020-configs` used relative `.quirk-*` tests while
+   writing markers under `/storage`, allowing expensive `rsync` work to repeat.
+   The fixed profile transaction now owns the required H700 outputs and the
+   generic slot is a no-op.
+5. **Closed in v6.15:** `055-hdmi-check` performed two DRM scans and contained
+   an unquoted numeric test. The fixed internal-display profile suppresses it;
+   HDMI is not an offline-boot feature.
+6. **Closed in v6.15:** `098-deviceutils` and `099-networkservices` repeatedly
+   started or stopped device-family service sets already expressed by the fixed
+   target and unit gates. Both slots are bind-replaced by the fixed no-op.
+7. **Open:** the retained autostart coordinator still serially visits platform,
+   device and common script slots, then joins background work. Replace it only
+   after every retained output and application consumer is catalogued.
 
 ## Next active order
 
-1. Physically gate v6.22: launch multiple MSX games, exit OpenBOR with
-   Select+Start, verify Select+Start across RetroArch/PPSSPP/MPV and confirm
-   RetroArch's native Menu+Start still exits. Retain the broad content,
-   brightness, suspend and shutdown suite.
+1. Physically promote the v6.23 hardening candidate against the accepted v6.22
+   baseline: launch multiple MSX games, exit OpenBOR with Select+Start, verify
+   Select+Start across RetroArch/PPSSPP/MPV and confirm RetroArch's native
+   Menu+Start still exits. Retain the broad content, brightness, suspend and
+   shutdown suite.
 2. Replace generic audio setup with a fixed H700 route while preserving the
    already-warm asynchronous audio services.
 3. Audit udev coldplug output and let its manager exit if no retained feature

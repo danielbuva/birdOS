@@ -6,7 +6,10 @@ Before=shutdown.target
 [Service]
 Type=oneshot
 ExecStart=/storage/.config/bird/bird-save-config.sh
-TimeoutStartSec=1s
+# The normal file+directory fsync path is fast, but never kill an atomic
+# checkpoint merely because an SD controller has pending writes.  The fallback
+# filesystem sync remains bounded by this shutdown-specific deadline.
+TimeoutStartSec=15s
 
 [Install]
 WantedBy=shutdown.target

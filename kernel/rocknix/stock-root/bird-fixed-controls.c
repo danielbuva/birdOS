@@ -37,6 +37,10 @@ typedef signed long s64;
 #define EINTR 4
 #define CLOCK_BOOTTIME 7
 
+#define SPAWN_INTERNAL_FAILED 0
+#define SPAWN_DISPATCHED 1
+#define SPAWN_EXEC_FAILED (-1)
+
 #define EV_SYN 0x00
 #define EV_KEY 0x01
 #define EV_SW 0x05
@@ -73,6 +77,10 @@ typedef signed long s64;
 #define VOLUME_REPEAT_DELAY_NS 300000000L
 #define VOLUME_REPEAT_INTERVAL_NS 100000000L
 #define DISCOVERY_RETRY_NS 250000000L
+
+#define POLL_RESULT_READY 0
+#define POLL_RESULT_INTERRUPTED 1
+#define POLL_RESULT_FAILED 2
 
 struct timespec {
     s64 sec;
@@ -121,8 +129,16 @@ static char *const fixed_env[] = {
 
 static int kmsg_fd = -1;
 
+#ifdef BIRD_HOST_TEST
+extern long bird_test_syscall6(long number, long a0, long a1, long a2,
+                               long a3, long a4, long a5);
+#endif
+
 static long syscall6(long number, long a0, long a1, long a2, long a3, long a4,
                      long a5) {
+#ifdef BIRD_HOST_TEST
+    return bird_test_syscall6(number, a0, a1, a2, a3, a4, a5);
+#else
     register long x0 __asm__("x0") = a0;
     register long x1 __asm__("x1") = a1;
     register long x2 __asm__("x2") = a2;
@@ -136,6 +152,7 @@ static long syscall6(long number, long a0, long a1, long a2, long a3, long a4,
                        "r"(x8)
                      : "memory", "cc");
     return x0;
+#endif
 }
 
 static long sys_open(const char *path, int flags) {
@@ -144,6 +161,10 @@ static long sys_open(const char *path, int flags) {
 
 static long sys_close(int fd) {
     return syscall6(57, fd, 0, 0, 0, 0, 0);
+}
+
+static long sys_pipe2(int pipes[2], int flags) {
+    return syscall6(59, (long)pipes, flags, 0, 0, 0, 0);
 }
 
 static long sys_read(int fd, void *buffer, u64 size) {
@@ -265,22 +286,52 @@ static void ns_to_timespec(u64 nanoseconds, struct timespec *value) {
     value->nsec = (s64)(nanoseconds % 1000000000UL);
 }
 
+static int report_exec_failure(int fd) {
+    const char marker = 'E';
+    long result;
+
+    do {
+        result = sys_write(fd, &marker, 1);
+    } while (result == -EINTR);
+    return result == 1;
+}
+
 /*
  * Detach every potentially long-running action with a double fork.  The short
  * intermediate child is reaped synchronously; the action itself is adopted by
  * PID 1 and can sleep for ROCKNIX's full fake-suspend timeout without blocking
  * input processing or leaving a daemon-owned zombie.
+ *
+ * A close-on-exec pipe distinguishes a successful dispatch from a missing,
+ * non-executable, or incompatible helper.  A successful exec closes the
+ * grandchild's write descriptor in the kernel, so the parent observes EOF as
+ * soon as exec completes rather than waiting for the action to finish.  An
+ * exec failure writes one marker before the detached child exits.
  */
 static int spawn_action(const char *path, const char *first,
                         const char *second) {
+    int handshake[2];
     long child;
     int status = 0;
+    char marker;
+    long result;
 
+    if (sys_pipe2(handshake, O_CLOEXEC) < 0) return SPAWN_INTERNAL_FAILED;
     child = sys_clone();
-    if (child < 0) return 0;
+    if (child < 0) {
+        sys_close(handshake[0]);
+        sys_close(handshake[1]);
+        return SPAWN_INTERNAL_FAILED;
+    }
     if (child == 0) {
         long action = sys_clone();
-        if (action < 0) sys_exit(127);
+
+        sys_close(handshake[0]);
+        if (action < 0) {
+            report_exec_failure(handshake[1]);
+            sys_close(handshake[1]);
+            sys_exit(127);
+        }
         if (action == 0) {
             char *const argv0[] = {(char *)path, 0};
             char *const argv1[] = {(char *)path, (char *)first, 0};
@@ -292,19 +343,40 @@ static int spawn_action(const char *path, const char *first,
                 sys_execve(path, argv1);
             else
                 sys_execve(path, argv0);
+            report_exec_failure(handshake[1]);
+            sys_close(handshake[1]);
             sys_exit(127);
         }
+        sys_close(handshake[1]);
         sys_exit(0);
     }
-    if (sys_wait4(child, &status, 0) < 0) return 0;
-    return status == 0;
+    sys_close(handshake[1]);
+    do {
+        result = sys_wait4(child, &status, 0);
+    } while (result == -EINTR);
+    if (result < 0 || status != 0) {
+        sys_close(handshake[0]);
+        return SPAWN_INTERNAL_FAILED;
+    }
+    do {
+        result = sys_read(handshake[0], &marker, 1);
+    } while (result == -EINTR);
+    sys_close(handshake[0]);
+    if (result == 0) return SPAWN_DISPATCHED;
+    if (result == 1 && marker == 'E') return SPAWN_EXEC_FAILED;
+    return SPAWN_INTERNAL_FAILED;
 }
 
 static void run_volume(int direction) {
-    if (spawn_action(VOLUME_PROGRAM, direction > 0 ? "up" : "down", 0))
+    int result =
+        spawn_action(VOLUME_PROGRAM, direction > 0 ? "up" : "down", 0);
+
+    if (result == SPAWN_DISPATCHED)
         log_text(direction > 0
                      ? "bird-fixed-controls: volume-up\n"
                      : "bird-fixed-controls: volume-down\n");
+    else if (result == SPAWN_EXEC_FAILED)
+        log_text("bird-fixed-controls: volume-exec-failed\n");
     else
         log_text("bird-fixed-controls: volume-spawn-failed\n");
 }
@@ -344,18 +416,26 @@ static void run_brightness(int direction) {
 }
 
 static void run_suspend(const char *source, const char *action) {
-    if (spawn_action(SUSPEND_PROGRAM, source, action))
+    int result = spawn_action(SUSPEND_PROGRAM, source, action);
+
+    if (result == SPAWN_DISPATCHED)
         log_text(action ? (action[0] == 'c'
                                ? "bird-fixed-controls: lid-close\n"
                                : "bird-fixed-controls: lid-open\n")
                         : "bird-fixed-controls: power\n");
+    else if (result == SPAWN_EXEC_FAILED)
+        log_text("bird-fixed-controls: suspend-exec-failed\n");
     else
         log_text("bird-fixed-controls: suspend-spawn-failed\n");
 }
 
 static void run_exit(void) {
-    if (spawn_action(EXIT_HELPER, 0, 0))
+    int result = spawn_action(EXIT_HELPER, 0, 0);
+
+    if (result == SPAWN_DISPATCHED)
         log_text("bird-fixed-controls: content-exit\n");
+    else if (result == SPAWN_EXEC_FAILED)
+        log_text("bird-fixed-controls: content-exit-exec-failed\n");
     else
         log_text("bird-fixed-controls: content-exit-spawn-failed\n");
 }
@@ -441,6 +521,35 @@ static void close_source(struct input_source *source, int source_index,
     if (source_index == SOURCE_GAMEPAD) clear_gamepad_state(state);
     if (source_index == SOURCE_VOLUME) clear_volume_state(state);
     log_text("bird-fixed-controls: device-reconnect\n");
+}
+
+static int classify_poll_result(long result) {
+    if (result >= 0) return POLL_RESULT_READY;
+    if (result == -EINTR) return POLL_RESULT_INTERRUPTED;
+    return POLL_RESULT_FAILED;
+}
+
+static int poll_descriptor_failed(short revents) {
+    return (revents & (POLLERR | POLLHUP | POLLNVAL)) != 0;
+}
+
+static u64 next_poll_error_delay(u64 delay) {
+    if (delay >= (u64)DISCOVERY_RETRY_NS / 2U)
+        return (u64)DISCOVERY_RETRY_NS;
+    return delay * 2U;
+}
+
+static u64 recover_poll_failure(struct input_source *sources,
+                                struct control_state *state, u64 delay) {
+    struct timespec timeout;
+    int index;
+
+    log_text("bird-fixed-controls: poll-failed-recovering\n");
+    for (index = 0; index < SOURCE_COUNT; index++)
+        close_source(&sources[index], index, state);
+    ns_to_timespec(delay, &timeout);
+    (void)sys_ppoll(0, 0, &timeout);
+    return next_poll_error_delay(delay);
 }
 
 static void update_exit_combo(struct control_state *state) {
@@ -610,6 +719,7 @@ static void application(void) {
     };
     struct control_state state = {0, 0, 0, 0, 0, 0, 0, 0};
     struct pollfd polls[SOURCE_COUNT];
+    u64 poll_error_delay_ns = 1000000UL;
 
     kmsg_fd = (int)sys_open(KMSG_DEVICE, O_WRONLY | O_CLOEXEC);
     log_text("bird-fixed-controls: start\n");
@@ -627,10 +737,20 @@ static void application(void) {
         }
         timeout_pointer = poll_timeout(sources, &state, &timeout);
         ready = sys_ppoll(polls, SOURCE_COUNT, timeout_pointer);
-        if (ready < 0 && ready != -EINTR) continue;
+        if (classify_poll_result(ready) == POLL_RESULT_INTERRUPTED) continue;
+        if (classify_poll_result(ready) == POLL_RESULT_FAILED) {
+            /* A bad auxiliary descriptor must not turn the fixed controls
+             * service into a full-core spin. Drop every descriptor, clear
+             * held-key state, sleep with capped backoff, and rediscover the
+             * immutable devices on the next iteration. */
+            poll_error_delay_ns = recover_poll_failure(
+                sources, &state, poll_error_delay_ns);
+            continue;
+        }
+        poll_error_delay_ns = 1000000UL;
         for (index = 0; index < SOURCE_COUNT; index++) {
             if (sources[index].fd < 0) continue;
-            if (polls[index].revents & (POLLERR | POLLHUP | POLLNVAL)) {
+            if (poll_descriptor_failed(polls[index].revents)) {
                 close_source(&sources[index], index, &state);
                 continue;
             }
@@ -642,7 +762,9 @@ static void application(void) {
     }
 }
 
+#ifndef BIRD_HOST_TEST
 __attribute__((noreturn, visibility("default"))) void _start(void) {
     application();
     sys_exit(0);
 }
+#endif

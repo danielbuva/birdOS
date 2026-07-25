@@ -1,16 +1,23 @@
 # RG34XX-SP boot-process audit
 
+**Status:** this is the historical muOS/static-PID-1 boot audit. Its captures
+remain timing and hardware evidence, but its startup graph is not the active
+stock-root v6.23 implementation. See [`ACTIVE_PATH.md`](ACTIVE_PATH.md) for the
+current sequence and
+[`docs/history/PROJECT_CHRONOLOGY.md`](docs/history/PROJECT_CHRONOLOGY.md) for
+the version timeline.
+
 This audit uses cold boot `723d4474-e6c2-4936-bd71-b123d5d97f0c`, after the
 raw-25 U-Boot backlight change. Times are Linux kernel uptime, not LED-on
 stopwatch time. The static-`/init` first frames are at 1.957, 1.980 and 1.964
-seconds of kernel uptime, while current LED-on stopwatch timing is approximately
-3.5--3.8 seconds. Three later boots with the static root PID 1 recorded
-input-ready frames at 2.032--2.103 seconds and retained approximately
+seconds of kernel uptime, while the then-current LED-on stopwatch timing was
+approximately 3.5--3.8 seconds. Three later boots with the static root PID 1
+recorded input-ready frames at 2.032--2.103 seconds and retained approximately
 3.8-second stopwatch timing. The first settled-runtime snapshot after the fixed
 root coordinator recorded a 2.06-second input-ready frame, system-ready at 4.24
 seconds and full audio at 6.02 seconds. After startup v2 and the eight fixed
 runtime scripts passed hardware acceptance, the latest ordinary frame is again
-2.06 seconds and the user's stopwatch result is about 3.5 seconds.
+2.06 seconds and the recorded stopwatch result is about 3.5 seconds.
 
 ## Work before the usable menu
 

@@ -49,6 +49,9 @@ typedef signed long s64;
 #define POLLERR 0x0008
 #define POLLHUP 0x0010
 #define POLLNVAL 0x0020
+#define EINTR 4
+#define EAGAIN 11
+#define ENOENT 2
 #define AF_NETLINK 16
 #define SOCK_DGRAM 2
 #define SOCK_NONBLOCK 04000
@@ -66,6 +69,18 @@ typedef signed long s64;
 #endif
 #define CATALOG_STORAGE_ROOT "/mnt/mmc"
 #define LIVE_PATH_BYTES 4096U
+#ifndef CATALOG_PATH_MAX_BYTES
+/* Transitional fallback for catalogues generated before this contract was
+ * embedded in catalog.generated.h. New catalogues define the same value. */
+#define CATALOG_PATH_MAX_BYTES 4085U
+#endif
+#define AUX_RETRY_INITIAL_MS 100UL
+#define AUX_RETRY_MAX_MS 3200UL
+#define AUX_RETRY_LIMIT 8U
+#define POLL_RETRY_INITIAL_MS 1UL
+#define POLL_RETRY_MAX_MS 100UL
+#define FAVORITES_RETRY_INITIAL_MS 100UL
+#define FAVORITES_RETRY_MAX_MS 3200UL
 #ifndef LAUNCH_REQUEST
 #define LAUNCH_REQUEST "/run/muos/bird-launch-request"
 #endif
@@ -105,10 +120,15 @@ typedef signed long s64;
 #define SYSTEM_ROWS 8U
 #define GAME_ROWS 8U
 #define ACTION_NONE 0
-#define ACTION_STOCK 1
+#define ACTION_RECOVER 1
 #define ACTION_LAUNCH 10
 #define ACTION_SHUTDOWN 11
 #define ACTION_PORTMASTER 12
+#define ACTION_RELOAD 13
+
+#define POLL_RESULT_READY 0
+#define POLL_RESULT_INTERRUPTED 1
+#define POLL_RESULT_FAILED 2
 
 #define PENDING_LAUNCH_NONE 0U
 #define PENDING_LAUNCH_GAME 1U
@@ -230,6 +250,14 @@ static int power_dir_fd = -1;
 static int storage_dir_fd = -1;
 static int config_dir_fd = -1;
 static int storage_signal_fd = -1;
+static u64 next_storage_signal_retry;
+static u64 next_power_event_retry;
+static u64 storage_signal_retry_ms = AUX_RETRY_INITIAL_MS;
+static u64 power_event_retry_ms = AUX_RETRY_INITIAL_MS;
+static u32 storage_signal_retry_count;
+static u32 power_event_retry_count;
+static int storage_signal_disabled;
+static int power_event_disabled;
 static char input_path[32] = "/dev/input/event0";
 static u32 view;
 static u32 selection;
@@ -242,6 +270,9 @@ static int storage_ready;
 static int favorites_loaded;
 static u32 favorite_count;
 static u8 favorites[(CATALOG_ENTRY_COUNT + 7U) / 8U];
+static u64 next_favorites_retry;
+static u64 favorites_retry_ms = FAVORITES_RETRY_INITIAL_MS;
+static u32 favorites_retry_count;
 static char live_path[LIVE_PATH_BYTES];
 static u64 next_storage_probe;
 static struct pending_launch_state pending_launch;
@@ -283,7 +314,15 @@ static const struct glyph font[] = {
     {'Z', {31, 1, 2, 4, 8, 16, 31}},
 };
 
+#ifdef BIRD_HOST_TEST
+extern long bird_test_syscall6(long number, long a0, long a1, long a2,
+                               long a3, long a4, long a5);
+#endif
+
 static long syscall6(long number, long a0, long a1, long a2, long a3, long a4, long a5) {
+#ifdef BIRD_HOST_TEST
+    return bird_test_syscall6(number, a0, a1, a2, a3, a4, a5);
+#else
     register long x0 __asm__("x0") = a0;
     register long x1 __asm__("x1") = a1;
     register long x2 __asm__("x2") = a2;
@@ -293,6 +332,7 @@ static long syscall6(long number, long a0, long a1, long a2, long a3, long a4, l
     register long x8 __asm__("x8") = number;
     __asm__ volatile("svc 0" : "+r"(x0) : "r"(x1), "r"(x2), "r"(x3), "r"(x4), "r"(x5), "r"(x8) : "memory", "cc");
     return x0;
+#endif
 }
 
 static long sys_open(const char *path, int flags) {
@@ -477,12 +517,28 @@ static long fixed_rename(const char *old_path, const char *new_path) {
  * access is translated, so favorites, recents and launch requests continue
  * to use the canonical /mnt/mmc paths embedded in the cached index.
  */
+static int catalog_path_supported(const char *path) {
+    u64 root_length = string_length(CATALOG_STORAGE_ROOT);
+    u64 length = 0;
+
+    while (path[length]) {
+        u8 byte = (u8)path[length];
+        if (length >= CATALOG_PATH_MAX_BYTES || byte < 32U || byte == 127U)
+            return 0;
+        length++;
+    }
+    return length > root_length &&
+           string_starts_with(path, CATALOG_STORAGE_ROOT) &&
+           path[root_length] == '/';
+}
+
 static const char *resolve_live_path(const char *path) {
     u64 source_length = string_length(CATALOG_STORAGE_ROOT);
     u64 target_length = string_length(LIVE_STORAGE_ROOT);
     u64 tail_length;
     u64 i;
 
+    if (!catalog_path_supported(path)) return 0;
     if (string_equal(CATALOG_STORAGE_ROOT, LIVE_STORAGE_ROOT)) return path;
     for (i = 0; i < source_length; i++)
         if (path[i] != CATALOG_STORAGE_ROOT[i]) return path;
@@ -590,6 +646,115 @@ static int open_power_events(void) {
     return (int)fd;
 }
 
+static u64 next_retry_delay(u64 delay) {
+    if (delay >= AUX_RETRY_MAX_MS / 2UL) return AUX_RETRY_MAX_MS;
+    return delay * 2UL;
+}
+
+static int classify_poll_result(long result) {
+    if (result >= 0) return POLL_RESULT_READY;
+    if (result == -EINTR) return POLL_RESULT_INTERRUPTED;
+    return POLL_RESULT_FAILED;
+}
+
+static int poll_descriptor_failed(short revents) {
+    return (revents & (POLLERR | POLLHUP | POLLNVAL)) != 0;
+}
+
+static u64 next_poll_retry_ms(u64 delay) {
+    if (delay >= POLL_RETRY_MAX_MS / 2UL) return POLL_RETRY_MAX_MS;
+    return delay * 2UL;
+}
+
+static u64 recover_poll_delay(u64 delay) {
+    sys_nanosleep((s64)(delay * 1000000UL));
+    return next_poll_retry_ms(delay);
+}
+
+static void schedule_power_event_retry(const char *reason) {
+    if (power_event_fd >= 0) sys_close(power_event_fd);
+    power_event_fd = -1;
+    if (power_event_retry_count >= AUX_RETRY_LIMIT) {
+        power_event_disabled = 1;
+        log_text("power_uevent result=degraded reason=");
+        log_text(reason);
+        log_text("\n");
+        return;
+    }
+    next_power_event_retry = boot_ms() + power_event_retry_ms;
+    power_event_retry_count++;
+    log_text("power_uevent result=retry reason=");
+    log_text(reason);
+    log_text(" delay_ms=");
+    log_number(power_event_retry_ms);
+    log_text(" attempt=");
+    log_number(power_event_retry_count);
+    log_text("\n");
+    power_event_retry_ms = next_retry_delay(power_event_retry_ms);
+}
+
+static void try_power_event_open(void) {
+    u64 now;
+    int reopened;
+    if (power_event_fd >= 0 || power_event_disabled) return;
+    now = boot_ms();
+    if (now < next_power_event_retry) return;
+    reopened = open_power_events();
+    if (reopened < 0) {
+        schedule_power_event_retry("open-failed");
+        return;
+    }
+    power_event_fd = reopened;
+    if (power_event_retry_count)
+        log_text("power_uevent result=recovered\n");
+    next_power_event_retry = 0;
+}
+
+static void schedule_storage_signal_retry(const char *reason) {
+    if (storage_signal_fd >= 0) sys_close(storage_signal_fd);
+    storage_signal_fd = -1;
+    if (!STORAGE_READY_SIGNAL[0] || storage_ready ||
+        storage_signal_retry_count >= AUX_RETRY_LIMIT) {
+        storage_signal_disabled = 1;
+        log_text("storage_signal result=degraded reason=");
+        log_text(reason);
+        log_text("\n");
+        return;
+    }
+    next_storage_signal_retry = boot_ms() + storage_signal_retry_ms;
+    storage_signal_retry_count++;
+    log_text("storage_signal result=retry reason=");
+    log_text(reason);
+    log_text(" delay_ms=");
+    log_number(storage_signal_retry_ms);
+    log_text(" attempt=");
+    log_number(storage_signal_retry_count);
+    log_text("\n");
+    storage_signal_retry_ms = next_retry_delay(storage_signal_retry_ms);
+}
+
+static void try_storage_signal_open(void) {
+    u64 now;
+    long reopened;
+    if (storage_signal_fd >= 0 || storage_signal_disabled || storage_ready)
+        return;
+    if (!STORAGE_READY_SIGNAL[0]) {
+        storage_signal_disabled = 1;
+        return;
+    }
+    now = boot_ms();
+    if (now < next_storage_signal_retry) return;
+    reopened = fixed_open(STORAGE_READY_SIGNAL, O_RDWR | O_NONBLOCK);
+    if (reopened < 0) {
+        schedule_storage_signal_retry("open-failed");
+        return;
+    }
+    storage_signal_fd = (int)reopened;
+    if (storage_signal_retry_count)
+        log_text("storage_signal result=recovered\n");
+    next_storage_signal_retry = 0;
+}
+
 static int is_power_supply_uevent(const char *event, u64 length) {
     u64 offset = 0;
     while (offset < length) {
@@ -624,16 +789,25 @@ static int path_matches(const char *line, u32 length, const char *path) {
     return path[length] == 0;
 }
 
+static int bitmap_is_favorite(const u8 *bitmap, u32 catalog_index) {
+    return (bitmap[catalog_index >> 3] &
+            (u8)(1U << (catalog_index & 7U))) != 0;
+}
+
+static void bitmap_set_favorite(u8 *bitmap, u32 catalog_index, int enabled) {
+    u8 mask = (u8)(1U << (catalog_index & 7U));
+    if (enabled)
+        bitmap[catalog_index >> 3] |= mask;
+    else
+        bitmap[catalog_index >> 3] &= (u8)~mask;
+}
+
 static int is_favorite(u32 catalog_index) {
-    return (favorites[catalog_index >> 3] & (u8)(1U << (catalog_index & 7U))) != 0;
+    return bitmap_is_favorite(favorites, catalog_index);
 }
 
 static void set_favorite(u32 catalog_index, int enabled) {
-    u8 mask = (u8)(1U << (catalog_index & 7U));
-    if (enabled)
-        favorites[catalog_index >> 3] |= mask;
-    else
-        favorites[catalog_index >> 3] &= (u8)~mask;
+    bitmap_set_favorite(favorites, catalog_index, enabled);
 }
 
 static u32 favorite_catalog_index(u32 ordinal) {
@@ -646,25 +820,128 @@ static u32 favorite_catalog_index(u32 ordinal) {
     return CATALOG_ENTRY_COUNT;
 }
 
-static void match_favorite_path(const char *line, u32 length) {
+static int match_favorite_path(const char *line, u32 length, u8 *bitmap,
+                               u32 *count) {
     u32 catalog_index;
-    if (!length) return;
     for (catalog_index = 0; catalog_index < CATALOG_ENTRY_COUNT; catalog_index++) {
         if (!path_matches(line, length, catalog_entries[catalog_index].path)) continue;
-        if (!is_favorite(catalog_index)) {
-            set_favorite(catalog_index, 1);
-            favorite_count++;
+        if (!bitmap_is_favorite(bitmap, catalog_index)) {
+            bitmap_set_favorite(bitmap, catalog_index, 1);
+            (*count)++;
         }
+        return 1;
+    }
+    return 0;
+}
+
+static void log_favorite_line_issue(u64 line_number, const char *reason,
+                                    u64 path_bytes) {
+    log_text("favorites_line line=");
+    log_number(line_number);
+    log_text(" result=ignored reason=");
+    log_text(reason);
+    log_text(" bytes=");
+    log_number(path_bytes);
+    log_text("\n");
+}
+
+static int favorite_line_well_formed(const char *line, u32 length) {
+    u32 i;
+    if (!length || line[0] != '/') return 0;
+    for (i = 0; i < length; i++) {
+        u8 byte = (u8)line[i];
+        if (byte < 32U || byte == 127U) return 0;
+    }
+    return 1;
+}
+
+static void load_favorite_line(const char *line, u32 stored_length,
+                               u64 raw_length, u64 line_number,
+                               int overflow, char last_byte, u8 *bitmap,
+                               u32 *count) {
+    u64 path_bytes = raw_length;
+    u32 path_length = stored_length;
+
+    /* Accept a single CR only as the terminator of a CRLF file. */
+    if (path_bytes && last_byte == '\r') path_bytes--;
+    if (!overflow && path_length && line[path_length - 1U] == '\r')
+        path_length--;
+
+    if (overflow || path_bytes > CATALOG_PATH_MAX_BYTES) {
+        log_favorite_line_issue(line_number, "over-limit", path_bytes);
         return;
     }
+    if (!favorite_line_well_formed(line, path_length)) {
+        log_favorite_line_issue(line_number,
+                                path_length ? "malformed" : "empty",
+                                path_bytes);
+        return;
+    }
+    if (!match_favorite_path(line, path_length, bitmap, count))
+        log_favorite_line_issue(line_number, "not-in-catalog", path_bytes);
+}
+
+static void clear_favorites(void) {
+    u32 i;
+    for (i = 0; i < sizeof(favorites); i++) favorites[i] = 0;
+    favorite_count = 0;
+}
+
+static void schedule_favorites_retry(const char *stage, long error) {
+    u64 now = boot_ms();
+
+    clear_favorites();
+    favorites_loaded = 0;
+    next_favorites_retry = now + favorites_retry_ms;
+    if (favorites_retry_count != (u32)-1) favorites_retry_count++;
+    log_text("favorites_load boot_ms=");
+    log_number(now);
+    log_text(" result=retry stage=");
+    log_text(stage);
+    log_text(" errno=");
+    log_number((u64)-error);
+    log_text(" delay_ms=");
+    log_number(favorites_retry_ms);
+    log_text(" attempt=");
+    log_number(favorites_retry_count);
+    log_text("\n");
+    if (favorites_retry_ms < FAVORITES_RETRY_MAX_MS / 2UL)
+        favorites_retry_ms *= 2UL;
+    else
+        favorites_retry_ms = FAVORITES_RETRY_MAX_MS;
+}
+
+static void finish_favorites_load(const u8 *bitmap, u32 count,
+                                  const char *result) {
+    u32 i;
+    for (i = 0; i < sizeof(favorites); i++) favorites[i] = bitmap[i];
+    favorite_count = count;
+    favorites_loaded = 1;
+    next_favorites_retry = 0;
+    favorites_retry_ms = FAVORITES_RETRY_INITIAL_MS;
+    favorites_retry_count = 0;
+    log_text("favorites_load boot_ms=");
+    log_number(boot_ms());
+    log_text(" result=");
+    log_text(result);
+    log_text(" count=");
+    log_number(favorite_count);
+    log_text("\n");
 }
 
 static void load_favorites(void) {
     char chunk[512];
-    char line[512];
+    /* One extra byte permits a maximum-sized CRLF line. Paths need no NUL. */
+    char line[CATALOG_PATH_MAX_BYTES + 1U];
+    u8 candidate[(CATALOG_ENTRY_COUNT + 7U) / 8U];
+    u32 candidate_count = 0;
     u32 line_length = 0;
+    u64 raw_length = 0;
+    u64 line_number = 1;
     int overflow = 0;
+    char last_byte = 0;
     u32 i;
+    u64 now;
     long fd;
     long count;
 
@@ -675,27 +952,39 @@ static void load_favorites(void) {
         log_text(" result=deferred-storage\n");
         return;
     }
-    for (i = 0; i < sizeof(favorites); i++) favorites[i] = 0;
-    favorite_count = 0;
-    favorites_loaded = 1;
+    now = boot_ms();
+    if (now < next_favorites_retry) return;
+    for (i = 0; i < sizeof(candidate); i++) candidate[i] = 0;
 
     fd = fixed_open(FAVORITES_PATH, O_RDONLY);
     if (fd < 0) {
-        log_text("favorites_load boot_ms=");
-        log_number(boot_ms());
-        log_text(" result=new count=0\n");
+        if (fd == -ENOENT) {
+            finish_favorites_load(candidate, 0, "new");
+            return;
+        }
+        schedule_favorites_retry("open", fd);
         return;
     }
 
-    while ((count = sys_read((int)fd, chunk, sizeof(chunk))) > 0) {
+    for (;;) {
         long offset;
+        count = sys_read((int)fd, chunk, sizeof(chunk));
+        if (count == -EINTR) continue;
+        if (count <= 0) break;
         for (offset = 0; offset < count; offset++) {
             char c = chunk[offset];
             if (c == '\n') {
-                if (!overflow) match_favorite_path(line, line_length);
+                load_favorite_line(line, line_length, raw_length, line_number,
+                                   overflow, last_byte, candidate,
+                                   &candidate_count);
                 line_length = 0;
+                raw_length = 0;
                 overflow = 0;
-            } else if (c != '\r') {
+                last_byte = 0;
+                line_number++;
+            } else {
+                raw_length++;
+                last_byte = c;
                 if (line_length < sizeof(line))
                     line[line_length++] = c;
                 else
@@ -703,13 +992,16 @@ static void load_favorites(void) {
             }
         }
     }
-    if (line_length && !overflow) match_favorite_path(line, line_length);
+    if (count < 0) {
+        sys_close((int)fd);
+        schedule_favorites_retry("read", count);
+        return;
+    }
+    if (raw_length || overflow)
+        load_favorite_line(line, line_length, raw_length, line_number,
+                           overflow, last_byte, candidate, &candidate_count);
     sys_close((int)fd);
-    log_text("favorites_load boot_ms=");
-    log_number(boot_ms());
-    log_text(" result=ready count=");
-    log_number(favorite_count);
-    log_text("\n");
+    finish_favorites_load(candidate, candidate_count, "ready");
 }
 
 static int save_ui_resume(void) {
@@ -835,14 +1127,26 @@ static int load_ui_resume(void) {
 
 static int save_favorites(void) {
     u32 catalog_index;
-    long fd = fixed_create(FAVORITES_TEMP,
-                           O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    long fd;
+
+    /* Never replace a known-good file from an empty or partially read view. */
+    if (!favorites_loaded) {
+        log_text("favorites_save result=blocked reason=load-incomplete\n");
+        return -1;
+    }
+    fd = fixed_create(FAVORITES_TEMP,
+                      O_WRONLY | O_CREAT | O_TRUNC, 0600);
     if (fd < 0) return -1;
 
     for (catalog_index = 0; catalog_index < CATALOG_ENTRY_COUNT; catalog_index++) {
         const char *path;
         if (!is_favorite(catalog_index)) continue;
         path = catalog_entries[catalog_index].path;
+        if (!catalog_path_supported(path)) {
+            sys_close((int)fd);
+            fixed_unlink(FAVORITES_TEMP);
+            return -1;
+        }
         if (write_exact((int)fd, path, string_length(path)) < 0 ||
             write_exact((int)fd, "\n", 1) < 0) {
             sys_close((int)fd);
@@ -864,9 +1168,15 @@ static int save_favorites(void) {
 }
 
 static void save_recent(const struct catalog_entry *entry) {
-    long fd = fixed_create(RECENT_TEMP,
-                           O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    long fd;
     int result = -1;
+    if (!catalog_path_supported(entry->path)) {
+        log_text("recent_save boot_ms=");
+        log_number(boot_ms());
+        log_text(" result=unsupported-path\n");
+        return;
+    }
+    fd = fixed_create(RECENT_TEMP, O_WRONLY | O_CREAT | O_TRUNC, 0600);
     if (fd >= 0) {
         if (write_exact((int)fd, entry->path, string_length(entry->path)) == 0 &&
             write_exact((int)fd, "\n", 1) == 0)
@@ -1160,7 +1470,7 @@ static void draw_screen(void) {
 
     draw_text(32, (int)fb_var.yres - 54, selected_status, 2, muted);
     if (view == VIEW_MAIN)
-        draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE   A SELECT   B STOCK", 2, primary);
+        draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE   A SELECT   B RELOAD", 2, primary);
     else if (view == VIEW_PLAY)
         draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE   A SELECT   B BACK", 2, primary);
     else if (view == VIEW_GAMES)
@@ -1175,15 +1485,22 @@ static void draw_screen(void) {
         draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE  L1 R1 PAGE  A PLAY  B BACK", 2, primary);
     else
         draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE   A OPEN   B BACK", 2, primary);
+#ifndef BIRD_HOST_TEST
     __asm__ volatile("dmb ishst" ::: "memory");
+#endif
 }
 
 static int write_content_request(u8 launch_kind, const char *core,
                                  const char *name, const char *path,
                                  const char *status) {
     char kind[2];
-    long fd = fixed_create(LAUNCH_REQUEST,
-                           O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    long fd;
+    if (!catalog_path_supported(path)) {
+        selected_status = "UNSUPPORTED CONTENT PATH";
+        log_text("launch_request result=unsupported-path\n");
+        return ACTION_NONE;
+    }
+    fd = fixed_create(LAUNCH_REQUEST, O_WRONLY | O_CREAT | O_TRUNC, 0600);
     if (fd < 0) {
         selected_status = "LAUNCH REQUEST FAILED";
         log_text("launch_request result=open-failed\n");
@@ -1375,6 +1692,12 @@ static void toggle_current_favorite(void) {
     }
     if (!storage_ready || !favorites_loaded) {
         selected_status = "WAITING FOR FAVORITES STORAGE";
+        draw_screen();
+        return;
+    }
+    if (!catalog_path_supported(catalog_entries[catalog_index].path)) {
+        selected_status = "UNSUPPORTED FAVORITE PATH";
+        log_text("favorite_toggle result=unsupported-path\n");
         draw_screen();
         return;
     }
@@ -1572,7 +1895,25 @@ static int handle_back(void) {
         draw_screen();
         return 0;
     }
-    return ACTION_STOCK;
+    return ACTION_RELOAD;
+}
+
+static void reset_input_latches(void) {
+    axis_x = 0;
+    axis_y = 0;
+}
+
+static void abandon_input(void) {
+    reset_input_latches();
+    if (input_fd >= 0) sys_close(input_fd);
+    input_fd = -1;
+}
+
+static int update_axis_latch(int *latch, int value) {
+    int next = value < 0 ? -1 : (value > 0 ? 1 : 0);
+    int direction = next && !*latch ? next : 0;
+    *latch = next;
+    return direction;
 }
 
 static int handle_event(const struct input_event *event) {
@@ -1622,14 +1963,12 @@ static int handle_event(const struct input_event *event) {
 
     if (event->type == EV_ABS) {
         if (event->code == ABS_HAT0X) {
-            int next = event->value < 0 ? -1 : (event->value > 0 ? 1 : 0);
-            if (next && !axis_x) handle_direction(next);
-            axis_x = next;
+            int direction = update_axis_latch(&axis_x, event->value);
+            if (direction) handle_direction(direction);
         }
         if (event->code == ABS_HAT0Y) {
-            int next = event->value < 0 ? -1 : (event->value > 0 ? 1 : 0);
-            if (next && !axis_y) handle_direction(next);
-            axis_y = next;
+            int direction = update_axis_latch(&axis_y, event->value);
+            if (direction) handle_direction(direction);
         }
     }
     return 0;
@@ -1666,6 +2005,11 @@ static void probe_storage(void) {
         log_text("\n");
     }
     storage_ready = 1;
+    storage_signal_disabled = 1;
+    if (storage_signal_fd >= 0) {
+        sys_close(storage_signal_fd);
+        storage_signal_fd = -1;
+    }
     load_favorites();
     if (view == VIEW_FAVORITES) {
         if (!favorite_count)
@@ -1726,6 +2070,7 @@ static int open_fixed_input(void) {
     }
 
 found:
+    reset_input_latches();
     log_text("input ");
     log_text(input_path);
     log_text(" name=");
@@ -1742,6 +2087,8 @@ found:
 static int application(void) {
     u64 started = boot_ms();
     u64 deadline;
+    u64 poll_retry_ms = POLL_RETRY_INITIAL_MS;
+    u32 poll_error_count = 0;
     int exit_action = ACTION_NONE;
     log_text("direct launcher start boot_ms=");
     log_number(started);
@@ -1818,14 +2165,15 @@ static int application(void) {
      * reconnect causes the supervisor to recover Bird. */
     (void)save_ui_resume();
 #endif
-    power_event_fd = open_power_events();
+    try_power_event_open();
     charging_state = read_charging_state();
     battery_percent = read_battery_percent();
     log_text("power battery_state=");
     log_text(charging_state == 1 ? "charging" :
              (charging_state == 0 ? "not-charging" : "unavailable"));
     log_text(" uevent=");
-    log_text(power_event_fd >= 0 ? "ready" : "unavailable");
+    log_text(power_event_fd >= 0 ? "ready" :
+             (power_event_disabled ? "degraded" : "retrying"));
     log_text(" percent=");
     if (battery_percent >= 0)
         log_number((u64)battery_percent);
@@ -1845,10 +2193,10 @@ static int application(void) {
         return 6;
     }
     if (STORAGE_READY_SIGNAL[0]) {
-        storage_signal_fd = (int)fixed_open(STORAGE_READY_SIGNAL,
-                                            O_RDWR | O_NONBLOCK);
+        try_storage_signal_open();
         log_text("storage_signal=");
-        log_text(storage_signal_fd >= 0 ? "ready" : "missing");
+        log_text(storage_signal_fd >= 0 ? "ready" :
+                 (storage_signal_disabled ? "degraded" : "retrying"));
         log_text(" boot_ms=");
         log_number(boot_ms());
         log_text("\n");
@@ -1864,15 +2212,31 @@ static int application(void) {
 
     while (exit_action == ACTION_NONE) {
         struct pollfd polls[3];
-        struct timespec storage_timeout;
+        struct timespec poll_timeout;
         struct timespec *timeout = 0;
         struct input_event event;
         long count;
+        long poll_result;
+        u64 timeout_ms = (u64)-1;
+        u64 now;
         u64 poll_count = 1;
         int power_index = -1;
         int storage_index = -1;
 
         probe_storage();
+        if (storage_ready && !favorites_loaded) {
+            int was_loaded = favorites_loaded;
+            load_favorites();
+            if (!was_loaded && favorites_loaded && view == VIEW_FAVORITES) {
+                if (!favorite_count)
+                    selection = 0U;
+                else if (selection >= favorite_count)
+                    selection = favorite_count - 1U;
+                draw_screen();
+            }
+        }
+        if (!storage_ready) try_storage_signal_open();
+        try_power_event_open();
         polls[0].fd = input_fd;
         polls[0].events = POLLIN;
         polls[0].revents = 0;
@@ -1885,9 +2249,7 @@ static int application(void) {
         }
         if (storage_ready && pending_launch.kind != PENDING_LAUNCH_NONE) {
             /* Sample already-buffered B/navigation before automatic dispatch. */
-            storage_timeout.sec = 0;
-            storage_timeout.nsec = 0;
-            timeout = &storage_timeout;
+            timeout_ms = 0;
         } else if (!storage_ready) {
             if (storage_signal_fd >= 0) {
                 storage_index = (int)poll_count;
@@ -1899,29 +2261,97 @@ static int application(void) {
             /* The FIFO remains the immediate path. A bounded probe also runs
              * until success so a lost writer edge cannot create a permanent
              * "queued" state. It stops forever once storage is retained. */
-            storage_timeout.sec = 0;
-            storage_timeout.nsec = 50000000L;
-            timeout = &storage_timeout;
+            timeout_ms = 50UL;
         }
-        sys_ppoll(polls, poll_count, timeout);
+        now = boot_ms();
+        if (power_event_fd < 0 && !power_event_disabled) {
+            u64 retry_wait = next_power_event_retry > now
+                                 ? next_power_event_retry - now : 0;
+            if (retry_wait < timeout_ms) timeout_ms = retry_wait;
+        }
+        if (!storage_ready && storage_signal_fd < 0 &&
+            !storage_signal_disabled) {
+            u64 retry_wait = next_storage_signal_retry > now
+                                 ? next_storage_signal_retry - now : 0;
+            if (retry_wait < timeout_ms) timeout_ms = retry_wait;
+        }
+        if (storage_ready && !favorites_loaded) {
+            u64 retry_wait = next_favorites_retry > now
+                                 ? next_favorites_retry - now : 0;
+            if (retry_wait < timeout_ms) timeout_ms = retry_wait;
+        }
+        if (timeout_ms != (u64)-1) {
+            poll_timeout.sec = (s64)(timeout_ms / 1000UL);
+            poll_timeout.nsec = (s64)((timeout_ms % 1000UL) * 1000000UL);
+            timeout = &poll_timeout;
+        }
+        poll_result = sys_ppoll(polls, poll_count, timeout);
+        if (classify_poll_result(poll_result) == POLL_RESULT_INTERRUPTED)
+            continue;
+        if (classify_poll_result(poll_result) == POLL_RESULT_FAILED) {
+            if (power_index >= 0)
+                schedule_power_event_retry("ppoll-error");
+            if (storage_index >= 0)
+                schedule_storage_signal_retry("ppoll-error");
+            poll_error_count++;
+            log_text("ppoll result=error errno=");
+            log_number((u64)-poll_result);
+            log_text(" retry_ms=");
+            log_number(poll_retry_ms);
+            log_text(" attempt=");
+            log_number(poll_error_count);
+            log_text("\n");
+            if (poll_error_count >= AUX_RETRY_LIMIT) {
+                log_text("ppoll result=fatal action=reload\n");
+                exit_action = ACTION_RECOVER;
+                break;
+            }
+            poll_retry_ms = recover_poll_delay(poll_retry_ms);
+            continue;
+        }
+        poll_retry_ms = POLL_RETRY_INITIAL_MS;
+        poll_error_count = 0;
+        if (power_index >= 0 &&
+            !poll_descriptor_failed(polls[power_index].revents)) {
+            power_event_retry_count = 0;
+            power_event_retry_ms = AUX_RETRY_INITIAL_MS;
+        }
+        if (storage_index >= 0 &&
+            !poll_descriptor_failed(polls[storage_index].revents)) {
+            storage_signal_retry_count = 0;
+            storage_signal_retry_ms = AUX_RETRY_INITIAL_MS;
+        }
 
-        if (polls[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
+        if (poll_descriptor_failed(polls[0].revents)) {
             log_text("input reconnect boot_ms=");
             log_number(boot_ms());
             log_text("\n");
-            sys_close(input_fd);
-            input_fd = -1;
+            abandon_input();
             if (open_fixed_input() < 0) {
-                exit_action = ACTION_STOCK;
+                exit_action = ACTION_RECOVER;
                 break;
             }
             continue;
         }
 
-        if (storage_index >= 0 && (polls[storage_index].revents & POLLIN)) {
+        if (storage_index >= 0 &&
+            poll_descriptor_failed(polls[storage_index].revents)) {
+            schedule_storage_signal_retry(
+                (polls[storage_index].revents & POLLNVAL) ? "poll-nval" :
+                ((polls[storage_index].revents & POLLHUP) ? "poll-hup" :
+                                                           "poll-error"));
+        } else if (storage_index >= 0 &&
+                   (polls[storage_index].revents & POLLIN)) {
             char storage_event[32];
-            while (sys_read(storage_signal_fd, storage_event,
-                            sizeof(storage_event)) > 0) {}
+            for (;;) {
+                count = sys_read(storage_signal_fd, storage_event,
+                                 sizeof(storage_event));
+                if (count > 0) continue;
+                if (count == -EINTR) continue;
+                if (count < 0 && count != -EAGAIN)
+                    schedule_storage_signal_retry("read-error");
+                break;
+            }
             next_storage_probe = 0;
             log_text("storage_signal_received boot_ms=");
             log_number(boot_ms());
@@ -1929,16 +2359,29 @@ static int application(void) {
             probe_storage();
         }
 
-        if (power_index >= 0 && (polls[power_index].revents & POLLIN)) {
+        if (power_index >= 0 &&
+            poll_descriptor_failed(polls[power_index].revents)) {
+            schedule_power_event_retry(
+                (polls[power_index].revents & POLLNVAL) ? "poll-nval" :
+                ((polls[power_index].revents & POLLHUP) ? "poll-hup" :
+                                                         "poll-error"));
+        } else if (power_index >= 0 && (polls[power_index].revents & POLLIN)) {
             char uevent[2049];
             int previous = charging_state;
             int previous_percent = battery_percent;
             int power_changed = 0;
-            while ((count = sys_read(power_event_fd, uevent,
-                                     sizeof(uevent) - 1U)) > 0) {
-                uevent[count] = 0;
-                if (is_power_supply_uevent(uevent, (u64)count))
-                    power_changed = 1;
+            for (;;) {
+                count = sys_read(power_event_fd, uevent, sizeof(uevent) - 1U);
+                if (count > 0) {
+                    uevent[count] = 0;
+                    if (is_power_supply_uevent(uevent, (u64)count))
+                        power_changed = 1;
+                    continue;
+                }
+                if (count == -EINTR) continue;
+                if (count < 0 && count != -EAGAIN)
+                    schedule_power_event_retry("read-error");
+                break;
             }
             if (power_changed) {
                 charging_state = read_charging_state();
@@ -1961,11 +2404,27 @@ static int application(void) {
             }
         }
 
-        while ((count = sys_read(input_fd, &event, sizeof(event))) == (long)sizeof(event)) {
-            exit_action = handle_event(&event);
-            if (exit_action != ACTION_NONE) {
-                break;
+        for (;;) {
+            count = sys_read(input_fd, &event, sizeof(event));
+            if (count == (long)sizeof(event)) {
+                exit_action = handle_event(&event);
+                if (exit_action != ACTION_NONE) break;
+                continue;
             }
+            if (count == -EINTR) continue;
+            if (count < 0 && count != -EAGAIN) {
+                log_text("input read-error errno=");
+                log_number((u64)-count);
+                log_text("\n");
+                abandon_input();
+                if (open_fixed_input() < 0)
+                    exit_action = ACTION_RECOVER;
+            } else if (count > 0) {
+                log_text("input read-error reason=partial-event\n");
+            }
+            if (exit_action != ACTION_NONE)
+                break;
+            break;
         }
         if (exit_action == ACTION_NONE && storage_ready &&
             pending_launch.kind != PENDING_LAUNCH_NONE)
@@ -1978,8 +2437,10 @@ static int application(void) {
         log_text("exit reason=shutdown-request boot_ms=");
     else if (exit_action == ACTION_PORTMASTER)
         log_text("exit reason=portmaster-request boot_ms=");
-    else
+    else if (exit_action == ACTION_RELOAD)
         log_text("exit reason=b-button boot_ms=");
+    else
+        log_text("exit reason=runtime-recovery boot_ms=");
     log_number(boot_ms());
     log_text("\n");
     write_handoff_action(exit_action);
@@ -1994,11 +2455,14 @@ static int application(void) {
     if (input_dir_fd >= 0) sys_close(input_dir_fd);
     if (runtime_dir_fd >= 0) sys_close(runtime_dir_fd);
     if (exit_action == ACTION_LAUNCH || exit_action == ACTION_SHUTDOWN ||
-        exit_action == ACTION_PORTMASTER)
+        exit_action == ACTION_PORTMASTER || exit_action == ACTION_RELOAD ||
+        exit_action == ACTION_RECOVER)
         return exit_action;
     return 0;
 }
 
+#ifndef BIRD_HOST_TEST
 __attribute__((noreturn, visibility("default"))) void _start(void) {
     sys_exit(application());
 }
+#endif

@@ -1,5 +1,11 @@
 # Fixed storage stages
 
+**Status:** this is the historical muOS storage-reduction and card-installer
+record. These scripts are not the active stock-root v6.23 mount or deployment
+path. See [`ACTIVE_PATH.md`](../ACTIVE_PATH.md) for the current fixed-storage
+contract and [`docs/history/README.md`](../docs/history/README.md) for the
+history index.
+
 The RG34XX-SP profile has one content source: the OS card's exFAT partition at
 `/dev/mmcblk0p6`, mounted at `/mnt/mmc`. Generic muOS nevertheless probes ROM,
 secondary-SD and USB storage, then leaves two UnionFS-FUSE processes resident

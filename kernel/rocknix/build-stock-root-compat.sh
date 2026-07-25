@@ -6,12 +6,22 @@
 
 set -eu
 
+configure_reproducible_build_environment() {
+	# Neither archive metadata nor output permissions may inherit the invoking
+	# shell's locale, timezone or umask.
+	umask 022
+	LC_ALL=C
+	TZ=UTC
+	export LC_ALL TZ
+}
+configure_reproducible_build_environment
+
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 SOURCE=${SOURCE:-/Volumes/BIRD}
 SYSTEM_SOURCE=${SYSTEM_SOURCE:-/Volumes/BIRD-DATA/MUOS/runtime/ROCKNIX-SYSTEM}
 STORAGE=${STORAGE:-$HOME/rocknix-reference-result/storage.ext4}
 SYSTEM_TREE=${SYSTEM_TREE:-$ROOT/kernel/work/rocknix-system-exact-20260701}
-OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.22}
+OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.23}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
 LLD=${LLD:-/opt/homebrew/opt/lld/bin/ld.lld}
 READELF=${READELF:-/opt/homebrew/opt/llvm/bin/llvm-readelf}
@@ -20,6 +30,29 @@ KERNEL_SHA=af4e75cb30b097ee5764764eb056d686bc00c6bd03fefece26b0ebbaa7fbb673
 DTB_SHA=f3a4273986d6e4f431b110cead8aa19e8da52ff08c64c4b204ef9664d28b5c31
 SYSTEM_SHA=6e2112fc9dc81d5fee944f2534346a8f20674f40e23a0a85bb795218d31eadac
 STORAGE_SHA=12affdad7bc2042cb590fea60fc015a7ee8d4374ebcc3b1c11098a64b9ffa3be
+AUTOSTART_SHA=7f8671aa1bb9239a193f84e667d55e169f983bcb015d98c345b60d0b80a77639
+OFFICIAL_INIT_SHA=3473415af0cf5df44e70259c3392817b1df421a12a617ec083ec018ff51dbc48
+JOYPAD_SHA=a8ac6cacfa89672fa08dec7fa02179bb108a4a2303fd5c1eb5834f916089b79b
+INIT_BUSYBOX_SHA=5ee3d20d8ea5fd9b3ba5109da80599eaf46a5a337d9e40d4c67d28eef44d5dc8
+PORTMASTER_ARCHIVE_SHA=9d6f25d461afced95569923a57c6a9c42df225190c043d74fe2ec0edcf40a477
+FALLBACK_SELECTOR_SHA=f6434463ef51f752b6871186497a9d96888b89e9b2d158c3ea75bcbef9a58776
+FALLBACK_KERNEL_SHA=a53a3483731d28d2e96e53def0fba347fa53607aa9fbda8bfb82db677126daef
+PORTMASTER_PUGWASH_SHA=3b9ea60ccf202f64155c669fd0b2b18fcb0e5c72e293ad0c61f7c2f2fdcb51d8
+PORTMASTER_SH_SHA=554c92cf5ea6656a6bfbd1ddd81619fdf4ff0524ac40d14c19193f2aa33da804
+PORTMASTER_MOD_SHA=8eaf22ed31bbf446c5113b56b55666f42317f8f81d96e1c86a0f04dde07277a1
+PORTMASTER_FUNCS_SHA=f72b9971c2964e44592dd3ffca1b3ccf0ae31e9c4dd2cb32508a6990f81a5d22
+PORTMASTER_HARBOURMASTER_SHA=74f55c5cf9335ac56dc6b4dbbdd8c26a0a198e4117b2887323eec070c734ff40
+RELEASE_ID=v6.23
+FALLBACK_KERNEL=${FALLBACK_KERNEL:-$SOURCE/KERNEL.fallback}
+OFFICIAL_INIT=${OFFICIAL_INIT:-$ROOT/kernel/work/rocknix-official-initramfs-20260701/ramdisk/init}
+JOYPAD=${JOYPAD:-$ROOT/kernel/work/rocknix-system-exact-20260701/usr/lib/kernel-overlays/base/lib/modules/7.0.11/rocknix-joypad/rocknix-singleadc-joypad.ko}
+INIT_BUSYBOX=${INIT_BUSYBOX:-$ROOT/kernel/work/rocknix-official-initramfs-20260701/ramdisk/usr/bin/busybox}
+PORTMASTER_ARCHIVE=${PORTMASTER_ARCHIVE:-$SYSTEM_TREE/usr/config/PortMaster/release/PortMaster.zip}
+
+case "$OUTPUT" in
+	/*) ;;
+	*) OUTPUT=$PWD/$OUTPUT ;;
+esac
 
 fail() {
 	printf 'error: %s\n' "$*" >&2
@@ -27,25 +60,141 @@ fail() {
 }
 
 sha256() {
-	shasum -a 256 "$1" | awk '{print $1}'
+	BIRD_SHA256_LINE=$(shasum -a 256 "$1") || return 1
+	printf '%s\n' "$BIRD_SHA256_LINE" | awk '{print $1}'
+}
+
+file_bytes() {
+	stat -f '%z' "$1" 2>/dev/null || stat -c '%s' "$1"
+}
+
+file_mode() {
+	stat -f '%Lp' "$1" 2>/dev/null || stat -c '%a' "$1"
+}
+
+is_regular_file() {
+	[ -f "$1" ] && [ ! -L "$1" ]
+}
+
+capture_source_identity() {
+	BIRD_PROVENANCE_UNTRACKED=$1
+	BIRD_PROVENANCE_INPUT=$2
+	BIRD_CAPTURED_SOURCE_COMMIT=$(git -C "$ROOT" rev-parse --verify HEAD) ||
+		fail 'could not read source commit'
+	[ "${#BIRD_CAPTURED_SOURCE_COMMIT}" -eq 40 ] ||
+		fail 'source commit is not a full object ID'
+	case "$BIRD_CAPTURED_SOURCE_COMMIT" in
+		*[!0-9a-f]*) fail 'source commit is not a lowercase hexadecimal object ID' ;;
+	esac
+	BIRD_CAPTURED_SOURCE_STATUS=$(
+		git -C "$ROOT" status --porcelain --untracked-files=normal
+	) || fail 'could not read source status'
+	BIRD_PROVENANCE_UNSORTED=$BIRD_PROVENANCE_UNTRACKED.unsorted.$$
+	git -C "$ROOT" ls-files --others --exclude-standard \
+		>"$BIRD_PROVENANCE_UNSORTED" || fail 'could not inventory untracked sources'
+	sort "$BIRD_PROVENANCE_UNSORTED" >"$BIRD_PROVENANCE_UNTRACKED" ||
+		fail 'could not sort untracked sources'
+	rm -f "$BIRD_PROVENANCE_UNSORTED"
+	{
+		printf '%s\n' "$BIRD_CAPTURED_SOURCE_STATUS"
+		git -C "$ROOT" diff --binary HEAD -- || fail 'could not read source diff'
+		while IFS= read -r BIRD_UNTRACKED_PATH; do
+			[ -f "$ROOT/$BIRD_UNTRACKED_PATH" ] || continue
+			printf 'untracked\t%s\t%s\t%s\t%s\n' "$BIRD_UNTRACKED_PATH" \
+				"$(file_mode "$ROOT/$BIRD_UNTRACKED_PATH")" \
+				"$(file_bytes "$ROOT/$BIRD_UNTRACKED_PATH")" \
+				"$(sha256 "$ROOT/$BIRD_UNTRACKED_PATH")"
+		done <"$BIRD_PROVENANCE_UNTRACKED"
+	} >"$BIRD_PROVENANCE_INPUT" || fail 'could not capture source fingerprint input'
+	BIRD_CAPTURED_SOURCE_DIFF_SHA=$(sha256 "$BIRD_PROVENANCE_INPUT") ||
+		fail 'could not hash source fingerprint'
+	rm -f "$BIRD_PROVENANCE_INPUT"
+	if [ -z "$BIRD_CAPTURED_SOURCE_STATUS" ]; then
+		BIRD_CAPTURED_SOURCE_STATE=clean
+	else
+		BIRD_CAPTURED_SOURCE_STATE=dirty:$BIRD_CAPTURED_SOURCE_DIFF_SHA
+	fi
+}
+
+record_source_identity() {
+	capture_source_identity "$OUTPUT/build/source-untracked.list" \
+		"$OUTPUT/build/.source-fingerprint.before.$$"
+	SOURCE_COMMIT=$BIRD_CAPTURED_SOURCE_COMMIT
+	SOURCE_STATE=$BIRD_CAPTURED_SOURCE_STATE
+}
+
+verify_source_identity() {
+	capture_source_identity "$OUTPUT/build/source-untracked.list" \
+		"$OUTPUT/build/.source-fingerprint.after.$$"
+	[ "$BIRD_CAPTURED_SOURCE_COMMIT" = "$SOURCE_COMMIT" ] &&
+		[ "$BIRD_CAPTURED_SOURCE_STATE" = "$SOURCE_STATE" ] ||
+		fail 'source tree changed while candidate bytes were being built'
 }
 
 [ -d "$SOURCE" ] || fail "mounted exact ROCKNIX release missing: $SOURCE"
-[ -f "$SOURCE/KERNEL" ] || fail 'release KERNEL missing'
-[ -f "$SOURCE/dtb.img" ] || fail 'release DTB missing'
-[ -f "$SYSTEM_SOURCE" ] || fail 'release SYSTEM missing'
-[ -f "$STORAGE" ] || fail 'captured ROCKNIX STORAGE image missing'
-[ -f "$SYSTEM_TREE/usr/bin/autostart" ] || fail 'extracted exact autostart missing'
+is_regular_file "$SOURCE/KERNEL" || fail 'release KERNEL missing or not regular'
+is_regular_file "$SOURCE/dtb.img" || fail 'release DTB missing or not regular'
+is_regular_file "$FALLBACK_KERNEL" || fail 'preserved v5.4 fallback KERNEL missing or not regular'
+is_regular_file "$SYSTEM_SOURCE" || fail 'release SYSTEM missing or not regular'
+is_regular_file "$STORAGE" || fail 'captured ROCKNIX STORAGE image missing or not regular'
+is_regular_file "$SYSTEM_TREE/usr/bin/autostart" || fail 'extracted exact autostart missing or not regular'
+is_regular_file "$OFFICIAL_INIT" || fail 'exact initramfs init missing or not regular'
+is_regular_file "$JOYPAD" || fail 'exact H700 input module missing or not regular'
+is_regular_file "$INIT_BUSYBOX" || fail 'exact initramfs BusyBox missing or not regular'
+is_regular_file "$PORTMASTER_ARCHIVE" || fail 'exact PortMaster archive missing or not regular'
 [ "$(sha256 "$SOURCE/KERNEL")" = "$KERNEL_SHA" ] || fail 'release KERNEL changed'
 [ "$(sha256 "$SOURCE/dtb.img")" = "$DTB_SHA" ] || fail 'release DTB changed'
 [ "$(sha256 "$SYSTEM_SOURCE")" = "$SYSTEM_SHA" ] || fail 'release SYSTEM changed'
 [ "$(sha256 "$STORAGE")" = "$STORAGE_SHA" ] || fail 'reference STORAGE changed'
+[ "$(sha256 "$SYSTEM_TREE/usr/bin/autostart")" = "$AUTOSTART_SHA" ] || fail 'extracted exact autostart changed'
+[ "$(file_bytes "$SYSTEM_TREE/usr/bin/autostart")" = 2168 ] || fail 'extracted exact autostart size changed'
+[ "$(file_mode "$SYSTEM_TREE/usr/bin/autostart")" = 755 ] || fail 'extracted exact autostart mode changed'
+[ "$(sha256 "$OFFICIAL_INIT")" = "$OFFICIAL_INIT_SHA" ] || fail 'exact initramfs init changed'
+[ "$(sha256 "$JOYPAD")" = "$JOYPAD_SHA" ] || fail 'exact H700 input module changed'
+[ "$(sha256 "$INIT_BUSYBOX")" = "$INIT_BUSYBOX_SHA" ] || fail 'exact initramfs BusyBox changed'
+[ "$(sha256 "$PORTMASTER_ARCHIVE")" = "$PORTMASTER_ARCHIVE_SHA" ] || fail 'exact PortMaster archive changed'
+[ "$(sha256 "$FALLBACK_KERNEL")" = "$FALLBACK_KERNEL_SHA" ] || fail 'preserved v5.4 fallback KERNEL changed'
+[ "$(file_bytes "$FALLBACK_KERNEL")" = 29939720 ] || fail 'preserved v5.4 fallback KERNEL size changed'
 [ -x "$CLANG" ] || fail 'LLVM clang missing'
 [ -x "$LLD" ] || fail 'LLVM lld missing'
 [ -x "$READELF" ] || fail 'LLVM readelf missing'
 [ ! -e "$OUTPUT" ] || fail "output already exists: $OUTPUT"
 
 mkdir -p "$OUTPUT/card/bird" "$OUTPUT/card/extlinux" "$OUTPUT/build"
+chmod 0755 "$OUTPUT" "$OUTPUT/card" "$OUTPUT/card/bird" \
+	"$OUTPUT/card/extlinux" "$OUTPUT/build"
+record_source_identity
+
+[ "$(sha256 "$ROOT/kernel/rocknix/stock-root/extlinux.fallback.conf")" = \
+	"$FALLBACK_SELECTOR_SHA" ] || fail 'fallback selector digest changed'
+
+# These five immutable provider files are deployment inputs even though they
+# live inside the pinned PortMaster archive at build time and on p6 at update
+# time. Materialize and verify each member so the canonical manifest can be the
+# updater's sole byte contract for the installed provider.
+PORTMASTER_INPUTS=$OUTPUT/build/manifest-inputs/PortMaster
+mkdir -p "$PORTMASTER_INPUTS"
+extract_portmaster_input() {
+	NAME=$1
+	MODE=$2
+	EXPECTED_BYTES=$3
+	EXPECTED_SHA=$4
+	MEMBER=PortMaster/$NAME
+	[ "$(unzip -Z1 "$PORTMASTER_ARCHIVE" "$MEMBER" | wc -l | tr -d ' ')" = 1 ] || \
+		fail "PortMaster archive member is not unique: $MEMBER"
+	unzip -p "$PORTMASTER_ARCHIVE" "$MEMBER" >"$PORTMASTER_INPUTS/$NAME" || \
+		fail "could not extract PortMaster input: $MEMBER"
+	chmod "$MODE" "$PORTMASTER_INPUTS/$NAME"
+	[ "$(file_bytes "$PORTMASTER_INPUTS/$NAME")" = "$EXPECTED_BYTES" ] || \
+		fail "PortMaster input size changed: $MEMBER"
+	[ "$(sha256 "$PORTMASTER_INPUTS/$NAME")" = "$EXPECTED_SHA" ] || \
+		fail "PortMaster input digest changed: $MEMBER"
+}
+extract_portmaster_input pugwash 0755 70737 "$PORTMASTER_PUGWASH_SHA"
+extract_portmaster_input PortMaster.sh 0755 7356 "$PORTMASTER_SH_SHA"
+extract_portmaster_input mod_ROCKNIX.txt 0644 895 "$PORTMASTER_MOD_SHA"
+extract_portmaster_input funcs.txt 0644 4281 "$PORTMASTER_FUNCS_SHA"
+extract_portmaster_input harbourmaster 0755 18807 "$PORTMASTER_HARBOURMASTER_SHA"
 
 # Keep the exact compatibility coordinator for this gate, but remove requests
 # for fixed storage and Bird that systemd has already completed. Application
@@ -135,7 +284,9 @@ if "$READELF" -l "$OUTPUT/card/bird/bird-powerstate" | grep -q ' INTERP '; then
 	fail 'fixed powerstate unexpectedly has an interpreter'
 fi
 
-OUTPUT="$OUTPUT" "$ROOT/kernel/rocknix/build-stock-root-early-initramfs.sh"
+OUTPUT="$OUTPUT" OFFICIAL_INIT="$OFFICIAL_INIT" JOYPAD="$JOYPAD" \
+	INIT_BUSYBOX="$INIT_BUSYBOX" \
+	"$ROOT/kernel/rocknix/build-stock-root-early-initramfs.sh"
 
 cp -fp "$SOURCE/KERNEL" "$OUTPUT/card/KERNEL"
 cp -fp "$SOURCE/dtb.img" "$OUTPUT/card/dtb.img"
@@ -164,6 +315,7 @@ cp -fp "$ROOT/kernel/rocknix/stock-root/extlinux.conf" \
 cp -fp "$ROOT/kernel/rocknix/stock-root/extlinux.fallback.conf" \
 	"$OUTPUT/card/extlinux/extlinux.fallback.conf"
 touch "$OUTPUT/card/SYSTEM"
+chmod 0644 "$OUTPUT/card/SYSTEM"
 chmod 0755 "$OUTPUT/card/post-flash.sh" "$OUTPUT/card/mount-storage.sh" \
 	"$OUTPUT/card/bird/090-ui_service" \
 	"$OUTPUT/card/bird/999-export" \
@@ -255,8 +407,34 @@ grep -q '^RuntimeMaxSec=20s$' \
 	"$OUTPUT/card/bird/rocknix-report-stats.service" || fail 'bounded snapshot runtime missing'
 grep -q 'timeout 2s pactl info' \
 	"$OUTPUT/card/bird/capture-boot-state.sh" || fail 'bounded audio diagnostic missing'
-grep -q '^  INITRD /bird-initramfs.cpio.gz$' \
-	"$OUTPUT/card/extlinux/extlinux.conf" || fail 'external early initramfs missing'
+grep -q "^  LINUX /bird-releases/$RELEASE_ID/KERNEL$" \
+	"$OUTPUT/card/extlinux/extlinux.conf" || fail 'versioned KERNEL selector missing'
+grep -q "^  INITRD /bird-releases/$RELEASE_ID/bird-initramfs.cpio.gz$" \
+	"$OUTPUT/card/extlinux/extlinux.conf" || fail 'versioned early initramfs selector missing'
+grep -q "^  FDT /bird-releases/$RELEASE_ID/dtb.img$" \
+	"$OUTPUT/card/extlinux/extlinux.conf" || fail 'versioned DTB selector missing'
+grep -q "bird_release=$RELEASE_ID" \
+	"$OUTPUT/card/extlinux/extlinux.conf" || fail 'release identity missing from kernel command line'
+grep -q 'BIRD_LOADER_SELECTOR_SHA=f6434463ef51f752' \
+	"$OUTPUT/build/early-initramfs/payload/bird-release-loader.sh" || \
+	fail 'pinned fallback selector missing from release loader'
+grep -q 'BIRD_LOADER_KERNEL_SHA=a53a3483731d28d2' \
+	"$OUTPUT/build/early-initramfs/payload/bird-release-loader.sh" || \
+	fail 'pinned fallback kernel missing from release loader'
+grep -q 'BIRD_LOADER_DTB_SHA=f3a4273986d6e4f4' \
+	"$OUTPUT/build/early-initramfs/payload/bird-release-loader.sh" || \
+	fail 'pinned fallback DTB missing from release loader'
+grep -Fq 'if ! . /bird-release-loader.sh; then' \
+	"$OUTPUT/build/early-initramfs/payload/init" || fail 'versioned release loader missing'
+grep -Fq 'while :; do sleep 3600; done' \
+	"$OUTPUT/build/early-initramfs/payload/init" || fail 'release-loader fatal boundary missing'
+if grep -q '/flash/post-flash.sh' "$OUTPUT/build/early-initramfs/payload/init"; then
+	fail 'top-level mutable boot hook remained in versioned init'
+fi
+grep -Fq '[ "$(cat "$TEMP" 2>/dev/null)" = "$VALUE" ]' \
+	"$OUTPUT/card/post-flash.sh" || fail 'verified boot-attempt temporary missing'
+grep -Fq 'case "$ATTEMPTS" in 0|1|2) ;; *) ATTEMPTS=2 ;; esac' \
+	"$OUTPUT/card/post-flash.sh" || fail 'corrupt boot attempts fail-safe policy missing'
 grep -q 'persistent-owner' \
 	"$OUTPUT/build/early-initramfs/payload/bird-early.sh" || \
 	fail 'persistent early owner missing'
@@ -289,10 +467,30 @@ grep -q 'mount --bind "$ROM_SOURCE" "$ROM_TARGET"' \
 	"$OUTPUT/card/bird/fixed-storage.sh" || fail 'fixed ROM bind missing'
 grep -q 'application-contract-ready' \
 	"$OUTPUT/card/bird/999-export" || fail 'application milestone missing'
+grep -q '^CONTRACT_REVISION=bird-application-v1$' \
+	"$OUTPUT/card/bird/999-export" || fail 'application contract revision missing'
+grep -q '^PLATFORM_STAGE=/run/bird/fixed-platform$' \
+	"$OUTPUT/card/bird/999-export" || fail 'fixed platform readiness input missing'
+grep -q '^SWAY_STAGE=/run/bird/fixed-sway$' \
+	"$OUTPUT/card/bird/999-export" || fail 'fixed Sway readiness input missing'
+grep -Fq 'cmp -s "$PLATFORM_STAGE/$PROFILE_NAME" "$PROFILE_DIR/$PROFILE_NAME"' \
+	"$OUTPUT/card/bird/999-export" || fail 'fixed platform readiness validation missing'
+grep -Fq 'cmp -s "$SWAY_STAGE/config" "$SWAY_CONFIG"' \
+	"$OUTPUT/card/bird/999-export" || fail 'fixed Sway config validation missing'
+grep -Fq 'cmp -s "$SWAY_STAGE/095-sway" "$SWAY_PROFILE"' \
+	"$OUTPUT/card/bird/999-export" || fail 'fixed Sway profile validation missing'
+grep -Fq 'mv -f "$READY_TMP" "$READY"' \
+	"$OUTPUT/card/bird/999-export" || fail 'atomic application marker publication missing'
 grep -q '/flash/bird/999-export' \
 	"$OUTPUT/card/mount-storage.sh" || fail 'application milestone bind missing'
 grep -q 'wait_application_contract' \
 	"$OUTPUT/card/bird/run-content.sh" || fail 'early selection queue missing'
+grep -q '^APPLICATION_CONTRACT_REVISION=bird-application-v1$' \
+	"$OUTPUT/card/bird/run-content.sh" || fail 'dispatcher application revision missing'
+grep -q 'contract_revision=$APPLICATION_CONTRACT_REVISION' \
+	"$OUTPUT/card/bird/run-content.sh" || fail 'dispatcher revision validation missing'
+grep -Fq 'wait_application_contract && . /etc/profile; then' \
+	"$OUTPUT/card/bird/run-content.sh" || fail 'post-contract profile refresh missing'
 grep -q 'ExecStart=/storage/.config/bird/supervisor.sh' \
 	"$OUTPUT/card/bird/essway.service" || fail 'Bird UI unit missing'
 grep -q '^UI_SERVICE="essway.service"$' \
@@ -313,18 +511,97 @@ grep -q '/flash/bird/bird-powerstate.service' \
 	"$OUTPUT/card/mount-storage.sh" || fail 'stock powerstate replacement missing'
 grep -q 'state->select_held && state->start_held' \
 	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'Bird exit chord missing'
+grep -q 'sys_pipe2(handshake, O_CLOEXEC)' \
+	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'control exec handshake missing'
+grep -q 'SPAWN_EXEC_FAILED' \
+	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'control exec failure state missing'
+grep -q 'poll-failed-recovering' \
+	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'control poll recovery missing'
+grep -q '^static u64 recover_poll_failure' \
+	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'bounded control poll recovery missing'
+for ACTION in volume suspend content-exit; do
+	grep -q "$ACTION-exec-failed" \
+		"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || \
+		fail "control $ACTION exec failure diagnostic missing"
+done
 if grep -q 'BTN_TL' "$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c"; then
 	fail 'obsolete L1 exit requirement remained'
 fi
 grep -q 'SESSION_PID=/run/bird/content-session.pid' \
 	"$OUTPUT/card/bird/run-content.sh" || fail 'managed content root missing'
+grep -Fq '/usr/bin/systemd-run --quiet --scope --collect' \
+	"$OUTPUT/card/bird/run-content.sh" || fail 'systemd content scope boundary missing'
+grep -q 'boundary=systemd-scope' \
+	"$OUTPUT/card/bird/run-content.sh" || fail 'content scope metadata contract missing'
+grep -q 'InvocationID' "$OUTPUT/card/bird/run-content.sh" || \
+	fail 'content scope invocation identity missing'
+grep -q '^scope_activity_status()' "$OUTPUT/card/bird/run-content.sh" || \
+	fail 'content scope tri-state activity query missing'
+grep -Fq 'usleep 250000' "$OUTPUT/card/bird/run-content.sh" || \
+	fail 'content scope query backoff missing'
+if grep -Eq '^[[:space:]]*systemctl start --wait' \
+	"$OUTPUT/card/bird/run-content.sh"; then
+	fail 'nonjoining systemctl start --wait returned'
+fi
+grep -q -- '--kill-whom=all' "$OUTPUT/card/bird/run-content.sh" || \
+	fail 'content scope all-process termination missing'
+grep -q 'bird-content-guard-' "$OUTPUT/card/bird/run-content.sh" || \
+	fail 'content cleanup guard boundary missing'
+grep -q 'InvocationID' "$OUTPUT/card/bird/bird-fixed-control-exit.sh" || \
+	fail 'global exit scope identity validation missing'
+grep -q '^parse_metadata_snapshot()' \
+	"$OUTPUT/card/bird/bird-fixed-control-exit.sh" || fail 'single-generation exit metadata parser missing'
+grep -Fq 'METADATA_CAPTURE=$(cat "$SESSION_PID"' \
+	"$OUTPUT/card/bird/bird-fixed-control-exit.sh" || fail 'single-open exit metadata snapshot missing'
+grep -Fq '__BIRD_METADATA_EOF__")' \
+	"$OUTPUT/card/bird/bird-fixed-control-exit.sh" || fail 'exit metadata newline validation missing'
+if grep -Eq '^(VERSION|BOUNDARY|RECORDED_STATE|RECORDED_SESSION_TOKEN|RECORDED_BOOT_ID|UNIT|INVOCATION|CONTROL_GROUP)=\$\(metadata_value' \
+	"$OUTPUT/card/bird/bird-fixed-control-exit.sh"; then
+	fail 'multi-open exit metadata load returned'
+fi
+grep -q -- '--kill-whom=all' "$OUTPUT/card/bird/bird-fixed-control-exit.sh" || \
+	fail 'global exit all-process termination missing'
+if grep -q 'pgrep' "$OUTPUT/card/bird/run-content.sh" \
+	"$OUTPUT/card/bird/bird-fixed-control-exit.sh"; then
+	fail 'snapshot PID-tree content termination returned'
+fi
 grep -q 'retroarch fmsx' \
 	"$OUTPUT/card/bird/run-content.sh" || fail 'fixed MSX provider missing'
 grep -q '#define INPUT_EVENT_SCAN_COUNT 32' \
 	"$ROOT/launcher/bird-launcher.c" || fail 'complete fixed input search missing'
+grep -q '^CATALOG_PATH_MAX_BYTES = 4085$' \
+	"$ROOT/generate-launcher-catalog.py" || fail 'catalogue path size contract missing'
+grep -Fq 'byte < 0x20 or byte == 0x7F' \
+	"$ROOT/generate-launcher-catalog.py" || fail 'generator path control-byte rejection missing'
+grep -q '^#define CATALOG_PATH_MAX_BYTES 4085U$' \
+	"$ROOT/launcher/catalog.generated.h" || fail 'generated catalogue path contract missing'
+grep -Fq 'byte < 32U || byte == 127U' \
+	"$ROOT/launcher/bird-launcher.c" || fail 'launcher path control-byte rejection missing'
+grep -Fq 'result=blocked reason=load-incomplete' \
+	"$ROOT/launcher/bird-launcher.c" || fail 'incomplete favorites save gate missing'
+grep -q '^static void schedule_favorites_retry' \
+	"$ROOT/launcher/bird-launcher.c" || fail 'favorites read retry missing'
+grep -q '^static int classify_poll_result' \
+	"$ROOT/launcher/bird-launcher.c" || fail 'launcher poll error classification missing'
+grep -q '^static u64 recover_poll_delay' \
+	"$ROOT/launcher/bird-launcher.c" || fail 'launcher poll backoff missing'
+grep -q '^static void reset_input_latches' \
+	"$ROOT/launcher/bird-launcher.c" || fail 'launcher reconnect latch reset missing'
+[ "$(grep -c '^[[:space:]]*abandon_input();' \
+	"$ROOT/launcher/bird-launcher.c")" -eq 2 ] || fail 'both launcher input fault paths must abandon state'
 grep -q '#define EVENT_SCAN_COUNT 32' \
 	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'complete global input search missing'
 grep -q -- '-DPERSIST_UI_STATE' "$0" || fail 'launcher recovery state missing'
+grep -q '^#define ACTION_RECOVER 1$' \
+	"$ROOT/launcher/bird-launcher.c" || fail 'launcher recover action missing'
+grep -Fq 'exit_action == ACTION_RECOVER)' \
+	"$ROOT/launcher/bird-launcher.c" || fail 'launcher recover return contract missing'
+grep -q '^#define ACTION_RELOAD 13$' \
+	"$ROOT/launcher/bird-launcher.c" || fail 'launcher reload action missing'
+grep -Eq '^[[:space:]]*13\)' \
+	"$OUTPUT/card/bird/supervisor.sh" || fail 'supervisor reload result missing'
+grep -q 'bird launcher user-requested reload' \
+	"$OUTPUT/card/bird/supervisor.sh" || fail 'supervisor explicit reload path missing'
 grep -q 'SUSPEND_PROGRAM "/storage/.config/bird/bird-suspend.sh"' \
 	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'fixed suspend wrapper missing'
 grep -q 'raw = 1U' \
@@ -367,33 +644,137 @@ if grep -q 'output_monitor\|DP-1\|HDMI' \
 fi
 grep -q '/flash/bird/bird-save-config.service' \
 	"$OUTPUT/card/mount-storage.sh" || fail 'fixed shutdown checkpoint missing'
+grep -q 'set -C' "$OUTPUT/card/bird/bird-save-config.sh" || \
+	fail 'shutdown exclusive temporary creation missing'
+grep -Fq 'while [ "$TEMP_SUFFIX" -lt 32 ]; do' \
+	"$OUTPUT/card/bird/bird-save-config.sh" || fail 'bounded shutdown temp suffix search missing'
+grep -Fq 'cmp -s "$SOURCE" "$TEMP"' \
+	"$OUTPUT/card/bird/bird-save-config.sh" || fail 'shutdown byte verification missing'
+grep -Fq 'sync "$TEMP"' \
+	"$OUTPUT/card/bird/bird-save-config.sh" || fail 'shutdown data flush missing'
+grep -Fq 'mv -f -- "$TEMP" "$BACKUP"' \
+	"$OUTPUT/card/bird/bird-save-config.sh" || fail 'shutdown atomic checkpoint missing'
+if grep -E 'cp .*\$BACKUP' "$OUTPUT/card/bird/bird-save-config.sh"; then
+	fail 'shutdown direct backup overwrite returned'
+fi
 grep -q 'systemctl --no-block poweroff' \
 	"$OUTPUT/card/bird/supervisor.sh" || fail 'nonblocking poweroff request missing'
+grep -q '^TimeoutStartSec=15s$' \
+	"$OUTPUT/card/bird/bird-save-config.service" || fail 'bounded shutdown checkpoint missing'
 grep -q 'for PROPERTY in run pages_to_scan' \
 	"$OUTPUT/card/bird/capture-boot-state.sh" || fail 'KSM diagnostic missing'
 grep -q '^#define LOW_PERCENT 41$' \
 	"$ROOT/launcher/bird-powerstate.c" || fail 'fixed low-battery threshold missing'
 grep -q 'lost writer edge' \
 	"$ROOT/launcher/bird-launcher.c" || fail 'storage recovery probe missing'
+grep -q '^STARTUP_FAILURE_LIMIT=3$' \
+	"$OUTPUT/card/bird/supervisor.sh" || fail 'bounded launcher startup retries missing'
+grep -Fq 'for ((check = 0; check < 1000; check++)); do' \
+	"$OUTPUT/card/bird/supervisor.sh" || fail 'bounded launcher health race missing'
+grep -Fq 'if launcher_exited "$pid"; then' \
+	"$OUTPUT/card/bird/supervisor.sh" || fail 'immediate launcher-exit check missing'
+if grep -Fq '"$PIDWAIT" "$pid" &' "$OUTPUT/card/bird/supervisor.sh"; then
+	fail 'cancellable background pidwait race returned'
+fi
+grep -q '^ATTEMPTS_TMP=\$ATTEMPTS\.tmp\.\$\$$' \
+	"$OUTPUT/card/bird/supervisor.sh" || fail 'atomic boot-attempt temporary missing'
+grep -q '^RELEASE_ID=v6\.23$' \
+	"$OUTPUT/card/bird/supervisor.sh" || fail 'release-scoped boot-attempt identity missing'
+grep -Fq 'boot-state/releases/$RELEASE_ID/attempts' \
+	"$OUTPUT/card/bird/supervisor.sh" || fail 'release-scoped boot-attempt path missing'
+grep -Fq 'mv -f "$ATTEMPTS_TMP" "$ATTEMPTS"' \
+	"$OUTPUT/card/bird/supervisor.sh" || fail 'atomic boot-attempt commit missing'
+grep -Fq 'sync "${ATTEMPTS%/*}"' \
+	"$OUTPUT/card/bird/supervisor.sh" || fail 'boot-attempt directory durability missing'
 
+# This is the only deploy inventory.  It records every regular candidate file
+# with its intended Unix mode, size and digest, plus every pinned external byte
+# stream used by the build or first deployment.  The updater derives preflight,
+# staging and installed-release verification from these file records.
+verify_source_identity
+MANIFEST=$OUTPUT/deploy-manifest.tsv
+MANIFEST_TEMP=$OUTPUT/.deploy-manifest.tsv.new
+FILE_LIST=$OUTPUT/build/deploy-files.list
+EMPTY_DIR_LIST=$OUTPUT/build/deploy-empty-dirs.list
+if find "$OUTPUT/card" ! -type f ! -type d -print | grep -q .; then
+	fail 'candidate contains a symlink or special node'
+fi
+(
+	cd "$OUTPUT/card"
+	find . -type f -print | sed 's#^\./##' | sort >"$FILE_LIST"
+	find . -mindepth 1 -type d -empty -print | sed 's#^\./##' | \
+		sort >"$EMPTY_DIR_LIST"
+)
 {
-	printf '%s  KERNEL\n' "$KERNEL_SHA"
-	printf '%s  dtb.img\n' "$DTB_SHA"
-	printf '%s  ROCKNIX-SYSTEM\n' "$SYSTEM_SHA"
-	printf '%s  ROCKNIX-STORAGE\n' "$STORAGE_SHA"
-	printf '%s  bird-initramfs.cpio.gz\n' \
-		"$(sha256 "$OUTPUT/card/bird-initramfs.cpio.gz")"
-	printf '%s  bird/bird-launcher\n' \
-		"$(sha256 "$OUTPUT/card/bird/bird-launcher")"
-	printf '%s  bird/bird-pidwait\n' \
-		"$(sha256 "$OUTPUT/card/bird/bird-pidwait")"
-	printf '%s  bird/bird-fixed-controls\n' \
-		"$(sha256 "$OUTPUT/card/bird/bird-fixed-controls")"
-	printf '%s  bird/bird-powerstate\n' \
-		"$(sha256 "$OUTPUT/card/bird/bird-powerstate")"
-} >"$OUTPUT/manifest.sha256"
+	printf 'schema\tbird-deploy-v1\n'
+	printf 'release\t%s\n' "$RELEASE_ID"
+	printf 'target-mode-policy\tfat-capability\n'
+	printf 'source-commit\t%s\t%s\n' "$SOURCE_COMMIT" "$SOURCE_STATE"
+	printf 'input\tKERNEL\t%s\t%s\t%s\t%s\n' \
+		"$(file_mode "$SOURCE/KERNEL")" "$(file_bytes "$SOURCE/KERNEL")" \
+		"$KERNEL_SHA" 'ROCKNIX-H700-20260701:KERNEL'
+	printf 'input\tdtb.img\t%s\t%s\t%s\t%s\n' \
+		"$(file_mode "$SOURCE/dtb.img")" "$(file_bytes "$SOURCE/dtb.img")" \
+		"$DTB_SHA" 'ROCKNIX-H700-20260701:dtb.img'
+	printf 'input\tROCKNIX-SYSTEM\t%s\t%s\t%s\t%s\n' \
+		"$(file_mode "$SYSTEM_SOURCE")" "$(file_bytes "$SYSTEM_SOURCE")" \
+		"$SYSTEM_SHA" 'ROCKNIX-H700-20260701:SYSTEM'
+	printf 'input\tROCKNIX-STORAGE\t%s\t%s\t%s\t%s\n' \
+		"$(file_mode "$STORAGE")" "$(file_bytes "$STORAGE")" \
+		"$STORAGE_SHA" 'ROCKNIX-H700-20260701:STORAGE'
+	printf 'input\tusr/bin/autostart\t%s\t%s\t%s\t%s\n' \
+		"$(file_mode "$SYSTEM_TREE/usr/bin/autostart")" \
+		"$(file_bytes "$SYSTEM_TREE/usr/bin/autostart")" "$AUTOSTART_SHA" \
+		'ROCKNIX-SYSTEM:/usr/bin/autostart'
+	printf 'input\tinitramfs/init\t%s\t%s\t%s\t%s\n' \
+		"$(file_mode "$OFFICIAL_INIT")" "$(file_bytes "$OFFICIAL_INIT")" \
+		"$OFFICIAL_INIT_SHA" 'ROCKNIX-initramfs:/init'
+	printf 'input\trocknix-singleadc-joypad.ko\t%s\t%s\t%s\t%s\n' \
+		"$(file_mode "$JOYPAD")" "$(file_bytes "$JOYPAD")" "$JOYPAD_SHA" \
+		'ROCKNIX-SYSTEM:kernel-overlay/rocknix-singleadc-joypad.ko'
+	printf 'input\tinitramfs/busybox\t%s\t%s\t%s\t%s\n' \
+		"$(file_mode "$INIT_BUSYBOX")" "$(file_bytes "$INIT_BUSYBOX")" \
+		"$INIT_BUSYBOX_SHA" 'ROCKNIX-initramfs:/usr/bin/busybox'
+	printf 'input\tPortMaster.zip\t%s\t%s\t%s\t%s\n' \
+		"$(file_mode "$PORTMASTER_ARCHIVE")" "$(file_bytes "$PORTMASTER_ARCHIVE")" \
+		"$PORTMASTER_ARCHIVE_SHA" 'ROCKNIX-SYSTEM:/usr/config/PortMaster/release/PortMaster.zip'
+	printf 'input\tKERNEL.fallback\t%s\t%s\t%s\t%s\n' \
+		"$(file_mode "$FALLBACK_KERNEL")" "$(file_bytes "$FALLBACK_KERNEL")" \
+		"$FALLBACK_KERNEL_SHA" 'preserved-birdOS-v5.4:KERNEL'
+	for PROVIDER_SPEC in \
+		'pugwash:ROCKNIX-PortMaster.zip:/PortMaster/pugwash' \
+		'PortMaster.sh:ROCKNIX-PortMaster.zip:/PortMaster/PortMaster.sh' \
+		'mod_ROCKNIX.txt:ROCKNIX-PortMaster.zip:/PortMaster/mod_ROCKNIX.txt' \
+		'funcs.txt:ROCKNIX-PortMaster.zip:/PortMaster/funcs.txt' \
+		'harbourmaster:ROCKNIX-PortMaster.zip:/PortMaster/harbourmaster'; do
+		PROVIDER_NAME=${PROVIDER_SPEC%%:*}
+		PROVIDER_ORIGIN=${PROVIDER_SPEC#*:}
+		PROVIDER_FILE=$PORTMASTER_INPUTS/$PROVIDER_NAME
+		printf 'input\tPortMaster/%s\t%s\t%s\t%s\t%s\n' \
+			"$PROVIDER_NAME" "$(file_mode "$PROVIDER_FILE")" \
+			"$(file_bytes "$PROVIDER_FILE")" "$(sha256 "$PROVIDER_FILE")" \
+			"$PROVIDER_ORIGIN"
+	done
+	while IFS= read -r RELATIVE; do
+		case "$RELATIVE" in
+			''|/*|*/../*|../*|*'/..'|*[!A-Za-z0-9._/-]*) fail "unsafe manifest path: $RELATIVE" ;;
+		esac
+		printf 'dir\t%s\t%s\n' "$RELATIVE" \
+			"$(file_mode "$OUTPUT/card/$RELATIVE")"
+	done <"$EMPTY_DIR_LIST"
+	while IFS= read -r RELATIVE; do
+		case "$RELATIVE" in
+			''|/*|*/../*|../*|*'/..'|*[!A-Za-z0-9._/-]*) fail "unsafe manifest path: $RELATIVE" ;;
+		esac
+		FILE=$OUTPUT/card/$RELATIVE
+		printf 'file\t%s\t%s\t%s\t%s\n' "$RELATIVE" \
+			"$(file_mode "$FILE")" "$(file_bytes "$FILE")" "$(sha256 "$FILE")"
+	done <"$FILE_LIST"
+} >"$MANIFEST_TEMP"
+mv -f "$MANIFEST_TEMP" "$MANIFEST"
 
 printf 'Built exact ROCKNIX compatibility baseline: %s\n' "$OUTPUT"
 printf 'KERNEL remains byte-identical to release 20260701: %s\n' "$KERNEL_SHA"
 printf 'Bird launcher: %s\n' "$(sha256 "$OUTPUT/card/bird/bird-launcher")"
 printf 'Early overlay: %s\n' "$(sha256 "$OUTPUT/card/bird-initramfs.cpio.gz")"
+printf 'Canonical deploy manifest: %s (%s)\n' "$MANIFEST" "$(sha256 "$MANIFEST")"

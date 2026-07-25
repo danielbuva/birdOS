@@ -1,5 +1,27 @@
 # RG34XX-SP firmware workspace
 
+**Status:** this document is the historical muOS firmware, bootloader,
+power-key and clean-root investigation. Its measurements remain hardware
+evidence, but its old deployment paths are not the active stock-root build.
+See [`ACTIVE_PATH.md`](../ACTIVE_PATH.md) for the current system.
+
+Two scripts in this directory do participate in the active path:
+
+- [`mac-update-rocknix-stock-root-v6.sh`](mac-update-rocknix-stock-root-v6.sh)
+  transactionally stages and activates the complete manifest-verified release;
+  and
+- [`mac-migrate-rocknix-ports.sh`](mac-migrate-rocknix-ports.sh) performs the
+  explicit, resumable same-volume legacy Ports data migration that must finish
+  before deployment. Set `BIRD` and `DATA` when either mounted volume uses a
+  custom Finder label.
+
+Both operations validate the same removable p1/p6 card identity and serialize
+through one host-side atomic card lock. This protects concurrent Mac processes;
+it is not a claim of FAT metadata durability across sudden power loss.
+
+Their contracts are defined by [`ACTIVE_PATH.md`](../ACTIVE_PATH.md); the
+firmware experiments documented below are historical evidence.
+
 This directory records the exact lower-layer layout of the muOS 2601.1 image
 used for the target RG34XX-SP. Generated images stay outside Git; scripts and
 checksums make the analysis repeatable.

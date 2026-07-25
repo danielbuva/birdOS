@@ -9,7 +9,10 @@ product decisions, not runtime options.
 - SoC: Allwinner H700, AArch64 Cortex-A53.
 - Internal display: 720x480, landscape, 3:2.
 - Input: built-in D-pad, A/B/X/Y, shoulders, Start/Select/Menu and lid switch.
-- Primary storage: the OS card's ROM partition mounted at `/mnt/mmc`.
+- Primary storage: the OS card's content partition, retained by the early
+  launcher at `/storage/bird-data` and exported to applications through the
+  fixed `/storage/roms` view. `/mnt/mmc` is only the launcher's compiled
+  catalogue namespace; the runner translates it before dispatch.
 - HDMI, alternate boards, touchscreens and external controller setup are not
   part of the first custom-launcher target.
 
@@ -22,12 +25,17 @@ product decisions, not runtime options.
 - Game discovery: a generated cache, never a boot-time directory scan.
 - Storage readiness: the cached collection remains browsable while storage is
   made ready asynchronously; launching is gated on the selected ROM path.
-- Diagnostics: off in ordinary boots except for the exact first-frame marker.
-  Deeper probes are individually armed for a specific experiment and removed
+- Diagnostics: no probe gates the first usable frame. Ordinary boots retain
+  the exact readiness logs and one bounded, idle-priority post-frame snapshot;
+  deeper probes are individually armed for a specific experiment and removed
   again afterward.
-- Stock muOS frontend: retained only as a fallback until the custom launcher
-  can launch games, return from them, suspend and shut down reliably. B on the
-  main menu remains the explicit recovery path during development.
+- Compatibility provider: the pinned ROCKNIX 20260701 application and hardware
+  closure, with birdOS replacing its frontend and selected generic policy.
+- Boot recovery: loader or post-flash verification failure selects the
+  preserved clean-root fallback immediately; repeated full-stack startup
+  failure selects it at the fixed attempt threshold. Both paths verify the
+  recovery assets before changing the selector. B on the main menu reloads
+  birdOS; it does not choose the boot fallback or enter another frontend.
 
 ## Launcher menu
 
@@ -40,8 +48,8 @@ The permanent fixed shell starts with exactly:
 
 It embeds only its English bitmap glyphs, draws directly to the Linux
 framebuffer, reads evdev directly, and remains the permanent shell. B from Home
-is the explicit development recovery path; there is no inactivity handoff to
-stock.
+requests a bounded birdOS launcher reload; there is no inactivity handoff to
+another frontend and no UI route into the boot fallback.
 
 Play contains Library, Favorites, PortMaster and Shutdown. Library opens the
 embedded 5,953-title, 27-system game catalogue. It is browsable before ROM
@@ -64,15 +72,17 @@ card has three MP3s below `MEDIA/LISTEN/AW` and six films below
 map. Read is a deliberate empty destination until its reader and supported
 formats are fixed. None of these views scans storage at boot.
 
-PortMaster is the explicit network boundary: selecting it loads Wi-Fi, connects,
-runs the tool, then disconnects services and unloads the driver before returning.
-Shutdown uses the normal muOS poweroff machinery directly from the custom menu.
-Both paths are hardware-verified and do not enter the stock frontend.
+PortMaster is the explicit network boundary: its selected session may acquire
+Wi-Fi, resolver and time services, then release them before returning. Network
+profile setup remains a separate device acceptance item and never enters
+offline boot. Shutdown requests the normal ordered systemd poweroff path from
+the birdOS menu; neither action enters another frontend.
 
 The active boot path has no animation or startup sound while earliest
-interaction is being optimized. muOS's later saved-brightness restore remains
-disabled; the U-Boot-established value persists until manual adjustment. Final
-effects will be designed only after the fixed init/kernel path is complete.
+interaction is being optimized. The fixed controls worker owns manual
+brightness and restores the raw pre-suspend panel level; a late generic
+brightness reset is not part of the contract. Final effects will be designed
+only after the fixed init/kernel path is complete.
 
 ## Efficiency contract
 

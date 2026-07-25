@@ -40,9 +40,10 @@ class MediaCategory:
     entries: tuple[MediaEntry, ...]
 
 
-# These assignments mirror the recommended MustardOS system definitions. All
-# libretro systems use the already-proven lr-general.sh bridge; external
-# systems keep their dedicated muOS wrappers.
+# These provider labels are retained as catalogue metadata for compatibility
+# with older indexes. The active birdOS ROCKNIX dispatcher derives its fixed
+# platform/emulator/core tuple from the canonical content path rather than
+# trusting these historical provider strings.
 SYSTEMS = (
     System("A2600", "ATARI 2600", (".a26", ".bin", ".zip"), "RETROARCH", "stella2014_libretro.so"),
     System("ATOMISWAVE", "ATOMISWAVE", (".zip",), "RETROARCH", "flycastvl_libretro.so"),
@@ -74,8 +75,8 @@ SYSTEMS = (
 )
 
 # Media is indexed on the Mac alongside games and compiled into the launcher.
-# MPV is already part of this exact muOS image, and ext-mpv-general supplies
-# its fixed-device controller mapping for both local audio and local video.
+# The active dispatcher routes LISTEN and WATCH through the pinned ROCKNIX MPV
+# provider; the stored labels remain inventory metadata, not launch authority.
 MEDIA_KINDS = (
     MediaKind(
         "LISTEN",
@@ -95,6 +96,36 @@ MEDIA_KINDS = (
 )
 
 IGNORED_DIRECTORY_NAMES = frozenset(("imgs", "images"))
+
+# Linux accepts at most 4095 pathname bytes excluding the terminating NUL.
+# The active runtime rewrites the eight-byte /mnt/mmc catalogue root to the
+# eighteen-byte /storage/bird-data root, so reserve those ten expansion bytes.
+# This value is emitted into catalog.generated.h and is therefore also the
+# launch-request and favorites-file contract used by the freestanding launcher.
+CATALOG_PATH_MAX_BYTES = 4085
+
+
+def checked_catalog_path(value: str, source: str) -> str:
+    """Return *value* when it is safe for every launcher path protocol."""
+
+    encoded = value.encode("utf-8")
+    if b"\n" in encoded or b"\r" in encoded:
+        raise SystemExit(
+            f"{source}: catalog path contains a line delimiter and cannot be "
+            f"represented by the launch/favorites protocol: {value!r}"
+        )
+    control = next((byte for byte in encoded if byte < 0x20 or byte == 0x7F), None)
+    if control is not None:
+        raise SystemExit(
+            f"{source}: catalog path contains unsupported control byte "
+            f"0x{control:02x}: {value!r}"
+        )
+    if len(encoded) > CATALOG_PATH_MAX_BYTES:
+        raise SystemExit(
+            f"{source}: catalog path is {len(encoded)} UTF-8 bytes; maximum is "
+            f"{CATALOG_PATH_MAX_BYTES}: {value!r}"
+        )
+    return value
 
 
 def c_string(value: str) -> str:
@@ -161,9 +192,10 @@ def discover(
                 relative = relative_path.as_posix()
                 if requested is not None and relative not in requested:
                     continue
-                entries.append(
-                    (display_name(path), f"/mnt/mmc/ROMS/{relative}", relative)
+                catalog_path = checked_catalog_path(
+                    f"/mnt/mmc/ROMS/{relative}", f"game entry {relative!r}"
                 )
+                entries.append((display_name(path), catalog_path, relative))
         entries.sort(key=lambda entry: (entry[0], entry[1]))
         if entries:
             systems.append((system, entries))
@@ -215,6 +247,7 @@ def render(
         f"#define CATALOG_ENTRY_COUNT {total}U",
         f"#define CATALOG_MEDIA_CATEGORY_COUNT {len(media_categories)}U",
         f"#define CATALOG_MEDIA_ENTRY_COUNT {media_total}U",
+        f"#define CATALOG_PATH_MAX_BYTES {CATALOG_PATH_MAX_BYTES}U",
         f"#define CATALOG_LISTEN_CATEGORY_FIRST {section_ranges['LISTEN'][0]}U",
         f"#define CATALOG_LISTEN_CATEGORY_COUNT {section_ranges['LISTEN'][1]}U",
         f"#define CATALOG_READ_CATEGORY_FIRST {section_ranges['READ'][0]}U",
@@ -343,11 +376,15 @@ def discover_media(media_root: pathlib.Path | None) -> list[MediaCategory]:
                 if len(relative_to_kind.parts) > 1
                 else "ALL"
             )
+            relative = relative_to_media.as_posix()
+            catalog_path = checked_catalog_path(
+                f"/mnt/mmc/MEDIA/{relative}", f"media entry {relative!r}"
+            )
             grouped.setdefault(category_name, []).append(
                 MediaEntry(
                     display_name(path),
-                    f"/mnt/mmc/MEDIA/{relative_to_media.as_posix()}",
-                    relative_to_media.as_posix(),
+                    catalog_path,
+                    relative,
                 )
             )
         for category_name in sorted(grouped):

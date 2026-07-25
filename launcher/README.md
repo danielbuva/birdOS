@@ -1,4 +1,28 @@
-# Direct-framebuffer launcher proof
+# birdOS launcher
+
+**Status:** [`bird-launcher.c`](bird-launcher.c) is active, but most of this
+document is the chronological proof record from earlier muOS and clean-root
+stages. The authoritative stock-root v6.23 compile flags, process ownership,
+readiness boundaries and content handoff are documented in
+[`ACTIVE_PATH.md`](../ACTIVE_PATH.md) and implemented by
+[`kernel/rocknix/build-stock-root-compat.sh`](../kernel/rocknix/build-stock-root-compat.sh).
+
+The active build compiles this source twice: once for the retained initramfs
+launcher and once for final-root recovery. It does not use the committed
+relocatable object or the old `S03birdlauncher` muOS installer. The original
+initramfs process remains the normal menu/input owner across `switch_root`; the
+final-root supervisor adopts it, monitors child exit and first-frame readiness,
+and starts a replacement only when required. Content executes outside the
+launcher inside a separately supervised session boundary.
+
+On nested pages, B navigates back. On the main page, a dedicated user-reload
+result leaves and immediately restarts birdOS; it neither opens the ROCKNIX
+frontend, counts as a runtime failure nor selects the clean-root boot fallback.
+The active UI labels that action `B RELOAD`. Historical passages below that describe “B
+STOCK”, `S03birdlauncher`, muOS wrappers or stock
+frontend handoff do not define the active behavior.
+
+## Historical direct-framebuffer launcher proof
 
 `bird-launcher.c` is an intentionally freestanding AArch64 Linux program. It
 uses direct kernel syscalls and has no libc or dynamic-library dependencies.
@@ -14,7 +38,7 @@ profiling targets framebuffer write volume, redraw granularity, catalogue
 representation, code size and supervisor handoff overhead. Battery efficiency
 outranks memory reduction when those trade off.
 
-The current stock-root v6.9 build keeps the original initramfs launcher alive
+The stock-root v6.9 milestone first kept the original initramfs launcher alive
 through the mount move as the sole input owner. Open directory descriptors
 anchor its runtime, evdev, power and storage operations to the moved mounts;
 the systemd supervisor sleeps in a separate 896-byte static pidfd waiter until
@@ -135,19 +159,20 @@ from RetroArch exec to the identity color-stage message was 5.67 seconds. On
 the second launch, SDL setup fell to 0.04 seconds and exec-to-stage fell to 1.79
 seconds. This is a cold file/dependency cost, not an arbitrary delay.
 
-`lr-fixed.sh` is the installed fixed bridge. It directly exports the measured
+`lr-fixed.sh` was the installed fixed bridge. It directly exported the measured
 RG34XX-SP values (720x480, no rotation, retro ABXY mapping, fixed muOS-Keys SDL
-row), writes the foreground owner, and execs RetroArch. It removes the
+row), wrote the foreground owner, and executed RetroArch. It removed the
 controller-database scan, per-launch configuration rewrite, swap detection and
 `libmustage.so` preload; the latter only reported identity brightness, contrast,
 saturation, hue and gamma values. The prerequisite RetroArch files were already
 created by the verified generic path and are checked by the one-shot installer.
 
-Hardware testing confirmed the bridge retains gameplay, controls, audio,
+Hardware testing confirmed the bridge retained gameplay, controls, audio,
 volume, save/return behavior and shutdown. Perceived cold timing remained slow,
-because the dominant work is now the oversized generic RetroArch dependency
-graph and core rather than this wrapper. Further work is parked in
-`GAME_LOAD_DEFERRED.md` until the active OS roadmap is complete.
+because the dominant work was the oversized generic RetroArch dependency graph
+and core rather than this wrapper. The historical profile is preserved in
+[`docs/history/GAME_LOAD_DEFERRED.md`](../docs/history/GAME_LOAD_DEFERRED.md);
+it does not describe the active stock-root dispatcher.
 
 ## Native system actions
 

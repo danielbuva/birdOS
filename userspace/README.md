@@ -1,5 +1,10 @@
 # Fixed userspace stages
 
+**Status:** this is the historical muOS userspace-reduction record. These
+checksum-gated card installers are not the active ROCKNIX stock-root runtime.
+See [`ACTIVE_PATH.md`](../ACTIVE_PATH.md) for the current integration and
+[`docs/history/README.md`](../docs/history/README.md) for the history index.
+
 This directory replaces generic post-menu services only after a measured,
 checksum-gated hardware proof. The permanent target is a reproducible rootfs;
 card-side installers are temporary development delivery mechanisms.
@@ -162,8 +167,10 @@ snapshot:
   only the chosen display-idle, explicit suspend and closed-lid policies.
 - `lid-rg34xxsp.sh` hardcodes the enabled AXP2202 hall path instead of rereading
   configuration every five seconds.
-- `lowpower-rg34xxsp.sh` checks the exact charger/capacity/LED paths once per
-  minute, retains the 25 percent warning and removes all RGB/config discovery.
+- `lowpower-rg34xxsp.sh` checked the exact charger/capacity/LED paths once per
+  minute and retained that historical stage's 25 percent warning while
+  removing RGB/config discovery. The active stock-root power worker instead
+  owns the current 41 percent low-battery threshold.
 - `charge-rg34xxsp.sh` retains the exact cold-charge frontend path without
   factory-reset, board or device-path discovery.
 - `idle-disabled-rg34xxsp.sh` makes obsolete calls harmless; the fixed hotkey

@@ -1,6 +1,13 @@
 # Fixed RG34XX-SP kernel work
 
-The active device runs the Allwinner vendor kernel:
+**Status:** this document records the original vendor-kernel audit and the
+replacement-kernel investigation. The active stock-root v6.23 candidate uses
+the byte-identical ROCKNIX 20260701 Linux 7.0.11 kernel and DTB; kernel trimming
+remains deferred. See [`ACTIVE_PATH.md`](../ACTIVE_PATH.md) for the running
+boot path and [`docs/history/README.md`](../docs/history/README.md) for the
+historical branches.
+
+The original muOS baseline ran the Allwinner vendor kernel:
 
 - Linux `4.9.170`, SMP PREEMPT;
 - closest public source lineage: Orange Pi `orange-pi-4.9-sun50iw9` at commit

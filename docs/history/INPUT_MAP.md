@@ -1,5 +1,11 @@
 # RG34XX-SP logical input reference
 
+**Status:** this is the historical cross-OS and muOS input-capture record. The
+active stock-root path names the release-matched `H700 Gamepad`; its executable
+mapping lives in [`bird-launcher.c`](../../launcher/bird-launcher.c) and
+[`bird-fixed-controls.c`](../../kernel/rocknix/stock-root/bird-fixed-controls.c).
+The launcher retains the older `muOS-Keys` mapping only as compatibility code.
+
 These values were observed in another operating system's built-in input test.
 They are a logical additive bitmask reference, not yet assumed to be muOS's
 Linux evdev or joystick event numbers.
@@ -68,8 +74,8 @@ the launcher:
 | X | `EV_KEY`, code `307` | button `3` |
 | Y | `EV_KEY`, code `306` | button `2` |
 
-The fixed launcher will use evdev directly. The joystick mapping remains useful
-for validating emulator and SDL compatibility.
+The muOS-era fixed launcher used evdev directly. The joystick mapping remains
+useful as historical emulator and SDL compatibility evidence.
 
 The v4 capture completed the fixed-device map:
 

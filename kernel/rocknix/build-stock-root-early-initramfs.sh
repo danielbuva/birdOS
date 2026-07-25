@@ -1,17 +1,26 @@
 #!/bin/sh
 # Build a small external initramfs overlay. Linux unpacks it over the exact
-# embedded ROCKNIX archive, so only /init and Bird's two early payloads differ.
+# embedded ROCKNIX archive, so only /init and Bird's fixed early payloads differ.
 
 set -eu
 
+configure_reproducible_build_environment() {
+	# Directory modes and timestamp parsing must not depend on the caller.
+	umask 022
+	LC_ALL=C
+	TZ=UTC
+	export LC_ALL TZ
+}
+configure_reproducible_build_environment
+
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
-OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.18}
+OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.23}
 OFFICIAL_INIT=${OFFICIAL_INIT:-$ROOT/kernel/work/rocknix-official-initramfs-20260701/ramdisk/init}
 JOYPAD=${JOYPAD:-$ROOT/kernel/work/rocknix-system-exact-20260701/usr/lib/kernel-overlays/base/lib/modules/7.0.11/rocknix-joypad/rocknix-singleadc-joypad.ko}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
 LLD=${LLD:-/opt/homebrew/opt/lld/bin/ld.lld}
 READELF=${READELF:-/opt/homebrew/opt/llvm/bin/llvm-readelf}
-INIT_BUSYBOX=$ROOT/kernel/work/rocknix-official-initramfs-20260701/ramdisk/usr/bin/busybox
+INIT_BUSYBOX=${INIT_BUSYBOX:-$ROOT/kernel/work/rocknix-official-initramfs-20260701/ramdisk/usr/bin/busybox}
 
 case "$OUTPUT" in
 	/*) ;;
@@ -28,7 +37,8 @@ fail() {
 }
 
 sha256() {
-	shasum -a 256 "$1" | awk '{print $1}'
+	BIRD_SHA256_LINE=$(shasum -a 256 "$1") || return 1
+	printf '%s\n' "$BIRD_SHA256_LINE" | awk '{print $1}'
 }
 
 [ -f "$OFFICIAL_INIT" ] || fail 'exact ROCKNIX init missing'
@@ -43,6 +53,10 @@ strings "$JOYPAD" | grep -Fqx \
 [ -f "$INIT_BUSYBOX" ] || fail 'exact initramfs BusyBox missing'
 [ "$(sha256 "$INIT_BUSYBOX")" = "$INIT_BUSYBOX_SHA" ] || \
 	fail 'exact initramfs BusyBox changed'
+strings "$INIT_BUSYBOX" | grep -qx sha256sum || \
+	fail 'initramfs BusyBox lacks release-verification sha256sum'
+strings "$INIT_BUSYBOX" | grep -qx stat || \
+	fail 'initramfs BusyBox lacks release-verification stat'
 strings "$INIT_BUSYBOX" | grep -Fqx mknod || \
 	fail 'initramfs BusyBox lacks the required mknod applet'
 if strings "$INIT_BUSYBOX" | grep -Fqx mkfifo; then
@@ -52,6 +66,8 @@ fi
 [ -x "$LLD" ] || fail 'LLVM lld missing'
 [ -x "$READELF" ] || fail 'LLVM readelf missing'
 [ -d "$OUTPUT/build" ] || fail "candidate build directory missing: $OUTPUT/build"
+[ -d "$OUTPUT/card" ] || fail "candidate card directory missing: $OUTPUT/card"
+chmod 0755 "$OUTPUT" "$OUTPUT/build" "$OUTPUT/card"
 
 WORK=$OUTPUT/build/early-initramfs
 PAYLOAD=$WORK/payload
@@ -107,6 +123,17 @@ awk '
 		print "  [ \"${BOOT_STEP}\" != \"prepare_sysroot\" ] || /bird-early.sh root-ready"
 		next
 	}
+	$0 == "  if [ -f /flash/post-flash.sh ]; then" {
+		print "  if [ -f /bird-release-loader.sh ]; then"
+		next
+	}
+	$0 == "    . /flash/post-flash.sh" {
+		print "    if ! . /bird-release-loader.sh; then"
+		print "      error bird-release-loader \"versioned boot hook failed closed\""
+		print "      while :; do sleep 3600; done"
+		print "    fi"
+		next
+	}
 	$0 == "# move some special filesystems" {
 		print "/bird-early.sh handoff"
 		print ""
@@ -123,16 +150,27 @@ awk '
 	fail 'obsolete root bridge injection remained'
 [ "$(grep -c '^load_splash() { :; }$' "$PAYLOAD/init")" = 1 ] || \
 	fail 'splash suppression injection count changed'
+[ "$(grep -c '^    if ! \. /bird-release-loader.sh; then$' "$PAYLOAD/init")" = 1 ] || \
+	fail 'versioned release-loader injection count changed'
+[ "$(grep -c '^      while :; do sleep 3600; done$' "$PAYLOAD/init")" = 1 ] || \
+	fail 'versioned release-loader fatal boundary changed'
+[ "$(grep -c '/flash/post-flash.sh' "$PAYLOAD/init")" = 0 ] || \
+	fail 'mutable top-level boot hook remained in versioned init'
 
 cp -fp "$ROOT/kernel/rocknix/stock-root/bird-early.sh" \
 	"$PAYLOAD/bird-early.sh"
+cp -fp "$ROOT/kernel/rocknix/stock-root/bird-release-loader.sh" \
+	"$PAYLOAD/bird-release-loader.sh"
 cp -fp "$JOYPAD" "$PAYLOAD/opt/bird/rocknix-singleadc-joypad.ko"
-chmod 0755 "$PAYLOAD/init" "$PAYLOAD/bird-early.sh"
+chmod 0755 "$PAYLOAD/init" "$PAYLOAD/bird-early.sh" \
+	"$PAYLOAD/bird-release-loader.sh"
 chmod 0644 "$PAYLOAD/opt/bird/rocknix-singleadc-joypad.ko"
 bash -n "$PAYLOAD/init" || fail 'overlaid ROCKNIX init syntax failed'
 bash -n "$PAYLOAD/bird-early.sh" || fail 'Bird early hook syntax failed'
+bash -n "$PAYLOAD/bird-release-loader.sh" || fail 'release loader syntax failed'
 
-find "$PAYLOAD" -exec touch -t 202601010000 {} +
+find "$PAYLOAD" -type d -exec chmod 0755 {} +
+find "$PAYLOAD" -exec touch -t 202601010000.00 {} +
 (
 	cd "$PAYLOAD"
 	find . -print | LC_ALL=C sort | \
@@ -145,6 +183,8 @@ gzip -dc "$GZIP" | (cd "$VERIFY" && cpio -idm 2>"$WORK/verify.log")
 cmp "$PAYLOAD/init" "$VERIFY/init" || fail 'verified init changed'
 cmp "$PAYLOAD/bird-early.sh" "$VERIFY/bird-early.sh" || \
 	fail 'verified early hook changed'
+cmp "$PAYLOAD/bird-release-loader.sh" "$VERIFY/bird-release-loader.sh" || \
+	fail 'verified release loader changed'
 cmp "$LAUNCHER" "$VERIFY/opt/bird/bird-launcher" || \
 	fail 'verified early launcher changed'
 cmp "$JOYPAD" "$VERIFY/opt/bird/rocknix-singleadc-joypad.ko" || \

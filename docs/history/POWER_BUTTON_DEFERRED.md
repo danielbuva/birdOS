@@ -1,14 +1,20 @@
 # Power-button turn-on threshold proof
 
+**Status:** this is the historical vendor/muOS PMIC-threshold and indicator-LED
+proof. It does not describe the active ROCKNIX 20260701 kernel/DTB or bootloader.
+Current lower-layer work is ordered in [`ROADMAP.md`](../../ROADMAP.md), and the
+active boot boundary is defined by [`ACTIVE_PATH.md`](../../ACTIVE_PATH.md).
+
 This hardware-owned interaction was originally deferred to final kernel and
-U-Boot work. It has now been promoted into the current batched hardware cycle
+U-Boot work. It was then promoted into a batched hardware cycle
 because it is independent of the storage and entropy changes and its result is
 easy to distinguish: deliberate short cold-power taps either work or do not.
 
 ## What the firmware proves
 
-The RG34XX-SP device tree identifies an X-Powers AXP2202 PMIC using the
-AXP2101-compatible power-key driver. The active Linux boot device tree contains:
+The RG34XX-SP vendor device tree identified an X-Powers AXP2202 PMIC using the
+AXP2101-compatible power-key driver. The then-active muOS Linux boot device tree
+contained:
 
 ```text
 pmu_powkey_on_time = <0x200>;   # 512 ms

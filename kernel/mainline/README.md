@@ -1,7 +1,13 @@
 # Source-complete RG34XX-SP compatibility kernel
 
-This is the first source-level kernel workstream. It does **not** replace the
-accepted 4.9.170 boot image yet.
+**Status:** this is the historical, rejected source-kernel challenger. The active
+stock-root v6.23 candidate retains the exact ROCKNIX 20260701 Linux 7.0.11
+release kernel and DTB; future trimming starts only after userspace contracts
+stabilize. See [`ACTIVE_PATH.md`](../../ACTIVE_PATH.md) for the current boot
+path and [`docs/history/README.md`](../../docs/history/README.md) for context.
+
+This was the first source-level kernel workstream. At that stage it did **not**
+replace the accepted vendor 4.9.170 boot image.
 
 The accepted kernel is a hard performance gate, not merely a recovery
 artifact. A trimmed source kernel is promoted only if the same Bird
