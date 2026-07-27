@@ -34,6 +34,8 @@ typedef signed long s64;
 
 #define FBIOGET_VSCREENINFO 0x4600
 #define FBIOGET_FSCREENINFO 0x4602
+#define FB_TYPE_PACKED_PIXELS 0U
+#define FB_VISUAL_TRUECOLOR 2U
 #define EVIOCGNAME_128 0x80804506
 
 #define EV_KEY 0x01
@@ -143,6 +145,19 @@ typedef signed long s64;
 #define PENDING_LAUNCH_MEDIA 2U
 #define INPUT_EVENT_SCAN_COUNT 32
 
+/* The accepted stock-root image uses Linux 7.0.11 sun4i-drm fbdev
+ * emulation with CONFIG_DRM_FBDEV_OVERALLOC=100. The DRM helper selects
+ * XRGB8888, exposes its unused byte as the fbdev transparency field, and the
+ * sun4i dumb-buffer helper aligns this already-even pitch to two bytes. */
+#define RG34XX_FB_WIDTH 720U
+#define RG34XX_FB_HEIGHT 480U
+#define RG34XX_FB_BYTES_PER_PIXEL 4U
+#define RG34XX_FB_STRIDE (RG34XX_FB_WIDTH * RG34XX_FB_BYTES_PER_PIXEL)
+#define RG34XX_FB_BYTES (RG34XX_FB_STRIDE * RG34XX_FB_HEIGHT)
+
+#define FRAMEBUFFER_PATH_DIAGNOSTIC 0U
+#define FRAMEBUFFER_PATH_RG34XX_XRGB8888 1U
+
 struct fb_bitfield {
     u32 offset;
     u32 length;
@@ -247,6 +262,7 @@ static struct fb_var_screeninfo fb_var;
 static struct fb_fix_screeninfo fb_fix;
 static volatile u8 *fb;
 static int fb_fd = -1;
+static u32 framebuffer_path;
 static int input_fd = -1;
 static int power_event_fd = -1;
 static int h700_input;
@@ -431,6 +447,14 @@ struct bird_profile_deep_state {
     u64 glyph_scan_iterations;
     u64 rectangle_calls;
     u64 clipped_pixels;
+    u64 fast_rectangle_calls;
+    u64 fast_row_spans;
+    u64 fast_u32_stores;
+    u64 fast_u64_stores;
+    u64 fallback_rectangle_calls;
+    u64 fallback_pixel_checks;
+    u64 fallback_pixel_stores;
+    u64 fallback_byte_stores;
 };
 static struct bird_profile_deep_state bird_profile_deep;
 #endif
@@ -629,6 +653,22 @@ static void bird_profile_deep_note_string(u64 bytes) {
 #define BIRD_PROFILE_DEEP_GLYPH_SCAN() \
     (bird_profile_deep.glyph_scan_iterations++)
 #define BIRD_PROFILE_DEEP_RECTANGLE() (bird_profile_deep.rectangle_calls++)
+#define BIRD_PROFILE_DEEP_FAST_RECTANGLE(rows) do { \
+    bird_profile_deep.fast_rectangle_calls++; \
+    bird_profile_deep.fast_row_spans += (rows); \
+} while (0)
+#define BIRD_PROFILE_DEEP_FAST_U32_STORES(stores) \
+    (bird_profile_deep.fast_u32_stores += (stores))
+#define BIRD_PROFILE_DEEP_FAST_U64_STORES(stores) \
+    (bird_profile_deep.fast_u64_stores += (stores))
+#define BIRD_PROFILE_DEEP_FALLBACK_RECTANGLE() \
+    (bird_profile_deep.fallback_rectangle_calls++)
+#define BIRD_PROFILE_DEEP_FALLBACK_PIXEL_CHECK() \
+    (bird_profile_deep.fallback_pixel_checks++)
+#define BIRD_PROFILE_DEEP_FALLBACK_PIXEL_STORE(bytes) do { \
+    bird_profile_deep.fallback_pixel_stores++; \
+    bird_profile_deep.fallback_byte_stores += (bytes); \
+} while (0)
 #else
 #define BIRD_PROFILE_DEEP_STRING(bytes) ((void)0)
 #define BIRD_PROFILE_DEEP_STRING_BYTE() ((void)0)
@@ -636,6 +676,12 @@ static void bird_profile_deep_note_string(u64 bytes) {
 #define BIRD_PROFILE_DEEP_GLYPH_LOOKUP() ((void)0)
 #define BIRD_PROFILE_DEEP_GLYPH_SCAN() ((void)0)
 #define BIRD_PROFILE_DEEP_RECTANGLE() ((void)0)
+#define BIRD_PROFILE_DEEP_FAST_RECTANGLE(rows) ((void)0)
+#define BIRD_PROFILE_DEEP_FAST_U32_STORES(stores) ((void)0)
+#define BIRD_PROFILE_DEEP_FAST_U64_STORES(stores) ((void)0)
+#define BIRD_PROFILE_DEEP_FALLBACK_RECTANGLE() ((void)0)
+#define BIRD_PROFILE_DEEP_FALLBACK_PIXEL_CHECK() ((void)0)
+#define BIRD_PROFILE_DEEP_FALLBACK_PIXEL_STORE(bytes) ((void)0)
 #endif
 
 #define BIRD_PROFILE_SYSCALL(number) bird_profile_note_syscall(number)
@@ -668,6 +714,12 @@ static void bird_profile_deep_note_string(u64 bytes) {
 #define BIRD_PROFILE_DEEP_GLYPH_LOOKUP()
 #define BIRD_PROFILE_DEEP_GLYPH_SCAN()
 #define BIRD_PROFILE_DEEP_RECTANGLE()
+#define BIRD_PROFILE_DEEP_FAST_RECTANGLE(rows)
+#define BIRD_PROFILE_DEEP_FAST_U32_STORES(stores)
+#define BIRD_PROFILE_DEEP_FAST_U64_STORES(stores)
+#define BIRD_PROFILE_DEEP_FALLBACK_RECTANGLE()
+#define BIRD_PROFILE_DEEP_FALLBACK_PIXEL_CHECK()
+#define BIRD_PROFILE_DEEP_FALLBACK_PIXEL_STORE(bytes)
 #define BIRD_PROFILE_APPLICATION_ENTRY(now)
 #define BIRD_PROFILE_INPUT_OPENED()
 #define BIRD_PROFILE_BEGIN_EVENT()
@@ -1258,6 +1310,22 @@ static void bird_profile_note_exit_and_emit(void) {
     bird_profile_write_number(bird_profile_deep.rectangle_calls);
     bird_profile_write_text(" clipped_pixels=");
     bird_profile_write_number(bird_profile_deep.clipped_pixels);
+    bird_profile_write_text(" fast_rectangle_calls=");
+    bird_profile_write_number(bird_profile_deep.fast_rectangle_calls);
+    bird_profile_write_text(" fast_row_spans=");
+    bird_profile_write_number(bird_profile_deep.fast_row_spans);
+    bird_profile_write_text(" fast_u32_stores=");
+    bird_profile_write_number(bird_profile_deep.fast_u32_stores);
+    bird_profile_write_text(" fast_u64_stores=");
+    bird_profile_write_number(bird_profile_deep.fast_u64_stores);
+    bird_profile_write_text(" fallback_rectangle_calls=");
+    bird_profile_write_number(bird_profile_deep.fallback_rectangle_calls);
+    bird_profile_write_text(" fallback_pixel_checks=");
+    bird_profile_write_number(bird_profile_deep.fallback_pixel_checks);
+    bird_profile_write_text(" fallback_pixel_stores=");
+    bird_profile_write_number(bird_profile_deep.fallback_pixel_stores);
+    bird_profile_write_text(" fallback_byte_stores=");
+    bird_profile_write_number(bird_profile_deep.fallback_byte_stores);
     bird_profile_write_text("\n");
 #endif
     bird_profile.emitting = 0;
@@ -1898,6 +1966,35 @@ static void save_recent(const struct catalog_entry *entry) {
     log_text(" result=failed\n");
 }
 
+static int framebuffer_field_is(struct fb_bitfield field, u32 offset,
+                                u32 length) {
+    return field.offset == offset && field.length == length &&
+           field.msb_right == 0U;
+}
+
+static void configure_framebuffer_path(void) {
+    framebuffer_path = FRAMEBUFFER_PATH_DIAGNOSTIC;
+    if (fb_var.xres != RG34XX_FB_WIDTH ||
+        fb_var.yres != RG34XX_FB_HEIGHT ||
+        fb_var.xres_virtual != RG34XX_FB_WIDTH ||
+        fb_var.yres_virtual != RG34XX_FB_HEIGHT ||
+        fb_var.xoffset != 0U || fb_var.yoffset != 0U ||
+        fb_var.bits_per_pixel != 32U || fb_var.grayscale != 0U ||
+        fb_var.nonstd != 0U ||
+        !framebuffer_field_is(fb_var.red, 16U, 8U) ||
+        !framebuffer_field_is(fb_var.green, 8U, 8U) ||
+        !framebuffer_field_is(fb_var.blue, 0U, 8U) ||
+        !framebuffer_field_is(fb_var.transp, 24U, 8U) ||
+        fb_fix.type != FB_TYPE_PACKED_PIXELS ||
+        fb_fix.visual != FB_VISUAL_TRUECOLOR ||
+        fb_fix.xpanstep != 1U || fb_fix.ypanstep != 1U ||
+        fb_fix.ywrapstep != 0U ||
+        fb_fix.line_length != RG34XX_FB_STRIDE ||
+        fb_fix.smem_len != RG34XX_FB_BYTES)
+        return;
+    framebuffer_path = FRAMEBUFFER_PATH_RG34XX_XRGB8888;
+}
+
 static u32 scale_component(u8 value, struct fb_bitfield field) {
     if (!field.length) return 0;
     u64 maximum = field.length >= 32 ? 0xffffffffUL : ((1UL << field.length) - 1UL);
@@ -1905,6 +2002,9 @@ static u32 scale_component(u8 value, struct fb_bitfield field) {
 }
 
 static u32 color(u8 red, u8 green, u8 blue) {
+    if (framebuffer_path == FRAMEBUFFER_PATH_RG34XX_XRGB8888)
+        return 0xff000000U | ((u32)red << 16) | ((u32)green << 8) |
+               (u32)blue;
     return scale_component(red, fb_var.red) | scale_component(green, fb_var.green) |
            scale_component(blue, fb_var.blue) | scale_component(255, fb_var.transp);
 }
@@ -1913,6 +2013,7 @@ static void store_pixel(int x, int framebuffer_y, u32 value) {
     u32 bytes = (fb_var.bits_per_pixel + 7U) / 8U;
     u64 offset = (u64)framebuffer_y * fb_fix.line_length + (u64)(x + (int)fb_var.xoffset) * bytes;
     if (offset + bytes > fb_fix.smem_len) return;
+    BIRD_PROFILE_DEEP_FALLBACK_PIXEL_STORE(bytes);
     if (bytes == 2) {
         fb[offset] = (u8)value;
         fb[offset + 1] = (u8)(value >> 8);
@@ -1929,10 +2030,11 @@ static void store_pixel(int x, int framebuffer_y, u32 value) {
 }
 
 static void pixel(int x, int y, u32 value) {
+    BIRD_PROFILE_DEEP_FALLBACK_PIXEL_CHECK();
     if (x < 0 || y < 0 || (u32)x >= fb_var.xres || (u32)y >= fb_var.yres) return;
 
-    /* Paint every fixed RG34XX-SP framebuffer page so a compositor page flip
-     * cannot leave the proof hidden behind the previous stock splash frame. */
+    /* Preserve the recovery path's historical all-pages write when a
+     * noncanonical framebuffer exposes multiple pages or a selected offset. */
     store_pixel(x, y, value);
     if (fb_var.yres_virtual >= fb_var.yres * 2U)
         store_pixel(x, y + (int)fb_var.yres, value);
@@ -1940,11 +2042,69 @@ static void pixel(int x, int y, u32 value) {
         store_pixel(x, y + (int)fb_var.yoffset, value);
 }
 
+static void rg34xx_fill_span(volatile u32 *target, u32 pixels, u32 value) {
+    u64 pair = (u64)value | ((u64)value << 32);
+    volatile u64 *wide;
+
+    if (((u64)target & 7UL) && pixels) {
+        *target++ = value;
+        pixels--;
+        BIRD_PROFILE_DEEP_FAST_U32_STORES(1U);
+    }
+
+    wide = (volatile u64 *)target;
+    while (pixels >= 8U) {
+        wide[0] = pair;
+        wide[1] = pair;
+        wide[2] = pair;
+        wide[3] = pair;
+        wide += 4;
+        pixels -= 8U;
+        BIRD_PROFILE_DEEP_FAST_U64_STORES(4U);
+    }
+    while (pixels >= 2U) {
+        *wide++ = pair;
+        pixels -= 2U;
+        BIRD_PROFILE_DEEP_FAST_U64_STORES(1U);
+    }
+    if (pixels) {
+        *(volatile u32 *)wide = value;
+        BIRD_PROFILE_DEEP_FAST_U32_STORES(1U);
+    }
+}
+
+static void rg34xx_rectangle(int x, int y, int width, int height, u32 value) {
+    int first_x = x < 0 ? 0 : x;
+    int first_y = y < 0 ? 0 : y;
+    int last_x = x + width > (int)RG34XX_FB_WIDTH
+                     ? (int)RG34XX_FB_WIDTH : x + width;
+    int last_y = y + height > (int)RG34XX_FB_HEIGHT
+                     ? (int)RG34XX_FB_HEIGHT : y + height;
+    volatile u8 *row;
+    u32 pixels;
+
+    if (width <= 0 || height <= 0 || first_x >= last_x || first_y >= last_y)
+        return;
+    pixels = (u32)(last_x - first_x);
+    row = fb + (u64)(u32)first_y * RG34XX_FB_STRIDE +
+          (u64)(u32)first_x * RG34XX_FB_BYTES_PER_PIXEL;
+    BIRD_PROFILE_DEEP_FAST_RECTANGLE((u64)(u32)(last_y - first_y));
+    while (first_y++ < last_y) {
+        rg34xx_fill_span((volatile u32 *)row, pixels, value);
+        row += RG34XX_FB_STRIDE;
+    }
+}
+
 static void rectangle(int x, int y, int width, int height, u32 value) {
     int yy;
     int xx;
     BIRD_PROFILE_RECTANGLE(x, y, width, height);
     BIRD_PROFILE_DEEP_RECTANGLE();
+    if (framebuffer_path == FRAMEBUFFER_PATH_RG34XX_XRGB8888) {
+        rg34xx_rectangle(x, y, width, height, value);
+        return;
+    }
+    BIRD_PROFILE_DEEP_FALLBACK_RECTANGLE();
     for (yy = y; yy < y + height; yy++)
         for (xx = x; xx < x + width; xx++) pixel(xx, yy, value);
 }
@@ -2894,6 +3054,7 @@ static int application(void) {
         sys_close(fb_fd);
         return 3;
     }
+    configure_framebuffer_path();
 
     log_text("framebuffer visible=");
     log_number(fb_var.xres);
@@ -2909,7 +3070,9 @@ static int application(void) {
     log_number(fb_fix.line_length);
     log_text(" bytes=");
     log_number(fb_fix.smem_len);
-    log_text("\n");
+    log_text(framebuffer_path == FRAMEBUFFER_PATH_RG34XX_XRGB8888
+                 ? " path=rg34xx-xrgb8888 page=fixed-0\n"
+                 : " path=diagnostic-fallback\n");
 
     if (fb_var.bits_per_pixel != 16 && fb_var.bits_per_pixel != 24 && fb_var.bits_per_pixel != 32) {
         log_text("error unsupported framebuffer depth\n");

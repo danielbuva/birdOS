@@ -26,15 +26,17 @@ static u64 fake_payload_offset;
 static long fake_terminal_read;
 static unsigned fake_sleep_calls;
 static s64 fake_last_sleep_ns;
+#define TEST_FB_WIDTH RG34XX_FB_WIDTH
+#define TEST_FB_HEIGHT RG34XX_FB_HEIGHT
+#define TEST_FB_BYTES_PER_PIXEL RG34XX_FB_BYTES_PER_PIXEL
+_Alignas(8) static u8 fake_framebuffer[TEST_FB_WIDTH * TEST_FB_HEIGHT *
+                                       TEST_FB_BYTES_PER_PIXEL * 2U];
+_Alignas(8) static u8 fake_framebuffer_reference[
+    TEST_FB_WIDTH * TEST_FB_HEIGHT * TEST_FB_BYTES_PER_PIXEL * 2U];
 #ifdef BIRD_PROFILE
 #define PROFILE_LOG_BYTES 16384U
-#define TEST_FB_WIDTH 720U
-#define TEST_FB_HEIGHT 480U
-#define TEST_FB_BYTES_PER_PIXEL 4U
 static char fake_profile_log[PROFILE_LOG_BYTES];
 static u64 fake_profile_log_bytes;
-static u8 fake_framebuffer[TEST_FB_WIDTH * TEST_FB_HEIGHT *
-                           TEST_FB_BYTES_PER_PIXEL * 2U];
 #endif
 
 static int check(int condition, const char *message) {
@@ -123,20 +125,7 @@ static void reset_favorites(void) {
     storage_ready = 1;
 }
 
-#ifdef BIRD_PROFILE
-static void reset_profile_log(void) {
-    fake_profile_log_bytes = 0;
-    fake_profile_log[0] = 0;
-}
-
-static int profile_log_contains(const char *needle) {
-    u64 end = fake_profile_log_bytes < PROFILE_LOG_BYTES - 1U
-                  ? fake_profile_log_bytes : PROFILE_LOG_BYTES - 1U;
-    fake_profile_log[end] = 0;
-    return strstr(fake_profile_log, needle) != NULL;
-}
-
-static void setup_profile_framebuffer(u32 pages) {
+static void setup_test_framebuffer(u32 pages, u8 *memory) {
     memset(&fb_var, 0, sizeof(fb_var));
     memset(&fb_fix, 0, sizeof(fb_fix));
     fb_var.xres = TEST_FB_WIDTH;
@@ -151,9 +140,142 @@ static void setup_profile_framebuffer(u32 pages) {
     fb_var.blue.length = 8U;
     fb_var.transp.offset = 24U;
     fb_var.transp.length = 8U;
+    fb_fix.type = FB_TYPE_PACKED_PIXELS;
+    fb_fix.visual = FB_VISUAL_TRUECOLOR;
+    fb_fix.xpanstep = 1U;
+    fb_fix.ypanstep = 1U;
     fb_fix.line_length = TEST_FB_WIDTH * TEST_FB_BYTES_PER_PIXEL;
     fb_fix.smem_len = fb_fix.line_length * TEST_FB_HEIGHT * pages;
-    fb = fake_framebuffer;
+    fb = memory;
+    configure_framebuffer_path();
+}
+
+static void draw_phase2_primitive_pattern(void) {
+    rectangle(0, 0, (int)TEST_FB_WIDTH, (int)TEST_FB_HEIGHT,
+              color(3U, 9U, 17U));
+    rectangle(-2, -1, 7, 4, color(0x12U, 0x34U, 0x56U));
+    rectangle(1, 3, 719, 2, color(0x80U, 0x40U, 0x20U));
+    rectangle(32, 86, 656, 3, color(0xf1U, 0xe2U, 0xd3U));
+    rectangle(719, 479, 4, 4, color(0xaaU, 0xbbU, 0xccU));
+}
+
+static int run_framebuffer_primitive_tests(void) {
+    u32 expected;
+    int ok = 1;
+
+    setup_test_framebuffer(1U, fake_framebuffer);
+    ok &= check(framebuffer_path == FRAMEBUFFER_PATH_RG34XX_XRGB8888 &&
+                    fb_var.xoffset == 0U && fb_var.yoffset == 0U &&
+                    fb_var.yres_virtual == fb_var.yres &&
+                    fb_fix.line_length == RG34XX_FB_STRIDE &&
+                    fb_fix.smem_len == RG34XX_FB_BYTES,
+                "accepted RG34XX-SP fixed-page framebuffer missed fast path");
+    ok &= check(color(0x12U, 0x34U, 0x56U) == 0xff123456U,
+                "RG34XX-SP XRGB8888 fast color packing changed");
+
+    memset(fake_framebuffer, 0, RG34XX_FB_BYTES);
+    draw_phase2_primitive_pattern();
+    setup_test_framebuffer(1U, fake_framebuffer_reference);
+    framebuffer_path = FRAMEBUFFER_PATH_DIAGNOSTIC;
+    memset(fake_framebuffer_reference, 0, RG34XX_FB_BYTES);
+    draw_phase2_primitive_pattern();
+    ok &= check(memcmp(fake_framebuffer, fake_framebuffer_reference,
+                       RG34XX_FB_BYTES) == 0,
+                "fast rectangles differ from checked recovery rendering");
+
+    setup_test_framebuffer(2U, fake_framebuffer);
+    ok &= check(framebuffer_path == FRAMEBUFFER_PATH_DIAGNOSTIC,
+                "multi-page framebuffer entered the fixed-page fast path");
+    memset(fake_framebuffer, 0, sizeof(fake_framebuffer));
+    expected = color(0x12U, 0x34U, 0x56U);
+    rectangle(0, 0, 1, 1, expected);
+    ok &= check(memcmp(fake_framebuffer, &expected, sizeof(expected)) == 0 &&
+                    memcmp(fake_framebuffer + RG34XX_FB_BYTES, &expected,
+                           sizeof(expected)) == 0,
+                "diagnostic renderer no longer preserves both-page writes");
+
+    setup_test_framebuffer(2U, fake_framebuffer);
+    fb_var.yoffset = TEST_FB_HEIGHT;
+    configure_framebuffer_path();
+    memset(fake_framebuffer, 0, sizeof(fake_framebuffer));
+    expected = color(0x21U, 0x43U, 0x65U);
+    rectangle(3, 2, 1, 1, expected);
+    ok &= check(memcmp(fake_framebuffer + 2U * RG34XX_FB_STRIDE + 12U,
+                       &expected, sizeof(expected)) == 0 &&
+                    memcmp(fake_framebuffer + RG34XX_FB_BYTES +
+                               2U * RG34XX_FB_STRIDE + 12U,
+                           &expected, sizeof(expected)) == 0,
+                "diagnostic renderer changed selected-page recovery behavior");
+
+    setup_test_framebuffer(1U, fake_framebuffer);
+    fb_fix.line_length += 4U;
+    configure_framebuffer_path();
+    ok &= check(framebuffer_path == FRAMEBUFFER_PATH_DIAGNOSTIC,
+                "noncanonical stride entered the RG34XX-SP fast path");
+    setup_test_framebuffer(1U, fake_framebuffer);
+    fb_var.red.offset = 0U;
+    configure_framebuffer_path();
+    ok &= check(framebuffer_path == FRAMEBUFFER_PATH_DIAGNOSTIC,
+                "noncanonical channel offsets entered the RG34XX-SP fast path");
+    setup_test_framebuffer(1U, fake_framebuffer);
+    fb_var.xoffset = 1U;
+    configure_framebuffer_path();
+    ok &= check(framebuffer_path == FRAMEBUFFER_PATH_DIAGNOSTIC,
+                "nonzero page offset entered the RG34XX-SP fast path");
+    setup_test_framebuffer(1U, fake_framebuffer);
+    fb_fix.smem_len += 4U;
+    configure_framebuffer_path();
+    ok &= check(framebuffer_path == FRAMEBUFFER_PATH_DIAGNOSTIC,
+                "noncanonical mapping size entered the RG34XX-SP fast path");
+
+    setup_test_framebuffer(1U, fake_framebuffer);
+    fb_var.bits_per_pixel = 24U;
+    fb_var.transp.offset = 0U;
+    fb_var.transp.length = 0U;
+    fb_fix.line_length = TEST_FB_WIDTH * 3U;
+    fb_fix.smem_len = fb_fix.line_length * TEST_FB_HEIGHT;
+    configure_framebuffer_path();
+    memset(fake_framebuffer, 0, 4U);
+    rectangle(0, 0, 1, 1, color(0x12U, 0x34U, 0x56U));
+    ok &= check(framebuffer_path == FRAMEBUFFER_PATH_DIAGNOSTIC &&
+                    fake_framebuffer[0] == 0x56U &&
+                    fake_framebuffer[1] == 0x34U &&
+                    fake_framebuffer[2] == 0x12U,
+                "24-bit diagnostic framebuffer fallback changed");
+
+    setup_test_framebuffer(1U, fake_framebuffer);
+    fb_var.bits_per_pixel = 16U;
+    fb_var.red.offset = 11U;
+    fb_var.red.length = 5U;
+    fb_var.green.offset = 5U;
+    fb_var.green.length = 6U;
+    fb_var.blue.offset = 0U;
+    fb_var.blue.length = 5U;
+    fb_var.transp.offset = 0U;
+    fb_var.transp.length = 0U;
+    fb_fix.line_length = TEST_FB_WIDTH * 2U;
+    fb_fix.smem_len = fb_fix.line_length * TEST_FB_HEIGHT;
+    configure_framebuffer_path();
+    memset(fake_framebuffer, 0, 4U);
+    rectangle(0, 0, 1, 1, color(0xffU, 0U, 0U));
+    ok &= check(framebuffer_path == FRAMEBUFFER_PATH_DIAGNOSTIC &&
+                    fake_framebuffer[0] == 0U && fake_framebuffer[1] == 0xf8U,
+                "16-bit diagnostic framebuffer fallback changed");
+
+    return ok;
+}
+
+#ifdef BIRD_PROFILE
+static void reset_profile_log(void) {
+    fake_profile_log_bytes = 0;
+    fake_profile_log[0] = 0;
+}
+
+static int profile_log_contains(const char *needle) {
+    u64 end = fake_profile_log_bytes < PROFILE_LOG_BYTES - 1U
+                  ? fake_profile_log_bytes : PROFILE_LOG_BYTES - 1U;
+    fake_profile_log[end] = 0;
+    return strstr(fake_profile_log, needle) != NULL;
 }
 
 static u64 profile_syscall_category_sum(void) {
@@ -210,7 +332,7 @@ static int run_profile_tests(void) {
 
     /* Preserve the current milestone order exactly: the startup frame barrier
      * precedes input discovery. Equal millisecond timestamps must not hide it. */
-    setup_profile_framebuffer(2U);
+    setup_test_framebuffer(2U, fake_framebuffer);
     setup_main_view();
     bird_profile_application_entry((u64)fake_now_ms * 1000000UL);
     BIRD_PROFILE_RENDER(PROFILE_RENDER_STARTUP_FULL);
@@ -243,7 +365,7 @@ static int run_profile_tests(void) {
     /* A small primitive makes the metric definitions exact without pinning a
      * brittle whole-screen write count. */
     bird_profile_reset();
-    setup_profile_framebuffer(1U);
+    setup_test_framebuffer(1U, fake_framebuffer);
     BIRD_PROFILE_RENDER(PROFILE_RENDER_STATUS);
     rectangle(-1, 0, 2, 1, 0U);
     BIRD_PROFILE_BARRIER();
@@ -260,7 +382,7 @@ static int run_profile_tests(void) {
 
     /* Hot-path intervals retain sub-millisecond resolution. */
     bird_profile_reset();
-    setup_profile_framebuffer(1U);
+    setup_test_framebuffer(1U, fake_framebuffer);
     fake_now_ms = 1500;
     fake_now_sub_ms_ns = 100L;
     BIRD_PROFILE_BEGIN_EVENT();
@@ -277,10 +399,15 @@ static int run_profile_tests(void) {
     /* Measure today's D-pad ordering. The save and ordinary diagnostics are
      * intentionally before its render barrier until Phase 4 changes them. */
     bird_profile_reset();
-    setup_profile_framebuffer(1U);
+    setup_test_framebuffer(1U, fake_framebuffer);
     setup_main_view();
     BIRD_PROFILE_RENDER(PROFILE_RENDER_STARTUP_FULL);
     draw_screen();
+#ifdef BIRD_PROFILE_DEEP
+    /* Keep renderer-internal benchmark counters scoped to the input event;
+     * aggregate Phase 1 render totals continue to retain both commits. */
+    bird_profile_zero(&bird_profile_deep, sizeof(bird_profile_deep));
+#endif
     fake_now_ms = 2000;
     reset_fake_file(FAKE_FD, 0, 0);
     h700_input = 1;
@@ -318,7 +445,18 @@ static int run_profile_tests(void) {
                     bird_profile_deep.string_bytes > 0U &&
                     bird_profile_deep.glyph_lookups > 0U &&
                     bird_profile_deep.glyph_scan_iterations > 0U &&
-                    bird_profile_deep.rectangle_calls > 0U,
+                    bird_profile_deep.rectangle_calls > 0U &&
+                    bird_profile_deep.fast_rectangle_calls ==
+                        bird_profile_deep.rectangle_calls &&
+                    bird_profile_deep.fast_row_spans > 0U &&
+                    bird_profile_deep.fast_u64_stores > 0U &&
+                    bird_profile_deep.fast_u32_stores +
+                            bird_profile_deep.fast_u64_stores * 2U ==
+                        render->physical_bytes / RG34XX_FB_BYTES_PER_PIXEL &&
+                    bird_profile_deep.fallback_rectangle_calls == 0U &&
+                    bird_profile_deep.fallback_pixel_checks == 0U &&
+                    bird_profile_deep.fallback_pixel_stores == 0U &&
+                    bird_profile_deep.fallback_byte_stores == 0U,
                 "deep movement counters are incomplete or scanned the catalog");
 #endif
     prior_input_samples = bird_profile.input_to_barrier_samples;
@@ -351,18 +489,29 @@ static int run_profile_tests(void) {
 #ifdef BIRD_PROFILE_DEEP
     printf("launcher profile_deep benchmark scenario=movement string_bytes=%lu "
            "catalog_iterations=%lu glyph_lookups=%lu glyph_scan_iterations=%lu "
-           "rectangle_calls=%lu clipped_pixels=%lu\n",
+           "rectangle_calls=%lu clipped_pixels=%lu fast_rectangle_calls=%lu "
+           "fast_row_spans=%lu fast_u32_stores=%lu fast_u64_stores=%lu "
+           "fallback_rectangle_calls=%lu fallback_pixel_checks=%lu "
+           "fallback_pixel_stores=%lu fallback_byte_stores=%lu\n",
            (unsigned long)bird_profile_deep.string_bytes,
            (unsigned long)bird_profile_deep.catalog_iterations,
            (unsigned long)bird_profile_deep.glyph_lookups,
            (unsigned long)bird_profile_deep.glyph_scan_iterations,
            (unsigned long)bird_profile_deep.rectangle_calls,
-           (unsigned long)bird_profile_deep.clipped_pixels);
+           (unsigned long)bird_profile_deep.clipped_pixels,
+           (unsigned long)bird_profile_deep.fast_rectangle_calls,
+           (unsigned long)bird_profile_deep.fast_row_spans,
+           (unsigned long)bird_profile_deep.fast_u32_stores,
+           (unsigned long)bird_profile_deep.fast_u64_stores,
+           (unsigned long)bird_profile_deep.fallback_rectangle_calls,
+           (unsigned long)bird_profile_deep.fallback_pixel_checks,
+           (unsigned long)bird_profile_deep.fallback_pixel_stores,
+           (unsigned long)bird_profile_deep.fallback_byte_stores);
 #endif
 
     /* Crossing row seven changes the current scrolling viewport. */
     bird_profile_reset();
-    setup_profile_framebuffer(1U);
+    setup_test_framebuffer(1U, fake_framebuffer);
     view = VIEW_SYSTEMS;
     selection = SYSTEM_ROWS - 1U;
     selected_status = "CATALOG READY FROM FIRMWARE";
@@ -375,7 +524,7 @@ static int run_profile_tests(void) {
                 "scroll-boundary movement was not classified as viewport change");
 
     bird_profile_reset();
-    setup_profile_framebuffer(1U);
+    setup_test_framebuffer(1U, fake_framebuffer);
     setup_main_view();
     reset_fake_file(FAKE_FD, 0, 0);
     action = select_current();
@@ -384,14 +533,14 @@ static int run_profile_tests(void) {
                 "view transition did not use the view-change reason");
 
     bird_profile_reset();
-    setup_profile_framebuffer(1U);
+    setup_test_framebuffer(1U, fake_framebuffer);
     setup_main_view();
     toggle_current_favorite();
     ok &= check(bird_profile.render[PROFILE_RENDER_STATUS].commits == 1U,
                 "status-only path did not use the status reason");
 
     bird_profile_reset();
-    setup_profile_framebuffer(1U);
+    setup_test_framebuffer(1U, fake_framebuffer);
     setup_main_view();
     battery_percent = 41;
     BIRD_PROFILE_RENDER(PROFILE_RENDER_BATTERY);
@@ -400,7 +549,7 @@ static int run_profile_tests(void) {
                 "battery render reason was not recorded");
 
     bird_profile_reset();
-    setup_profile_framebuffer(1U);
+    setup_test_framebuffer(1U, fake_framebuffer);
     setup_main_view();
     BIRD_PROFILE_RENDER(PROFILE_RENDER_FAVORITES_COMPLETION);
     draw_screen();
@@ -414,7 +563,7 @@ static int run_profile_tests(void) {
     /* Production Favorites wiring distinguishes a completed publication from
      * a deferred retry while preserving today's redraw behavior. */
     bird_profile_reset();
-    setup_profile_framebuffer(1U);
+    setup_test_framebuffer(1U, fake_framebuffer);
     setup_profile_path_anchors();
     view = VIEW_FAVORITES;
     selection = 0U;
@@ -432,7 +581,7 @@ static int run_profile_tests(void) {
         "deferred Favorites retry was mislabeled as completion");
 
     bird_profile_reset();
-    setup_profile_framebuffer(1U);
+    setup_test_framebuffer(1U, fake_framebuffer);
     setup_profile_path_anchors();
     view = VIEW_FAVORITES;
     selection = 0U;
@@ -452,7 +601,7 @@ static int run_profile_tests(void) {
     /* An exit without a content selection is explicitly unavailable. */
     bird_profile_reset();
     reset_profile_log();
-    setup_profile_framebuffer(1U);
+    setup_test_framebuffer(1U, fake_framebuffer);
     setup_main_view();
     BIRD_PROFILE_RENDER(PROFILE_RENDER_STARTUP_FULL);
     draw_screen();
@@ -463,7 +612,7 @@ static int run_profile_tests(void) {
     /* A direct game launch retains the input-read timestamp through exit. */
     bird_profile_reset();
     reset_profile_log();
-    setup_profile_framebuffer(1U);
+    setup_test_framebuffer(1U, fake_framebuffer);
     setup_profile_path_anchors();
     view = VIEW_GAMES;
     active_system = 0U;
@@ -495,7 +644,7 @@ static int run_profile_tests(void) {
 
     /* Navigation cancels a queued selection timestamp. */
     bird_profile_reset();
-    setup_profile_framebuffer(1U);
+    setup_test_framebuffer(1U, fake_framebuffer);
     setup_profile_path_anchors();
     view = VIEW_GAMES;
     active_system = 0U;
@@ -521,7 +670,7 @@ static int run_profile_tests(void) {
      * the one pending intent. */
     bird_profile_reset();
     reset_profile_log();
-    setup_profile_framebuffer(1U);
+    setup_test_framebuffer(1U, fake_framebuffer);
     setup_profile_path_anchors();
     view = VIEW_GAMES;
     active_system = 0U;
@@ -588,6 +737,8 @@ int main(void) {
     unsigned opens;
     u64 delay;
     int ok = 1;
+
+    ok &= run_framebuffer_primitive_tests();
 
     /* ENOENT alone establishes a new, successfully loaded empty collection. */
     reset_favorites();
