@@ -1,9 +1,10 @@
 # Active birdOS path
 
 This document is the authority for the code that builds, installs and runs the
-current birdOS system. The active repository candidate is **stock-root v6.23**.
-It hardens the hardware-tested v6.22 checkpoint; v6.22 remains the last broad
-physical acceptance result until v6.23 completes the same device gate.
+current birdOS system. The accepted implementation is **stock-root v6.23**.
+The complete host fault-injection suite and broad RG34XX-SP physical gate
+passed on 2026-07-26. The accepted release manifest digest is
+`e441f9c2755173353a9d29969807c2a05411240b7e9d2a1d18ed099d3c91b4d2`.
 
 birdOS targets one device: the Anbernic RG34XX-SP. Fixed paths, device names,
 display geometry and hardware policy are deliberate. Older muOS stages,
@@ -37,7 +38,7 @@ complete builder names them explicitly.
 
 ## Pinned compatibility base
 
-The active candidate retains the exact ROCKNIX `20260701` DDR4 compatibility
+The active baseline retains the exact ROCKNIX `20260701` DDR4 compatibility
 base:
 
 - the release `KERNEL` and `dtb.img`;
@@ -57,16 +58,16 @@ rebuild or trim the release kernel yet.
 2. It compiles the final-root launcher, PID waiter, controls worker and power
    worker, generates the reduced autostart coordinator, and invokes the early
    overlay builder.
-3. It assembles a complete candidate card tree and emits the canonical
+3. It assembles a complete release card tree and emits the canonical
    `deploy-manifest.tsv` only after validating scripts, binaries, units and
    upstream identities.
 4. The Mac updater validates the removable-card identity and immutable inputs,
-   then stages the complete candidate in a hidden sibling below
+   then stages the complete release in a hidden sibling below
    `/flash/bird-releases/` without modifying the active runtime.
-5. It verifies the staged tree against the candidate manifest, atomically
+5. It verifies the staged tree against the release manifest, atomically
    renames it to `/flash/bird-releases/v6.23`, and records the manifest digest
    in that release's `.complete` marker. Older complete releases remain intact.
-6. The active candidate extlinux entry refers only to its versioned kernel,
+6. The active extlinux entry refers only to its versioned kernel,
    initramfs and DTB paths and passes `bird_release=v6.23`. One verified
    temporary-file rename of `/flash/extlinux/extlinux.conf` is the activation
    point; the separate fallback entry names its preserved top-level assets.
@@ -104,7 +105,7 @@ True power-loss recovery requires the later U-Boot A/B design in the roadmap.
    opens the named H700 input device and publishes first-frame readiness only
    when input is usable. Its cached catalogue does not require a boot-time ROM
    scan.
-4. **Stock-root preparation:** the candidate initramfs uses its immutable
+4. **Stock-root preparation:** the selected initramfs uses its immutable
    `bird-release-loader.sh`, not the mutable top-level compatibility hook. The
    loader requires the exact `bird_release` selector, validates the complete
    release and its manifest-listed versioned `post-flash.sh`, then sources that
@@ -170,7 +171,7 @@ Automatic boot recovery and the launcher's B button are unrelated:
   rename before rebooting.
 - Release-loader or post-flash verification failure takes the same verified
   fallback path immediately, before the full-stack attempt threshold applies.
-- The current fallback cannot execute before the candidate release loader. A
+- The current fallback cannot execute before the selected release loader. A
   kernel, external-initramfs or earlier hang still requires manual selector
   recovery; automatic recovery across that boundary requires the later
   U-Boot-owned A/B design.
@@ -183,23 +184,29 @@ Automatic boot recovery and the launcher's B button are unrelated:
 
 ## Acceptance boundary
 
-The active baseline includes early menu/input, asynchronous fixed storage,
+The accepted v6.23 baseline includes early menu/input, asynchronous fixed storage,
 cached games and media, Favorites, exact-page return, supported game/media
 dispatch, system volume and brightness, charging display, suspend/wake,
 global foreground exit and shutdown. The v6.23 hardening pass adds deployment,
 fallback, readiness, supervision and persistence correctness around those
-accepted behaviors.
+behaviors. The physical gate also accepts movie resume, internal-speaker audio,
+ROCKNIX volume/brightness notifications, Y-button Favorites, native Menu+Start
+for RetroArch and PPSSPP alongside Bird's Select+Start global exit, native and
+translated Ports, fMSX, standalone PSP, OpenBOR, N64 audio and DraStic's
+non-striped desktop-OpenGL presentation. Brightness exposes stable 5, 3 and 1
+percent low ticks; wake strikes the panel at its measured 10-percent threshold
+for 50 ms and restores the exact saved dim value.
 
 Kernel trimming, U-Boot timing, earlier LED/display assertion, emulator and
 PortMaster performance, final media controls, final boot effects and complete
 shim removal remain roadmap work. Their absence is not evidence that the
 active stock-root path is incomplete.
 
-## v6.23 promotion gate
+## Accepted v6.23 evidence
 
-Do not describe v6.23 as hardware accepted until all of these pass:
+The v6.23 baseline completed these gates:
 
-1. Build from the pinned inputs and verify every candidate file through
+1. Build from the pinned inputs and verify every release file through
    `deploy-manifest.tsv`.
 2. Inject updater process termination before, during and after release staging
    and selector publication, then prove the selected path names only a complete
@@ -214,13 +221,11 @@ Do not describe v6.23 as hardware accepted until all of these pass:
 5. Exercise the automatic attempt threshold and verify that the preserved
    clean-root kernel boots after the verified fallback selector publication.
 
-The macOS host suite drives the real registration dispatcher and cleanup
-functions with fault-injected manager states, but macOS cannot create or inspect
-Linux systemd transient scopes/cgroups. Promotion item 3 therefore requires an
-on-device check that a TERM-resistant wrapper is reaped before a pending scope
-can be classified absent, that forked/reparented descendants keep the menu
-blocked until the exact scope is empty, and that transferred Sway/network owner
-tokens are never stopped by an older session.
+The macOS suite drives the real registration dispatcher and cleanup functions
+with fault-injected manager states. The device gate validates the required
+user-visible behavior and managed exit paths. Future changes to Linux systemd
+scope/cgroup ownership still require an on-device adversarial check in addition
+to the host suite.
 
 ## Historical material
 

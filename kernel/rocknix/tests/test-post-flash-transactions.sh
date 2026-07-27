@@ -9,6 +9,27 @@ LOADER=$ROOT/kernel/rocknix/stock-root/bird-release-loader.sh
 EARLY_BUILDER=$ROOT/kernel/rocknix/build-stock-root-early-initramfs.sh
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/bird-post-flash.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT INT TERM HUP
+BUSYBOX_MOCK=$TMP/busybox
+
+# Emulate only the pinned ROCKNIX applet forms used by the release loader.
+# In particular, reject GNU stat -c so host tests cannot mask target drift.
+cat >"$BUSYBOX_MOCK" <<'EOF'
+#!/bin/sh
+APPLET=$1
+shift
+case "$APPLET" in
+	stat)
+		[ "$1" = -Lt ] || exit 64
+		shift
+		SIZE=$(stat -f '%z' "$1" 2>/dev/null || stat -c '%s' "$1") || exit 1
+		printf '%s %s\n' "$1" "$SIZE"
+		;;
+	sha256sum) shasum -a 256 "$@" ;;
+	awk) exec awk "$@" ;;
+	*) exit 64 ;;
+esac
+EOF
+chmod 0755 "$BUSYBOX_MOCK"
 
 # The production init owns the non-returning boundary around the sourced
 # loader. Any hook, cleanup, fallback publication or reboot error must enter
@@ -105,6 +126,7 @@ run_hook() {
 	BIRD_LOADER_FLASH=$FLASH \
 	BIRD_LOADER_CMDLINE=$TMP/$CASE/cmdline \
 	BIRD_LOADER_REBOOT=reboot \
+	BIRD_LOADER_BUSYBOX=$BUSYBOX_MOCK \
 	BIRD_LOADER_RELEASE=v6.23 \
 	BIRD_LOADER_SELECTOR_SHA=$(cat "$STATE/selector.sha") \
 	BIRD_LOADER_KERNEL_SHA=$(cat "$STATE/kernel.sha") \
@@ -114,10 +136,7 @@ run_hook() {
 	BIRD_TEST_LOADER=$LOADER \
 	sh -c '
 		stat() {
-			[ "$1" = -c ] && [ "$2" = "%s" ] && {
-				command stat -f "%z" "$3"
-				return
-			}
+			[ "$1" = -c ] && return 64
 			command stat "$@"
 		}
 		cat() {
@@ -188,6 +207,11 @@ assert_fallback_activated() {
 	fi
 	cmp "$FLASH/extlinux/extlinux.conf" "$FLASH/extlinux/extlinux.fallback.conf"
 	grep -qx -- '-f' "$STATE/reboot.log"
+	[ -s "$FLASH/bird-loader-failure.txt" ]
+	grep -q '^release=v6.23$' "$FLASH/bird-loader-failure.txt"
+	grep -q '^reason=' "$FLASH/bird-loader-failure.txt"
+	grep -Eq '^selector_count=[1-9][0-9]*$' "$FLASH/bird-loader-failure.txt"
+	grep -q '^cmdline=.*bird_release=v6.23$' "$FLASH/bird-loader-failure.txt"
 	if [ "$CLEANUP_EXPECTED" = yes ]; then
 		SYNC_LINE=$(grep -n '^sync ' "$STATE/event.log" | head -n 1 | cut -d: -f1)
 		DATA_UMOUNT_LINE=$(grep -nF "umount $DATA" "$STATE/event.log" | \

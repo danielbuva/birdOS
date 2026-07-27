@@ -9,6 +9,7 @@ case "$BIRD_HOST_TEST_MODE" in
 		BIRD_LOADER_FLASH=/flash
 		BIRD_LOADER_CMDLINE=/proc/cmdline
 		BIRD_LOADER_REBOOT=reboot
+		BIRD_LOADER_BUSYBOX=/usr/bin/busybox
 		BIRD_LOADER_RELEASE=v6.23
 		BIRD_LOADER_SELECTOR_SHA=f6434463ef51f752b6871186497a9d96888b89e9b2d158c3ea75bcbef9a58776
 		BIRD_LOADER_KERNEL_SHA=a53a3483731d28d2e96e53def0fba347fa53607aa9fbda8bfb82db677126daef
@@ -18,6 +19,7 @@ case "$BIRD_HOST_TEST_MODE" in
 		BIRD_LOADER_FLASH=${BIRD_LOADER_FLASH:?}
 		BIRD_LOADER_CMDLINE=${BIRD_LOADER_CMDLINE:?}
 		BIRD_LOADER_REBOOT=${BIRD_LOADER_REBOOT:?}
+		BIRD_LOADER_BUSYBOX=${BIRD_LOADER_BUSYBOX:-}
 		BIRD_LOADER_RELEASE=${BIRD_LOADER_RELEASE:-v6.23}
 		BIRD_LOADER_SELECTOR_SHA=${BIRD_LOADER_SELECTOR_SHA:?}
 		BIRD_LOADER_KERNEL_SHA=${BIRD_LOADER_KERNEL_SHA:?}
@@ -31,13 +33,31 @@ case "$BIRD_HOST_TEST_MODE" in
 esac
 
 bird_loader_sha256() {
-	sha256sum "$1" | awk '{print $1}'
+	if [ -n "$BIRD_LOADER_BUSYBOX" ]; then
+		"$BIRD_LOADER_BUSYBOX" sha256sum "$1" |
+			"$BIRD_LOADER_BUSYBOX" awk '{print $1}'
+	else
+		sha256sum "$1" | awk '{print $1}'
+	fi
+}
+
+bird_loader_bytes() {
+	if [ -n "$BIRD_LOADER_BUSYBOX" ]; then
+		# This exact ROCKNIX BusyBox build exposes the traditional -t output
+		# consumed by its own /init; it does not accept GNU stat's -c format.
+		"$BIRD_LOADER_BUSYBOX" stat -Lt "$1" |
+			"$BIRD_LOADER_BUSYBOX" awk '{print $2}'
+	else
+		stat -c '%s' "$1" 2>/dev/null || stat -f '%z' "$1"
+	fi
 }
 
 bird_loader_activate_fallback() {
+	FAILURE_REASON=$1
 	SOURCE=$BIRD_LOADER_FLASH/extlinux/extlinux.fallback.conf
 	TARGET=$BIRD_LOADER_FLASH/extlinux/extlinux.conf
 	TEMP=$BIRD_LOADER_FLASH/extlinux/.extlinux.conf.loader.$$
+	DIAGNOSTIC=$BIRD_LOADER_FLASH/bird-loader-failure.txt
 	KERNEL=$BIRD_LOADER_FLASH/KERNEL.fallback
 	DTB=$BIRD_LOADER_FLASH/dtb.img
 
@@ -48,6 +68,17 @@ bird_loader_activate_fallback() {
 	[ -f "$DTB" ] &&
 	[ "$(bird_loader_sha256 "$DTB")" = "$BIRD_LOADER_DTB_SHA" ] || return 1
 	mount -o remount,rw "$BIRD_LOADER_FLASH" || return 1
+	# The forced reboot destroys /run and dmesg. Persist the exact fail-closed
+	# branch on the small boot volume before changing the selector so field
+	# failures remain diagnosable after the fallback has started.
+	{
+		printf 'release=%s\n' "$BIRD_LOADER_SELECTED"
+		printf 'reason=%s\n' "$FAILURE_REASON"
+		printf 'selector_count=%s\n' "$BIRD_LOADER_SELECTOR_COUNT"
+		printf 'cmdline='
+		cat "$BIRD_LOADER_CMDLINE"
+		printf '\n'
+	} >"$DIAGNOSTIC" 2>/dev/null || :
 	cp -f "$SOURCE" "$TEMP" || {
 		rm -f "$TEMP"
 		mount -o remount,ro "$BIRD_LOADER_FLASH" || :
@@ -81,7 +112,7 @@ bird_loader_activate_fallback() {
 
 bird_loader_fail() {
 	{ printf 'bird release-loader: %s\n' "$1" >/dev/kmsg; } 2>/dev/null || :
-	if bird_loader_activate_fallback; then
+	if bird_loader_activate_fallback "$1"; then
 		"$BIRD_LOADER_REBOOT" -f
 		return 1
 	fi
@@ -144,10 +175,16 @@ BIRD_LOADER_HOOK_RECORD=$(
 }
 BIRD_LOADER_HOOK_BYTES=${BIRD_LOADER_HOOK_RECORD%% *}
 BIRD_LOADER_HOOK_SHA=${BIRD_LOADER_HOOK_RECORD#* }
-[ "$(stat -c '%s' "$BIRD_LOADER_HOOK" 2>/dev/null || printf invalid)" = \
-	"$BIRD_LOADER_HOOK_BYTES" ] &&
-[ "$(bird_loader_sha256 "$BIRD_LOADER_HOOK")" = "$BIRD_LOADER_HOOK_SHA" ] || {
-	bird_loader_fail 'versioned boot hook failed manifest verification'
+BIRD_LOADER_HOOK_ACTUAL_BYTES=$(bird_loader_bytes "$BIRD_LOADER_HOOK" 2>/dev/null ||
+	printf invalid)
+[ "$BIRD_LOADER_HOOK_ACTUAL_BYTES" = "$BIRD_LOADER_HOOK_BYTES" ] || {
+	bird_loader_fail "versioned boot hook size mismatch: expected=$BIRD_LOADER_HOOK_BYTES actual=$BIRD_LOADER_HOOK_ACTUAL_BYTES"
+	return 1
+}
+BIRD_LOADER_HOOK_ACTUAL_SHA=$(bird_loader_sha256 "$BIRD_LOADER_HOOK" 2>/dev/null ||
+	printf invalid)
+[ "$BIRD_LOADER_HOOK_ACTUAL_SHA" = "$BIRD_LOADER_HOOK_SHA" ] || {
+	bird_loader_fail "versioned boot hook digest mismatch: expected=$BIRD_LOADER_HOOK_SHA actual=$BIRD_LOADER_HOOK_ACTUAL_SHA"
 	return 1
 }
 

@@ -70,7 +70,7 @@ The power worker's low-battery red-status threshold is now exactly 41 percent.
 Charging remains kernel/PMIC-owned and the green LED remains the ordinary
 power indicator.
 
-## v6.15 result through the v6.23 hardening candidate
+## v6.15 result through the accepted v6.23 baseline
 
 The physical gate passed brightness stability and visible shutdown at roughly
 1.8--2.0 seconds. The shutdown log places its exact config compare/copy at
@@ -166,8 +166,9 @@ Lid wake also changed visible brightness because the retained generic fake
 suspend toggles `bl_power` without owning Bird's exact raw level. A separate
 Bird wrapper now saves that value before the provider transaction and restores
 it after resume. The fixed controls binary writes the known backlight sysfs
-directly instead of spawning the generic Bash/find/bc/settings stack; its last
-down-step reaches raw level one while zero remains reserved for display-off.
+directly instead of spawning the generic Bash/find/bc/settings stack. V6.21
+initially treated raw one as lit and reserved zero for display-off; the later
+physical correction below replaces that unstable minimum.
 
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
@@ -177,12 +178,27 @@ from the already-present shared BIOS directory only when absent. OpenBOR also
 proved ROCKNIX's name-based global kill contract incomplete: its runner clears
 the kill list and never replaces it. V6.22 records the active wrapper PID,
 tries the provider's graceful name first, then terminates only descendants of
-that managed wrapper. Select+Start becomes the uniform Bird chord; because the
+that managed wrapper. Bird's uniform chord remains Select+Start; because the
 fixed process never grabs the gamepad, generated RetroArch Menu+Start and all
 native application keybinds remain available.
 
+The 2026-07-26 follow-up gate disproved the earlier raw-one brightness
+assumption. The RG34XX-SP exposes a Linux maximum of 2499, making raw 1 only
+0.04 percent; after DPMS wake that requested value can remain physically dark.
+The fixed low-end contract is therefore 5, 3 and 1 percent (raw 125, 75 and 25
+at the observed maximum). The next physical gate proved all three values remain
+visible once running but cannot start the panel after DPMS; raw 250 (10 percent)
+is the first reliable wake value. Wake now strikes at that measured threshold
+for 50 ms and then restores the exact saved dim level. Zero remains display-off
+only.
+
+The Nintendo DS display baseline is explicit: earlier hardware work reproduced
+striped/column-corrupt DraStic output on its GLES2 path and restored correct
+presentation by selecting desktop OpenGL with Panfrost. Any later DraStic,
+Sway or profile change must preserve that graphics path.
+
 V6.23 follows the accepted-functionality code review rather than adding a new
-feature. The complete payload manifest now owns candidate preflight, staging
+feature. The complete payload manifest now owns release preflight, staging
 and destination verification; deployment and fallback activation use verified
 temporary files and atomic renames. Application readiness carries an exact
 revision and is published only after its profile transaction succeeds. The
@@ -192,13 +208,23 @@ systemd scope whose invocation identity is recorded for the fixed global-exit
 helper, while all runner exits reconcile Sway and optional networking. The same
 pass adds the controls exec handshake, one catalogue/favorites path limit,
 auxiliary-descriptor recovery and an atomic shutdown checkpoint. This is the
-active repository candidate; its combined physical gate is pending, so v6.22
-remains the last accepted hardware result.
+accepted repository and hardware baseline. The host fault-injection suite and
+complete RG34XX-SP functional gate passed on 2026-07-26 with canonical
+deploy-manifest digest
+`e441f9c2755173353a9d29969807c2a05411240b7e9d2a1d18ed099d3c91b4d2`.
+
+That physical gate accepts movie resume; stable global audio and ROCKNIX
+volume/brightness notifications; Y-button Favorites; native Menu+Start in
+RetroArch and PPSSPP alongside Bird's Select+Start managed exit; native Ports
+and the translated Stardew launcher; fMSX; standalone PSP; N64 audio; DraStic
+without striped output; and OpenBOR. Repeated boot, launcher recovery, content
+return, brightness, low-level lid wake and shutdown checks completed without
+the reported reboot regression.
 
 ## Audit findings and current disposition
 
 The v6.15 audit found the following generic work and defects. Only items marked
-**open** remain active replacement targets in v6.23:
+**open** remain active optimization targets after the accepted v6.23 baseline:
 
 1. **Closed in v6.16:** `111-sway-init` scanned DRM connectors, EDIDs,
    rotations, dual panels and unrelated products before rewriting Sway on every
@@ -228,21 +254,16 @@ The v6.15 audit found the following generic work and defects. Only items marked
 
 ## Next active order
 
-1. Physically promote the v6.23 hardening candidate against the accepted v6.22
-   baseline: launch multiple MSX games, exit OpenBOR with Select+Start, verify
-   Select+Start across RetroArch/PPSSPP/MPV and confirm RetroArch's native
-   Menu+Start still exits. Retain the broad content, brightness, suspend and
-   shutdown suite.
-2. Replace generic audio setup with a fixed H700 route while preserving the
+1. Replace generic audio setup with a fixed H700 route while preserving the
    already-warm asynchronous audio services.
-3. Audit udev coldplug output and let its manager exit if no retained feature
+2. Audit udev coldplug output and let its manager exit if no retained feature
    needs runtime hotplug; keep fixed hardware initialization separate from
    Bird.
-4. Audit logind versus seatd, journald policy, and remaining idle wakeups.
-5. Remove the muOS-to-ROCKNIX compatibility namespace as an explicit migration:
+3. Audit logind versus seatd, journald policy, and remaining idle wakeups.
+4. Remove the muOS-to-ROCKNIX compatibility namespace as an explicit migration:
    canonical `/storage/roms`, `/run/bird`, Bird-owned data/config directories,
    native BIOS/Ports paths and no launcher-time path rewriting.
-6. Re-measure menu, storage and application-contract boundaries before kernel
+5. Re-measure menu, storage and application-contract boundaries before kernel
    or U-Boot subtraction.
 
 ## Deliberately deferred

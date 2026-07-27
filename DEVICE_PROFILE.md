@@ -3,6 +3,10 @@
 This is the build contract for the target console. Values here are deliberate
 product decisions, not runtime options.
 
+The accepted stock-root v6.23 implementation passed its complete functional
+RG34XX-SP gate on 2026-07-26. Its canonical deploy-manifest digest is
+`e441f9c2755173353a9d29969807c2a05411240b7e9d2a1d18ed099d3c91b4d2`.
+
 ## Fixed hardware
 
 - Device: Anbernic RG34XX-SP only (`rg34xx-sp`).
@@ -80,9 +84,11 @@ the birdOS menu; neither action enters another frontend.
 
 The active boot path has no animation or startup sound while earliest
 interaction is being optimized. The fixed controls worker owns manual
-brightness and restores the raw pre-suspend panel level; a late generic
-brightness reset is not part of the contract. Final effects will be designed
-only after the fixed init/kernel path is complete.
+brightness. Its stable low-end ticks are 5, 3 and 1 percent; lid/power wake
+briefly starts the panel at the measured 10-percent threshold, then restores
+the exact saved dim level. A late generic brightness reset is not part of the
+contract. Final effects will be designed only after the fixed init/kernel path
+is complete.
 
 ## Efficiency contract
 

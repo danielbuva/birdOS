@@ -7,8 +7,8 @@
  * global policy used by Bird:
  *
  *   - dedicated volume keys, including 300 ms / 100 ms hold repeat;
- *   - Menu + volume for a direct fixed-panel brightness step, including the
- *     hardware's lowest nonzero raw level;
+ *   - Menu + volume for direct fixed-panel brightness steps, including stable
+ *     three-percent and one-percent low-end levels;
  *   - power and lid events through ROCKNIX's proven fake-suspend helper; and
  *   - Select + Start through Bird's foreground-session exit contract.
  *
@@ -60,7 +60,8 @@ typedef signed long s64;
 #define POWER_NAME "axp20x-pek"
 #define LID_NAME "gpio-keys-lid"
 
-#define VOLUME_PROGRAM "/usr/bin/volume"
+#define VOLUME_PROGRAM "/storage/.config/bird/bird-volume.sh"
+#define OSD_PROGRAM "/storage/.config/bird/bird-control-osd.sh"
 #define BRIGHTNESS_CURRENT "/sys/class/backlight/backlight/brightness"
 #define BRIGHTNESS_MAX "/sys/class/backlight/backlight/max_brightness"
 #define SUSPEND_PROGRAM "/storage/.config/bird/bird-suspend.sh"
@@ -372,46 +373,65 @@ static void run_volume(int direction) {
         spawn_action(VOLUME_PROGRAM, direction > 0 ? "up" : "down", 0);
 
     if (result == SPAWN_DISPATCHED)
+        {
+        (void)spawn_action(OSD_PROGRAM, "volume", 0);
         log_text(direction > 0
                      ? "bird-fixed-controls: volume-up\n"
                      : "bird-fixed-controls: volume-down\n");
+        }
     else if (result == SPAWN_EXEC_FAILED)
         log_text("bird-fixed-controls: volume-exec-failed\n");
     else
         log_text("bird-fixed-controls: volume-spawn-failed\n");
 }
 
+static u64 brightness_raw_target(u64 current, u64 maximum, int direction) {
+    u64 percent;
+    u64 target;
+    u64 raw;
+
+    if (!maximum) return 0;
+    percent = (current * 100U + maximum / 2U) / maximum;
+    if (direction > 0) {
+        if (percent < 1U)
+            target = 1U;
+        else if (percent < 3U)
+            target = 3U;
+        else if (percent < 5U)
+            target = 5U;
+        else
+            target = percent + 5U;
+        if (target > 100U) target = 100U;
+    } else {
+        if (percent > 5U)
+            target = percent - 5U;
+        else if (percent > 3U)
+            target = 3U;
+        else
+            target = 1U;
+    }
+    raw = (target * maximum + 50U) / 100U;
+    if (raw < 1U) raw = 1U;
+    if (raw > maximum) raw = maximum;
+    return raw;
+}
+
 static void run_brightness(int direction) {
     u64 current;
     u64 maximum;
-    u64 percent;
-    u64 target;
     u64 raw;
     if (!read_number(BRIGHTNESS_CURRENT, &current) ||
         !read_number(BRIGHTNESS_MAX, &maximum) || !maximum) {
         log_text("bird-fixed-controls: brightness-read-failed\n");
         return;
     }
-    percent = (current * 100U + maximum / 2U) / maximum;
-    if (direction > 0) {
-        target = percent < 5U ? 5U : percent + 5U;
-        if (target > 100U) target = 100U;
-        raw = (target * maximum + 50U) / 100U;
-    } else if (percent <= 5U) {
-        /* Raw one is the fixed panel's lowest lit level. It is intentionally
-         * distinct from zero, which belongs to display power-off. */
-        raw = 1U;
-    } else {
-        target = percent - 5U;
-        raw = (target * maximum + 50U) / 100U;
-    }
-    if (raw < 1U) raw = 1U;
-    if (raw > maximum) raw = maximum;
-    if (write_number(BRIGHTNESS_CURRENT, raw))
+    raw = brightness_raw_target(current, maximum, direction);
+    if (write_number(BRIGHTNESS_CURRENT, raw)) {
+        (void)spawn_action(OSD_PROGRAM, "brightness", 0);
         log_text(direction > 0
                      ? "bird-fixed-controls: brightness-up-direct\n"
                      : "bird-fixed-controls: brightness-down-direct\n");
-    else
+    } else
         log_text("bird-fixed-controls: brightness-write-failed\n");
 }
 

@@ -19,6 +19,7 @@ EXPORT_LINK=$PROFILE_DIR/999-export
 READY_DIR=/run/bird
 READY=$READY_DIR/application-contract-ready
 CONTRACT_REVISION=bird-application-v1
+VOLUME_HELPER=${BIRD_VOLUME_HELPER:-/storage/.config/bird/bird-volume.sh}
 PROFILE_TMP=$PROFILE_DIR/.080-dual_screen_mode.tmp.$$
 LINK_TMP=$PROFILE_DIR/.999-export.tmp.$$
 READY_TMP=$READY_DIR/.application-contract-ready.tmp.$$
@@ -67,6 +68,10 @@ cmp -s "$SWAY_STAGE/config" "$SWAY_CONFIG"
 cmp -s "$SWAY_STAGE/095-sway" "$SWAY_PROFILE"
 [ "$(wc -l <"$UI_PROFILE")" -eq 1 ]
 grep -qx 'UI_SERVICE="essway.service"' "$UI_PROFILE"
+
+# WirePlumber persists route mute independently from audio.volume. A previous
+# zero/mute state must not produce a globally silent boot with a healthy graph.
+"$VOLUME_HELPER" restore
 
 UPTIME=$(cut -d ' ' -f 1 /proc/uptime)
 case "$UPTIME" in

@@ -41,7 +41,13 @@ BIRD_STORAGE_BIND_MOUNTED=0
 BIRD_SYSTEM_BIND_MOUNTED=0
 
 sha256_file() {
-	sha256sum "$1" | awk '{print $1}'
+	# The release loader owns the pinned initramfs BusyBox contract. Reuse its
+	# implementation so the hook cannot drift to a second, host-only verifier.
+	bird_loader_sha256 "$1"
+}
+
+bytes_file() {
+	bird_loader_bytes "$1"
 }
 
 write_attempts() (
@@ -194,7 +200,7 @@ verify_release_runtime() {
 	while IFS="$TAB" read -r RELATIVE MODE BYTES HASH; do
 		TARGET=$RELEASE_ROOT/$RELATIVE
 		[ -f "$TARGET" ] || { rm -f "$RUNTIME_RECORDS"; return 1; }
-		ACTUAL_BYTES=$(stat -c '%s' "$TARGET" 2>/dev/null || printf invalid)
+		ACTUAL_BYTES=$(bytes_file "$TARGET" 2>/dev/null || printf invalid)
 		[ "$ACTUAL_BYTES" = "$BYTES" ] || {
 			rm -f "$RUNTIME_RECORDS"
 			return 1

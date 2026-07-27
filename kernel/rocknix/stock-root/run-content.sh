@@ -323,6 +323,10 @@ ensure_content_services() {
 	systemctl start dbus.service 8>&- 9>&- || return 1
 	systemctl start pipewire.service wireplumber.service \
 		pipewire-pulse.service 8>&- 9>&- || return 1
+	# The writable ROCKNIX image can persist a muted internal route even while
+	# every audio service, app stream and ALSA control looks healthy. Reapply the
+	# saved Bird volume and explicitly clear that route mute before every app.
+	/storage/.config/bird/bird-volume.sh restore 8>&- 9>&- || return 1
 }
 
 stop_sway() {
@@ -394,11 +398,23 @@ stop_sway() {
 install_mpv_input_policy() {
 	SOURCE=/flash/bird/mpv-input.conf
 	TARGET=/storage/.config/mpv/input.conf
+	CONFIG=/storage/.config/mpv/mpv.conf
+	RESUME='save-position-on-quit=yes'
 	[ -f "$SOURCE" ] || return 1
 	mkdir -p /storage/.config/mpv || return 1
 	if ! cmp -s "$SOURCE" "$TARGET"; then
 		cp -f "$SOURCE" "$TARGET" || return 1
 		printf 'Bird MPV system-volume-only policy installed\n'
+	fi
+	# ROCKNIX's player wrapper does not promise watch-later persistence. Keep
+	# the user's config intact and add the one Bird-owned playback contract only
+	# when it is not already expressed.
+	if [ ! -f "$CONFIG" ] || ! grep -Eq \
+		'^[[:space:]]*save-position-on-quit[[:space:]]*=[[:space:]]*(yes|true)[[:space:]]*$' \
+		"$CONFIG"; then
+		printf '\n# birdOS: resume media after a clean player exit\n%s\n' \
+			"$RESUME" >>"$CONFIG" || return 1
+		printf 'Bird MPV resume policy installed\n'
 	fi
 }
 
@@ -1241,15 +1257,19 @@ run_selected() {
 		3)
 			"$PORT_PREP" || return 1
 			PORT_SCRIPT=/storage/roms/ports/${CONTENT##*/}
-			# This one pre-existing custom launcher is intentionally retained
-			# until its game is reinstalled from the exact provider. Preserve its
-			# basename while translating only its two old storage roots.
+			# This one retained Stardew launcher predates the native ROCKNIX
+			# PortMaster tree. Translate a volatile copy onto the pinned provider;
+			# never rewrite the user's only launcher or its game data.
 			if [ "${CONTENT##*/}" = StardewValley.sh ]; then
 				mkdir -p /run/bird/ports
 				PORT_SCRIPT=/run/bird/ports/StardewValley.sh
 				sed \
-					-e 's#/mnt/mmc/MUOS#/storage/bird-data/MUOS#g' \
+					-e 's#/mnt/mmc/MUOS/PortMaster#/storage/roms/ports/PortMaster#g' \
 					-e 's#/mnt/mmc/ports#/storage/roms/ports#g' \
+					-e '/source "$controlfolder\/tasksetter"/d' \
+					-e 's#mod_muOS\.txt#mod_ROCKNIX.txt#g' \
+					-e 's#libgl_muOS\.txt#libgl_ROCKNIX.txt#g' \
+					-e 's#\$TASKSET mono#mono#' \
 					"$CONTENT" >"$PORT_SCRIPT" || return 1
 				chmod 0755 "$PORT_SCRIPT" || return 1
 			fi

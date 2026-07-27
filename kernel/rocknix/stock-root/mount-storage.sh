@@ -30,7 +30,7 @@ mount --bind /storage/bird-data/MUOS/bios /storage/roms/bios || {
 for FILE in bird-launcher bird-pidwait bird-fixed-controls bird-powerstate \
 	bird-fixed-control-exit.sh bird-save-config.sh supervisor.sh run-content.sh prepare-ports.sh \
 		fixed-storage.sh first-frame-prep.sh capture-boot-state.sh \
-		bird-network.sh bird-suspend.sh; do
+		bird-network.sh bird-suspend.sh bird-volume.sh bird-control-osd.sh; do
 	cp -f "/flash/bird/$FILE" "/storage/.config/bird/$FILE" || return 1
 done
 cp -f /flash/bird/bird-swap.conf /storage/.config/swap.conf || return 1
@@ -41,6 +41,8 @@ chmod 0755 /storage/.config/bird/bird-launcher \
 	/storage/.config/bird/bird-fixed-control-exit.sh \
 	/storage/.config/bird/bird-save-config.sh \
 	/storage/.config/bird/bird-suspend.sh \
+	/storage/.config/bird/bird-volume.sh \
+	/storage/.config/bird/bird-control-osd.sh \
 	/storage/.config/bird/supervisor.sh \
 	/storage/.config/bird/run-content.sh \
 	/storage/.config/bird/prepare-ports.sh \

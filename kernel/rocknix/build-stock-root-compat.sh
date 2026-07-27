@@ -303,7 +303,7 @@ for FILE in 090-ui_service 999-export essway.service rocknix.target \
 	bird-powerstate.service supervisor.sh run-content.sh \
 	prepare-ports.sh fixed-storage.sh first-frame-prep.sh \
 	capture-boot-state.sh bird-network.sh bird-fixed-control-exit.sh \
-	bird-save-config.sh bird-save-config.service bird-suspend.sh bird-autostart-noop \
+	bird-save-config.sh bird-save-config.service bird-suspend.sh bird-volume.sh bird-control-osd.sh bird-autostart-noop \
 	bird-fixed-sway.sh bird-fixed-platform.sh \
 	bird-swap.conf; do
 	cp -fp "$ROOT/kernel/rocknix/stock-root/$FILE" "$OUTPUT/card/bird/$FILE"
@@ -328,6 +328,8 @@ chmod 0755 "$OUTPUT/card/post-flash.sh" "$OUTPUT/card/mount-storage.sh" \
 	"$OUTPUT/card/bird/bird-fixed-control-exit.sh" \
 	"$OUTPUT/card/bird/bird-save-config.sh" \
 	"$OUTPUT/card/bird/bird-suspend.sh" \
+	"$OUTPUT/card/bird/bird-volume.sh" \
+	"$OUTPUT/card/bird/bird-control-osd.sh" \
 	"$OUTPUT/card/bird/bird-autostart-noop" \
 	"$OUTPUT/card/bird/bird-autostart" \
 	"$OUTPUT/card/bird/bird-fixed-sway.sh" \
@@ -347,6 +349,8 @@ for SCRIPT in "$OUTPUT/card/post-flash.sh" \
 	"$OUTPUT/card/bird/bird-fixed-control-exit.sh" \
 	"$OUTPUT/card/bird/bird-save-config.sh" \
 	"$OUTPUT/card/bird/bird-suspend.sh" \
+	"$OUTPUT/card/bird/bird-volume.sh" \
+	"$OUTPUT/card/bird/bird-control-osd.sh" \
 	"$OUTPUT/card/bird/bird-autostart-noop" \
 	"$OUTPUT/card/bird/bird-autostart" \
 	"$OUTPUT/card/bird/bird-fixed-sway.sh" \
@@ -359,6 +363,10 @@ done
 grep -q 'runemu.sh' "$OUTPUT/card/bird/run-content.sh" || fail 'ROCKNIX dispatcher missing'
 grep -q 'PortMaster.zip' "$OUTPUT/card/bird/prepare-ports.sh" || fail 'exact PortMaster bootstrap missing'
 grep -q '^VOLUME_UP ignore$' "$OUTPUT/card/bird/mpv-input.conf" || fail 'MPV volume policy missing'
+grep -q "RESUME='save-position-on-quit=yes'" \
+	"$OUTPUT/card/bird/run-content.sh" || fail 'MPV resume policy missing'
+grep -q "s#/mnt/mmc/MUOS/PortMaster#/storage/roms/ports/PortMaster#g" \
+	"$OUTPUT/card/bird/run-content.sh" || fail 'legacy PortMaster path translation missing'
 grep -q 'ExecStart=/storage/.config/bird/fixed-storage.sh' \
 	"$OUTPUT/card/bird/rocknix-automount.service" || fail 'fixed storage unit missing'
 grep -q '^DefaultDependencies=no$' \
@@ -424,6 +432,16 @@ grep -q 'BIRD_LOADER_KERNEL_SHA=a53a3483731d28d2' \
 grep -q 'BIRD_LOADER_DTB_SHA=f3a4273986d6e4f4' \
 	"$OUTPUT/build/early-initramfs/payload/bird-release-loader.sh" || \
 	fail 'pinned fallback DTB missing from release loader'
+grep -Fq '"$BIRD_LOADER_BUSYBOX" stat -Lt "$1"' \
+	"$OUTPUT/build/early-initramfs/payload/bird-release-loader.sh" || \
+	fail 'release loader does not use the pinned ROCKNIX BusyBox stat contract'
+grep -Fq 'stat -Lt ' "$OFFICIAL_INIT" || \
+	fail 'pinned ROCKNIX init no longer proves the selected BusyBox stat contract'
+grep -Fq 'bird_loader_bytes "$1"' "$OUTPUT/card/post-flash.sh" || \
+	fail 'post-flash runtime verifier does not reuse the release-loader byte contract'
+if grep -Fq "stat -c" "$OUTPUT/card/post-flash.sh"; then
+	fail 'host-only GNU stat syntax leaked into the initramfs post-flash hook'
+fi
 grep -Fq 'if ! . /bird-release-loader.sh; then' \
 	"$OUTPUT/build/early-initramfs/payload/init" || fail 'versioned release loader missing'
 grep -Fq 'while :; do sleep 3600; done' \
@@ -511,6 +529,18 @@ grep -q '/flash/bird/bird-powerstate.service' \
 	"$OUTPUT/card/mount-storage.sh" || fail 'stock powerstate replacement missing'
 grep -q 'state->select_held && state->start_held' \
 	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'Bird exit chord missing'
+grep -Fq '#define VOLUME_PROGRAM "/storage/.config/bird/bird-volume.sh"' \
+	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'unmuting volume wrapper missing'
+grep -Fq 'set-sink-mute @DEFAULT_SINK@ 0' \
+	"$OUTPUT/card/bird/bird-volume.sh" || fail 'default audio sink unmute missing'
+grep -Fq '"$VOLUME_HELPER" restore' \
+	"$OUTPUT/card/bird/999-export" || fail 'application-ready audio restore missing'
+grep -Fq '/storage/.config/bird/bird-volume.sh restore' \
+	"$OUTPUT/card/bird/run-content.sh" || fail 'per-launch audio restore missing'
+grep -Fq 'pactl get-sink-mute @DEFAULT_SINK@' \
+	"$OUTPUT/card/bird/capture-boot-state.sh" || fail 'effective audio mute diagnostic missing'
+grep -Fq 'h700_input ? BTN_NORTH : BUTTON_Y' \
+	"$ROOT/launcher/bird-launcher.c" || fail 'physical Y favorite mapping missing'
 grep -q 'sys_pipe2(handshake, O_CLOEXEC)' \
 	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'control exec handshake missing'
 grep -q 'SPAWN_EXEC_FAILED' \
@@ -604,8 +634,12 @@ grep -q 'bird launcher user-requested reload' \
 	"$OUTPUT/card/bird/supervisor.sh" || fail 'supervisor explicit reload path missing'
 grep -q 'SUSPEND_PROGRAM "/storage/.config/bird/bird-suspend.sh"' \
 	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'fixed suspend wrapper missing'
-grep -q 'raw = 1U' \
-	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'hardware minimum brightness missing'
+grep -q 'brightness_raw_target(75, 2499, -1) == 25' \
+	"$ROOT/kernel/rocknix/tests/fixed-controls-host.c" || fail 'stable one-percent brightness test missing'
+grep -Fq 'STRIKE=$(((MAXIMUM * 10 + 50) / 100))' \
+	"$OUTPUT/card/bird/bird-suspend.sh" || fail 'measured ten-percent wake strike missing'
+grep -Fq '"$SETTLE" 50000' \
+	"$OUTPUT/card/bird/bird-suspend.sh" || fail 'bounded wake strike missing'
 grep -q 'bird-pre-suspend-brightness' \
 	"$OUTPUT/card/bird/bird-suspend.sh" || fail 'suspend brightness preservation missing'
 grep -q 'suspend-latest.log' \

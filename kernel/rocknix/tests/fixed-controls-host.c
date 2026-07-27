@@ -110,12 +110,47 @@ int main(int argc, char **argv) {
     u64 delay;
     unsigned step;
     int ok = 1;
+    struct input_event key = {0};
 
     if (argc != 2) {
         fprintf(stderr, "usage: %s NONEXECUTABLE\n", argv[0]);
         return 2;
     }
     test_parent = getpid();
+
+    state.menu_held = 0;
+    state.select_held = 0;
+    state.start_held = 0;
+    state.exit_latched = 0;
+    key.type = EV_KEY;
+    key.value = 1;
+    key.code = BTN_MODE;
+    handle_gamepad(&key, &state);
+    key.code = BTN_START;
+    handle_gamepad(&key, &state);
+    ok &= check(!state.exit_latched,
+                "native Menu+Start incorrectly triggered Bird exit");
+    key.value = 0;
+    key.code = BTN_MODE;
+    handle_gamepad(&key, &state);
+    key.value = 1;
+    key.code = BTN_SELECT;
+    handle_gamepad(&key, &state);
+    ok &= check(state.exit_latched,
+                "Select+Start did not trigger Bird exit");
+    clear_gamepad_state(&state);
+
+    ok &= check(brightness_raw_target(125, 2499, -1) == 75,
+                "five-percent brightness did not step down to three percent");
+    ok &= check(brightness_raw_target(75, 2499, -1) == 25,
+                "three-percent brightness did not step down to one percent");
+    ok &= check(brightness_raw_target(25, 2499, -1) == 25,
+                "one-percent brightness did not remain lit");
+    ok &= check(brightness_raw_target(25, 2499, 1) == 75 &&
+                    brightness_raw_target(75, 2499, 1) == 125,
+                "low-end brightness up ladder is not reversible");
+    ok &= check(brightness_raw_target(2499, 2499, 1) == 2499,
+                "maximum brightness was not clamped");
 
     ok &= check(spawn_action("/usr/bin/true", 0, 0) == SPAWN_DISPATCHED,
                 "valid executable was not dispatched");

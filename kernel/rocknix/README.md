@@ -1111,7 +1111,11 @@ The same gate showed that fake-suspend wake can alter perceived brightness.
 V6.21 wraps the retained provider with an exact raw-level save/restore, while
 the fixed controls process now performs brightness arithmetic and one sysfs
 write itself. This removes generic Bash, `find`, `bc` and settings parsing from
-each manual step and exposes raw level one as the lowest lit panel state.
+each manual step. The later physical gate disproved raw one as a stable lit
+state on the panel's 0–2499 scale; the low-end ladder is now 5, 3 and 1 percent
+(raw 125, 75 and 25). Those dim values cannot start the panel after DPMS, while
+the physical gate proves raw 250 can. Lid wake therefore strikes at 10 percent
+for 50 ms and then restores the exact saved low level.
 Post-frame diagnostics inherit the real PipeWire runtime environment, bound
 each audio query to two seconds and have a 20-second absolute runtime ceiling.
 

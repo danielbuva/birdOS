@@ -50,6 +50,8 @@ LOG=/storage/bird-data/MUOS/Bird/log/stock-root-boot-state-latest.log
 	printf '%s\n' '--- audio graph ---'
 	timeout 2s pactl info 2>&1 || :
 	timeout 2s pactl list short sinks 2>&1 || :
+	timeout 2s pactl get-sink-volume @DEFAULT_SINK@ 2>&1 || :
+	timeout 2s pactl get-sink-mute @DEFAULT_SINK@ 2>&1 || :
 	timeout 2s pactl list short modules 2>&1 || :
 	timeout 2s amixer -c 0 contents 2>&1 || :
 	printf '%s\n' '--- processes ---'

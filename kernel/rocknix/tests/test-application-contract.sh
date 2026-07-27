@@ -43,6 +43,7 @@ sed \
 	-e "s#^SWAY_STAGE=.*#SWAY_STAGE=$SWAY_STAGE#" \
 	-e "s#^SYSTEM_EXPORT=.*#SYSTEM_EXPORT=$SYSTEM_EXPORT#" \
 	-e "s#^READY_DIR=.*#READY_DIR=$READY_DIR#" \
+	-e 's#^VOLUME_HELPER=.*#VOLUME_HELPER=/usr/bin/true#' \
 	-e "s#/proc/uptime#$UPTIME#g" \
 	"$SOURCE" >"$UNDER_TEST"
 chmod 0755 "$UNDER_TEST"

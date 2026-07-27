@@ -2,11 +2,12 @@
 
 birdOS is a fixed-purpose operating system for the Anbernic RG34XX-SP. This
 repository contains its launcher, fixed-device integration, reproducible build
-inputs and the engineering record that began with muOS 2601.1. The active
-repository candidate is **stock-root v6.23**: it retains the exact ROCKNIX
+inputs and the engineering record that began with muOS 2601.1. The accepted
+hardware baseline is **stock-root v6.23**: it retains the exact ROCKNIX
 20260701 DDR4 compatibility base and replaces its frontend and selected generic
-policy with birdOS. Stock-root v6.22 is the last broad hardware-tested
-checkpoint until this hardening candidate passes the same physical gate.
+policy with birdOS. Its 2026-07-26 physical gate and host fault-injection suite
+passed with canonical deploy-manifest digest
+`e441f9c2755173353a9d29969807c2a05411240b7e9d2a1d18ed099d3c91b4d2`.
 
 The governing priority is: boot latency, interaction latency, battery
 efficiency, memory efficiency, then exact user features. Generality is a cost,
@@ -31,7 +32,7 @@ Historical measurements and the complete version-by-version narrative live in
 - [`ACTIVE_PATH.md`](ACTIVE_PATH.md): authoritative active build, deployment,
   boot and runtime graph.
 - [`kernel/rocknix/build-stock-root-compat.sh`](kernel/rocknix/build-stock-root-compat.sh):
-  complete active candidate build.
+  complete accepted-baseline build.
 - [`kernel/rocknix/stock-root/`](kernel/rocknix/stock-root/): active final-root
   integration sources.
 - [`firmware/mac-update-rocknix-stock-root-v6.sh`](firmware/mac-update-rocknix-stock-root-v6.sh):
@@ -45,7 +46,7 @@ Historical measurements and the complete version-by-version narrative live in
 
 An untouched recovery image or card remains valuable external insurance. The
 active card can select its verified clean-root fallback automatically once the
-candidate release loader is running, as described in
-[`ACTIVE_PATH.md`](ACTIVE_PATH.md). A candidate kernel or initramfs failure
+release loader is running, as described in [`ACTIVE_PATH.md`](ACTIVE_PATH.md).
+A kernel or initramfs failure
 before that loader still requires manual selector recovery; bootloader-owned
 A/B recovery remains roadmap work.

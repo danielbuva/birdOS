@@ -34,6 +34,7 @@ typedef signed long s64;
 #define BTN_SOUTH 304
 #define BTN_EAST 305
 #define BUTTON_Y 306
+#define BTN_NORTH 307
 #define BTN_WEST 308
 #define MUOS_BTN_TL 308
 #define MUOS_BTN_TR 309
@@ -1920,7 +1921,7 @@ static int handle_event(const struct input_event *event) {
     if (event->type == EV_KEY && event->value == 1) {
         u16 select_button = h700_input ? BTN_EAST : BTN_SOUTH;
         u16 back_button = h700_input ? BTN_SOUTH : BTN_EAST;
-        u16 favorite_button = h700_input ? BTN_WEST : BUTTON_Y;
+        u16 favorite_button = h700_input ? BTN_NORTH : BUTTON_Y;
         u16 page_up_button = h700_input ? H700_BTN_TL : MUOS_BTN_TL;
         u16 page_down_button = h700_input ? H700_BTN_TR : MUOS_BTN_TR;
 

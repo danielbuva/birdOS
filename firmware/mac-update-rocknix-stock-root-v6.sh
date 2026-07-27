@@ -730,6 +730,11 @@ if [ "$SELECTOR_COMMITTED" -ne 1 ]; then
 	fail 'selector activation failed; previous selector restored'
 fi
 
+# A loader failure record describes the selector that was active before this
+# verified activation. Do not let stale evidence masquerade as a failure of
+# the newly armed release; the loader recreates it before any future fallback.
+rm -f "$BIRD/bird-loader-failure.txt" 2>/dev/null || :
+
 printf 'Bird stock-root v6.23 activated on /dev/%s.\n' "$WHOLE"
 printf 'Complete immutable release: %s\n' "$RELEASE"
 printf 'Canonical manifest: %s\n' "$MANIFEST_SHA"
@@ -763,7 +768,7 @@ printf 'PortMaster networking waits for iwd registration and a fresh Wi-Fi scan.
 printf 'The final-root supervisor starts once at the stable graphical boundary.\n'
 printf 'Post-frame diagnostics cannot hold the target reboot watchdog open.\n'
 printf 'Input recovery searches the complete fixed event range and retains the exact screen.\n'
-printf 'Suspend restores the exact raw brightness; manual control reaches raw level one.\n'
+printf 'Suspend restores stable 5, 3 and 1 percent brightness ticks; zero remains display-off.\n'
 printf 'Per-boot supervisor, early-launcher and boot-state evidence is retained.\n'
 printf 'Select+Start exits the managed foreground tree without grabbing app input.\n'
 printf 'MSX uses the pinned fMSX core and its existing shared BIOS ROMs.\n'
