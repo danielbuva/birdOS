@@ -6,6 +6,7 @@
 #include <string.h>
 
 #define BIRD_HOST_TEST 1
+#define PERSIST_UI_STATE 1
 #include "../../../launcher/bird-launcher.c"
 
 #define FAKE_FD 41
@@ -13,6 +14,7 @@
 #define EBADF_LINUX 9
 
 static long fake_now_ms;
+static long fake_now_sub_ms_ns;
 static long fake_open_result;
 static unsigned fake_open_calls;
 static unsigned fake_create_calls;
@@ -24,6 +26,16 @@ static u64 fake_payload_offset;
 static long fake_terminal_read;
 static unsigned fake_sleep_calls;
 static s64 fake_last_sleep_ns;
+#ifdef BIRD_PROFILE
+#define PROFILE_LOG_BYTES 16384U
+#define TEST_FB_WIDTH 720U
+#define TEST_FB_HEIGHT 480U
+#define TEST_FB_BYTES_PER_PIXEL 4U
+static char fake_profile_log[PROFILE_LOG_BYTES];
+static u64 fake_profile_log_bytes;
+static u8 fake_framebuffer[TEST_FB_WIDTH * TEST_FB_HEIGHT *
+                           TEST_FB_BYTES_PER_PIXEL * 2U];
+#endif
 
 static int check(int condition, const char *message) {
     if (condition) return 1;
@@ -62,7 +74,18 @@ long bird_test_syscall6(long number, long a0, long a1, long a2, long a3,
         fake_payload_offset += bytes;
         return (long)bytes;
     }
-    if (number == 64) return a2; /* discard production diagnostics */
+    if (number == 64) {
+#ifdef BIRD_PROFILE
+        if (bird_profile.emitting && fake_profile_log_bytes < PROFILE_LOG_BYTES) {
+            u64 available = PROFILE_LOG_BYTES - fake_profile_log_bytes;
+            u64 bytes = (u64)a2 < available ? (u64)a2 : available;
+            memcpy(fake_profile_log + fake_profile_log_bytes, (const void *)a1,
+                   (size_t)bytes);
+            fake_profile_log_bytes += bytes;
+        }
+#endif
+        return a2; /* discard production diagnostics */
+    }
     if (number == 101) {
         const struct timespec *request = (const struct timespec *)a0;
         fake_sleep_calls++;
@@ -72,7 +95,8 @@ long bird_test_syscall6(long number, long a0, long a1, long a2, long a3,
     if (number == 113) {
         struct timespec *value = (struct timespec *)a1;
         value->sec = fake_now_ms / 1000;
-        value->nsec = (fake_now_ms % 1000) * 1000000L;
+        value->nsec = (fake_now_ms % 1000) * 1000000L +
+                      fake_now_sub_ms_ns;
         return 0;
     }
     return -EBADF_LINUX;
@@ -98,6 +122,464 @@ static void reset_favorites(void) {
     next_favorites_retry = 0;
     storage_ready = 1;
 }
+
+#ifdef BIRD_PROFILE
+static void reset_profile_log(void) {
+    fake_profile_log_bytes = 0;
+    fake_profile_log[0] = 0;
+}
+
+static int profile_log_contains(const char *needle) {
+    u64 end = fake_profile_log_bytes < PROFILE_LOG_BYTES - 1U
+                  ? fake_profile_log_bytes : PROFILE_LOG_BYTES - 1U;
+    fake_profile_log[end] = 0;
+    return strstr(fake_profile_log, needle) != NULL;
+}
+
+static void setup_profile_framebuffer(u32 pages) {
+    memset(&fb_var, 0, sizeof(fb_var));
+    memset(&fb_fix, 0, sizeof(fb_fix));
+    fb_var.xres = TEST_FB_WIDTH;
+    fb_var.yres = TEST_FB_HEIGHT;
+    fb_var.xres_virtual = TEST_FB_WIDTH;
+    fb_var.yres_virtual = TEST_FB_HEIGHT * pages;
+    fb_var.bits_per_pixel = 32U;
+    fb_var.red.offset = 16U;
+    fb_var.red.length = 8U;
+    fb_var.green.offset = 8U;
+    fb_var.green.length = 8U;
+    fb_var.blue.length = 8U;
+    fb_var.transp.offset = 24U;
+    fb_var.transp.length = 8U;
+    fb_fix.line_length = TEST_FB_WIDTH * TEST_FB_BYTES_PER_PIXEL;
+    fb_fix.smem_len = fb_fix.line_length * TEST_FB_HEIGHT * pages;
+    fb = fake_framebuffer;
+}
+
+static u64 profile_syscall_category_sum(void) {
+    u64 total = 0;
+    u32 kind;
+    for (kind = 0; kind < PROFILE_SYSCALL_KIND_COUNT; kind++)
+        total += bird_profile.syscall_kind[kind];
+    return total;
+}
+
+static void setup_main_view(void) {
+    view = VIEW_MAIN;
+    selection = 0U;
+    active_system = 0U;
+    active_media_category = 0U;
+    media_section = CATALOG_MEDIA_SECTION_LISTEN;
+    selected_status = "DIRECT FRAMEBUFFER READY";
+    battery_percent = -1;
+    charging_state = -1;
+    pending_launch.kind = PENDING_LAUNCH_NONE;
+}
+
+static void setup_profile_path_anchors(void) {
+    runtime_dir_fd = FAKE_FD;
+    input_dir_fd = FAKE_FD;
+    power_dir_fd = FAKE_FD;
+    storage_dir_fd = FAKE_FD;
+    config_dir_fd = FAKE_FD;
+}
+
+static int run_profile_tests(void) {
+    const struct bird_profile_render_totals *render;
+    struct input_event event;
+    u64 before_syscalls;
+    u64 before_diagnostics;
+    u64 prior_input_samples;
+    u64 maximum_physical;
+    int action;
+    int ok = 1;
+
+    /* Serialization is forbidden until an interactive framebuffer barrier.
+     * Sampling and serialization are profiler overhead, not launcher work. */
+    bird_profile_reset();
+    reset_profile_log();
+    fake_now_ms = 1000;
+    before_syscalls = bird_profile.syscalls;
+    (void)bird_profile_now_ns();
+    ok &= check(bird_profile.syscalls == before_syscalls,
+                "profile clock sampling changed workload syscall totals");
+    bird_profile_emit_startup();
+    bird_profile_note_exit_and_emit();
+    ok &= check(fake_profile_log_bytes == 0 && bird_profile.output_records == 0,
+                "profile output occurred before the interactive barrier");
+
+    /* Preserve the current milestone order exactly: the startup frame barrier
+     * precedes input discovery. Equal millisecond timestamps must not hide it. */
+    setup_profile_framebuffer(2U);
+    setup_main_view();
+    bird_profile_application_entry((u64)fake_now_ms * 1000000UL);
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_STARTUP_FULL);
+    draw_screen();
+    bird_profile_input_opened();
+    bird_profile_first_frame_marked();
+    before_syscalls = bird_profile.syscalls;
+    before_diagnostics = bird_profile.diagnostic_writes;
+    bird_profile_emit_startup();
+    ok &= check(fake_profile_log_bytes > 0 && bird_profile.output_records == 1,
+                "profile output did not become available after the barrier");
+    ok &= check(profile_log_contains(
+                    "input_open_to_interactive_barrier_ns="
+                    "unavailable:barrier-before-input"),
+                "reversed startup milestone order was reported as a duration");
+    ok &= check(bird_profile.syscalls == before_syscalls &&
+                    bird_profile.diagnostic_writes == before_diagnostics,
+                "profile serialization changed workload counters");
+    render = &bird_profile.render[PROFILE_RENDER_STARTUP_FULL];
+    maximum_physical = render->logical_pixels * 4U * 2U;
+    ok &= check(render->commits == 1U &&
+                    render->logical_pixels >= TEST_FB_WIDTH * TEST_FB_HEIGHT &&
+                    render->logical_pixels <= 600000U,
+                "startup render reason or logical-pixel bounds are wrong");
+    ok &= check(render->pages_written == 2U &&
+                    render->visible_bytes <= render->physical_bytes &&
+                    render->physical_bytes <= maximum_physical,
+                "startup framebuffer page/byte metrics do not reconcile");
+
+    /* A small primitive makes the metric definitions exact without pinning a
+     * brittle whole-screen write count. */
+    bird_profile_reset();
+    setup_profile_framebuffer(1U);
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_STATUS);
+    rectangle(-1, 0, 2, 1, 0U);
+    BIRD_PROFILE_BARRIER();
+    render = &bird_profile.render[PROFILE_RENDER_STATUS];
+    ok &= check(render->commits == 1U && render->logical_pixels == 2U &&
+                    render->visible_bytes == 4U &&
+                    render->physical_bytes == 4U &&
+                    render->pages_written == 1U,
+                "small framebuffer metric reconciliation failed");
+#ifdef BIRD_PROFILE_DEEP
+    ok &= check(bird_profile_deep.clipped_pixels == 1U,
+                "deep profiling did not count a clipped pixel");
+#endif
+
+    /* Hot-path intervals retain sub-millisecond resolution. */
+    bird_profile_reset();
+    setup_profile_framebuffer(1U);
+    fake_now_ms = 1500;
+    fake_now_sub_ms_ns = 100L;
+    BIRD_PROFILE_BEGIN_EVENT();
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_STATUS);
+    rectangle(0, 0, 1, 1, 0U);
+    fake_now_sub_ms_ns = 900L;
+    BIRD_PROFILE_BARRIER();
+    BIRD_PROFILE_FINISH_EVENT();
+    ok &= check(bird_profile.input_to_barrier_samples == 1U &&
+                    bird_profile.input_to_barrier_total_ns == 800U,
+                "input-to-barrier timing lost sub-millisecond precision");
+    fake_now_sub_ms_ns = 0;
+
+    /* Measure today's D-pad ordering. The save and ordinary diagnostics are
+     * intentionally before its render barrier until Phase 4 changes them. */
+    bird_profile_reset();
+    setup_profile_framebuffer(1U);
+    setup_main_view();
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_STARTUP_FULL);
+    draw_screen();
+    fake_now_ms = 2000;
+    reset_fake_file(FAKE_FD, 0, 0);
+    h700_input = 1;
+    event.sec = 0;
+    event.usec = 0;
+    event.type = EV_KEY;
+    event.code = BTN_DPAD_DOWN;
+    event.value = 1;
+    BIRD_PROFILE_BEGIN_EVENT();
+    action = handle_event(&event);
+    BIRD_PROFILE_FINISH_EVENT();
+    render = &bird_profile.render[PROFILE_RENDER_SELECTION_MOVEMENT];
+    ok &= check(action == ACTION_NONE && selection == 1U &&
+                    render->commits == 1U,
+                "D-pad event did not produce one selection render");
+    ok &= check(bird_profile.input_to_barrier_samples == 1U &&
+                    bird_profile.event_pre_barrier_filesystem_ops > 0U &&
+                    bird_profile.event_pre_barrier_diagnostic_writes > 0U &&
+                    bird_profile.event_pre_barrier_diagnostic_bytes > 0U,
+                "existing pre-barrier filesystem/diagnostic work was not measured");
+    ok &= check(bird_profile.resume_before_barrier == 1U &&
+                    bird_profile.barrier_to_resume_samples == 0U,
+                "current resume-before-barrier order was not represented honestly");
+    ok &= check(bird_profile.syscalls < 64U &&
+                    profile_syscall_category_sum() == bird_profile.syscalls,
+                "movement syscall categories or upper bound are wrong");
+    ok &= check(
+        bird_profile.event_pre_barrier_syscall_kind[PROFILE_SYSCALL_OPENAT] > 0U &&
+            bird_profile.event_pre_barrier_syscall_kind[PROFILE_SYSCALL_CLOSE] > 0U &&
+            bird_profile.event_pre_barrier_syscall_kind[PROFILE_SYSCALL_WRITE] >
+                bird_profile.event_pre_barrier_diagnostic_writes,
+        "event-local syscall categories missed the resume transaction");
+#ifdef BIRD_PROFILE_DEEP
+    ok &= check(bird_profile_deep.catalog_iterations == 0U &&
+                    bird_profile_deep.string_bytes > 0U &&
+                    bird_profile_deep.glyph_lookups > 0U &&
+                    bird_profile_deep.glyph_scan_iterations > 0U &&
+                    bird_profile_deep.rectangle_calls > 0U,
+                "deep movement counters are incomplete or scanned the catalog");
+#endif
+    prior_input_samples = bird_profile.input_to_barrier_samples;
+    BIRD_PROFILE_BEGIN_EVENT();
+    event.type = EV_KEY;
+    event.code = 0U;
+    event.value = 0;
+    (void)handle_event(&event);
+    BIRD_PROFILE_FINISH_EVENT();
+    ok &= check(bird_profile.input_to_barrier_samples == prior_input_samples,
+                "a later non-render event captured a prior barrier");
+
+    printf("launcher profile benchmark scenario=movement syscalls=%lu "
+           "filesystem_namespace_before_barrier=%lu "
+           "file_writes_before_barrier=%lu closes_before_barrier=%lu "
+           "diagnostics_before_barrier=%lu "
+           "logical_pixels=%lu visible_bytes=%lu pages=%lu physical_bytes=%lu\n",
+           (unsigned long)bird_profile.syscalls,
+           (unsigned long)bird_profile.event_pre_barrier_filesystem_ops,
+           (unsigned long)(
+               bird_profile.event_pre_barrier_syscall_kind[PROFILE_SYSCALL_WRITE] -
+               bird_profile.event_pre_barrier_diagnostic_writes),
+           (unsigned long)
+               bird_profile.event_pre_barrier_syscall_kind[PROFILE_SYSCALL_CLOSE],
+           (unsigned long)bird_profile.event_pre_barrier_diagnostic_writes,
+           (unsigned long)render->logical_pixels,
+           (unsigned long)render->visible_bytes,
+           (unsigned long)render->pages_written,
+           (unsigned long)render->physical_bytes);
+#ifdef BIRD_PROFILE_DEEP
+    printf("launcher profile_deep benchmark scenario=movement string_bytes=%lu "
+           "catalog_iterations=%lu glyph_lookups=%lu glyph_scan_iterations=%lu "
+           "rectangle_calls=%lu clipped_pixels=%lu\n",
+           (unsigned long)bird_profile_deep.string_bytes,
+           (unsigned long)bird_profile_deep.catalog_iterations,
+           (unsigned long)bird_profile_deep.glyph_lookups,
+           (unsigned long)bird_profile_deep.glyph_scan_iterations,
+           (unsigned long)bird_profile_deep.rectangle_calls,
+           (unsigned long)bird_profile_deep.clipped_pixels);
+#endif
+
+    /* Crossing row seven changes the current scrolling viewport. */
+    bird_profile_reset();
+    setup_profile_framebuffer(1U);
+    view = VIEW_SYSTEMS;
+    selection = SYSTEM_ROWS - 1U;
+    selected_status = "CATALOG READY FROM FIRMWARE";
+    reset_fake_file(FAKE_FD, 0, 0);
+    BIRD_PROFILE_BEGIN_EVENT();
+    move_selection(1, 1U);
+    BIRD_PROFILE_FINISH_EVENT();
+    ok &= check(selection == SYSTEM_ROWS &&
+                    bird_profile.render[PROFILE_RENDER_VIEWPORT_CHANGE].commits == 1U,
+                "scroll-boundary movement was not classified as viewport change");
+
+    bird_profile_reset();
+    setup_profile_framebuffer(1U);
+    setup_main_view();
+    reset_fake_file(FAKE_FD, 0, 0);
+    action = select_current();
+    ok &= check(action == ACTION_NONE && view == VIEW_PLAY &&
+                    bird_profile.render[PROFILE_RENDER_VIEW_CHANGE].commits == 1U,
+                "view transition did not use the view-change reason");
+
+    bird_profile_reset();
+    setup_profile_framebuffer(1U);
+    setup_main_view();
+    toggle_current_favorite();
+    ok &= check(bird_profile.render[PROFILE_RENDER_STATUS].commits == 1U,
+                "status-only path did not use the status reason");
+
+    bird_profile_reset();
+    setup_profile_framebuffer(1U);
+    setup_main_view();
+    battery_percent = 41;
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_BATTERY);
+    draw_screen();
+    ok &= check(bird_profile.render[PROFILE_RENDER_BATTERY].commits == 1U,
+                "battery render reason was not recorded");
+
+    bird_profile_reset();
+    setup_profile_framebuffer(1U);
+    setup_main_view();
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_FAVORITES_COMPLETION);
+    draw_screen();
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_RECOVERY);
+    draw_screen();
+    ok &= check(
+        bird_profile.render[PROFILE_RENDER_FAVORITES_COMPLETION].commits == 1U &&
+            bird_profile.render[PROFILE_RENDER_RECOVERY].commits == 1U,
+        "Favorites-completion or recovery reason was not recorded");
+
+    /* Production Favorites wiring distinguishes a completed publication from
+     * a deferred retry while preserving today's redraw behavior. */
+    bird_profile_reset();
+    setup_profile_framebuffer(1U);
+    setup_profile_path_anchors();
+    view = VIEW_FAVORITES;
+    selection = 0U;
+    storage_ready = 0;
+    storage_signal_fd = -1;
+    next_storage_probe = 0;
+    favorites_loaded = 0;
+    favorite_count = 0U;
+    next_favorites_retry = (u64)fake_now_ms + 100U;
+    reset_fake_file(FAKE_FD, 0, 0);
+    probe_storage();
+    ok &= check(
+        bird_profile.render[PROFILE_RENDER_STATUS].commits == 1U &&
+            bird_profile.render[PROFILE_RENDER_FAVORITES_COMPLETION].commits == 0U,
+        "deferred Favorites retry was mislabeled as completion");
+
+    bird_profile_reset();
+    setup_profile_framebuffer(1U);
+    setup_profile_path_anchors();
+    view = VIEW_FAVORITES;
+    selection = 0U;
+    storage_ready = 0;
+    storage_signal_fd = -1;
+    next_storage_probe = 0;
+    favorites_loaded = 0;
+    favorite_count = 0U;
+    next_favorites_retry = 0;
+    reset_fake_file(FAKE_FD, 0, 0);
+    probe_storage();
+    ok &= check(favorites_loaded &&
+                    bird_profile.render[
+                        PROFILE_RENDER_FAVORITES_COMPLETION].commits == 1U,
+                "successful Favorites publication lacked its render reason");
+
+    /* An exit without a content selection is explicitly unavailable. */
+    bird_profile_reset();
+    reset_profile_log();
+    setup_profile_framebuffer(1U);
+    setup_main_view();
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_STARTUP_FULL);
+    draw_screen();
+    bird_profile_note_exit_and_emit();
+    ok &= check(profile_log_contains("selection_to_launcher_exit_ns=unavailable"),
+                "non-selection exit serialized a false zero interval");
+
+    /* A direct game launch retains the input-read timestamp through exit. */
+    bird_profile_reset();
+    reset_profile_log();
+    setup_profile_framebuffer(1U);
+    setup_profile_path_anchors();
+    view = VIEW_GAMES;
+    active_system = 0U;
+    selection = 0U;
+    selected_status = "ROM STORAGE READY";
+    storage_ready = 1;
+    pending_launch.kind = PENDING_LAUNCH_NONE;
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_STARTUP_FULL);
+    draw_screen();
+    fake_now_ms = 4000;
+    fake_now_sub_ms_ns = 100L;
+    reset_fake_file(FAKE_FD, 0, 0);
+    event.type = EV_KEY;
+    event.code = BTN_EAST;
+    event.value = 1;
+    BIRD_PROFILE_BEGIN_EVENT();
+    action = handle_event(&event);
+    BIRD_PROFILE_FINISH_EVENT();
+    ok &= check(action == ACTION_LAUNCH && bird_profile.selection_pending &&
+                    bird_profile.resume_before_barrier > 0U,
+                "direct launch lost its selection or content resume commit");
+    fake_now_sub_ms_ns = 900L;
+    bird_profile_note_exit_and_emit();
+    ok &= check(bird_profile.selection_to_exit_ns == 800U &&
+                    !profile_log_contains(
+                        "selection_to_launcher_exit_ns=unavailable"),
+                "direct selection-to-exit interval was not retained");
+    fake_now_sub_ms_ns = 0;
+
+    /* Navigation cancels a queued selection timestamp. */
+    bird_profile_reset();
+    setup_profile_framebuffer(1U);
+    setup_profile_path_anchors();
+    view = VIEW_GAMES;
+    active_system = 0U;
+    selection = 0U;
+    selected_status = "CATALOG READY // ROMS MOUNTING";
+    storage_ready = 0;
+    next_storage_probe = 0;
+    pending_launch.kind = PENDING_LAUNCH_NONE;
+    reset_fake_file(-ENOENT, 0, 0);
+    BIRD_PROFILE_BEGIN_EVENT();
+    action = handle_event(&event);
+    BIRD_PROFILE_FINISH_EVENT();
+    ok &= check(action == ACTION_NONE &&
+                    pending_launch.kind == PENDING_LAUNCH_GAME &&
+                    bird_profile.selection_pending,
+                "queued game selection did not retain its timestamp");
+    move_selection(1, 1U);
+    ok &= check(pending_launch.kind == PENDING_LAUNCH_NONE &&
+                    !bird_profile.selection_pending,
+                "navigation did not cancel the queued selection timestamp");
+
+    /* A queued selection remains attributable when storage later dispatches
+     * the one pending intent. */
+    bird_profile_reset();
+    reset_profile_log();
+    setup_profile_framebuffer(1U);
+    setup_profile_path_anchors();
+    view = VIEW_GAMES;
+    active_system = 0U;
+    selection = 0U;
+    selected_status = "CATALOG READY // ROMS MOUNTING";
+    storage_ready = 0;
+    next_storage_probe = 0;
+    pending_launch.kind = PENDING_LAUNCH_NONE;
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_STARTUP_FULL);
+    draw_screen();
+    fake_now_ms = 5000;
+    reset_fake_file(-ENOENT, 0, 0);
+    BIRD_PROFILE_BEGIN_EVENT();
+    action = handle_event(&event);
+    BIRD_PROFILE_FINISH_EVENT();
+    ok &= check(action == ACTION_NONE &&
+                    pending_launch.kind == PENDING_LAUNCH_GAME &&
+                    bird_profile.selection_pending,
+                "pending dispatch setup lost its selection timestamp");
+    storage_ready = 1;
+    fake_now_ms = 5001;
+    reset_fake_file(FAKE_FD, 0, 0);
+    action = dispatch_pending_launch();
+    ok &= check(action == ACTION_LAUNCH && bird_profile.selection_pending,
+                "queued dispatch did not retain its originating selection");
+    bird_profile_note_exit_and_emit();
+    ok &= check(bird_profile.selection_to_exit_ns == 1000000U &&
+                    !profile_log_contains(
+                        "selection_to_launcher_exit_ns=unavailable"),
+                "queued selection-to-exit interval was unavailable");
+
+    bird_profile_reset();
+    setup_profile_path_anchors();
+    pending_launch.kind = PENDING_LAUNCH_GAME;
+    pending_launch.index = 0U;
+    pending_launch.active_index = 0U;
+    BIRD_PROFILE_MARK_SELECTION();
+    reset_fake_file(-ENOENT, 0, 0);
+    action = dispatch_pending_launch();
+    ok &= check(action == ACTION_NONE && !bird_profile.selection_pending,
+                "failed pending dispatch retained a stale selection interval");
+
+#ifdef BIRD_PROFILE_DEEP
+    bird_profile_reset();
+    (void)catalog_path_supported("/mnt/mmc/a");
+    (void)path_matches("/mnt/mmc/a", 10U, "/mnt/mmc/a");
+    ok &= check(bird_profile_deep.string_bytes > 20U,
+                "deep profiling missed path-validation string scans");
+    clear_favorites();
+    set_favorite(10U, 1);
+    (void)favorite_catalog_index(0U);
+    ok &= check(bird_profile_deep.catalog_iterations > 0U,
+                "deep profiling did not count favorite catalog iterations");
+#endif
+
+    return ok;
+}
+#endif
 
 int main(void) {
     char partial[CATALOG_PATH_MAX_BYTES + 8U];
@@ -203,6 +685,10 @@ int main(void) {
                     update_axis_latch(&axis_x, 0) == 0 &&
                     update_axis_latch(&axis_x, 1) == 1,
                 "first same-axis press after reconnect was not edge-triggered");
+
+#ifdef BIRD_PROFILE
+    ok &= run_profile_tests();
+#endif
 
     if (!ok) return 1;
     puts("launcher runtime C tests: PASS");

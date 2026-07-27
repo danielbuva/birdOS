@@ -59,6 +59,15 @@ fail() {
 	exit 1
 }
 
+LAUNCHER_PROFILE_FLAGS=
+case "${BIRD_LAUNCHER_PROFILE:-none}" in
+	none|0|'') ;;
+	profile|1) LAUNCHER_PROFILE_FLAGS=-DBIRD_PROFILE ;;
+	deep) fail 'BIRD_PROFILE_DEEP is host-test-only' ;;
+	*) fail "unknown BIRD_LAUNCHER_PROFILE mode: $BIRD_LAUNCHER_PROFILE" ;;
+esac
+export BIRD_LAUNCHER_PROFILE
+
 sha256() {
 	BIRD_SHA256_LINE=$(shasum -a 256 "$1") || return 1
 	printf '%s\n' "$BIRD_SHA256_LINE" | awk '{print $1}'
@@ -221,6 +230,7 @@ awk '
 	'-DRECENT_PATH="/storage/.config/bird/recent.txt"' \
 	'-DRECENT_TEMP="/storage/.config/bird/recent.tmp"' \
 	-DPERSIST_UI_STATE \
+	$LAUNCHER_PROFILE_FLAGS \
 	-c "$ROOT/launcher/bird-launcher.c" \
 	-o "$OUTPUT/build/bird-launcher.o"
 "$LLD" -static --gc-sections --build-id=none -z noexecstack -s \

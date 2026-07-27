@@ -36,6 +36,14 @@ fail() {
 	exit 1
 }
 
+LAUNCHER_PROFILE_FLAGS=
+case "${BIRD_LAUNCHER_PROFILE:-none}" in
+	none|0|'') ;;
+	profile|1) LAUNCHER_PROFILE_FLAGS=-DBIRD_PROFILE ;;
+	deep) fail 'BIRD_PROFILE_DEEP is host-test-only' ;;
+	*) fail "unknown BIRD_LAUNCHER_PROFILE mode: $BIRD_LAUNCHER_PROFILE" ;;
+esac
+
 sha256() {
 	BIRD_SHA256_LINE=$(shasum -a 256 "$1") || return 1
 	printf '%s\n' "$BIRD_SHA256_LINE" | awk '{print $1}'
@@ -96,6 +104,7 @@ mkdir -p "$PAYLOAD/opt/bird" "$VERIFY"
 	'-DSTORAGE_READY_SIGNAL="/run/muos/bird-storage-ready"' \
 	-DPERSIST_UI_STATE \
 	-DDEVICE_WAIT_MS=20000UL \
+	$LAUNCHER_PROFILE_FLAGS \
 	-c "$ROOT/launcher/bird-launcher.c" -o "$OBJECT"
 "$LLD" -static --gc-sections --build-id=none -z noexecstack -s \
 	-e _start -o "$LAUNCHER" "$OBJECT"
