@@ -653,8 +653,14 @@ grep -q '^static u64 recover_poll_delay' \
 	"$ROOT/launcher/bird-launcher.c" || fail 'launcher poll backoff missing'
 grep -q '^static void reset_input_latches' \
 	"$ROOT/launcher/bird-launcher.c" || fail 'launcher reconnect latch reset missing'
+grep -q '^static int reconnect_input' \
+	"$ROOT/launcher/bird-launcher.c" || fail 'launcher reconnect helper missing'
 [ "$(grep -c '^[[:space:]]*abandon_input();' \
-	"$ROOT/launcher/bird-launcher.c")" -eq 2 ] || fail 'both launcher input fault paths must abandon state'
+	"$ROOT/launcher/bird-launcher.c")" -eq 1 ] || fail 'launcher reconnect helper must abandon prior input state once'
+grep -Fq 'reconnect_input("poll-descriptor")' \
+	"$ROOT/launcher/bird-launcher.c" || fail 'poll-descriptor reconnect path missing'
+grep -Fq 'reconnect_input("drain-terminal")' \
+	"$ROOT/launcher/bird-launcher.c" || fail 'drain-terminal reconnect path missing'
 grep -q '#define EVENT_SCAN_COUNT 32' \
 	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'complete global input search missing'
 grep -q -- '-DPERSIST_UI_STATE' "$0" || fail 'launcher recovery state missing'
