@@ -289,7 +289,21 @@ remove_owned_token() {
 	rm -f "$OWNER_FILE"
 }
 
+rollback_sway_start() {
+	if ! stop_sway; then
+		printf '%s\n' 'Bird Sway startup rollback unresolved; cleanup retained'
+	fi
+	return 1
+}
+
 start_sway() {
+	# graphical.target normally owns seatd, but an early queued selection can
+	# reach this path while that target is still starting. Join the fixed seat
+	# provider before publishing compositor ownership.
+	if ! systemctl start seatd.service 8>&- 9>&-; then
+		printf '%s\n' 'Bird Sway start failed stage=seatd'
+		return 1
+	fi
 	resource_lock || return 1
 	if ! claim_owner "$SWAY_OWNER"; then
 		resource_unlock
@@ -307,6 +321,8 @@ start_sway() {
 	fi
 	if ! systemctl start sway.service 8>&- 9>&-; then
 		resource_unlock
+		printf '%s\n' 'Bird Sway start failed stage=service'
+		rollback_sway_start
 		return 1
 	fi
 	resource_unlock
@@ -314,6 +330,8 @@ start_sway() {
 		[ -S "$SWAY_SOCKET" ] && return 0
 		usleep 25000
 	done
+	printf '%s\n' 'Bird Sway start failed stage=socket-timeout'
+	rollback_sway_start
 	return 1
 }
 
@@ -472,7 +490,7 @@ sway_stopped_confirmed() {
 	[ ! -S "$SWAY_SOCKET" ] || return 1
 	scope_query_property ActiveState sway.service
 	case "$SCOPE_QUERY_RESULT:$SCOPE_QUERY_VALUE" in
-		not-found:*|present:inactive) return 0 ;;
+		not-found:*|present:inactive|present:failed) return 0 ;;
 		*) return 1 ;;
 	esac
 }
@@ -1434,7 +1452,7 @@ start_cleanup_guard() {
 				[ ! -S "$SWAY_SOCKET" ] || return 1
 				ACTIVE=$(systemctl show --property=ActiveState --value sway.service \
 					8>&- 9>&- 2>/dev/null) || return 1
-				[ "$ACTIVE" = inactive ] && return 0
+				case "$ACTIVE" in inactive|failed) return 0 ;; esac
 				[ -z "$ACTIVE" ] || return 1
 				LOAD=$(systemctl show --property=LoadState --value sway.service \
 					8>&- 9>&- 2>/dev/null) || return 1

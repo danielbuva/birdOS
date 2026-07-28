@@ -709,8 +709,10 @@ grep -q 'for PROPERTY in run pages_to_scan' \
 	"$OUTPUT/card/bird/capture-boot-state.sh" || fail 'KSM diagnostic missing'
 grep -q '^#define LOW_PERCENT 41$' \
 	"$ROOT/launcher/bird-powerstate.c" || fail 'fixed low-battery threshold missing'
-grep -q 'lost writer edge' \
-	"$ROOT/launcher/bird-launcher.c" || fail 'storage recovery probe missing'
+grep -Fq 'if (STORAGE_READY_SIGNAL[0] && !storage_handoff_signaled) return;' \
+	"$ROOT/launcher/bird-launcher.c" || fail 'pre-signal storage gate missing'
+grep -Fq 'storage_probe_attempted = 1;' \
+	"$ROOT/launcher/bird-launcher.c" || fail 'one-shot storage acquisition missing'
 grep -q '^STARTUP_FAILURE_LIMIT=3$' \
 	"$OUTPUT/card/bird/supervisor.sh" || fail 'bounded launcher startup retries missing'
 grep -Fq 'for ((check = 0; check < 1000; check++)); do' \

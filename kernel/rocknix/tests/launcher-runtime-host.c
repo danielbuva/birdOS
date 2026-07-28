@@ -7,6 +7,8 @@
 
 #define BIRD_HOST_TEST 1
 #define PERSIST_UI_STATE 1
+#define STORAGE_ANCHOR_MARKER "/run/muos/bird-storage-anchor-ready"
+#define STORAGE_READY_SIGNAL "/run/muos/bird-storage-ready"
 #include "../../../launcher/bird-launcher.c"
 
 #define FAKE_FD 41
@@ -16,6 +18,13 @@
 static long fake_now_ms;
 static long fake_now_sub_ms_ns;
 static long fake_open_result;
+#define FAKE_OPEN_SCRIPT_MAX 16U
+static long fake_open_script[FAKE_OPEN_SCRIPT_MAX];
+static unsigned fake_open_script_count;
+static unsigned fake_open_script_index;
+#define FAKE_OPEN_PATH_BYTES 128U
+static char fake_open_path[FAKE_OPEN_SCRIPT_MAX][FAKE_OPEN_PATH_BYTES];
+static unsigned fake_open_path_count;
 static unsigned fake_open_calls;
 static unsigned fake_create_calls;
 static unsigned fake_rename_calls;
@@ -37,6 +46,7 @@ _Alignas(8) static u8 fake_framebuffer_reference[
 #define PROFILE_LOG_BYTES 16384U
 static char fake_profile_log[PROFILE_LOG_BYTES];
 static u64 fake_profile_log_bytes;
+static int fake_capture_diagnostics;
 #endif
 
 static int check(int condition, const char *message) {
@@ -52,9 +62,17 @@ long bird_test_syscall6(long number, long a0, long a1, long a2, long a3,
     (void)a4;
     (void)a5;
     if (number == 56) {
+        long result = fake_open_result;
+        if (fake_open_path_count < FAKE_OPEN_SCRIPT_MAX) {
+            snprintf(fake_open_path[fake_open_path_count],
+                     FAKE_OPEN_PATH_BYTES, "%s", (const char *)a1);
+            fake_open_path_count++;
+        }
         if ((int)a2 & O_CREAT) fake_create_calls++;
         fake_open_calls++;
-        return fake_open_result;
+        if (fake_open_script_index < fake_open_script_count)
+            result = fake_open_script[fake_open_script_index++];
+        return result;
     }
     if (number == 57) {
         fake_close_calls++;
@@ -78,7 +96,8 @@ long bird_test_syscall6(long number, long a0, long a1, long a2, long a3,
     }
     if (number == 64) {
 #ifdef BIRD_PROFILE
-        if (bird_profile.emitting && fake_profile_log_bytes < PROFILE_LOG_BYTES) {
+        if ((bird_profile.emitting || fake_capture_diagnostics) &&
+            fake_profile_log_bytes < PROFILE_LOG_BYTES) {
             u64 available = PROFILE_LOG_BYTES - fake_profile_log_bytes;
             u64 bytes = (u64)a2 < available ? (u64)a2 : available;
             memcpy(fake_profile_log + fake_profile_log_bytes, (const void *)a1,
@@ -107,6 +126,9 @@ long bird_test_syscall6(long number, long a0, long a1, long a2, long a3,
 static void reset_fake_file(long open_result, const char *payload,
                             long terminal_read) {
     fake_open_result = open_result;
+    fake_open_script_count = 0;
+    fake_open_script_index = 0;
+    fake_open_path_count = 0;
     fake_open_calls = 0;
     fake_create_calls = 0;
     fake_rename_calls = 0;
@@ -114,6 +136,15 @@ static void reset_fake_file(long open_result, const char *payload,
     fake_payload_bytes = payload ? (u64)strlen(payload) : 0;
     fake_payload_offset = 0;
     fake_terminal_read = terminal_read;
+}
+
+static void set_fake_open_script(const long *results, unsigned count) {
+    unsigned index;
+    if (count > FAKE_OPEN_SCRIPT_MAX) count = FAKE_OPEN_SCRIPT_MAX;
+    for (index = 0; index < count; index++)
+        fake_open_script[index] = results[index];
+    fake_open_script_count = count;
+    fake_open_script_index = 0;
 }
 
 static void reset_favorites(void) {
@@ -138,8 +169,8 @@ static void setup_test_framebuffer(u32 pages, u8 *memory) {
     fb_var.green.offset = 8U;
     fb_var.green.length = 8U;
     fb_var.blue.length = 8U;
-    fb_var.transp.offset = 24U;
-    fb_var.transp.length = 8U;
+    fb_var.transp.offset = 0U;
+    fb_var.transp.length = 0U;
     fb_fix.type = FB_TYPE_PACKED_PIXELS;
     fb_fix.visual = FB_VISUAL_TRUECOLOR;
     fb_fix.xpanstep = 1U;
@@ -165,12 +196,13 @@ static int run_framebuffer_primitive_tests(void) {
 
     setup_test_framebuffer(1U, fake_framebuffer);
     ok &= check(framebuffer_path == FRAMEBUFFER_PATH_RG34XX_XRGB8888 &&
+                    framebuffer_mismatch_mask == 0U &&
                     fb_var.xoffset == 0U && fb_var.yoffset == 0U &&
                     fb_var.yres_virtual == fb_var.yres &&
                     fb_fix.line_length == RG34XX_FB_STRIDE &&
                     fb_fix.smem_len == RG34XX_FB_BYTES,
                 "accepted RG34XX-SP fixed-page framebuffer missed fast path");
-    ok &= check(color(0x12U, 0x34U, 0x56U) == 0xff123456U,
+    ok &= check(color(0x12U, 0x34U, 0x56U) == 0x00123456U,
                 "RG34XX-SP XRGB8888 fast color packing changed");
 
     memset(fake_framebuffer, 0, RG34XX_FB_BYTES);
@@ -184,7 +216,9 @@ static int run_framebuffer_primitive_tests(void) {
                 "fast rectangles differ from checked recovery rendering");
 
     setup_test_framebuffer(2U, fake_framebuffer);
-    ok &= check(framebuffer_path == FRAMEBUFFER_PATH_DIAGNOSTIC,
+    ok &= check(framebuffer_path == FRAMEBUFFER_PATH_DIAGNOSTIC &&
+                    framebuffer_mismatch_mask ==
+                        (FB_MISMATCH_YRES_VIRTUAL | FB_MISMATCH_SMEM_LEN),
                 "multi-page framebuffer entered the fixed-page fast path");
     memset(fake_framebuffer, 0, sizeof(fake_framebuffer));
     expected = color(0x12U, 0x34U, 0x56U);
@@ -210,22 +244,26 @@ static int run_framebuffer_primitive_tests(void) {
     setup_test_framebuffer(1U, fake_framebuffer);
     fb_fix.line_length += 4U;
     configure_framebuffer_path();
-    ok &= check(framebuffer_path == FRAMEBUFFER_PATH_DIAGNOSTIC,
+    ok &= check(framebuffer_path == FRAMEBUFFER_PATH_DIAGNOSTIC &&
+                    framebuffer_mismatch_mask == FB_MISMATCH_STRIDE,
                 "noncanonical stride entered the RG34XX-SP fast path");
     setup_test_framebuffer(1U, fake_framebuffer);
     fb_var.red.offset = 0U;
     configure_framebuffer_path();
-    ok &= check(framebuffer_path == FRAMEBUFFER_PATH_DIAGNOSTIC,
+    ok &= check(framebuffer_path == FRAMEBUFFER_PATH_DIAGNOSTIC &&
+                    framebuffer_mismatch_mask == FB_MISMATCH_RED,
                 "noncanonical channel offsets entered the RG34XX-SP fast path");
     setup_test_framebuffer(1U, fake_framebuffer);
     fb_var.xoffset = 1U;
     configure_framebuffer_path();
-    ok &= check(framebuffer_path == FRAMEBUFFER_PATH_DIAGNOSTIC,
+    ok &= check(framebuffer_path == FRAMEBUFFER_PATH_DIAGNOSTIC &&
+                    framebuffer_mismatch_mask == FB_MISMATCH_XOFFSET,
                 "nonzero page offset entered the RG34XX-SP fast path");
     setup_test_framebuffer(1U, fake_framebuffer);
     fb_fix.smem_len += 4U;
     configure_framebuffer_path();
-    ok &= check(framebuffer_path == FRAMEBUFFER_PATH_DIAGNOSTIC,
+    ok &= check(framebuffer_path == FRAMEBUFFER_PATH_DIAGNOSTIC &&
+                    framebuffer_mismatch_mask == FB_MISMATCH_SMEM_LEN,
                 "noncanonical mapping size entered the RG34XX-SP fast path");
 
     setup_test_framebuffer(1U, fake_framebuffer);
@@ -265,6 +303,566 @@ static int run_framebuffer_primitive_tests(void) {
     return ok;
 }
 
+static void setup_main_view(void) {
+    view = VIEW_MAIN;
+    selection = 0U;
+    active_system = 0U;
+    active_media_category = 0U;
+    media_section = CATALOG_MEDIA_SECTION_LISTEN;
+    selected_status = "DIRECT FRAMEBUFFER READY";
+    battery_percent = -1;
+    charging_state = -1;
+    pending_launch.kind = PENDING_LAUNCH_NONE;
+    pending_render_invalid = 0U;
+}
+
+static void reset_storage_handoff_state(void) {
+    runtime_dir_fd = FAKE_FD;
+    input_dir_fd = FAKE_FD;
+    power_dir_fd = FAKE_FD;
+    storage_dir_fd = -1;
+    config_dir_fd = -1;
+    storage_signal_fd = -1;
+    storage_signal_disabled = 0;
+    storage_handoff_signaled = 0;
+    storage_probe_attempted = 0;
+    storage_ready = 0;
+    favorites_loaded = 1;
+    next_favorites_retry = 0;
+#ifdef BIRD_PROFILE
+    bird_profile_storage_dir_source = PROFILE_STORAGE_SOURCE_NONE;
+    bird_profile_config_dir_source = PROFILE_STORAGE_SOURCE_NONE;
+    bird_profile_storage_live_result = 0;
+    bird_profile_storage_sysroot_result = 0;
+    bird_profile_config_live_result = 0;
+    bird_profile_config_sysroot_result = 0;
+    bird_profile_storage_signal_seen = 0;
+    bird_profile_storage_after_signal_attempt = 0U;
+#endif
+}
+
+static int run_storage_handoff_tests(void) {
+    unsigned opens;
+    unsigned closes;
+    long open_script[4];
+    int ok = 1;
+
+    /* The pending-selection queue covers the whole pre-signal interval. The
+     * early launcher must not open either covered storage mountpoint. */
+    reset_storage_handoff_state();
+    reset_fake_file(FAKE_FD, 0, 0);
+    probe_storage();
+    ok &= check(fake_open_calls == 0 && !storage_probe_attempted &&
+                    !storage_ready,
+                "storage was probed before the handoff signal");
+
+    /* Reproduce the original covered-directory failure defensively: even if
+     * stale descriptors exist, the edge discards them and acquires only the
+     * completed /sysroot tree once. */
+    reset_storage_handoff_state();
+    storage_dir_fd = 70;
+    config_dir_fd = 71;
+    reset_fake_file(FAKE_FD, 0, 0);
+    fake_close_calls = 0;
+    open_script[0] = FAKE_FD;
+    open_script[1] = FAKE_FD;
+    open_script[2] = FAKE_FD;
+    open_script[3] = FAKE_FD;
+    set_fake_open_script(open_script, 4U);
+    receive_storage_handoff_signal();
+    ok &= check(storage_ready && storage_probe_attempted,
+                "post-signal storage acquisition did not become ready");
+    ok &= check(fake_open_calls == 4,
+                "post-signal storage acquisition did not perform four exact opens");
+    ok &= check(fake_close_calls == 4,
+                "post-signal storage acquisition did not close stale and validation descriptors");
+    ok &= check(fake_open_path_count == 4 &&
+                    strcmp(fake_open_path[0],
+                           "/sysroot/storage/bird-data") == 0 &&
+                    strcmp(fake_open_path[1],
+                           "/sysroot/storage/.config/bird") == 0 &&
+                    strcmp(fake_open_path[2], "ROMS") == 0,
+                "early handoff did not acquire the exact post-prepare_sysroot paths");
+    opens = fake_open_calls;
+    closes = fake_close_calls;
+    receive_storage_handoff_signal();
+    probe_storage();
+    ok &= check(fake_open_calls == opens && fake_close_calls == closes,
+                "duplicate storage signal caused a second acquisition");
+
+    /* A broken readiness contract is reported once. It must not turn into a
+     * 50-ms filesystem polling loop or an input-triggered retry. */
+    reset_storage_handoff_state();
+    reset_fake_file(FAKE_FD, 0, 0);
+    fake_close_calls = 0;
+    open_script[0] = -ENOENT;
+    open_script[1] = FAKE_FD;
+    set_fake_open_script(open_script, 2U);
+    receive_storage_handoff_signal();
+    opens = fake_open_calls;
+    closes = fake_close_calls;
+    receive_storage_handoff_signal();
+    probe_storage();
+    ok &= check(!storage_ready && storage_probe_attempted && opens == 2 &&
+                    fake_open_calls == opens && fake_close_calls == closes,
+                "failed storage handoff retried filesystem acquisition");
+
+    return ok;
+}
+
+static u64 framebuffer_hash(void) {
+    u64 value = 1469598103934665603UL;
+    u64 i;
+    for (i = 0; i < RG34XX_FB_BYTES; i++) {
+        value ^= fake_framebuffer[i];
+        value *= 1099511628211UL;
+    }
+    return value;
+}
+
+static void setup_full_render_golden(void) {
+    setup_test_framebuffer(1U, fake_framebuffer);
+    memset(fake_framebuffer, 0x5a, RG34XX_FB_BYTES);
+    clear_favorites();
+    favorites_loaded = 0;
+    favorite_count = 0U;
+    active_system = 0U;
+    active_media_category = 0U;
+    media_section = CATALOG_MEDIA_SECTION_LISTEN;
+    selection = 0U;
+    battery_percent = -1;
+    charging_state = -1;
+    pending_launch.kind = PENDING_LAUNCH_NONE;
+    pending_render_invalid = 0U;
+}
+
+static int check_full_render_golden(u64 expected, const char *message) {
+    draw_screen();
+    return check(framebuffer_hash() == expected, message);
+}
+
+static int run_full_render_golden_tests(void) {
+    int ok = 1;
+
+    /* These hashes retain the accepted Phase 2 visual output with the
+     * hardware-measured XRGB8888 unused byte stored as zero. They keep later
+     * helpers from changing pixels while dirty-vs-full tests cover coherence. */
+    setup_full_render_golden();
+    view = VIEW_MAIN;
+    selected_status = "DIRECT FRAMEBUFFER READY";
+    ok &= check_full_render_golden(0x9a021a90fe889095UL,
+                                   "Phase 2 main-view pixels changed");
+
+    setup_full_render_golden();
+    view = VIEW_PLAY;
+    selected_status = "PLAY LIBRARY READY";
+    ok &= check_full_render_golden(0x29b212de1134226dUL,
+                                   "Phase 2 Play-view pixels changed");
+
+    setup_full_render_golden();
+    view = VIEW_SYSTEMS;
+    selected_status = "CATALOG READY FROM FIRMWARE";
+    ok &= check_full_render_golden(0x1564013b9270897bUL,
+                                   "Phase 2 Systems pixels changed");
+
+    setup_full_render_golden();
+    view = VIEW_SYSTEMS;
+    selection = SYSTEM_ROWS;
+    selected_status = "DIRECT EVDEV INPUT READY";
+    ok &= check_full_render_golden(0x4af17f03e0947cf3UL,
+                                   "Phase 2 scrolled Systems pixels changed");
+
+    setup_full_render_golden();
+    view = VIEW_GAMES;
+    set_favorite(0U, 1);
+    favorite_count = 1U;
+    favorites_loaded = 1;
+    selected_status = "ROM STORAGE READY";
+    ok &= check_full_render_golden(0xaa329c19dfcf2353UL,
+                                   "Phase 2 Games pixels changed");
+
+    setup_full_render_golden();
+    view = VIEW_FAVORITES;
+    selected_status = "FAVORITES LOAD WITH STORAGE";
+    ok &= check_full_render_golden(0xe47cbe6ea1804441UL,
+                                   "Phase 2 loading-Favorites pixels changed");
+
+    setup_full_render_golden();
+    view = VIEW_FAVORITES;
+    set_favorite(0U, 1);
+    set_favorite(1U, 1);
+    favorite_count = 2U;
+    favorites_loaded = 1;
+    selected_status = "FAVORITES READY";
+    ok &= check_full_render_golden(0xe6d5ee471721ff03UL,
+                                   "Phase 2 Favorites pixels changed");
+
+    setup_full_render_golden();
+    view = VIEW_MEDIA_CATEGORIES;
+    selected_status = "AUDIO CATALOG READY FROM FIRMWARE";
+    ok &= check_full_render_golden(0x061f22c74ba05003UL,
+                                   "Phase 2 media-category pixels changed");
+
+    setup_full_render_golden();
+    view = VIEW_MEDIA_CATEGORIES;
+    media_section = CATALOG_MEDIA_SECTION_READ;
+    selected_status = "READING LIBRARY READY FROM FIRMWARE";
+    ok &= check_full_render_golden(0xd2a698a8eeebfa91UL,
+                                   "Phase 2 empty-media pixels changed");
+
+    setup_full_render_golden();
+    view = VIEW_MEDIA_ENTRIES;
+    selected_status = "MEDIA STORAGE READY";
+    ok &= check_full_render_golden(0x1f1e262089fe38cbUL,
+                                   "Phase 2 media-entry pixels changed");
+
+    setup_full_render_golden();
+    view = VIEW_MAIN;
+    battery_percent = 100;
+    charging_state = 1;
+    selected_status = "DIRECT FRAMEBUFFER READY";
+    ok &= check_full_render_golden(0x3babda9a0be291bdUL,
+                                   "Phase 2 charging pixels changed");
+
+    return ok;
+}
+
+static int dirty_framebuffer_matches_full(u32 pages, const char *message) {
+    u64 bytes = (u64)RG34XX_FB_BYTES * pages;
+    setup_test_framebuffer(pages, fake_framebuffer_reference);
+    memset(fake_framebuffer_reference, 0xa5, (size_t)bytes);
+    draw_screen();
+    return check(memcmp(fake_framebuffer, fake_framebuffer_reference,
+                        (size_t)bytes) == 0,
+                 message);
+}
+
+static int run_dirty_region_render_tests(void) {
+    u8 published_favorites[(CATALOG_ENTRY_COUNT + 7U) / 8U];
+    u32 old_first;
+    u32 old_selection;
+    int action;
+    int ok = 1;
+
+    ok &= check(viewport_first(VIEW_SYSTEMS, SYSTEM_ROWS - 1U) == 0U &&
+                    viewport_first(VIEW_SYSTEMS, SYSTEM_ROWS) == 1U &&
+                    viewport_first(VIEW_MAIN, 3U) == 0U,
+                "accepted one-row viewport policy changed");
+
+    /* Ordinary fixed-page movement changes only the old row, new row, and
+     * status line, but must produce the exact same final pixels as a full
+     * render of the new state. */
+    setup_test_framebuffer(1U, fake_framebuffer);
+    memset(fake_framebuffer, 0x5a, RG34XX_FB_BYTES);
+    setup_main_view();
+    draw_screen();
+    old_selection = selection;
+    old_first = viewport_first(view, selection);
+    selection = 1U;
+    selected_status = "DIRECT EVDEV INPUT READY";
+    draw_selection_update(old_selection, old_first);
+    ok &= dirty_framebuffer_matches_full(
+        1U, "main-menu dirty movement differs from a full render");
+
+    setup_test_framebuffer(1U, fake_framebuffer);
+    memset(fake_framebuffer, 0x5a, RG34XX_FB_BYTES);
+    setup_main_view();
+    view = VIEW_PLAY;
+    selected_status = "PLAY LIBRARY READY";
+    draw_screen();
+    old_selection = selection;
+    old_first = viewport_first(view, selection);
+    selection = 1U;
+    selected_status = "DIRECT EVDEV INPUT READY";
+    draw_selection_update(old_selection, old_first);
+    ok &= dirty_framebuffer_matches_full(
+        1U, "Play-menu dirty movement differs from a full render");
+
+    /* A list movement inside the current viewport also repaints exactly two
+     * rows without changing the accepted viewport origin. */
+    setup_test_framebuffer(1U, fake_framebuffer);
+    memset(fake_framebuffer, 0x5a, RG34XX_FB_BYTES);
+    view = VIEW_SYSTEMS;
+    selection = 0U;
+    selected_status = "CATALOG READY FROM FIRMWARE";
+    battery_percent = -1;
+    charging_state = -1;
+    draw_screen();
+    old_selection = selection;
+    old_first = viewport_first(view, selection);
+    selection = 1U;
+    selected_status = "DIRECT EVDEV INPUT READY";
+    draw_selection_update(old_selection, old_first);
+    ok &= dirty_framebuffer_matches_full(
+        1U, "list-row dirty movement differs from a full render");
+
+    /* Crossing row seven retains today's one-row scrolling and repaints the
+     * bounded content band rather than the header/footer or whole screen. */
+    setup_test_framebuffer(1U, fake_framebuffer);
+    memset(fake_framebuffer, 0x5a, RG34XX_FB_BYTES);
+    view = VIEW_SYSTEMS;
+    selection = SYSTEM_ROWS - 1U;
+    selected_status = "CATALOG READY FROM FIRMWARE";
+    draw_screen();
+    old_selection = selection;
+    old_first = viewport_first(view, selection);
+    selection = SYSTEM_ROWS;
+    selected_status = "DIRECT EVDEV INPUT READY";
+    draw_selection_update(old_selection, old_first);
+    ok &= dirty_framebuffer_matches_full(
+        1U, "viewport-band dirty render differs from a full render");
+
+    setup_test_framebuffer(1U, fake_framebuffer);
+    memset(fake_framebuffer, 0x5a, RG34XX_FB_BYTES);
+    view = VIEW_SYSTEMS;
+    selection = CATALOG_SYSTEM_COUNT - 1U;
+    selected_status = "CATALOG READY FROM FIRMWARE";
+    draw_screen();
+    old_selection = selection;
+    old_first = viewport_first(view, selection);
+    selection = 0U;
+    selected_status = "DIRECT EVDEV INPUT READY";
+    draw_selection_update(old_selection, old_first);
+    ok &= dirty_framebuffer_matches_full(
+        1U, "wrapped viewport dirty render differs from a full render");
+
+    setup_test_framebuffer(1U, fake_framebuffer);
+    memset(fake_framebuffer, 0x5a, RG34XX_FB_BYTES);
+    view = VIEW_MEDIA_CATEGORIES;
+    media_section = CATALOG_MEDIA_SECTION_LISTEN;
+    selection = 0U;
+    selected_status = "AUDIO CATALOG READY FROM FIRMWARE";
+    battery_percent = -1;
+    charging_state = -1;
+    draw_screen();
+    old_selection = selection;
+    old_first = viewport_first(view, selection);
+    selected_status = "DIRECT EVDEV INPUT READY";
+    draw_selection_update(old_selection, old_first);
+    ok &= dirty_framebuffer_matches_full(
+        1U, "one-item media wrap differs from a full render");
+
+    setup_test_framebuffer(1U, fake_framebuffer);
+    memset(fake_framebuffer, 0x5a, RG34XX_FB_BYTES);
+    setup_main_view();
+    battery_percent = 100;
+    charging_state = 1;
+    draw_screen();
+    battery_percent = 9;
+    charging_state = 0;
+    draw_battery_update();
+    ok &= dirty_framebuffer_matches_full(
+        1U, "battery dirty render differs from a full render");
+
+    setup_test_framebuffer(1U, fake_framebuffer);
+    memset(fake_framebuffer, 0x5a, RG34XX_FB_BYTES);
+    setup_main_view();
+    draw_screen();
+    selected_status = "WAITING FOR FAVORITES STORAGE";
+    draw_status_update();
+    ok &= dirty_framebuffer_matches_full(
+        1U, "status dirty render differs from a full render");
+
+    setup_test_framebuffer(1U, fake_framebuffer);
+    memset(fake_framebuffer, 0x5a, RG34XX_FB_BYTES);
+    clear_favorites();
+    view = VIEW_FAVORITES;
+    selection = 0U;
+    selected_status = "FAVORITES LOAD WITH STORAGE";
+    favorites_loaded = 0;
+    battery_percent = -1;
+    charging_state = -1;
+    draw_screen();
+    favorites_loaded = 1;
+    draw_content_and_status_update();
+    ok &= dirty_framebuffer_matches_full(
+        1U, "Favorites completion dirty render differs from a full render");
+
+    setup_test_framebuffer(1U, fake_framebuffer);
+    memset(fake_framebuffer, 0x5a, RG34XX_FB_BYTES);
+    clear_favorites();
+    set_favorite(0U, 1);
+    favorite_count = 1U;
+    favorites_loaded = 1;
+    view = VIEW_GAMES;
+    active_system = 0U;
+    selection = 0U;
+    selected_status = "ROM STORAGE READY";
+    draw_screen();
+    old_selection = selection;
+    old_first = viewport_first(view, selection);
+    selection = 1U;
+    selected_status = "DIRECT EVDEV INPUT READY";
+    draw_selection_update(old_selection, old_first);
+    ok &= dirty_framebuffer_matches_full(
+        1U, "game-row dirty movement differs from a full render");
+
+    setup_test_framebuffer(1U, fake_framebuffer);
+    memset(fake_framebuffer, 0x5a, RG34XX_FB_BYTES);
+    clear_favorites();
+    set_favorite(0U, 1);
+    set_favorite(1U, 1);
+    favorite_count = 2U;
+    favorites_loaded = 1;
+    view = VIEW_FAVORITES;
+    selection = 0U;
+    selected_status = "FAVORITES READY";
+    draw_screen();
+    old_selection = selection;
+    old_first = viewport_first(view, selection);
+    selection = 1U;
+    selected_status = "DIRECT EVDEV INPUT READY";
+    draw_selection_update(old_selection, old_first);
+    ok &= dirty_framebuffer_matches_full(
+        1U, "Favorites-row dirty movement differs from a full render");
+
+    setup_test_framebuffer(1U, fake_framebuffer);
+    memset(fake_framebuffer, 0x5a, RG34XX_FB_BYTES);
+    clear_favorites();
+    favorite_count = 0U;
+    favorites_loaded = 1;
+    storage_ready = 1;
+    view = VIEW_GAMES;
+    active_system = 0U;
+    selection = 0U;
+    selected_status = "ROM STORAGE READY";
+    draw_screen();
+    reset_fake_file(FAKE_FD, 0, 0);
+    toggle_current_favorite();
+    ok &= check(is_favorite(0U) && favorite_count == 1U,
+                "successful game favorite add did not publish state");
+    ok &= dirty_framebuffer_matches_full(
+        1U, "successful game favorite dirty render differs from full");
+
+    setup_test_framebuffer(1U, fake_framebuffer);
+    memset(fake_framebuffer, 0x5a, RG34XX_FB_BYTES);
+    clear_favorites();
+    set_favorite(0U, 1);
+    set_favorite(1U, 1);
+    favorite_count = 2U;
+    favorites_loaded = 1;
+    storage_ready = 1;
+    view = VIEW_FAVORITES;
+    selection = 0U;
+    selected_status = "FAVORITES READY";
+    draw_screen();
+    reset_fake_file(FAKE_FD, 0, 0);
+    toggle_current_favorite();
+    ok &= check(!is_favorite(0U) && is_favorite(1U) &&
+                    favorite_count == 1U && selection == 0U,
+                "successful Favorites removal did not publish state");
+    ok &= dirty_framebuffer_matches_full(
+        1U, "successful Favorites removal dirty render differs from full");
+
+    setup_test_framebuffer(1U, fake_framebuffer);
+    memset(fake_framebuffer, 0x5a, RG34XX_FB_BYTES);
+    view = VIEW_MEDIA_ENTRIES;
+    active_media_category = 0U;
+    media_section = CATALOG_MEDIA_SECTION_LISTEN;
+    selection = 0U;
+    selected_status = "MEDIA STORAGE READY";
+    draw_screen();
+    old_selection = selection;
+    old_first = viewport_first(view, selection);
+    selection = 1U;
+    selected_status = "DIRECT EVDEV INPUT READY";
+    draw_selection_update(old_selection, old_first);
+    ok &= dirty_framebuffer_matches_full(
+        1U, "media-row dirty movement differs from a full render");
+
+    /* Favorites may publish while Games is visible without an immediate
+     * background redraw. The next partial commit must absorb the pending
+     * content invalidation, including stars on rows it did not otherwise
+     * touch. */
+    setup_test_framebuffer(1U, fake_framebuffer);
+    memset(fake_framebuffer, 0x5a, RG34XX_FB_BYTES);
+    memset(published_favorites, 0, sizeof(published_favorites));
+    published_favorites[2U >> 3] |= (u8)(1U << (2U & 7U));
+    clear_favorites();
+    favorites_loaded = 0;
+    view = VIEW_GAMES;
+    active_system = 0U;
+    selection = 0U;
+    selected_status = "CATALOG READY // ROMS MOUNTING";
+    battery_percent = 9;
+    charging_state = 0;
+    draw_screen();
+    finish_favorites_load(published_favorites, 1U, "host-test");
+    ok &= check(pending_render_invalid & RENDER_INVALID_CONTENT,
+                "Games did not retain async Favorites content invalidation");
+    old_selection = selection;
+    old_first = viewport_first(view, selection);
+    selection = 1U;
+    selected_status = "DIRECT EVDEV INPUT READY";
+    draw_selection_update(old_selection, old_first);
+    ok &= check(pending_render_invalid == 0U,
+                "selection commit did not consume content invalidation");
+    ok &= dirty_framebuffer_matches_full(
+        1U, "selection commit left an untouched async favorite star stale");
+
+    setup_test_framebuffer(1U, fake_framebuffer);
+    memset(fake_framebuffer, 0x5a, RG34XX_FB_BYTES);
+    clear_favorites();
+    favorites_loaded = 0;
+    view = VIEW_GAMES;
+    active_system = 0U;
+    selection = 0U;
+    selected_status = "CATALOG READY // ROMS MOUNTING";
+    battery_percent = 9;
+    charging_state = 0;
+    draw_screen();
+    finish_favorites_load(published_favorites, 1U, "host-test");
+    battery_percent = 100;
+    charging_state = 1;
+    draw_battery_update();
+    ok &= dirty_framebuffer_matches_full(
+        1U, "battery commit left async favorite stars stale");
+
+    /* A failed automatic pending launch changes status without an immediate
+     * render. A later battery-only event must consume that invalidation. */
+    setup_test_framebuffer(1U, fake_framebuffer);
+    memset(fake_framebuffer, 0x5a, RG34XX_FB_BYTES);
+    clear_favorites();
+    favorites_loaded = 1;
+    view = VIEW_GAMES;
+    active_system = 0U;
+    selection = 0U;
+    selected_status = "GAME QUEUED // STORAGE MOUNTING";
+    battery_percent = 9;
+    charging_state = 0;
+    storage_ready = 1;
+    pending_launch.kind = PENDING_LAUNCH_GAME;
+    pending_launch.index = 0U;
+    pending_launch.active_index = 0U;
+    draw_screen();
+    reset_fake_file(-ENOENT, 0, 0);
+    action = dispatch_pending_launch();
+    ok &= check(action == ACTION_NONE &&
+                    (pending_render_invalid & RENDER_INVALID_STATUS),
+                "failed pending dispatch did not retain status invalidation");
+    battery_percent = 100;
+    charging_state = 1;
+    draw_battery_update();
+    ok &= dirty_framebuffer_matches_full(
+        1U, "battery commit left failed-dispatch status stale");
+
+    /* The diagnostic/recovery renderer intentionally writes both exposed
+     * pages. Dirty updates must retain that page-selection behavior. */
+    setup_test_framebuffer(2U, fake_framebuffer);
+    memset(fake_framebuffer, 0x5a, sizeof(fake_framebuffer));
+    setup_main_view();
+    draw_screen();
+    old_selection = selection;
+    old_first = viewport_first(view, selection);
+    selection = 1U;
+    selected_status = "DIRECT EVDEV INPUT READY";
+    draw_selection_update(old_selection, old_first);
+    ok &= dirty_framebuffer_matches_full(
+        2U, "two-page diagnostic dirty render differs from a full render");
+
+    return ok;
+}
+
 #ifdef BIRD_PROFILE
 static void reset_profile_log(void) {
     fake_profile_log_bytes = 0;
@@ -286,24 +884,16 @@ static u64 profile_syscall_category_sum(void) {
     return total;
 }
 
-static void setup_main_view(void) {
-    view = VIEW_MAIN;
-    selection = 0U;
-    active_system = 0U;
-    active_media_category = 0U;
-    media_section = CATALOG_MEDIA_SECTION_LISTEN;
-    selected_status = "DIRECT FRAMEBUFFER READY";
-    battery_percent = -1;
-    charging_state = -1;
-    pending_launch.kind = PENDING_LAUNCH_NONE;
-}
-
 static void setup_profile_path_anchors(void) {
     runtime_dir_fd = FAKE_FD;
     input_dir_fd = FAKE_FD;
     power_dir_fd = FAKE_FD;
     storage_dir_fd = FAKE_FD;
     config_dir_fd = FAKE_FD;
+}
+
+static void reset_profile_storage_diagnostics(void) {
+    reset_storage_handoff_state();
 }
 
 static int run_profile_tests(void) {
@@ -313,8 +903,111 @@ static int run_profile_tests(void) {
     u64 before_diagnostics;
     u64 prior_input_samples;
     u64 maximum_physical;
+    u64 first_storage_report_bytes;
+    long open_script[4];
+    u32 old_first;
+    u32 old_selection;
     int action;
     int ok = 1;
+
+    /* Profile mode reports the one deterministic post-signal attempt without
+     * adding a retry or altering its readiness result. */
+    bird_profile_reset();
+    reset_profile_log();
+    reset_profile_storage_diagnostics();
+    fake_now_ms = 6000;
+    reset_fake_file(FAKE_FD, 0, 0);
+    open_script[0] = -ENOENT;
+    open_script[1] = FAKE_FD;
+    set_fake_open_script(open_script, 2U);
+    fake_capture_diagnostics = 1;
+    receive_storage_handoff_signal();
+    fake_capture_diagnostics = 0;
+    ok &= check(profile_log_contains(
+                    "storage_probe result=failed boot_ms=6000 "
+                    "post_signal_attempt=1 stage=storage-dir errno=2") &&
+                    profile_log_contains(
+                        "storage_source=unavailable config_source=sysroot "
+                        "live_errno=0 sysroot_errno=2"),
+                "first post-signal storage-directory failure lacked errno diagnostics");
+    first_storage_report_bytes = fake_profile_log_bytes;
+    fake_capture_diagnostics = 1;
+    receive_storage_handoff_signal();
+    probe_storage();
+    fake_capture_diagnostics = 0;
+    ok &= check(fake_profile_log_bytes == first_storage_report_bytes,
+                "failed storage contract emitted a retry diagnostic");
+
+    reset_profile_log();
+    reset_profile_storage_diagnostics();
+    fake_now_ms = 7000;
+    reset_fake_file(FAKE_FD, 0, 0);
+    open_script[0] = FAKE_FD;
+    open_script[1] = -EIO_LINUX;
+    set_fake_open_script(open_script, 2U);
+    fake_capture_diagnostics = 1;
+    receive_storage_handoff_signal();
+    fake_capture_diagnostics = 0;
+    ok &= check(profile_log_contains(
+                    "post_signal_attempt=1 stage=config-dir errno=5") &&
+                    profile_log_contains(
+                        "storage_source=sysroot config_source=unavailable "
+                        "live_errno=0 sysroot_errno=5"),
+                "post-signal configuration-directory failure was misclassified");
+
+    reset_profile_log();
+    reset_profile_storage_diagnostics();
+    fake_now_ms = 8000;
+    reset_fake_file(FAKE_FD, 0, 0);
+    open_script[0] = FAKE_FD;
+    open_script[1] = FAKE_FD;
+    open_script[2] = -EIO_LINUX;
+    set_fake_open_script(open_script, 3U);
+    fake_capture_diagnostics = 1;
+    receive_storage_handoff_signal();
+    fake_capture_diagnostics = 0;
+    ok &= check(profile_log_contains(
+                    "post_signal_attempt=1 stage=rom-root errno=5") &&
+                    profile_log_contains(
+                        "storage_source=sysroot config_source=sysroot"),
+                "post-signal ROM-root failure was misclassified");
+
+    reset_profile_log();
+    reset_profile_storage_diagnostics();
+    fake_now_ms = 9000;
+    reset_fake_file(FAKE_FD, 0, 0);
+    open_script[0] = FAKE_FD;
+    open_script[1] = FAKE_FD;
+    open_script[2] = FAKE_FD;
+    open_script[3] = -EIO_LINUX;
+    set_fake_open_script(open_script, 4U);
+    fake_capture_diagnostics = 1;
+    receive_storage_handoff_signal();
+    fake_capture_diagnostics = 0;
+    ok &= check(profile_log_contains(
+                    "post_signal_attempt=1 stage=marker errno=5") &&
+                    profile_log_contains(
+                        "storage_source=sysroot config_source=sysroot"),
+                "marker failure lacked acquired anchor sources and errno");
+
+    reset_profile_log();
+    reset_profile_storage_diagnostics();
+    fake_now_ms = 10000;
+    reset_fake_file(FAKE_FD, 0, 0);
+    open_script[0] = FAKE_FD;
+    open_script[1] = FAKE_FD;
+    open_script[2] = FAKE_FD;
+    open_script[3] = FAKE_FD;
+    set_fake_open_script(open_script, 4U);
+    fake_capture_diagnostics = 1;
+    receive_storage_handoff_signal();
+    fake_capture_diagnostics = 0;
+    ok &= check(storage_ready && profile_log_contains(
+                    "storage_probe result=ready boot_ms=10000 "
+                    "after_signal=1 post_signal_attempt=1 "
+                    "storage_source=sysroot config_source=sysroot"),
+                "successful first post-signal probe lacked source diagnostics");
+    reset_profile_storage_diagnostics();
 
     /* Serialization is forbidden until an interactive framebuffer barrier.
      * Sampling and serialization are profiler overhead, not launcher work. */
@@ -342,12 +1035,23 @@ static int run_profile_tests(void) {
     before_syscalls = bird_profile.syscalls;
     before_diagnostics = bird_profile.diagnostic_writes;
     bird_profile_emit_startup();
-    ok &= check(fake_profile_log_bytes > 0 && bird_profile.output_records == 1,
+    ok &= check(fake_profile_log_bytes > 0 && bird_profile.output_records >= 2,
                 "profile output did not become available after the barrier");
     ok &= check(profile_log_contains(
                     "input_open_to_interactive_barrier_ns="
                     "unavailable:barrier-before-input"),
                 "reversed startup milestone order was reported as a duration");
+    ok &= check(profile_log_contains(
+                    "framebuffer_format path=diagnostic-fallback ") &&
+                    profile_log_contains(
+                        "red=16:8:0 green=8:8:0 blue=0:8:0 transp=0:0:0") &&
+                    profile_log_contains(
+                        "pansteps=1:1:0 stride=2880 smem_len=2764800 ") &&
+                    profile_log_contains(
+                        "virtual_pages=2 mapped_pages=2 mapped_remainder=0 ") &&
+                    profile_log_contains(
+                        "renderer_page_policy=diagnostic-recovery"),
+                "startup profile omitted exact framebuffer format or page behavior");
     ok &= check(bird_profile.syscalls == before_syscalls &&
                     bird_profile.diagnostic_writes == before_diagnostics,
                 "profile serialization changed workload counters");
@@ -423,6 +1127,11 @@ static int run_profile_tests(void) {
     ok &= check(action == ACTION_NONE && selection == 1U &&
                     render->commits == 1U,
                 "D-pad event did not produce one selection render");
+    ok &= check(render->logical_pixels < 100000U &&
+                    render->visible_bytes < 400000U &&
+                    render->pages_written == 1U &&
+                    render->physical_bytes == render->visible_bytes,
+                "fixed-page movement exceeded its dirty-region byte bounds");
     ok &= check(bird_profile.input_to_barrier_samples == 1U &&
                     bird_profile.event_pre_barrier_filesystem_ops > 0U &&
                     bird_profile.event_pre_barrier_diagnostic_writes > 0U &&
@@ -519,9 +1228,49 @@ static int run_profile_tests(void) {
     BIRD_PROFILE_BEGIN_EVENT();
     move_selection(1, 1U);
     BIRD_PROFILE_FINISH_EVENT();
+    render = &bird_profile.render[PROFILE_RENDER_VIEWPORT_CHANGE];
     ok &= check(selection == SYSTEM_ROWS &&
-                    bird_profile.render[PROFILE_RENDER_VIEWPORT_CHANGE].commits == 1U,
+                    render->commits == 1U &&
+                    render->logical_pixels < 350000U &&
+                    render->physical_bytes < 1400000U &&
+                    render->pages_written == 1U,
                 "scroll-boundary movement was not classified as viewport change");
+    printf("launcher profile benchmark scenario=viewport-change "
+           "logical_pixels=%lu visible_bytes=%lu pages=%lu physical_bytes=%lu\n",
+           (unsigned long)render->logical_pixels,
+           (unsigned long)render->visible_bytes,
+           (unsigned long)render->pages_written,
+           (unsigned long)render->physical_bytes);
+
+    bird_profile_reset();
+    setup_test_framebuffer(2U, fake_framebuffer);
+    setup_main_view();
+    old_selection = selection;
+    old_first = viewport_first(view, selection);
+    selection = 1U;
+    selected_status = "DIRECT EVDEV INPUT READY";
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_SELECTION_MOVEMENT);
+    draw_selection_update(old_selection, old_first);
+    render = &bird_profile.render[PROFILE_RENDER_SELECTION_MOVEMENT];
+    ok &= check(render->commits == 1U && render->pages_written == 2U &&
+                    render->visible_bytes < render->physical_bytes &&
+                    render->physical_bytes == render->visible_bytes * 2U,
+                "diagnostic dirty movement lost two-page accounting");
+#ifdef BIRD_PROFILE_DEEP
+    ok &= check(bird_profile_deep.fast_rectangle_calls == 0U &&
+                    bird_profile_deep.fallback_rectangle_calls > 0U &&
+                    bird_profile_deep.fallback_pixel_checks > 0U &&
+                    bird_profile_deep.fallback_pixel_stores > 0U &&
+                    bird_profile_deep.fallback_byte_stores ==
+                        render->physical_bytes,
+                "diagnostic dirty movement bypassed checked fallback stores");
+#endif
+    printf("launcher profile benchmark scenario=movement-diagnostic "
+           "logical_pixels=%lu visible_bytes=%lu pages=%lu physical_bytes=%lu\n",
+           (unsigned long)render->logical_pixels,
+           (unsigned long)render->visible_bytes,
+           (unsigned long)render->pages_written,
+           (unsigned long)render->physical_bytes);
 
     bird_profile_reset();
     setup_test_framebuffer(1U, fake_framebuffer);
@@ -536,23 +1285,73 @@ static int run_profile_tests(void) {
     setup_test_framebuffer(1U, fake_framebuffer);
     setup_main_view();
     toggle_current_favorite();
-    ok &= check(bird_profile.render[PROFILE_RENDER_STATUS].commits == 1U,
+    render = &bird_profile.render[PROFILE_RENDER_STATUS];
+    ok &= check(render->commits == 1U &&
+                    render->physical_bytes < 100000U,
                 "status-only path did not use the status reason");
 
     bird_profile_reset();
     setup_test_framebuffer(1U, fake_framebuffer);
-    setup_main_view();
-    battery_percent = 41;
-    BIRD_PROFILE_RENDER(PROFILE_RENDER_BATTERY);
-    draw_screen();
-    ok &= check(bird_profile.render[PROFILE_RENDER_BATTERY].commits == 1U,
-                "battery render reason was not recorded");
+    clear_favorites();
+    favorites_loaded = 1;
+    storage_ready = 1;
+    view = VIEW_GAMES;
+    active_system = 0U;
+    selection = 0U;
+    selected_status = "ROM STORAGE READY";
+    reset_fake_file(FAKE_FD, 0, 0);
+    toggle_current_favorite();
+    render = &bird_profile.render[PROFILE_RENDER_STATUS];
+    ok &= check(is_favorite(0U) && render->commits == 1U &&
+                    render->physical_bytes < 300000U &&
+                    render->pages_written == 1U,
+                "successful favorite update missed its bounded status render");
+    printf("launcher profile benchmark scenario=favorite-toggle "
+           "logical_pixels=%lu visible_bytes=%lu pages=%lu physical_bytes=%lu\n",
+           (unsigned long)render->logical_pixels,
+           (unsigned long)render->visible_bytes,
+           (unsigned long)render->pages_written,
+           (unsigned long)render->physical_bytes);
 
     bird_profile_reset();
     setup_test_framebuffer(1U, fake_framebuffer);
     setup_main_view();
-    BIRD_PROFILE_RENDER(PROFILE_RENDER_FAVORITES_COMPLETION);
+    battery_percent = 9;
+    charging_state = 0;
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_STARTUP_FULL);
     draw_screen();
+    bird_profile_reset();
+    battery_percent = 100;
+    charging_state = 1;
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_BATTERY);
+    draw_battery_update();
+    render = &bird_profile.render[PROFILE_RENDER_BATTERY];
+    ok &= check(render->commits == 1U &&
+                    render->logical_pixels < 5000U &&
+                    render->physical_bytes < 20000U &&
+                    render->pages_written == 1U,
+                "battery render reason was not recorded");
+    printf("launcher profile benchmark scenario=battery "
+           "logical_pixels=%lu visible_bytes=%lu pages=%lu physical_bytes=%lu\n",
+           (unsigned long)render->logical_pixels,
+           (unsigned long)render->visible_bytes,
+           (unsigned long)render->pages_written,
+           (unsigned long)render->physical_bytes);
+
+    bird_profile_reset();
+    setup_test_framebuffer(1U, fake_framebuffer);
+    clear_favorites();
+    view = VIEW_FAVORITES;
+    selection = 0U;
+    favorites_loaded = 1;
+    selected_status = "FAVORITES READY";
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_FAVORITES_COMPLETION);
+    draw_content_and_status_update();
+    render = &bird_profile.render[PROFILE_RENDER_FAVORITES_COMPLETION];
+    ok &= check(render->commits == 1U &&
+                    render->physical_bytes < RG34XX_FB_BYTES &&
+                    render->pages_written == 1U,
+                "Favorites-completion dirty render exceeded one full page");
     BIRD_PROFILE_RENDER(PROFILE_RENDER_RECOVERY);
     draw_screen();
     ok &= check(
@@ -564,17 +1363,14 @@ static int run_profile_tests(void) {
      * a deferred retry while preserving today's redraw behavior. */
     bird_profile_reset();
     setup_test_framebuffer(1U, fake_framebuffer);
-    setup_profile_path_anchors();
+    reset_storage_handoff_state();
     view = VIEW_FAVORITES;
     selection = 0U;
-    storage_ready = 0;
-    storage_signal_fd = -1;
-    next_storage_probe = 0;
     favorites_loaded = 0;
     favorite_count = 0U;
     next_favorites_retry = (u64)fake_now_ms + 100U;
     reset_fake_file(FAKE_FD, 0, 0);
-    probe_storage();
+    receive_storage_handoff_signal();
     ok &= check(
         bird_profile.render[PROFILE_RENDER_STATUS].commits == 1U &&
             bird_profile.render[PROFILE_RENDER_FAVORITES_COMPLETION].commits == 0U,
@@ -582,17 +1378,14 @@ static int run_profile_tests(void) {
 
     bird_profile_reset();
     setup_test_framebuffer(1U, fake_framebuffer);
-    setup_profile_path_anchors();
+    reset_storage_handoff_state();
     view = VIEW_FAVORITES;
     selection = 0U;
-    storage_ready = 0;
-    storage_signal_fd = -1;
-    next_storage_probe = 0;
     favorites_loaded = 0;
     favorite_count = 0U;
     next_favorites_retry = 0;
     reset_fake_file(FAKE_FD, 0, 0);
-    probe_storage();
+    receive_storage_handoff_signal();
     ok &= check(favorites_loaded &&
                     bird_profile.render[
                         PROFILE_RENDER_FAVORITES_COMPLETION].commits == 1U,
@@ -651,7 +1444,6 @@ static int run_profile_tests(void) {
     selection = 0U;
     selected_status = "CATALOG READY // ROMS MOUNTING";
     storage_ready = 0;
-    next_storage_probe = 0;
     pending_launch.kind = PENDING_LAUNCH_NONE;
     reset_fake_file(-ENOENT, 0, 0);
     BIRD_PROFILE_BEGIN_EVENT();
@@ -677,7 +1469,6 @@ static int run_profile_tests(void) {
     selection = 0U;
     selected_status = "CATALOG READY // ROMS MOUNTING";
     storage_ready = 0;
-    next_storage_probe = 0;
     pending_launch.kind = PENDING_LAUNCH_NONE;
     BIRD_PROFILE_RENDER(PROFILE_RENDER_STARTUP_FULL);
     draw_screen();
@@ -739,6 +1530,9 @@ int main(void) {
     int ok = 1;
 
     ok &= run_framebuffer_primitive_tests();
+    ok &= run_full_render_golden_tests();
+    ok &= run_dirty_region_render_tests();
+    ok &= run_storage_handoff_tests();
 
     /* ENOENT alone establishes a new, successfully loaded empty collection. */
     reset_favorites();

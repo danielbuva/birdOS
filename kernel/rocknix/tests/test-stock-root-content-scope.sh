@@ -672,6 +672,158 @@ for REGISTRATION_STATUS in 2 3; do
 		>"$CASE_DIR/harness.log" 2>&1
 done
 
+# Sway startup is a transaction: an early content request joins seatd before
+# claiming ownership, and any later failure rolls that exact ownership back.
+SWAY_START_BODY=$TMP/sway-start-functions.sh
+python3 - "$RUNNER" "$SWAY_START_BODY" <<'PY'
+from pathlib import Path
+import sys
+
+source = Path(sys.argv[1]).read_text()
+start = source.index("rollback_sway_start() {")
+end = source.index("\nensure_content_services() {", start)
+Path(sys.argv[2]).write_text(source[start:end] + "\n")
+PY
+sh -n "$SWAY_START_BODY"
+cat >"$TMP/sway-start-harness.sh" <<'EOF'
+#!/bin/sh
+set -eu
+. "$1"
+MODE=$2
+CASE_DIR=$3
+EVENTS=$CASE_DIR/events
+SWAY_OWNER=$CASE_DIR/sway.owner
+SWAY_SOCKET=/tmp/bird-sway-start-$$.sock
+SESSION_TOKEN=test-session
+SWAY_OWNED=0
+rm -f "$SWAY_SOCKET"
+trap 'rm -f "$SWAY_SOCKET"' EXIT INT TERM HUP
+: >"$EVENTS"
+resource_lock() { printf '%s\n' lock >>"$EVENTS"; }
+resource_unlock() { printf '%s\n' unlock >>"$EVENTS"; }
+claim_owner() {
+	printf '%s\n' claim >>"$EVENTS"
+	printf '%s\n' "$SESSION_TOKEN" >"$1"
+}
+publish_runner_state() { printf 'publish-%s\n' "$1" >>"$EVENTS"; }
+stop_sway() {
+	printf '%s\n' rollback >>"$EVENTS"
+	SWAY_OWNED=0
+	rm -f "$SWAY_OWNER"
+}
+systemctl() {
+	printf 'systemctl-%s-%s\n' "$1" "$2" >>"$EVENTS"
+	case "$MODE:$1:$2" in
+		seatd-fail:start:seatd.service|sway-fail:start:sway.service) return 1 ;;
+		*) return 0 ;;
+	esac
+}
+seq() { printf '%s\n' 1 2; }
+usleep() { :; }
+
+SOCKET_PID=
+if [ "$MODE" = success ]; then
+	python3 - "$SWAY_SOCKET" <<'PY' &
+import socket
+import sys
+import time
+s = socket.socket(socket.AF_UNIX)
+s.bind(sys.argv[1])
+s.listen(1)
+time.sleep(10)
+PY
+	SOCKET_PID=$!
+	COUNT=0
+	while [ ! -S "$SWAY_SOCKET" ] && [ "$COUNT" -lt 100 ]; do
+		COUNT=$((COUNT + 1))
+		sleep 0.01
+	done
+	[ -S "$SWAY_SOCKET" ]
+fi
+
+if start_sway; then START_STATUS=0; else START_STATUS=$?; fi
+[ -z "$SOCKET_PID" ] || {
+	kill "$SOCKET_PID" 2>/dev/null || :
+	wait "$SOCKET_PID" 2>/dev/null || :
+}
+rm -f "$SWAY_SOCKET"
+case "$MODE" in
+	seatd-fail)
+		[ "$START_STATUS" -eq 1 ]
+		[ "$SWAY_OWNED" -eq 0 ]
+		[ "$(grep -c '^claim$' "$EVENTS" || :)" -eq 0 ]
+		[ "$(grep -c '^rollback$' "$EVENTS" || :)" -eq 0 ]
+		;;
+	sway-fail|socket-timeout)
+		[ "$START_STATUS" -eq 1 ]
+		[ "$SWAY_OWNED" -eq 0 ]
+		[ ! -e "$SWAY_OWNER" ]
+		[ "$(grep -c '^rollback$' "$EVENTS")" -eq 1 ]
+		;;
+	success)
+		[ "$START_STATUS" -eq 0 ]
+		[ "$SWAY_OWNED" -eq 1 ]
+		[ -s "$SWAY_OWNER" ]
+		[ "$(grep -c '^rollback$' "$EVENTS" || :)" -eq 0 ]
+		;;
+esac
+EOF
+chmod 0755 "$TMP/sway-start-harness.sh"
+for MODE in seatd-fail sway-fail socket-timeout success; do
+	CASE_DIR=$TMP/sway-start-$MODE
+	mkdir -p "$CASE_DIR"
+	if ! "$TMP/sway-start-harness.sh" "$SWAY_START_BODY" "$MODE" "$CASE_DIR" \
+			>"$CASE_DIR/harness.log" 2>&1; then
+		printf 'Sway startup transaction case failed: %s\n' "$MODE" >&2
+		cat "$CASE_DIR/harness.log" >&2
+		exit 1
+	fi
+done
+
+SWAY_STOP_CONFIRM_BODY=$TMP/sway-stop-confirm-functions.sh
+python3 - "$RUNNER" "$SWAY_STOP_CONFIRM_BODY" <<'PY'
+from pathlib import Path
+import sys
+
+source = Path(sys.argv[1]).read_text()
+start = source.index("scope_query_property() {")
+end = source.index("\n# Return 0 only for this exact invocation", start)
+Path(sys.argv[2]).write_text(source[start:end] + "\n")
+PY
+sh -n "$SWAY_STOP_CONFIRM_BODY"
+cat >"$TMP/sway-stop-confirm-harness.sh" <<'EOF'
+#!/bin/sh
+set -eu
+. "$1"
+MODE=$2
+SWAY_SOCKET=$3
+systemctl() {
+	COMMAND=$1
+	shift
+	PROPERTY=
+	for ARG in "$@"; do
+		case "$ARG" in --property=*) PROPERTY=${ARG#--property=} ;; esac
+	done
+	case "$COMMAND:$PROPERTY:$MODE" in
+		show:ActiveState:inactive) printf '%s\n' inactive ;;
+		show:ActiveState:failed) printf '%s\n' failed ;;
+		show:ActiveState:active) printf '%s\n' active ;;
+		show:LoadState:*) printf '%s\n' loaded ;;
+		list-units::*) printf '%s\n' 'sway.service loaded active running test' ;;
+		*) return 1 ;;
+	esac
+}
+case "$MODE" in
+	inactive|failed) sway_stopped_confirmed ;;
+	active) ! sway_stopped_confirmed ;;
+esac
+EOF
+chmod 0755 "$TMP/sway-stop-confirm-harness.sh"
+for MODE in inactive failed active; do
+	"$TMP/sway-stop-confirm-harness.sh" "$SWAY_STOP_CONFIRM_BODY" "$MODE" \
+		"$TMP/nonexistent-sway.sock"
+done
+
 cat >"$TMP/resource-release-harness.sh" <<'EOF'
 #!/bin/sh
 set -eu

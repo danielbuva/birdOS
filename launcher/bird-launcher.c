@@ -146,9 +146,9 @@ typedef signed long s64;
 #define INPUT_EVENT_SCAN_COUNT 32
 
 /* The accepted stock-root image uses Linux 7.0.11 sun4i-drm fbdev
- * emulation with CONFIG_DRM_FBDEV_OVERALLOC=100. The DRM helper selects
- * XRGB8888, exposes its unused byte as the fbdev transparency field, and the
- * sun4i dumb-buffer helper aligns this already-even pitch to two bytes. */
+ * emulation with CONFIG_DRM_FBDEV_OVERALLOC=100. RG34XX-SP measurements show
+ * one fixed XRGB8888 page; fbdev reports the unused X byte with a zero-length
+ * transparency field. The sun4i dumb-buffer helper keeps the 2,880-byte pitch. */
 #define RG34XX_FB_WIDTH 720U
 #define RG34XX_FB_HEIGHT 480U
 #define RG34XX_FB_BYTES_PER_PIXEL 4U
@@ -157,6 +157,28 @@ typedef signed long s64;
 
 #define FRAMEBUFFER_PATH_DIAGNOSTIC 0U
 #define FRAMEBUFFER_PATH_RG34XX_XRGB8888 1U
+#define FB_MISMATCH_XRES (1UL << 0)
+#define FB_MISMATCH_YRES (1UL << 1)
+#define FB_MISMATCH_XRES_VIRTUAL (1UL << 2)
+#define FB_MISMATCH_YRES_VIRTUAL (1UL << 3)
+#define FB_MISMATCH_XOFFSET (1UL << 4)
+#define FB_MISMATCH_YOFFSET (1UL << 5)
+#define FB_MISMATCH_BPP (1UL << 6)
+#define FB_MISMATCH_GRAYSCALE (1UL << 7)
+#define FB_MISMATCH_NONSTD (1UL << 8)
+#define FB_MISMATCH_RED (1UL << 9)
+#define FB_MISMATCH_GREEN (1UL << 10)
+#define FB_MISMATCH_BLUE (1UL << 11)
+#define FB_MISMATCH_TRANSP (1UL << 12)
+#define FB_MISMATCH_TYPE (1UL << 13)
+#define FB_MISMATCH_VISUAL (1UL << 14)
+#define FB_MISMATCH_XPANSTEP (1UL << 15)
+#define FB_MISMATCH_YPANSTEP (1UL << 16)
+#define FB_MISMATCH_YWRAPSTEP (1UL << 17)
+#define FB_MISMATCH_STRIDE (1UL << 18)
+#define FB_MISMATCH_SMEM_LEN (1UL << 19)
+#define RENDER_INVALID_CONTENT 1U
+#define RENDER_INVALID_STATUS 2U
 
 struct fb_bitfield {
     u32 offset;
@@ -263,6 +285,7 @@ static struct fb_fix_screeninfo fb_fix;
 static volatile u8 *fb;
 static int fb_fd = -1;
 static u32 framebuffer_path;
+static u64 framebuffer_mismatch_mask;
 static int input_fd = -1;
 static int power_event_fd = -1;
 static int h700_input;
@@ -274,13 +297,12 @@ static int power_dir_fd = -1;
 static int storage_dir_fd = -1;
 static int config_dir_fd = -1;
 static int storage_signal_fd = -1;
-static u64 next_storage_signal_retry;
 static u64 next_power_event_retry;
-static u64 storage_signal_retry_ms = AUX_RETRY_INITIAL_MS;
 static u64 power_event_retry_ms = AUX_RETRY_INITIAL_MS;
-static u32 storage_signal_retry_count;
 static u32 power_event_retry_count;
 static int storage_signal_disabled;
+static int storage_handoff_signaled;
+static int storage_probe_attempted;
 static int power_event_disabled;
 static char input_path[32] = "/dev/input/event0";
 static u32 view;
@@ -298,8 +320,8 @@ static u64 next_favorites_retry;
 static u64 favorites_retry_ms = FAVORITES_RETRY_INITIAL_MS;
 static u32 favorites_retry_count;
 static char live_path[LIVE_PATH_BYTES];
-static u64 next_storage_probe;
 static struct pending_launch_state pending_launch;
+static u32 pending_render_invalid;
 
 static void probe_storage(void);
 static const char *selected_status = "DIRECT FRAMEBUFFER READY";
@@ -349,6 +371,20 @@ enum bird_profile_render_reason {
     PROFILE_RENDER_FAVORITES_COMPLETION,
     PROFILE_RENDER_RECOVERY,
     PROFILE_RENDER_REASON_COUNT,
+};
+
+enum bird_profile_storage_source {
+    PROFILE_STORAGE_SOURCE_NONE,
+    PROFILE_STORAGE_SOURCE_LIVE,
+    PROFILE_STORAGE_SOURCE_SYSROOT,
+};
+
+enum bird_profile_storage_stage {
+    PROFILE_STORAGE_STAGE_NONE,
+    PROFILE_STORAGE_STAGE_STORAGE_DIR,
+    PROFILE_STORAGE_STAGE_CONFIG_DIR,
+    PROFILE_STORAGE_STAGE_ROM_ROOT,
+    PROFILE_STORAGE_STAGE_MARKER,
 };
 
 enum bird_profile_syscall_kind {
@@ -460,6 +496,14 @@ static struct bird_profile_deep_state bird_profile_deep;
 #endif
 
 static struct bird_profile_state bird_profile;
+static u32 bird_profile_storage_dir_source;
+static u32 bird_profile_config_dir_source;
+static long bird_profile_storage_live_result;
+static long bird_profile_storage_sysroot_result;
+static long bird_profile_config_live_result;
+static long bird_profile_config_sysroot_result;
+static int bird_profile_storage_signal_seen;
+static u64 bird_profile_storage_after_signal_attempt;
 static u64 bird_profile_now_ns(void);
 static void bird_profile_application_entry(u64 now);
 static void bird_profile_input_opened(void);
@@ -840,12 +884,9 @@ static int string_starts_with(const char *text, const char *prefix) {
     return 1;
 }
 
-/*
- * The initramfs Bird survives switch_root. Directory descriptors keep pointing
- * at the same moved tmpfs/devtmpfs/sysfs/storage mounts even though that
- * process intentionally retains its tiny old root. All post-handoff file work
- * therefore uses openat/renameat/unlinkat through these fixed anchors.
- */
+/* Runtime, input, and power exist before the storage handoff. Storage is
+ * deliberately excluded: opening its mountpoint before mount --move would
+ * retain the covered empty directory forever. */
 static void refresh_path_anchors(void) {
     if (runtime_dir_fd < 0)
         runtime_dir_fd = (int)sys_open("/run/muos", O_RDONLY | O_NONBLOCK);
@@ -854,18 +895,66 @@ static void refresh_path_anchors(void) {
     if (power_dir_fd < 0)
         power_dir_fd = (int)sys_open("/sys/class/power_supply/battery",
                                      O_RDONLY | O_NONBLOCK);
-    if (storage_dir_fd < 0)
-        storage_dir_fd = (int)sys_open(LIVE_STORAGE_ROOT,
-                                      O_RDONLY | O_NONBLOCK);
-    if (storage_dir_fd < 0)
+}
+
+static void close_storage_anchors(void) {
+    if (storage_dir_fd >= 0) sys_close(storage_dir_fd);
+    if (config_dir_fd >= 0) sys_close(config_dir_fd);
+    storage_dir_fd = -1;
+    config_dir_fd = -1;
+#ifdef BIRD_PROFILE
+    bird_profile_storage_dir_source = PROFILE_STORAGE_SOURCE_NONE;
+    bird_profile_config_dir_source = PROFILE_STORAGE_SOURCE_NONE;
+    bird_profile_storage_live_result = 0;
+    bird_profile_storage_sysroot_result = 0;
+    bird_profile_config_live_result = 0;
+    bird_profile_config_sysroot_result = 0;
+#endif
+}
+
+/* The early process receives its edge only after prepare_sysroot has published
+ * the completed tree below /sysroot. A final-root process has no edge and uses
+ * the already-mounted live tree. Each process gets exactly one acquisition
+ * attempt; failure is a readiness-contract failure, never a polling mode. */
+static void acquire_storage_anchors_once(void) {
+#ifdef BIRD_PROFILE
+    if (STORAGE_READY_SIGNAL[0]) {
+        bird_profile_storage_sysroot_result =
+            sys_open("/sysroot/storage/bird-data", O_RDONLY | O_NONBLOCK);
+        storage_dir_fd = (int)bird_profile_storage_sysroot_result;
+        if (storage_dir_fd >= 0)
+            bird_profile_storage_dir_source = PROFILE_STORAGE_SOURCE_SYSROOT;
+        bird_profile_config_sysroot_result =
+            sys_open("/sysroot/storage/.config/bird",
+                     O_RDONLY | O_NONBLOCK);
+        config_dir_fd = (int)bird_profile_config_sysroot_result;
+        if (config_dir_fd >= 0)
+            bird_profile_config_dir_source = PROFILE_STORAGE_SOURCE_SYSROOT;
+    } else {
+        bird_profile_storage_live_result =
+            sys_open(LIVE_STORAGE_ROOT, O_RDONLY | O_NONBLOCK);
+        storage_dir_fd = (int)bird_profile_storage_live_result;
+        if (storage_dir_fd >= 0)
+            bird_profile_storage_dir_source = PROFILE_STORAGE_SOURCE_LIVE;
+        bird_profile_config_live_result =
+            sys_open("/storage/.config/bird", O_RDONLY | O_NONBLOCK);
+        config_dir_fd = (int)bird_profile_config_live_result;
+        if (config_dir_fd >= 0)
+            bird_profile_config_dir_source = PROFILE_STORAGE_SOURCE_LIVE;
+    }
+#else
+    if (STORAGE_READY_SIGNAL[0]) {
         storage_dir_fd = (int)sys_open("/sysroot/storage/bird-data",
                                       O_RDONLY | O_NONBLOCK);
-    if (config_dir_fd < 0)
-        config_dir_fd = (int)sys_open("/storage/.config/bird",
-                                     O_RDONLY | O_NONBLOCK);
-    if (config_dir_fd < 0)
         config_dir_fd = (int)sys_open("/sysroot/storage/.config/bird",
                                      O_RDONLY | O_NONBLOCK);
+    } else {
+        storage_dir_fd = (int)sys_open(LIVE_STORAGE_ROOT,
+                                      O_RDONLY | O_NONBLOCK);
+        config_dir_fd = (int)sys_open("/storage/.config/bird",
+                                     O_RDONLY | O_NONBLOCK);
+    }
+#endif
 }
 
 static int anchored_dirfd(const char *path, const char **relative) {
@@ -1012,6 +1101,80 @@ static u64 boot_ms(void) {
 }
 
 #ifdef BIRD_PROFILE
+static const char *bird_profile_storage_source_name(u32 source) {
+    if (source == PROFILE_STORAGE_SOURCE_LIVE) return "live";
+    if (source == PROFILE_STORAGE_SOURCE_SYSROOT) return "sysroot";
+    return "unavailable";
+}
+
+static const char *bird_profile_storage_stage_name(u32 stage) {
+    if (stage == PROFILE_STORAGE_STAGE_STORAGE_DIR) return "storage-dir";
+    if (stage == PROFILE_STORAGE_STAGE_CONFIG_DIR) return "config-dir";
+    if (stage == PROFILE_STORAGE_STAGE_ROM_ROOT) return "rom-root";
+    if (stage == PROFILE_STORAGE_STAGE_MARKER) return "marker";
+    return "unknown";
+}
+
+static u64 bird_profile_storage_errno(long result) {
+    return result < 0 ? (u64)-result : 0U;
+}
+
+static void bird_profile_storage_signal_received(void) {
+    bird_profile_storage_signal_seen = 1;
+    bird_profile_storage_after_signal_attempt = 0U;
+}
+
+static void bird_profile_storage_probe_failed(u32 stage, long result, u64 now) {
+    if (!bird_profile_storage_signal_seen) return;
+    log_text("bird_profile storage_probe result=failed boot_ms=");
+    log_number(now);
+    log_text(" post_signal_attempt=");
+    log_number(bird_profile_storage_after_signal_attempt);
+    log_text(" stage=");
+    log_text(bird_profile_storage_stage_name(stage));
+    log_text(" errno=");
+    log_number(bird_profile_storage_errno(result));
+    log_text(" storage_source=");
+    log_text(bird_profile_storage_source_name(
+        bird_profile_storage_dir_source));
+    log_text(" config_source=");
+    log_text(bird_profile_storage_source_name(
+        bird_profile_config_dir_source));
+    if (stage == PROFILE_STORAGE_STAGE_STORAGE_DIR) {
+        log_text(" live_errno=");
+        log_number(bird_profile_storage_errno(
+            bird_profile_storage_live_result));
+        log_text(" sysroot_errno=");
+        log_number(bird_profile_storage_errno(
+            bird_profile_storage_sysroot_result));
+    } else if (stage == PROFILE_STORAGE_STAGE_CONFIG_DIR) {
+        log_text(" live_errno=");
+        log_number(bird_profile_storage_errno(
+            bird_profile_config_live_result));
+        log_text(" sysroot_errno=");
+        log_number(bird_profile_storage_errno(
+            bird_profile_config_sysroot_result));
+    }
+    log_text("\n");
+}
+
+static void bird_profile_storage_probe_ready(u64 now) {
+    if (!bird_profile_storage_signal_seen) return;
+    log_text("bird_profile storage_probe result=ready boot_ms=");
+    log_number(now);
+    log_text(" after_signal=");
+    log_number((u64)bird_profile_storage_signal_seen);
+    log_text(" post_signal_attempt=");
+    log_number(bird_profile_storage_after_signal_attempt);
+    log_text(" storage_source=");
+    log_text(bird_profile_storage_source_name(
+        bird_profile_storage_dir_source));
+    log_text(" config_source=");
+    log_text(bird_profile_storage_source_name(
+        bird_profile_config_dir_source));
+    log_text("\n");
+}
+
 static const char *bird_profile_render_name[PROFILE_RENDER_REASON_COUNT] = {
     "startup-full",
     "view-change",
@@ -1153,6 +1316,112 @@ static void bird_profile_write_interval(const char *name, int start_seen,
     }
 }
 
+static void bird_profile_emit_framebuffer_format(void) {
+    u64 page_bytes = (u64)fb_fix.line_length * fb_var.yres;
+    u64 virtual_pages = fb_var.yres
+                            ? (fb_var.yres_virtual + fb_var.yres - 1U) /
+                                  fb_var.yres
+                            : 0U;
+    u64 mapped_pages = page_bytes
+                           ? ((u64)fb_fix.smem_len + page_bytes - 1U) /
+                                 page_bytes
+                           : 0U;
+    u64 mapped_remainder = page_bytes ? fb_fix.smem_len % page_bytes : 0U;
+    u64 active_page = fb_var.yres ? fb_var.yoffset / fb_var.yres : 0U;
+    bird_profile.output_records++;
+    bird_profile_write_text("bird_profile framebuffer_format path=");
+    bird_profile_write_text(
+        framebuffer_path == FRAMEBUFFER_PATH_RG34XX_XRGB8888
+            ? "rg34xx-xrgb8888" : "diagnostic-fallback");
+    bird_profile_write_text(" mismatch_mask=");
+    bird_profile_write_number(framebuffer_mismatch_mask);
+    bird_profile_write_text(" visible=");
+    bird_profile_write_number(fb_var.xres);
+    bird_profile_write_text("x");
+    bird_profile_write_number(fb_var.yres);
+    bird_profile_write_text(" virtual=");
+    bird_profile_write_number(fb_var.xres_virtual);
+    bird_profile_write_text("x");
+    bird_profile_write_number(fb_var.yres_virtual);
+    bird_profile_write_text(" offset=");
+    bird_profile_write_number(fb_var.xoffset);
+    bird_profile_write_text(":");
+    bird_profile_write_number(fb_var.yoffset);
+    bird_profile_write_text(" bpp=");
+    bird_profile_write_number(fb_var.bits_per_pixel);
+    bird_profile_write_text(" grayscale=");
+    bird_profile_write_number(fb_var.grayscale);
+    bird_profile_write_text(" nonstd=");
+    bird_profile_write_number(fb_var.nonstd);
+    bird_profile_write_text(" red=");
+    bird_profile_write_number(fb_var.red.offset);
+    bird_profile_write_text(":");
+    bird_profile_write_number(fb_var.red.length);
+    bird_profile_write_text(":");
+    bird_profile_write_number(fb_var.red.msb_right);
+    bird_profile_write_text(" green=");
+    bird_profile_write_number(fb_var.green.offset);
+    bird_profile_write_text(":");
+    bird_profile_write_number(fb_var.green.length);
+    bird_profile_write_text(":");
+    bird_profile_write_number(fb_var.green.msb_right);
+    bird_profile_write_text(" blue=");
+    bird_profile_write_number(fb_var.blue.offset);
+    bird_profile_write_text(":");
+    bird_profile_write_number(fb_var.blue.length);
+    bird_profile_write_text(":");
+    bird_profile_write_number(fb_var.blue.msb_right);
+    bird_profile_write_text(" transp=");
+    bird_profile_write_number(fb_var.transp.offset);
+    bird_profile_write_text(":");
+    bird_profile_write_number(fb_var.transp.length);
+    bird_profile_write_text(":");
+    bird_profile_write_number(fb_var.transp.msb_right);
+    bird_profile_write_text(" type=");
+    bird_profile_write_number(fb_fix.type);
+    bird_profile_write_text(" type_aux=");
+    bird_profile_write_number(fb_fix.type_aux);
+    bird_profile_write_text(" visual=");
+    bird_profile_write_number(fb_fix.visual);
+    bird_profile_write_text(" pansteps=");
+    bird_profile_write_number(fb_fix.xpanstep);
+    bird_profile_write_text(":");
+    bird_profile_write_number(fb_fix.ypanstep);
+    bird_profile_write_text(":");
+    bird_profile_write_number(fb_fix.ywrapstep);
+    bird_profile_write_text(" stride=");
+    bird_profile_write_number(fb_fix.line_length);
+    bird_profile_write_text(" smem_len=");
+    bird_profile_write_number(fb_fix.smem_len);
+    bird_profile_write_text(" page_bytes=");
+    bird_profile_write_number(page_bytes);
+    bird_profile_write_text(" virtual_pages=");
+    bird_profile_write_number(virtual_pages);
+    bird_profile_write_text(" mapped_pages=");
+    bird_profile_write_number(mapped_pages);
+    bird_profile_write_text(" mapped_remainder=");
+    bird_profile_write_number(mapped_remainder);
+    bird_profile_write_text(" active_page=");
+    bird_profile_write_number(active_page);
+    bird_profile_write_text(" activate=");
+    bird_profile_write_number(fb_var.activate);
+    bird_profile_write_text(" vmode=");
+    bird_profile_write_number(fb_var.vmode);
+    bird_profile_write_text(" rotate=");
+    bird_profile_write_number(fb_var.rotate);
+    bird_profile_write_text(" colorspace=");
+    bird_profile_write_number(fb_var.colorspace);
+    bird_profile_write_text(" accel=");
+    bird_profile_write_number(fb_fix.accel);
+    bird_profile_write_text(" capabilities=");
+    bird_profile_write_number(fb_fix.capabilities);
+    bird_profile_write_text(" renderer_page_policy=");
+    bird_profile_write_text(
+        framebuffer_path == FRAMEBUFFER_PATH_RG34XX_XRGB8888
+            ? "fixed-0" : "diagnostic-recovery");
+    bird_profile_write_text("\n");
+}
+
 static void bird_profile_emit_startup(void) {
     if (!bird_profile.interactive_barrier_seen) return;
     bird_profile.emitting = 1;
@@ -1189,6 +1458,7 @@ static void bird_profile_emit_startup(void) {
     bird_profile_write_text(" pre_barrier_diagnostic_bytes=");
     bird_profile_write_number(bird_profile.pre_barrier_diagnostic_bytes);
     bird_profile_write_text("\n");
+    bird_profile_emit_framebuffer_format();
     bird_profile.emitting = 0;
 }
 
@@ -1468,31 +1738,16 @@ static void try_power_event_open(void) {
     next_power_event_retry = 0;
 }
 
-static void schedule_storage_signal_retry(const char *reason) {
+static void disable_storage_signal(const char *reason) {
     if (storage_signal_fd >= 0) sys_close(storage_signal_fd);
     storage_signal_fd = -1;
-    if (!STORAGE_READY_SIGNAL[0] || storage_ready ||
-        storage_signal_retry_count >= AUX_RETRY_LIMIT) {
-        storage_signal_disabled = 1;
-        log_text("storage_signal result=degraded reason=");
-        log_text(reason);
-        log_text("\n");
-        return;
-    }
-    next_storage_signal_retry = boot_ms() + storage_signal_retry_ms;
-    storage_signal_retry_count++;
-    log_text("storage_signal result=retry reason=");
+    storage_signal_disabled = 1;
+    log_text("storage_signal result=contract-failed reason=");
     log_text(reason);
-    log_text(" delay_ms=");
-    log_number(storage_signal_retry_ms);
-    log_text(" attempt=");
-    log_number(storage_signal_retry_count);
     log_text("\n");
-    storage_signal_retry_ms = next_retry_delay(storage_signal_retry_ms);
 }
 
-static void try_storage_signal_open(void) {
-    u64 now;
+static void open_storage_signal_once(void) {
     long reopened;
     if (storage_signal_fd >= 0 || storage_signal_disabled || storage_ready)
         return;
@@ -1500,17 +1755,12 @@ static void try_storage_signal_open(void) {
         storage_signal_disabled = 1;
         return;
     }
-    now = boot_ms();
-    if (now < next_storage_signal_retry) return;
     reopened = fixed_open(STORAGE_READY_SIGNAL, O_RDWR | O_NONBLOCK);
     if (reopened < 0) {
-        schedule_storage_signal_retry("open-failed");
+        disable_storage_signal("open-failed");
         return;
     }
     storage_signal_fd = (int)reopened;
-    if (storage_signal_retry_count)
-        log_text("storage_signal result=recovered\n");
-    next_storage_signal_retry = 0;
 }
 
 static int is_power_supply_uevent(const char *event, u64 length) {
@@ -1687,6 +1937,8 @@ static void finish_favorites_load(const u8 *bitmap, u32 count,
     next_favorites_retry = 0;
     favorites_retry_ms = FAVORITES_RETRY_INITIAL_MS;
     favorites_retry_count = 0;
+    if (view == VIEW_GAMES)
+        pending_render_invalid |= RENDER_INVALID_CONTENT;
     log_text("favorites_load boot_ms=");
     log_number(boot_ms());
     log_text(" result=");
@@ -1974,24 +2226,48 @@ static int framebuffer_field_is(struct fb_bitfield field, u32 offset,
 
 static void configure_framebuffer_path(void) {
     framebuffer_path = FRAMEBUFFER_PATH_DIAGNOSTIC;
-    if (fb_var.xres != RG34XX_FB_WIDTH ||
-        fb_var.yres != RG34XX_FB_HEIGHT ||
-        fb_var.xres_virtual != RG34XX_FB_WIDTH ||
-        fb_var.yres_virtual != RG34XX_FB_HEIGHT ||
-        fb_var.xoffset != 0U || fb_var.yoffset != 0U ||
-        fb_var.bits_per_pixel != 32U || fb_var.grayscale != 0U ||
-        fb_var.nonstd != 0U ||
-        !framebuffer_field_is(fb_var.red, 16U, 8U) ||
-        !framebuffer_field_is(fb_var.green, 8U, 8U) ||
-        !framebuffer_field_is(fb_var.blue, 0U, 8U) ||
-        !framebuffer_field_is(fb_var.transp, 24U, 8U) ||
-        fb_fix.type != FB_TYPE_PACKED_PIXELS ||
-        fb_fix.visual != FB_VISUAL_TRUECOLOR ||
-        fb_fix.xpanstep != 1U || fb_fix.ypanstep != 1U ||
-        fb_fix.ywrapstep != 0U ||
-        fb_fix.line_length != RG34XX_FB_STRIDE ||
-        fb_fix.smem_len != RG34XX_FB_BYTES)
-        return;
+    framebuffer_mismatch_mask = 0U;
+    if (fb_var.xres != RG34XX_FB_WIDTH)
+        framebuffer_mismatch_mask |= FB_MISMATCH_XRES;
+    if (fb_var.yres != RG34XX_FB_HEIGHT)
+        framebuffer_mismatch_mask |= FB_MISMATCH_YRES;
+    if (fb_var.xres_virtual != RG34XX_FB_WIDTH)
+        framebuffer_mismatch_mask |= FB_MISMATCH_XRES_VIRTUAL;
+    if (fb_var.yres_virtual != RG34XX_FB_HEIGHT)
+        framebuffer_mismatch_mask |= FB_MISMATCH_YRES_VIRTUAL;
+    if (fb_var.xoffset != 0U)
+        framebuffer_mismatch_mask |= FB_MISMATCH_XOFFSET;
+    if (fb_var.yoffset != 0U)
+        framebuffer_mismatch_mask |= FB_MISMATCH_YOFFSET;
+    if (fb_var.bits_per_pixel != 32U)
+        framebuffer_mismatch_mask |= FB_MISMATCH_BPP;
+    if (fb_var.grayscale != 0U)
+        framebuffer_mismatch_mask |= FB_MISMATCH_GRAYSCALE;
+    if (fb_var.nonstd != 0U)
+        framebuffer_mismatch_mask |= FB_MISMATCH_NONSTD;
+    if (!framebuffer_field_is(fb_var.red, 16U, 8U))
+        framebuffer_mismatch_mask |= FB_MISMATCH_RED;
+    if (!framebuffer_field_is(fb_var.green, 8U, 8U))
+        framebuffer_mismatch_mask |= FB_MISMATCH_GREEN;
+    if (!framebuffer_field_is(fb_var.blue, 0U, 8U))
+        framebuffer_mismatch_mask |= FB_MISMATCH_BLUE;
+    if (!framebuffer_field_is(fb_var.transp, 0U, 0U))
+        framebuffer_mismatch_mask |= FB_MISMATCH_TRANSP;
+    if (fb_fix.type != FB_TYPE_PACKED_PIXELS)
+        framebuffer_mismatch_mask |= FB_MISMATCH_TYPE;
+    if (fb_fix.visual != FB_VISUAL_TRUECOLOR)
+        framebuffer_mismatch_mask |= FB_MISMATCH_VISUAL;
+    if (fb_fix.xpanstep != 1U)
+        framebuffer_mismatch_mask |= FB_MISMATCH_XPANSTEP;
+    if (fb_fix.ypanstep != 1U)
+        framebuffer_mismatch_mask |= FB_MISMATCH_YPANSTEP;
+    if (fb_fix.ywrapstep != 0U)
+        framebuffer_mismatch_mask |= FB_MISMATCH_YWRAPSTEP;
+    if (fb_fix.line_length != RG34XX_FB_STRIDE)
+        framebuffer_mismatch_mask |= FB_MISMATCH_STRIDE;
+    if (fb_fix.smem_len != RG34XX_FB_BYTES)
+        framebuffer_mismatch_mask |= FB_MISMATCH_SMEM_LEN;
+    if (framebuffer_mismatch_mask) return;
     framebuffer_path = FRAMEBUFFER_PATH_RG34XX_XRGB8888;
 }
 
@@ -2003,7 +2279,7 @@ static u32 scale_component(u8 value, struct fb_bitfield field) {
 
 static u32 color(u8 red, u8 green, u8 blue) {
     if (framebuffer_path == FRAMEBUFFER_PATH_RG34XX_XRGB8888)
-        return 0xff000000U | ((u32)red << 16) | ((u32)green << 8) |
+        return ((u32)red << 16) | ((u32)green << 8) |
                (u32)blue;
     return scale_component(red, fb_var.red) | scale_component(green, fb_var.green) |
            scale_component(blue, fb_var.blue) | scale_component(255, fb_var.transp);
@@ -2207,9 +2483,9 @@ static u32 current_count(void) {
     return 0U;
 }
 
-#ifdef BIRD_PROFILE
-static u32 bird_profile_viewport_first(u32 current_view,
-                                       u32 current_selection) {
+/* Keep the accepted one-row scrolling policy explicit. A different fixed-page
+ * or sticky-band viewport is a product decision, not a rendering shortcut. */
+static u32 viewport_first(u32 current_view, u32 current_selection) {
     u32 rows = (current_view == VIEW_SYSTEMS ||
                 current_view == VIEW_MEDIA_CATEGORIES)
                    ? SYSTEM_ROWS : GAME_ROWS;
@@ -2220,7 +2496,6 @@ static u32 bird_profile_viewport_first(u32 current_view,
         return 0U;
     return current_selection < rows ? 0U : current_selection - rows + 1U;
 }
-#endif
 
 static u32 current_catalog_index(void) {
     if (view == VIEW_GAMES) {
@@ -2232,144 +2507,267 @@ static u32 current_catalog_index(void) {
     return CATALOG_ENTRY_COUNT;
 }
 
-static void draw_screen(void) {
-    u32 background = color(10, 14, 20);
-    u32 panel = color(19, 26, 36);
-    u32 selected = color(232, 166, 48);
-    u32 primary = color(244, 246, 248);
-    u32 muted = color(139, 151, 166);
-    u32 i;
+struct launcher_palette {
+    u32 background;
+    u32 panel;
+    u32 selected;
+    u32 primary;
+    u32 muted;
+};
 
-    rectangle(0, 0, (int)fb_var.xres, (int)fb_var.yres, background);
-    rectangle(0, 0, (int)fb_var.xres, 92, panel);
-    rectangle(0, (int)fb_var.yres - 66, (int)fb_var.xres, 66, panel);
-    rectangle(32, 86, 656, 3, selected);
+static void load_launcher_palette(struct launcher_palette *palette) {
+    palette->background = color(10, 14, 20);
+    palette->panel = color(19, 26, 36);
+    palette->selected = color(232, 166, 48);
+    palette->primary = color(244, 246, 248);
+    palette->muted = color(139, 151, 166);
+}
 
+static void draw_header(const struct launcher_palette *palette) {
     if (view == VIEW_MAIN || view == VIEW_PLAY) {
-        const char **items = view == VIEW_MAIN ? menu_item : play_item;
-        draw_text(32, 22, view == VIEW_MAIN ? "BIRDOS // RG34-SP" : "PLAY", 4, primary);
+        draw_text(32, 22, view == VIEW_MAIN ? "BIRDOS // RG34-SP" : "PLAY",
+                  4, palette->primary);
         draw_text(34, 62,
-                  view == VIEW_MAIN ? "BESPOKE CONSOLE" : "LIBRARY // TOOLS // POWER",
-                  2, muted);
-        for (i = 0; i < 4U; i++) {
-            int y = 122 + (int)i * 64;
-            if (i == selection) {
-                rectangle(92, y - 10, 492, 52, selected);
-                draw_text(108, y + 4, ">", 3, background);
-                draw_text(148, y, items[i], 4, background);
-            } else {
-                draw_text(148, y, items[i], 4, primary);
-            }
-        }
+                  view == VIEW_MAIN ? "BESPOKE CONSOLE"
+                                    : "LIBRARY // TOOLS // POWER",
+                  2, palette->muted);
     } else if (view == VIEW_SYSTEMS) {
-        u32 first = selection < SYSTEM_ROWS ? 0U : selection - SYSTEM_ROWS + 1U;
-        draw_text(32, 22, "GAMES", 4, primary);
-        draw_text(34, 62, "EMBEDDED CATALOG // NO SCAN", 2, muted);
-        for (i = 0; i < SYSTEM_ROWS && first + i < CATALOG_SYSTEM_COUNT; i++) {
-            u32 system_index = first + i;
-            int y = 102 + (int)i * 38;
-            if (system_index == selection) {
-                rectangle(32, y - 7, 656, 31, selected);
-                draw_text(44, y, ">", 2, background);
-                draw_text_limited(72, y, catalog_systems[system_index].name,
-                                  2, background, 50U);
-            } else {
-                draw_text_limited(72, y, catalog_systems[system_index].name,
-                                  2, primary, 50U);
-            }
-        }
-    } else if (view == VIEW_GAMES || view == VIEW_FAVORITES) {
-        u32 count = current_count();
-        u32 first = selection < GAME_ROWS ? 0U : selection - GAME_ROWS + 1U;
-        if (view == VIEW_GAMES) {
-            const struct catalog_system *system = &catalog_systems[active_system];
-            draw_text(32, 22, system->name, 4, primary);
-            draw_text(34, 62, "CACHED GAMES // STORAGE ASYNC", 2, muted);
-        } else {
-            draw_text(32, 22, "FAVORITES", 4, primary);
-            draw_text(34, 62, "EXACT PATH CACHE // NO SCAN", 2, muted);
-        }
-        if (view == VIEW_FAVORITES && !count)
-            draw_text(72, 160, favorites_loaded ? "NO FAVORITES YET" : "LOADING FAVORITES", 3, primary);
-        for (i = 0; i < GAME_ROWS && first + i < count; i++) {
-            u32 catalog_index = view == VIEW_GAMES
-                                    ? catalog_systems[active_system].first + first + i
-                                    : favorite_catalog_index(first + i);
-            const struct catalog_entry *entry = &catalog_entries[catalog_index];
-            int y = 102 + (int)i * 38;
-            if (first + i == selection) {
-                rectangle(32, y - 7, 656, 31, selected);
-                draw_text(44, y, ">", 2, background);
-                draw_text_limited(72, y, entry->name, 2, background, 50U);
-            } else {
-                draw_text_limited(72, y, entry->name, 2, primary, 50U);
-            }
-            if (view == VIEW_GAMES && is_favorite(catalog_index))
-                draw_text(654, y, "*", 2, first + i == selection ? background : selected);
-        }
+        draw_text(32, 22, "GAMES", 4, palette->primary);
+        draw_text(34, 62, "EMBEDDED CATALOG // NO SCAN", 2,
+                  palette->muted);
+    } else if (view == VIEW_GAMES) {
+        const struct catalog_system *system = &catalog_systems[active_system];
+        draw_text(32, 22, system->name, 4, palette->primary);
+        draw_text(34, 62, "CACHED GAMES // STORAGE ASYNC", 2,
+                  palette->muted);
+    } else if (view == VIEW_FAVORITES) {
+        draw_text(32, 22, "FAVORITES", 4, palette->primary);
+        draw_text(34, 62, "EXACT PATH CACHE // NO SCAN", 2,
+                  palette->muted);
     } else if (view == VIEW_MEDIA_CATEGORIES) {
-        u32 count = current_count();
-        u32 section_first = media_category_first();
-        u32 first = selection < SYSTEM_ROWS ? 0U : selection - SYSTEM_ROWS + 1U;
-        draw_text(32, 22, media_section_name(), 4, primary);
-        draw_text(34, 62, "EMBEDDED MEDIA CATALOG // NO SCAN", 2, muted);
-        if (!count) draw_text(72, 160, empty_media_text(), 3, primary);
-        for (i = 0; i < SYSTEM_ROWS && first + i < count; i++) {
-            u32 category_index = section_first + first + i;
-            int y = 102 + (int)i * 38;
-            if (first + i == selection) {
-                rectangle(32, y - 7, 656, 31, selected);
-                draw_text(44, y, ">", 2, background);
-                draw_text_limited(72, y, catalog_media_categories[category_index].name,
-                                  2, background, 50U);
-            } else {
-                draw_text_limited(72, y, catalog_media_categories[category_index].name,
-                                  2, primary, 50U);
-            }
-        }
+        draw_text(32, 22, media_section_name(), 4, palette->primary);
+        draw_text(34, 62, "EMBEDDED MEDIA CATALOG // NO SCAN", 2,
+                  palette->muted);
     } else if (view == VIEW_MEDIA_ENTRIES) {
         const struct catalog_media_category *category =
             &catalog_media_categories[active_media_category];
-        u32 first = selection < GAME_ROWS ? 0U : selection - GAME_ROWS + 1U;
-        draw_text(32, 22, category->name, 4, primary);
-        draw_text(34, 62, "CACHED MEDIA // STORAGE ASYNC", 2, muted);
-        for (i = 0; i < GAME_ROWS && first + i < category->count; i++) {
-            const struct catalog_media_entry *entry =
-                &catalog_media_entries[category->first + first + i];
-            int y = 102 + (int)i * 38;
-            if (first + i == selection) {
-                rectangle(32, y - 7, 656, 31, selected);
-                draw_text(44, y, ">", 2, background);
-                draw_text_limited(72, y, entry->name, 2, background, 50U);
-            } else {
-                draw_text_limited(72, y, entry->name, 2, primary, 50U);
-            }
-        }
+        draw_text(32, 22, category->name, 4, palette->primary);
+        draw_text(34, 62, "CACHED MEDIA // STORAGE ASYNC", 2,
+                  palette->muted);
+    }
+}
+
+static void draw_main_row(u32 item_index,
+                          const struct launcher_palette *palette) {
+    const char **items = view == VIEW_MAIN ? menu_item : play_item;
+    int y = 122 + (int)item_index * 64;
+    if (item_index == selection) {
+        rectangle(92, y - 10, 492, 52, palette->selected);
+        draw_text(108, y + 4, ">", 3, palette->background);
+        draw_text(148, y, items[item_index], 4, palette->background);
+    } else {
+        draw_text(148, y, items[item_index], 4, palette->primary);
+    }
+}
+
+static void draw_list_row(u32 item_index, u32 screen_row,
+                          const struct launcher_palette *palette) {
+    const char *name;
+    u32 catalog_index = CATALOG_ENTRY_COUNT;
+    int is_selected = item_index == selection;
+    int y = 102 + (int)screen_row * 38;
+
+    if (view == VIEW_SYSTEMS) {
+        name = catalog_systems[item_index].name;
+    } else if (view == VIEW_GAMES) {
+        catalog_index = catalog_systems[active_system].first + item_index;
+        name = catalog_entries[catalog_index].name;
+    } else if (view == VIEW_FAVORITES) {
+        catalog_index = favorite_catalog_index(item_index);
+        name = catalog_entries[catalog_index].name;
+    } else if (view == VIEW_MEDIA_CATEGORIES) {
+        name = catalog_media_categories[media_category_first() + item_index].name;
+    } else {
+        const struct catalog_media_category *category =
+            &catalog_media_categories[active_media_category];
+        name = catalog_media_entries[category->first + item_index].name;
     }
 
-    draw_battery_percent(selected, muted);
+    if (is_selected) {
+        rectangle(32, y - 7, 656, 31, palette->selected);
+        draw_text(44, y, ">", 2, palette->background);
+        draw_text_limited(72, y, name, 2, palette->background, 50U);
+    } else {
+        draw_text_limited(72, y, name, 2, palette->primary, 50U);
+    }
+    if (view == VIEW_GAMES && is_favorite(catalog_index))
+        draw_text(654, y, "*", 2,
+                  is_selected ? palette->background : palette->selected);
+}
 
-    draw_text(32, (int)fb_var.yres - 54, selected_status, 2, muted);
+static void draw_content(const struct launcher_palette *palette) {
+    u32 i;
+    if (view == VIEW_MAIN || view == VIEW_PLAY) {
+        for (i = 0; i < 4U; i++) draw_main_row(i, palette);
+    } else {
+        u32 count = current_count();
+        u32 rows = (view == VIEW_SYSTEMS ||
+                    view == VIEW_MEDIA_CATEGORIES)
+                       ? SYSTEM_ROWS : GAME_ROWS;
+        u32 first = viewport_first(view, selection);
+        if (view == VIEW_FAVORITES && !count)
+            draw_text(72, 160,
+                      favorites_loaded ? "NO FAVORITES YET"
+                                       : "LOADING FAVORITES",
+                      3, palette->primary);
+        if (view == VIEW_MEDIA_CATEGORIES && !count)
+            draw_text(72, 160, empty_media_text(), 3, palette->primary);
+        for (i = 0; i < rows && first + i < count; i++)
+            draw_list_row(first + i, i, palette);
+    }
+}
+
+static void draw_status(const struct launcher_palette *palette) {
+    draw_text(32, (int)fb_var.yres - 54, selected_status, 2,
+              palette->muted);
+}
+
+static void draw_help(const struct launcher_palette *palette) {
     if (view == VIEW_MAIN)
-        draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE   A SELECT   B RELOAD", 2, primary);
+        draw_text(32, (int)fb_var.yres - 28,
+                  "DPAD MOVE   A SELECT   B RELOAD", 2, palette->primary);
     else if (view == VIEW_PLAY)
-        draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE   A SELECT   B BACK", 2, primary);
+        draw_text(32, (int)fb_var.yres - 28,
+                  "DPAD MOVE   A SELECT   B BACK", 2, palette->primary);
     else if (view == VIEW_GAMES)
-        draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE  L1 R1 PAGE  A LAUNCH  Y FAV  B BACK", 2, primary);
+        draw_text(32, (int)fb_var.yres - 28,
+                  "DPAD MOVE  L1 R1 PAGE  A LAUNCH  Y FAV  B BACK", 2,
+                  palette->primary);
     else if (view == VIEW_FAVORITES)
-        draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE  L1 R1 PAGE  A LAUNCH  Y REMOVE  B BACK", 2, primary);
+        draw_text(32, (int)fb_var.yres - 28,
+                  "DPAD MOVE  L1 R1 PAGE  A LAUNCH  Y REMOVE  B BACK", 2,
+                  palette->primary);
     else if (view == VIEW_SYSTEMS)
-        draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE  L1 R1 PAGE  A OPEN  B BACK", 2, primary);
+        draw_text(32, (int)fb_var.yres - 28,
+                  "DPAD MOVE  L1 R1 PAGE  A OPEN  B BACK", 2,
+                  palette->primary);
     else if (view == VIEW_MEDIA_CATEGORIES)
-        draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE  L1 R1 PAGE  A OPEN  B BACK", 2, primary);
+        draw_text(32, (int)fb_var.yres - 28,
+                  "DPAD MOVE  L1 R1 PAGE  A OPEN  B BACK", 2,
+                  palette->primary);
     else if (view == VIEW_MEDIA_ENTRIES)
-        draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE  L1 R1 PAGE  A PLAY  B BACK", 2, primary);
+        draw_text(32, (int)fb_var.yres - 28,
+                  "DPAD MOVE  L1 R1 PAGE  A PLAY  B BACK", 2,
+                  palette->primary);
     else
-        draw_text(32, (int)fb_var.yres - 28, "DPAD MOVE   A OPEN   B BACK", 2, primary);
+        draw_text(32, (int)fb_var.yres - 28,
+                  "DPAD MOVE   A OPEN   B BACK", 2, palette->primary);
+}
+
+static void framebuffer_barrier(void) {
 #ifndef BIRD_HOST_TEST
     __asm__ volatile("dmb ishst" ::: "memory");
 #endif
     BIRD_PROFILE_BARRIER();
+}
+
+static void redraw_content_region(const struct launcher_palette *palette) {
+    rectangle(32, 95, 656, (int)fb_var.yres - 161,
+              palette->background);
+    draw_content(palette);
+}
+
+static void redraw_status_region(const struct launcher_palette *palette) {
+    rectangle(32, (int)fb_var.yres - 54, 656, 14, palette->panel);
+    draw_status(palette);
+}
+
+static void redraw_battery_region(const struct launcher_palette *palette) {
+    rectangle((int)fb_var.xres - 80, 30, 48, 14, palette->panel);
+    draw_battery_percent(palette->selected, palette->muted);
+}
+
+static void draw_screen(void) {
+    struct launcher_palette palette;
+    load_launcher_palette(&palette);
+    rectangle(0, 0, (int)fb_var.xres, (int)fb_var.yres,
+              palette.background);
+    rectangle(0, 0, (int)fb_var.xres, 92, palette.panel);
+    rectangle(0, (int)fb_var.yres - 66, (int)fb_var.xres, 66,
+              palette.panel);
+    rectangle(32, 86, 656, 3, palette.selected);
+    draw_header(&palette);
+    draw_content(&palette);
+    draw_battery_percent(palette.selected, palette.muted);
+    draw_status(&palette);
+    draw_help(&palette);
+    pending_render_invalid = 0U;
+    framebuffer_barrier();
+}
+
+static void draw_status_update(void) {
+    struct launcher_palette palette;
+    load_launcher_palette(&palette);
+    if (pending_render_invalid & RENDER_INVALID_CONTENT)
+        redraw_content_region(&palette);
+    redraw_status_region(&palette);
+    pending_render_invalid = 0U;
+    framebuffer_barrier();
+}
+
+static void draw_battery_update(void) {
+    struct launcher_palette palette;
+    load_launcher_palette(&palette);
+    if (pending_render_invalid & RENDER_INVALID_CONTENT)
+        redraw_content_region(&palette);
+    if (pending_render_invalid & RENDER_INVALID_STATUS)
+        redraw_status_region(&palette);
+    redraw_battery_region(&palette);
+    pending_render_invalid = 0U;
+    framebuffer_barrier();
+}
+
+static void draw_content_and_status_update(void) {
+    struct launcher_palette palette;
+    load_launcher_palette(&palette);
+    redraw_content_region(&palette);
+    redraw_status_region(&palette);
+    pending_render_invalid = 0U;
+    framebuffer_barrier();
+}
+
+static void draw_selection_update(u32 old_selection, u32 old_first) {
+    struct launcher_palette palette;
+    u32 new_first = viewport_first(view, selection);
+    load_launcher_palette(&palette);
+
+    if ((pending_render_invalid & RENDER_INVALID_CONTENT) ||
+        new_first != old_first) {
+        redraw_content_region(&palette);
+    } else if (view == VIEW_MAIN || view == VIEW_PLAY) {
+        int old_y = 122 + (int)old_selection * 64;
+        int new_y = 122 + (int)selection * 64;
+        rectangle(92, old_y - 10, 492, 52, palette.background);
+        draw_main_row(old_selection, &palette);
+        if (selection != old_selection) {
+            rectangle(92, new_y - 10, 492, 52, palette.background);
+            draw_main_row(selection, &palette);
+        }
+    } else {
+        u32 old_row = old_selection - old_first;
+        u32 new_row = selection - new_first;
+        int old_y = 102 + (int)old_row * 38;
+        int new_y = 102 + (int)new_row * 38;
+        rectangle(32, old_y - 7, 656, 31, palette.background);
+        draw_list_row(old_selection, old_row, &palette);
+        if (selection != old_selection) {
+            rectangle(32, new_y - 7, 656, 31, palette.background);
+            draw_list_row(selection, new_row, &palette);
+        }
+    }
+    redraw_status_region(&palette);
+    pending_render_invalid = 0U;
+    framebuffer_barrier();
 }
 
 static int write_content_request(u8 launch_kind, const char *core,
@@ -2556,7 +2954,10 @@ static int dispatch_pending_launch(void) {
         action = launch_media_entry(request.active_index, request.index);
     else
         action = ACTION_NONE;
-    if (action == ACTION_NONE) BIRD_PROFILE_CANCEL_SELECTION();
+    if (action == ACTION_NONE) {
+        BIRD_PROFILE_CANCEL_SELECTION();
+        pending_render_invalid |= RENDER_INVALID_STATUS;
+    }
     log_text("pending_launch boot_ms=");
     log_number(boot_ms());
     log_text(" event=dispatch-result action=");
@@ -2567,24 +2968,25 @@ static int dispatch_pending_launch(void) {
 
 static void toggle_current_favorite(void) {
     u32 catalog_index = current_catalog_index();
+    int favorite_changed = 0;
     int was_favorite;
     if (catalog_index >= CATALOG_ENTRY_COUNT) {
         selected_status = "NO FAVORITE SELECTED";
         BIRD_PROFILE_RENDER(PROFILE_RENDER_STATUS);
-        draw_screen();
+        draw_status_update();
         return;
     }
     if (!storage_ready || !favorites_loaded) {
         selected_status = "WAITING FOR FAVORITES STORAGE";
         BIRD_PROFILE_RENDER(PROFILE_RENDER_STATUS);
-        draw_screen();
+        draw_status_update();
         return;
     }
     if (!catalog_path_supported(catalog_entries[catalog_index].path)) {
         selected_status = "UNSUPPORTED FAVORITE PATH";
         log_text("favorite_toggle result=unsupported-path\n");
         BIRD_PROFILE_RENDER(PROFILE_RENDER_STATUS);
-        draw_screen();
+        draw_status_update();
         return;
     }
 
@@ -2604,6 +3006,7 @@ static void toggle_current_favorite(void) {
         selected_status = "FAVORITES SAVE FAILED";
         log_text("favorite_toggle result=save-failed path=");
     } else {
+        favorite_changed = 1;
         selected_status = was_favorite ? "FAVORITE REMOVED" : "FAVORITE ADDED";
         log_text(was_favorite ? "favorite_toggle result=removed path="
                               : "favorite_toggle result=added path=");
@@ -2614,7 +3017,12 @@ static void toggle_current_favorite(void) {
     log_text("\n");
     preserve_early_handoff_state();
     BIRD_PROFILE_RENDER(PROFILE_RENDER_STATUS);
-    draw_screen();
+    if (!favorite_changed)
+        draw_status_update();
+    else if (view == VIEW_GAMES)
+        draw_selection_update(selection, viewport_first(view, selection));
+    else
+        draw_content_and_status_update();
 }
 
 static int select_current(void) {
@@ -2670,13 +3078,6 @@ static int select_current(void) {
     } else if (view == VIEW_GAMES || view == VIEW_FAVORITES) {
         u32 catalog_index = current_catalog_index();
         if (catalog_index < CATALOG_ENTRY_COUNT) {
-            /* A retained initramfs process normally learns storage through the
-             * FIFO. Revalidate synchronously on selection as a recovery path:
-             * a missed/stale readiness edge must never strand a real file. */
-            if (!storage_ready) {
-                next_storage_probe = 0;
-                probe_storage();
-            }
             if (storage_ready) {
                 cancel_pending_launch("direct-selection");
                 action = launch_catalog_entry(catalog_index);
@@ -2698,10 +3099,6 @@ static int select_current(void) {
     } else if (view == VIEW_MEDIA_ENTRIES) {
         if (active_media_category < CATALOG_MEDIA_CATEGORY_COUNT &&
             selection < catalog_media_categories[active_media_category].count) {
-            if (!storage_ready) {
-                next_storage_probe = 0;
-                probe_storage();
-            }
             if (storage_ready) {
                 cancel_pending_launch("direct-selection");
                 action = launch_media_entry(active_media_category, selection);
@@ -2720,9 +3117,8 @@ static int select_current(void) {
 
 static void move_selection(int direction, u32 steps) {
     u32 count = current_count();
-#ifdef BIRD_PROFILE
-    u32 profile_old_first = bird_profile_viewport_first(view, selection);
-#endif
+    u32 old_selection = selection;
+    u32 old_first = viewport_first(view, selection);
     cancel_pending_launch("navigation");
     BIRD_PROFILE_CANCEL_SELECTION();
     if (!count) return;
@@ -2732,11 +3128,10 @@ static void move_selection(int direction, u32 steps) {
     }
     selected_status = "DIRECT EVDEV INPUT READY";
     preserve_early_handoff_state();
-    BIRD_PROFILE_RENDER(profile_old_first !=
-                                bird_profile_viewport_first(view, selection)
+    BIRD_PROFILE_RENDER(old_first != viewport_first(view, selection)
                             ? PROFILE_RENDER_VIEWPORT_CHANGE
                             : PROFILE_RENDER_SELECTION_MOVEMENT);
-    draw_screen();
+    draw_selection_update(old_selection, old_first);
 }
 
 static int handle_direction(int direction) {
@@ -2892,36 +3287,92 @@ static int handle_event(const struct input_event *event) {
     return 0;
 }
 
+static void receive_storage_handoff_signal(void) {
+    if (storage_handoff_signaled || storage_ready) return;
+    storage_handoff_signaled = 1;
+#ifdef BIRD_PROFILE
+    bird_profile_storage_signal_received();
+#endif
+    probe_storage();
+}
+
 static void probe_storage(void) {
     long fd;
     u64 now;
-    if (storage_ready) return;
+#ifdef BIRD_PROFILE
+    long storage_result;
+    long config_result;
+#endif
+    if (storage_ready || storage_probe_attempted) return;
+    if (STORAGE_READY_SIGNAL[0] && !storage_handoff_signaled) return;
+    storage_probe_attempted = 1;
     now = boot_ms();
-    if (now < next_storage_probe) return;
-    next_storage_probe = now + 50UL;
-    refresh_path_anchors();
+#ifdef BIRD_PROFILE
+    if (bird_profile_storage_signal_seen)
+        bird_profile_storage_after_signal_attempt++;
+#endif
     /*
      * An initramfs-owned Bird must retain both directory descriptors before
      * the special-mount handoff and switch_root. The marker is the bounded
      * readiness acknowledgement consumed by bird-early.sh; it never makes the
-     * already-interactive menu wait for storage. The initramfs process opens
-     * the final tree below /sysroot after prepare_sysroot moves it; a normal
-     * root process uses the ordinary absolute paths.
+     * already-interactive menu wait for storage. The readiness edge orders one
+     * exact /sysroot acquisition after prepare_sysroot; a normal root process
+     * makes one acquisition from the already-mounted live tree.
      */
-    if (storage_dir_fd < 0 || config_dir_fd < 0) return;
+    close_storage_anchors();
+    acquire_storage_anchors_once();
+#ifdef BIRD_PROFILE
+    storage_result = STORAGE_READY_SIGNAL[0]
+                         ? bird_profile_storage_sysroot_result
+                         : bird_profile_storage_live_result;
+    config_result = STORAGE_READY_SIGNAL[0]
+                        ? bird_profile_config_sysroot_result
+                        : bird_profile_config_live_result;
+#endif
+    if (storage_dir_fd < 0) {
+#ifdef BIRD_PROFILE
+        bird_profile_storage_probe_failed(
+            PROFILE_STORAGE_STAGE_STORAGE_DIR,
+            storage_result, now);
+#endif
+        return;
+    }
+    if (config_dir_fd < 0) {
+#ifdef BIRD_PROFILE
+        bird_profile_storage_probe_failed(
+            PROFILE_STORAGE_STAGE_CONFIG_DIR,
+            config_result, now);
+#endif
+        return;
+    }
     fd = fixed_open(ROM_ROOT, O_RDONLY | O_NONBLOCK);
-    if (fd < 0) return;
+    if (fd < 0) {
+#ifdef BIRD_PROFILE
+        bird_profile_storage_probe_failed(PROFILE_STORAGE_STAGE_ROM_ROOT,
+                                          fd, now);
+#endif
+        return;
+    }
     sys_close((int)fd);
     if (STORAGE_ANCHOR_MARKER[0]) {
         fd = fixed_create(STORAGE_ANCHOR_MARKER,
                           O_WRONLY | O_CREAT | O_TRUNC, 0600);
-        if (fd < 0) return;
+        if (fd < 0) {
+#ifdef BIRD_PROFILE
+            bird_profile_storage_probe_failed(PROFILE_STORAGE_STAGE_MARKER,
+                                              fd, now);
+#endif
+            return;
+        }
         (void)sys_write((int)fd, "ready\n", 6U);
         sys_close((int)fd);
         log_text("storage_anchor_ready boot_ms=");
         log_number(now);
         log_text("\n");
     }
+#ifdef BIRD_PROFILE
+    bird_profile_storage_probe_ready(now);
+#endif
     storage_ready = 1;
     storage_signal_disabled = 1;
     if (storage_signal_fd >= 0) {
@@ -2929,19 +3380,22 @@ static void probe_storage(void) {
         storage_signal_fd = -1;
     }
     {
-#ifdef BIRD_PROFILE
-        int profile_was_favorites_loaded = favorites_loaded;
-#endif
+        int was_favorites_loaded = favorites_loaded;
+        int favorites_completed;
         load_favorites();
+        favorites_completed = !was_favorites_loaded && favorites_loaded;
         if (view == VIEW_FAVORITES) {
             if (!favorite_count)
                 selection = 0U;
             else if (selection >= favorite_count)
                 selection = favorite_count - 1U;
-            BIRD_PROFILE_RENDER(!profile_was_favorites_loaded && favorites_loaded
+            BIRD_PROFILE_RENDER(favorites_completed
                                     ? PROFILE_RENDER_FAVORITES_COMPLETION
                                     : PROFILE_RENDER_STATUS);
-            draw_screen();
+            if (favorites_completed)
+                draw_content_and_status_update();
+            else
+                draw_status_update();
         }
     }
     log_text("storage_ready boot_ms=");
@@ -3128,10 +3582,10 @@ static int application(void) {
         return 6;
     }
     if (STORAGE_READY_SIGNAL[0]) {
-        try_storage_signal_open();
+        open_storage_signal_once();
         log_text("storage_signal=");
         log_text(storage_signal_fd >= 0 ? "ready" :
-                 (storage_signal_disabled ? "degraded" : "retrying"));
+                 (storage_signal_disabled ? "contract-failed" : "missing"));
         log_text(" boot_ms=");
         log_number(boot_ms());
         log_text("\n");
@@ -3159,7 +3613,8 @@ static int application(void) {
         int power_index = -1;
         int storage_index = -1;
 
-        probe_storage();
+        if (!STORAGE_READY_SIGNAL[0] && !storage_probe_attempted)
+            probe_storage();
         if (storage_ready && !favorites_loaded) {
             int was_loaded = favorites_loaded;
             load_favorites();
@@ -3169,10 +3624,9 @@ static int application(void) {
                 else if (selection >= favorite_count)
                     selection = favorite_count - 1U;
                 BIRD_PROFILE_RENDER(PROFILE_RENDER_FAVORITES_COMPLETION);
-                draw_screen();
+                draw_content_and_status_update();
             }
         }
-        if (!storage_ready) try_storage_signal_open();
         try_power_event_open();
         polls[0].fd = input_fd;
         polls[0].events = POLLIN;
@@ -3195,21 +3649,11 @@ static int application(void) {
                 polls[poll_count].revents = 0;
                 poll_count++;
             }
-            /* The FIFO remains the immediate path. A bounded probe also runs
-             * until success so a lost writer edge cannot create a permanent
-             * "queued" state. It stops forever once storage is retained. */
-            timeout_ms = 50UL;
         }
         now = boot_ms();
         if (power_event_fd < 0 && !power_event_disabled) {
             u64 retry_wait = next_power_event_retry > now
                                  ? next_power_event_retry - now : 0;
-            if (retry_wait < timeout_ms) timeout_ms = retry_wait;
-        }
-        if (!storage_ready && storage_signal_fd < 0 &&
-            !storage_signal_disabled) {
-            u64 retry_wait = next_storage_signal_retry > now
-                                 ? next_storage_signal_retry - now : 0;
             if (retry_wait < timeout_ms) timeout_ms = retry_wait;
         }
         if (storage_ready && !favorites_loaded) {
@@ -3229,7 +3673,7 @@ static int application(void) {
             if (power_index >= 0)
                 schedule_power_event_retry("ppoll-error");
             if (storage_index >= 0)
-                schedule_storage_signal_retry("ppoll-error");
+                disable_storage_signal("ppoll-error");
             poll_error_count++;
             log_text("ppoll result=error errno=");
             log_number((u64)-poll_result);
@@ -3253,12 +3697,6 @@ static int application(void) {
             power_event_retry_count = 0;
             power_event_retry_ms = AUX_RETRY_INITIAL_MS;
         }
-        if (storage_index >= 0 &&
-            !poll_descriptor_failed(polls[storage_index].revents)) {
-            storage_signal_retry_count = 0;
-            storage_signal_retry_ms = AUX_RETRY_INITIAL_MS;
-        }
-
         if (poll_descriptor_failed(polls[0].revents)) {
             log_text("input reconnect boot_ms=");
             log_number(boot_ms());
@@ -3273,27 +3711,32 @@ static int application(void) {
 
         if (storage_index >= 0 &&
             poll_descriptor_failed(polls[storage_index].revents)) {
-            schedule_storage_signal_retry(
+            disable_storage_signal(
                 (polls[storage_index].revents & POLLNVAL) ? "poll-nval" :
                 ((polls[storage_index].revents & POLLHUP) ? "poll-hup" :
                                                            "poll-error"));
         } else if (storage_index >= 0 &&
                    (polls[storage_index].revents & POLLIN)) {
             char storage_event[32];
+            int storage_event_received = 0;
             for (;;) {
                 count = sys_read(storage_signal_fd, storage_event,
                                  sizeof(storage_event));
-                if (count > 0) continue;
+                if (count > 0) {
+                    storage_event_received = 1;
+                    continue;
+                }
                 if (count == -EINTR) continue;
                 if (count < 0 && count != -EAGAIN)
-                    schedule_storage_signal_retry("read-error");
+                    disable_storage_signal("read-error");
                 break;
             }
-            next_storage_probe = 0;
-            log_text("storage_signal_received boot_ms=");
-            log_number(boot_ms());
-            log_text("\n");
-            probe_storage();
+            if (storage_event_received) {
+                log_text("storage_signal_received boot_ms=");
+                log_number(boot_ms());
+                log_text("\n");
+                receive_storage_handoff_signal();
+            }
         }
 
         if (power_index >= 0 &&
@@ -3338,7 +3781,7 @@ static int application(void) {
                     log_text("unavailable");
                 log_text("\n");
                 BIRD_PROFILE_RENDER(PROFILE_RENDER_BATTERY);
-                draw_screen();
+                draw_battery_update();
             }
         }
 
