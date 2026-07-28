@@ -97,6 +97,12 @@ typedef signed long s64;
 #ifndef UI_RESUME_PATH
 #define UI_RESUME_PATH "/run/muos/bird-launcher-ui-resume"
 #endif
+#ifndef UI_RESUME_TEMP
+#define UI_RESUME_TEMP UI_RESUME_PATH ".tmp"
+#endif
+#if defined(HANDOFF_ACTION_PATH) && !defined(HANDOFF_ACTION_TEMP)
+#define HANDOFF_ACTION_TEMP HANDOFF_ACTION_PATH ".tmp"
+#endif
 #define UI_RESUME_MAGIC 0x42495244U
 #ifndef FAVORITES_PATH
 #define FAVORITES_PATH "/mnt/mmc/MUOS/bespoke-launcher/favorites.txt"
@@ -140,10 +146,16 @@ typedef signed long s64;
 #define POLL_RESULT_INTERRUPTED 1
 #define POLL_RESULT_FAILED 2
 
+#define NAVIGATION_EVENT_NONE 0
+#define NAVIGATION_EVENT_CONSUMED 1
+#define NAVIGATION_EVENT_MOVEMENT 2
+
 #define PENDING_LAUNCH_NONE 0U
 #define PENDING_LAUNCH_GAME 1U
 #define PENDING_LAUNCH_MEDIA 2U
 #define INPUT_EVENT_SCAN_COUNT 32
+#define NAVIGATION_BATCH_MAX_EVENTS 16U
+#define NAVIGATION_BATCH_MAX_RECORDS 32U
 
 /* The accepted stock-root image uses Linux 7.0.11 sun4i-drm fbdev
  * emulation with CONFIG_DRM_FBDEV_OVERALLOC=100. RG34XX-SP measurements show
@@ -278,6 +290,14 @@ struct pending_launch_state {
     u32 kind;
     u32 index;
     u32 active_index;
+};
+
+struct navigation_batch {
+    u32 old_selection;
+    u32 old_first;
+    u32 event_count;
+    u32 record_count;
+    int active;
 };
 
 static struct fb_var_screeninfo fb_var;
@@ -416,6 +436,14 @@ struct bird_profile_render_totals {
     u64 physical_bytes;
 };
 
+struct bird_profile_event_start {
+    u64 input_read_ns;
+    u64 filesystem_ops;
+    u64 diagnostic_writes;
+    u64 diagnostic_bytes;
+    u64 syscall_kind[PROFILE_SYSCALL_KIND_COUNT];
+};
+
 struct bird_profile_state {
     struct bird_profile_render_totals render[PROFILE_RENDER_REASON_COUNT];
     u64 syscalls;
@@ -438,6 +466,8 @@ struct bird_profile_state {
     u64 input_to_barrier_total_ns;
     u64 input_to_barrier_max_ns;
     u64 input_to_barrier_samples;
+    u64 navigation_events;
+    u64 navigation_batches;
     u64 event_pre_barrier_filesystem_ops;
     u64 event_pre_barrier_diagnostic_writes;
     u64 event_pre_barrier_diagnostic_bytes;
@@ -508,7 +538,13 @@ static u64 bird_profile_now_ns(void);
 static void bird_profile_application_entry(u64 now);
 static void bird_profile_input_opened(void);
 static void bird_profile_begin_event(void);
+static void bird_profile_capture_event_start(
+    struct bird_profile_event_start *start);
+static void bird_profile_begin_event_from_start(
+    const struct bird_profile_event_start *start);
 static void bird_profile_finish_event(void);
+static void bird_profile_navigation_event(void);
+static void bird_profile_navigation_batch(void);
 static void bird_profile_mark_selection(void);
 static void bird_profile_cancel_selection(void);
 static void bird_profile_resume_committed(void);
@@ -739,6 +775,8 @@ static void bird_profile_deep_note_string(u64 bytes) {
 #define BIRD_PROFILE_INPUT_OPENED() bird_profile_input_opened()
 #define BIRD_PROFILE_BEGIN_EVENT() bird_profile_begin_event()
 #define BIRD_PROFILE_FINISH_EVENT() bird_profile_finish_event()
+#define BIRD_PROFILE_NAVIGATION_EVENT() bird_profile_navigation_event()
+#define BIRD_PROFILE_NAVIGATION_BATCH() bird_profile_navigation_batch()
 #define BIRD_PROFILE_MARK_SELECTION() bird_profile_mark_selection()
 #define BIRD_PROFILE_CANCEL_SELECTION() bird_profile_cancel_selection()
 #define BIRD_PROFILE_RESUME_COMMITTED() bird_profile_resume_committed()
@@ -768,6 +806,8 @@ static void bird_profile_deep_note_string(u64 bytes) {
 #define BIRD_PROFILE_INPUT_OPENED()
 #define BIRD_PROFILE_BEGIN_EVENT()
 #define BIRD_PROFILE_FINISH_EVENT()
+#define BIRD_PROFILE_NAVIGATION_EVENT()
+#define BIRD_PROFILE_NAVIGATION_BATCH()
 #define BIRD_PROFILE_MARK_SELECTION()
 #define BIRD_PROFILE_CANCEL_SELECTION()
 #define BIRD_PROFILE_RESUME_COMMITTED()
@@ -1226,18 +1266,43 @@ static void bird_profile_input_opened(void) {
 }
 
 static void bird_profile_begin_event(void) {
+    struct bird_profile_event_start start;
+    bird_profile_capture_event_start(&start);
+    bird_profile_begin_event_from_start(&start);
+}
+
+static void bird_profile_capture_event_start(
+    struct bird_profile_event_start *start) {
+    u32 kind;
+    start->input_read_ns = bird_profile_now_ns();
+    start->filesystem_ops = bird_profile.filesystem_ops;
+    start->diagnostic_writes = bird_profile.diagnostic_writes;
+    start->diagnostic_bytes = bird_profile.diagnostic_bytes;
+    for (kind = 0; kind < PROFILE_SYSCALL_KIND_COUNT; kind++)
+        start->syscall_kind[kind] = bird_profile.syscall_kind[kind];
+}
+
+static void bird_profile_begin_event_from_start(
+    const struct bird_profile_event_start *start) {
     u32 kind;
     bird_profile.event_active = 1;
     bird_profile.event_barrier_seen = 0;
     bird_profile.event_barrier_ns = 0;
     bird_profile.event_barrier_generation = bird_profile.barrier_generation;
-    bird_profile.input_read_ns = bird_profile_now_ns();
-    bird_profile.event_start_filesystem_ops = bird_profile.filesystem_ops;
-    bird_profile.event_start_diagnostic_writes = bird_profile.diagnostic_writes;
-    bird_profile.event_start_diagnostic_bytes = bird_profile.diagnostic_bytes;
+    bird_profile.input_read_ns = start->input_read_ns;
+    bird_profile.event_start_filesystem_ops = start->filesystem_ops;
+    bird_profile.event_start_diagnostic_writes = start->diagnostic_writes;
+    bird_profile.event_start_diagnostic_bytes = start->diagnostic_bytes;
     for (kind = 0; kind < PROFILE_SYSCALL_KIND_COUNT; kind++)
-        bird_profile.event_start_syscall_kind[kind] =
-            bird_profile.syscall_kind[kind];
+        bird_profile.event_start_syscall_kind[kind] = start->syscall_kind[kind];
+}
+
+static void bird_profile_navigation_event(void) {
+    bird_profile.navigation_events++;
+}
+
+static void bird_profile_navigation_batch(void) {
+    bird_profile.navigation_batches++;
 }
 
 static void bird_profile_finish_event(void) {
@@ -1526,6 +1591,10 @@ static void bird_profile_note_exit_and_emit(void) {
     bird_profile_write_number(bird_profile.input_to_barrier_total_ns);
     bird_profile_write_text(" input_read_to_barrier_max_ns=");
     bird_profile_write_number(bird_profile.input_to_barrier_max_ns);
+    bird_profile_write_text(" navigation_events=");
+    bird_profile_write_number(bird_profile.navigation_events);
+    bird_profile_write_text(" navigation_batches=");
+    bird_profile_write_number(bird_profile.navigation_batches);
     bird_profile_write_text(" event_pre_barrier_filesystem_namespace_ops=");
     bird_profile_write_number(bird_profile.event_pre_barrier_filesystem_ops);
     bird_profile_write_text(" event_pre_barrier_diagnostic_writes=");
@@ -1687,6 +1756,11 @@ static int classify_poll_result(long result) {
 
 static int poll_descriptor_failed(short revents) {
     return (revents & (POLLERR | POLLHUP | POLLNVAL)) != 0;
+}
+
+static int input_drain_allows_pending_dispatch(long terminal_result,
+                                               int reconnect_required) {
+    return terminal_result == -EAGAIN && !reconnect_required;
 }
 
 static u64 next_poll_retry_ms(u64 delay) {
@@ -2036,14 +2110,21 @@ static int save_ui_resume(void) {
         state.active_index = active_system;
     state.selection = selection;
 
-    fd = fixed_create(UI_RESUME_PATH, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    /* Keep the last committed navigation batch readable until the replacement
+     * is complete. A crash between the framebuffer barrier and this rename
+     * can therefore lose only the current batch, never truncate the prior one. */
+    fd = fixed_create(UI_RESUME_TEMP, O_WRONLY | O_CREAT | O_TRUNC, 0600);
     if (fd < 0) return -1;
     if (write_exact((int)fd, (const char *)&state, sizeof(state)) < 0) {
         sys_close((int)fd);
-        fixed_unlink(UI_RESUME_PATH);
+        fixed_unlink(UI_RESUME_TEMP);
         return -1;
     }
     sys_close((int)fd);
+    if (fixed_rename(UI_RESUME_TEMP, UI_RESUME_PATH) < 0) {
+        fixed_unlink(UI_RESUME_TEMP);
+        return -1;
+    }
     BIRD_PROFILE_RESUME_COMMITTED();
     log_text("ui_resume_save boot_ms=");
     log_number(boot_ms());
@@ -2063,21 +2144,31 @@ static void preserve_early_handoff_state(void) {
 #endif
 }
 
-static void write_handoff_action(int action) {
+static int write_handoff_action(int action) {
 #ifdef HANDOFF_ACTION_PATH
     char value[3];
     long fd;
-    if (action < ACTION_LAUNCH || action > ACTION_PORTMASTER) return;
+    if (action < ACTION_LAUNCH || action > ACTION_PORTMASTER) return 0;
     value[0] = (char)('0' + action / 10);
     value[1] = (char)('0' + action % 10);
     value[2] = '\n';
-    fd = fixed_create(HANDOFF_ACTION_PATH,
+    fd = fixed_create(HANDOFF_ACTION_TEMP,
                       O_WRONLY | O_CREAT | O_TRUNC, 0600);
-    if (fd < 0) return;
-    (void)sys_write((int)fd, value, sizeof(value));
+    if (fd < 0) return -1;
+    if (write_exact((int)fd, value, sizeof(value)) < 0) {
+        sys_close((int)fd);
+        fixed_unlink(HANDOFF_ACTION_TEMP);
+        return -1;
+    }
     sys_close((int)fd);
+    if (fixed_rename(HANDOFF_ACTION_TEMP, HANDOFF_ACTION_PATH) < 0) {
+        fixed_unlink(HANDOFF_ACTION_TEMP);
+        return -1;
+    }
+    return 0;
 #else
     (void)action;
+    return 0;
 #endif
 }
 
@@ -2090,18 +2181,17 @@ static int load_ui_resume(void) {
     if (fd < 0) return 0;
     count = sys_read((int)fd, &state, sizeof(state));
     sys_close((int)fd);
-    fixed_unlink(UI_RESUME_PATH);
 
     if (count != (long)sizeof(state) || state.magic != UI_RESUME_MAGIC)
-        return 0;
+        goto invalid;
     if (state.view == VIEW_MAIN || state.view == VIEW_PLAY) {
-        if (state.selection >= 4U) return 0;
+        if (state.selection >= 4U) goto invalid;
     } else if (state.view == VIEW_SYSTEMS) {
-        if (state.selection >= CATALOG_SYSTEM_COUNT) return 0;
+        if (state.selection >= CATALOG_SYSTEM_COUNT) goto invalid;
     } else if (state.view == VIEW_GAMES) {
         if (state.active_index >= CATALOG_SYSTEM_COUNT ||
             state.selection >= catalog_systems[state.active_index].count)
-            return 0;
+            goto invalid;
     } else if (state.view == VIEW_FAVORITES) {
         load_favorites();
         if (favorites_loaded) {
@@ -2112,15 +2202,15 @@ static int load_ui_resume(void) {
     } else if (state.view == VIEW_MEDIA_ENTRIES) {
         if (state.active_index >= CATALOG_MEDIA_CATEGORY_COUNT ||
             state.selection >= catalog_media_categories[state.active_index].count)
-            return 0;
+            goto invalid;
     } else if (state.view == VIEW_MEDIA_CATEGORIES) {
         if (state.active_index < CATALOG_MEDIA_SECTION_LISTEN ||
             state.active_index > CATALOG_MEDIA_SECTION_WATCH)
-            return 0;
+            goto invalid;
         media_section = state.active_index;
-        if (state.selection >= media_category_count()) return 0;
+        if (state.selection >= media_category_count()) goto invalid;
     } else {
-        return 0;
+        goto invalid;
     }
 
     view = state.view;
@@ -2143,6 +2233,10 @@ static int load_ui_resume(void) {
     log_number(selection);
     log_text(" result=ready\n");
     return 1;
+
+invalid:
+    fixed_unlink(UI_RESUME_PATH);
+    return 0;
 }
 
 static int save_favorites(void) {
@@ -2770,6 +2864,22 @@ static void draw_selection_update(u32 old_selection, u32 old_first) {
     framebuffer_barrier();
 }
 
+static int publish_handoff_action(int action) {
+    if (write_handoff_action(action) == 0) return 0;
+    if (action == ACTION_LAUNCH)
+        fixed_unlink(LAUNCH_REQUEST);
+    BIRD_PROFILE_CANCEL_SELECTION();
+    selected_status = "HANDOFF PUBLICATION FAILED";
+    log_text("handoff_action boot_ms=");
+    log_number(boot_ms());
+    log_text(" action=");
+    log_number((u64)action);
+    log_text(" result=publish-failed\n");
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_STATUS);
+    draw_status_update();
+    return -1;
+}
+
 static int write_content_request(u8 launch_kind, const char *core,
                                  const char *name, const char *path,
                                  const char *status) {
@@ -3015,7 +3125,6 @@ static void toggle_current_favorite(void) {
     }
     log_text(catalog_entries[catalog_index].path);
     log_text("\n");
-    preserve_early_handoff_state();
     BIRD_PROFILE_RENDER(PROFILE_RENDER_STATUS);
     if (!favorite_changed)
         draw_status_update();
@@ -3023,6 +3132,7 @@ static void toggle_current_favorite(void) {
         draw_selection_update(selection, viewport_first(view, selection));
     else
         draw_content_and_status_update();
+    preserve_early_handoff_state();
 }
 
 static int select_current(void) {
@@ -3107,84 +3217,119 @@ static int select_current(void) {
             }
         }
     }
-    if (action == ACTION_NONE) preserve_early_handoff_state();
     BIRD_PROFILE_RENDER(view != profile_original_view
                             ? PROFILE_RENDER_VIEW_CHANGE
                             : PROFILE_RENDER_STATUS);
     draw_screen();
+    if (action == ACTION_NONE) preserve_early_handoff_state();
     return action;
 }
 
-static void move_selection(int direction, u32 steps) {
+static void reset_navigation_batch(struct navigation_batch *batch) {
+    batch->old_selection = 0U;
+    batch->old_first = 0U;
+    batch->event_count = 0U;
+    batch->record_count = 0U;
+    batch->active = 0;
+}
+
+static void stage_selection_move(struct navigation_batch *batch,
+                                 int direction, u32 steps) {
     u32 count = current_count();
-    u32 old_selection = selection;
-    u32 old_first = viewport_first(view, selection);
-    cancel_pending_launch("navigation");
     BIRD_PROFILE_CANCEL_SELECTION();
-    if (!count) return;
+    if (!count) {
+        cancel_pending_launch("navigation");
+        return;
+    }
+    if (!batch->active) {
+        batch->old_selection = selection;
+        batch->old_first = viewport_first(view, selection);
+        batch->event_count = 0U;
+        batch->record_count = 0U;
+        batch->active = 1;
+    }
     while (steps--) {
         if (direction < 0) selection = selection > 0U ? selection - 1U : count - 1U;
         if (direction > 0) selection = selection + 1U < count ? selection + 1U : 0U;
     }
+    batch->event_count++;
+    BIRD_PROFILE_NAVIGATION_EVENT();
     selected_status = "DIRECT EVDEV INPUT READY";
-    preserve_early_handoff_state();
-    BIRD_PROFILE_RENDER(old_first != viewport_first(view, selection)
-                            ? PROFILE_RENDER_VIEWPORT_CHANGE
-                            : PROFILE_RENDER_SELECTION_MOVEMENT);
-    draw_selection_update(old_selection, old_first);
 }
 
-static int handle_direction(int direction) {
-    move_selection(direction, 1U);
-    return 0;
+static void commit_navigation_batch(struct navigation_batch *batch) {
+    if (!batch->active) return;
+    BIRD_PROFILE_RENDER(batch->old_first != viewport_first(view, selection)
+                            ? PROFILE_RENDER_VIEWPORT_CHANGE
+                            : PROFILE_RENDER_SELECTION_MOVEMENT);
+    draw_selection_update(batch->old_selection, batch->old_first);
+
+    /* The visible selection wins the race. Cancellation diagnostics and the
+     * atomic resume replacement follow the framebuffer barrier. Until that
+     * rename, crash recovery intentionally reflects the preceding batch. */
+    cancel_pending_launch("navigation");
+    preserve_early_handoff_state();
+    BIRD_PROFILE_NAVIGATION_BATCH();
+    reset_navigation_batch(batch);
+}
+
+static void move_selection(int direction, u32 steps) {
+    struct navigation_batch batch;
+    reset_navigation_batch(&batch);
+    stage_selection_move(&batch, direction, steps);
+    commit_navigation_batch(&batch);
 }
 
 static int handle_back(void) {
-    cancel_pending_launch("back");
     BIRD_PROFILE_CANCEL_SELECTION();
     if (view == VIEW_FAVORITES) {
         view = VIEW_PLAY;
         selection = 1U;
         selected_status = "PLAY LIBRARY READY";
-        preserve_early_handoff_state();
         BIRD_PROFILE_RENDER(PROFILE_RENDER_VIEW_CHANGE);
         draw_screen();
+        cancel_pending_launch("back");
+        preserve_early_handoff_state();
         return 0;
     }
     if (view == VIEW_GAMES) {
         view = VIEW_SYSTEMS;
         selection = active_system;
         selected_status = "CATALOG READY FROM FIRMWARE";
-        preserve_early_handoff_state();
         BIRD_PROFILE_RENDER(PROFILE_RENDER_VIEW_CHANGE);
         draw_screen();
+        cancel_pending_launch("back");
+        preserve_early_handoff_state();
         return 0;
     }
     if (view == VIEW_SYSTEMS) {
         view = VIEW_PLAY;
         selection = 0U;
         selected_status = "PLAY LIBRARY READY";
-        preserve_early_handoff_state();
         BIRD_PROFILE_RENDER(PROFILE_RENDER_VIEW_CHANGE);
         draw_screen();
+        cancel_pending_launch("back");
+        preserve_early_handoff_state();
         return 0;
     }
     if (view == VIEW_PLAY) {
         view = VIEW_MAIN;
         selection = 0U;
         selected_status = "DIRECT FRAMEBUFFER READY";
-        preserve_early_handoff_state();
         BIRD_PROFILE_RENDER(PROFILE_RENDER_VIEW_CHANGE);
         draw_screen();
+        cancel_pending_launch("back");
+        preserve_early_handoff_state();
         return 0;
     }
     if (view == VIEW_MEDIA_ENTRIES) {
         view = VIEW_MEDIA_CATEGORIES;
         selection = active_media_category - media_category_first();
         selected_status = "MEDIA CATALOG READY FROM FIRMWARE";
-        preserve_early_handoff_state();
         BIRD_PROFILE_RENDER(PROFILE_RENDER_VIEW_CHANGE);
         draw_screen();
+        cancel_pending_launch("back");
+        preserve_early_handoff_state();
         return 0;
     }
     if (view == VIEW_MEDIA_CATEGORIES) {
@@ -3193,11 +3338,13 @@ static int handle_back(void) {
                         ? 1U
                         : (media_section == CATALOG_MEDIA_SECTION_READ ? 2U : 3U);
         selected_status = "DIRECT FRAMEBUFFER READY";
-        preserve_early_handoff_state();
         BIRD_PROFILE_RENDER(PROFILE_RENDER_VIEW_CHANGE);
         draw_screen();
+        cancel_pending_launch("back");
+        preserve_early_handoff_state();
         return 0;
     }
+    cancel_pending_launch("back");
     return ACTION_RELOAD;
 }
 
@@ -3219,13 +3366,97 @@ static int update_axis_latch(int *latch, int value) {
     return direction;
 }
 
+static int decode_navigation_event(const struct input_event *event,
+                                   int *direction, u32 *steps) {
+    *direction = 0;
+    *steps = 0U;
+    if (event->type == EV_KEY && event->value == 1) {
+        u16 page_up_button = h700_input ? H700_BTN_TL : MUOS_BTN_TL;
+        u16 page_down_button = h700_input ? H700_BTN_TR : MUOS_BTN_TR;
+
+        if (h700_input && (event->code == BTN_DPAD_UP ||
+                           event->code == BTN_DPAD_LEFT)) {
+            *direction = -1;
+            *steps = 1U;
+            return NAVIGATION_EVENT_MOVEMENT;
+        }
+        if (h700_input && (event->code == BTN_DPAD_DOWN ||
+                           event->code == BTN_DPAD_RIGHT)) {
+            *direction = 1;
+            *steps = 1U;
+            return NAVIGATION_EVENT_MOVEMENT;
+        }
+        if ((view == VIEW_SYSTEMS || view == VIEW_GAMES || view == VIEW_FAVORITES ||
+             view == VIEW_MEDIA_CATEGORIES || view == VIEW_MEDIA_ENTRIES) &&
+            event->code == page_up_button) {
+            *direction = -1;
+            *steps = view == VIEW_SYSTEMS || view == VIEW_MEDIA_CATEGORIES
+                         ? SYSTEM_ROWS : GAME_ROWS;
+            return NAVIGATION_EVENT_MOVEMENT;
+        }
+        if ((view == VIEW_SYSTEMS || view == VIEW_GAMES || view == VIEW_FAVORITES ||
+             view == VIEW_MEDIA_CATEGORIES || view == VIEW_MEDIA_ENTRIES) &&
+            event->code == page_down_button) {
+            *direction = 1;
+            *steps = view == VIEW_SYSTEMS || view == VIEW_MEDIA_CATEGORIES
+                         ? SYSTEM_ROWS : GAME_ROWS;
+            return NAVIGATION_EVENT_MOVEMENT;
+        }
+    }
+
+    if (event->type == EV_ABS) {
+        if (event->code == ABS_HAT0X) {
+            *direction = update_axis_latch(&axis_x, event->value);
+            *steps = *direction ? 1U : 0U;
+            return *direction ? NAVIGATION_EVENT_MOVEMENT
+                              : NAVIGATION_EVENT_CONSUMED;
+        }
+        if (event->code == ABS_HAT0Y) {
+            *direction = update_axis_latch(&axis_y, event->value);
+            *steps = *direction ? 1U : 0U;
+            return *direction ? NAVIGATION_EVENT_MOVEMENT
+                              : NAVIGATION_EVENT_CONSUMED;
+        }
+    }
+    return NAVIGATION_EVENT_NONE;
+}
+
+static int input_event_is_action_boundary(const struct input_event *event) {
+    u16 select_button;
+    u16 back_button;
+    u16 favorite_button;
+    if (event->type != EV_KEY || event->value != 1) return 0;
+    select_button = h700_input ? BTN_EAST : BTN_SOUTH;
+    back_button = h700_input ? BTN_SOUTH : BTN_EAST;
+    favorite_button = h700_input ? BTN_NORTH : BUTTON_Y;
+    if (event->code == select_button || event->code == back_button)
+        return 1;
+    return (view == VIEW_GAMES || view == VIEW_FAVORITES) &&
+           event->code == favorite_button;
+}
+
+#ifdef BIRD_PROFILE
+static int bird_profile_event_may_start(const struct input_event *event) {
+    if (event->type == EV_KEY && event->value == 1) return 1;
+    return event->type == EV_ABS &&
+           (event->code == ABS_HAT0X || event->code == ABS_HAT0Y);
+}
+#endif
+
 static int handle_event(const struct input_event *event) {
+    int direction;
+    u32 steps;
+    int navigation = decode_navigation_event(event, &direction, &steps);
+    if (navigation == NAVIGATION_EVENT_MOVEMENT) {
+        move_selection(direction, steps);
+        return 0;
+    }
+    if (navigation == NAVIGATION_EVENT_CONSUMED) return 0;
+
     if (event->type == EV_KEY && event->value == 1) {
         u16 select_button = h700_input ? BTN_EAST : BTN_SOUTH;
         u16 back_button = h700_input ? BTN_SOUTH : BTN_EAST;
         u16 favorite_button = h700_input ? BTN_NORTH : BUTTON_Y;
-        u16 page_up_button = h700_input ? H700_BTN_TL : MUOS_BTN_TL;
-        u16 page_down_button = h700_input ? H700_BTN_TR : MUOS_BTN_TR;
 
         if (event->code == select_button) {
 #ifdef BIRD_PROFILE
@@ -3241,50 +3472,86 @@ static int handle_event(const struct input_event *event) {
 #endif
         }
         if (event->code == back_button) return handle_back();
-        if (h700_input && (event->code == BTN_DPAD_UP ||
-                           event->code == BTN_DPAD_LEFT)) {
-            return handle_direction(-1);
-        }
-        if (h700_input && (event->code == BTN_DPAD_DOWN ||
-                           event->code == BTN_DPAD_RIGHT)) {
-            return handle_direction(1);
-        }
         if ((view == VIEW_GAMES || view == VIEW_FAVORITES) &&
             event->code == favorite_button) {
             toggle_current_favorite();
             return 0;
         }
-        if ((view == VIEW_SYSTEMS || view == VIEW_GAMES || view == VIEW_FAVORITES ||
-             view == VIEW_MEDIA_CATEGORIES || view == VIEW_MEDIA_ENTRIES) &&
-            event->code == page_up_button) {
-            move_selection(-1,
-                           view == VIEW_SYSTEMS || view == VIEW_MEDIA_CATEGORIES
-                               ? SYSTEM_ROWS
-                               : GAME_ROWS);
-            return 0;
-        }
-        if ((view == VIEW_SYSTEMS || view == VIEW_GAMES || view == VIEW_FAVORITES ||
-             view == VIEW_MEDIA_CATEGORIES || view == VIEW_MEDIA_ENTRIES) &&
-            event->code == page_down_button) {
-            move_selection(1,
-                           view == VIEW_SYSTEMS || view == VIEW_MEDIA_CATEGORIES
-                               ? SYSTEM_ROWS
-                               : GAME_ROWS);
-            return 0;
-        }
-    }
-
-    if (event->type == EV_ABS) {
-        if (event->code == ABS_HAT0X) {
-            int direction = update_axis_latch(&axis_x, event->value);
-            if (direction) handle_direction(direction);
-        }
-        if (event->code == ABS_HAT0Y) {
-            int direction = update_axis_latch(&axis_y, event->value);
-            if (direction) handle_direction(direction);
-        }
     }
     return 0;
+}
+
+static void finish_navigation_batch(struct navigation_batch *batch) {
+    if (!batch->active) return;
+    commit_navigation_batch(batch);
+    BIRD_PROFILE_FINISH_EVENT();
+}
+
+static int handle_batched_input_event(struct navigation_batch *batch,
+                                      const struct input_event *event) {
+#ifdef BIRD_PROFILE
+    struct bird_profile_event_start input_start;
+    int input_start_captured = 0;
+#endif
+    int direction;
+    u32 steps;
+    int navigation;
+
+#ifdef BIRD_PROFILE
+    if ((!batch->active && bird_profile_event_may_start(event)) ||
+        (batch->active && input_event_is_action_boundary(event))) {
+        /* Preserve both time and workload baselines across an older batch
+         * flush. Coalesced records reuse the existing batch start. */
+        bird_profile_capture_event_start(&input_start);
+        input_start_captured = 1;
+    }
+#endif
+    navigation = decode_navigation_event(event, &direction, &steps);
+
+    if (navigation == NAVIGATION_EVENT_MOVEMENT) {
+        if (!batch->active) {
+#ifdef BIRD_PROFILE
+            if (input_start_captured)
+                bird_profile_begin_event_from_start(&input_start);
+#endif
+        }
+        stage_selection_move(batch, direction, steps);
+        if (!batch->active) {
+            BIRD_PROFILE_FINISH_EVENT();
+        } else {
+            batch->record_count++;
+        }
+        if (batch->active &&
+            (batch->event_count >= NAVIGATION_BATCH_MAX_EVENTS ||
+             batch->record_count >= NAVIGATION_BATCH_MAX_RECORDS))
+            finish_navigation_batch(batch);
+        return ACTION_NONE;
+    }
+    if (navigation == NAVIGATION_EVENT_CONSUMED) {
+        if (batch->active) {
+            batch->record_count++;
+            if (batch->record_count >= NAVIGATION_BATCH_MAX_RECORDS)
+                finish_navigation_batch(batch);
+        }
+        return ACTION_NONE;
+    }
+
+    if (input_event_is_action_boundary(event)) {
+        finish_navigation_batch(batch);
+#ifdef BIRD_PROFILE
+        if (input_start_captured)
+            bird_profile_begin_event_from_start(&input_start);
+#endif
+        navigation = handle_event(event);
+        BIRD_PROFILE_FINISH_EVENT();
+        return navigation;
+    }
+    if (batch->active) {
+        batch->record_count++;
+        if (batch->record_count >= NAVIGATION_BATCH_MAX_RECORDS)
+            finish_navigation_batch(batch);
+    }
+    return ACTION_NONE;
 }
 
 static void receive_storage_handoff_signal(void) {
@@ -3465,6 +3732,16 @@ found:
     return 0;
 }
 
+static int reconnect_input(const char *reason) {
+    log_text("input reconnect boot_ms=");
+    log_number(boot_ms());
+    log_text(" reason=");
+    log_text(reason);
+    log_text("\n");
+    abandon_input();
+    return open_fixed_input();
+}
+
 static int application(void) {
 #ifdef BIRD_PROFILE
     u64 profile_started_ns = bird_profile_now_ns();
@@ -3548,9 +3825,9 @@ static int application(void) {
     */
     load_ui_resume();
 #ifdef PERSIST_UI_STATE
-    /* load_ui_resume consumes its file. Keep the bridge transaction armed
-     * even when no button is pressed between two process owners or a device
-     * reconnect causes the supervisor to recover Bird. */
+    /* Refresh the bridge even when no button is pressed between two process
+     * owners. A valid prior descriptor remains in place until this atomic
+     * replacement, so startup recovery never opens a read/unlink gap. */
     (void)save_ui_resume();
 #endif
     try_power_event_open();
@@ -3600,18 +3877,23 @@ static int application(void) {
     log_number(CATALOG_MEDIA_ENTRY_COUNT);
     log_text("\n");
 
+service_events:
     while (exit_action == ACTION_NONE) {
         struct pollfd polls[3];
         struct timespec poll_timeout;
         struct timespec *timeout = 0;
         struct input_event event;
+        struct navigation_batch navigation_batch;
         long count;
         long poll_result;
         u64 timeout_ms = (u64)-1;
         u64 now;
         u64 poll_count = 1;
+        int input_reconnect_after_drain = 0;
         int power_index = -1;
         int storage_index = -1;
+
+        reset_navigation_batch(&navigation_batch);
 
         if (!STORAGE_READY_SIGNAL[0] && !storage_probe_attempted)
             probe_storage();
@@ -3698,15 +3980,14 @@ static int application(void) {
             power_event_retry_ms = AUX_RETRY_INITIAL_MS;
         }
         if (poll_descriptor_failed(polls[0].revents)) {
-            log_text("input reconnect boot_ms=");
-            log_number(boot_ms());
-            log_text("\n");
-            abandon_input();
-            if (open_fixed_input() < 0) {
-                exit_action = ACTION_RECOVER;
-                break;
+            input_reconnect_after_drain = 1;
+            if (!(polls[0].revents & POLLIN)) {
+                if (reconnect_input("poll-descriptor") < 0) {
+                    exit_action = ACTION_RECOVER;
+                    break;
+                }
+                continue;
             }
-            continue;
         }
 
         if (storage_index >= 0 &&
@@ -3788,30 +4069,45 @@ static int application(void) {
         for (;;) {
             count = sys_read(input_fd, &event, sizeof(event));
             if (count == (long)sizeof(event)) {
-                BIRD_PROFILE_BEGIN_EVENT();
-                exit_action = handle_event(&event);
-                BIRD_PROFILE_FINISH_EVENT();
+                exit_action = handle_batched_input_event(
+                    &navigation_batch, &event);
                 if (exit_action != ACTION_NONE) break;
                 continue;
             }
             if (count == -EINTR) continue;
+            finish_navigation_batch(&navigation_batch);
             if (count < 0 && count != -EAGAIN) {
                 log_text("input read-error errno=");
                 log_number((u64)-count);
                 log_text("\n");
-                abandon_input();
-                if (open_fixed_input() < 0)
-                    exit_action = ACTION_RECOVER;
+                input_reconnect_after_drain = 1;
             } else if (count > 0) {
                 log_text("input read-error reason=partial-event\n");
+                input_reconnect_after_drain = 1;
+            } else if (count == 0) {
+                log_text("input read-error reason=end-of-file\n");
+                input_reconnect_after_drain = 1;
             }
-            if (exit_action != ACTION_NONE)
-                break;
             break;
         }
+        if (exit_action == ACTION_NONE && input_reconnect_after_drain) {
+            if (reconnect_input("drain-terminal") < 0)
+                exit_action = ACTION_RECOVER;
+            else
+                continue;
+        }
+        if (exit_action == ACTION_NONE &&
+            !input_drain_allows_pending_dispatch(
+                count, input_reconnect_after_drain))
+            continue;
         if (exit_action == ACTION_NONE && storage_ready &&
             pending_launch.kind != PENDING_LAUNCH_NONE)
             exit_action = dispatch_pending_launch();
+    }
+
+    if (publish_handoff_action(exit_action) < 0) {
+        exit_action = ACTION_NONE;
+        goto service_events;
     }
 
     if (exit_action == ACTION_LAUNCH)
@@ -3826,7 +4122,6 @@ static int application(void) {
         log_text("exit reason=runtime-recovery boot_ms=");
     log_number(boot_ms());
     log_text("\n");
-    write_handoff_action(exit_action);
     if (power_event_fd >= 0) sys_close(power_event_fd);
     if (storage_signal_fd >= 0) sys_close(storage_signal_fd);
     sys_close(input_fd);

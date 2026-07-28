@@ -9,6 +9,7 @@
 #define PERSIST_UI_STATE 1
 #define STORAGE_ANCHOR_MARKER "/run/muos/bird-storage-anchor-ready"
 #define STORAGE_READY_SIGNAL "/run/muos/bird-storage-ready"
+#define HANDOFF_ACTION_PATH "/run/muos/bird-launch-action"
 #include "../../../launcher/bird-launcher.c"
 
 #define FAKE_FD 41
@@ -28,12 +29,20 @@ static unsigned fake_open_path_count;
 static unsigned fake_open_calls;
 static unsigned fake_create_calls;
 static unsigned fake_rename_calls;
+static long fake_rename_result;
+static char fake_rename_old_path[FAKE_OPEN_PATH_BYTES];
+static char fake_rename_new_path[FAKE_OPEN_PATH_BYTES];
+static unsigned fake_unlink_calls;
+static char fake_unlink_path[FAKE_OPEN_PATH_BYTES];
+static int fake_unlinked_launch_request;
 static unsigned fake_close_calls;
+static long fake_write_result;
 static const char *fake_payload;
 static u64 fake_payload_bytes;
 static u64 fake_payload_offset;
 static long fake_terminal_read;
 static unsigned fake_sleep_calls;
+static unsigned fake_clock_calls;
 static s64 fake_last_sleep_ns;
 #define TEST_FB_WIDTH RG34XX_FB_WIDTH
 #define TEST_FB_HEIGHT RG34XX_FB_HEIGHT
@@ -78,10 +87,23 @@ long bird_test_syscall6(long number, long a0, long a1, long a2, long a3,
         fake_close_calls++;
         return 0;
     }
-    if (number == 82 || number == 35) return 0;
+    if (number == 82) return 0;
+    if (number == 35) {
+        fake_unlink_calls++;
+        snprintf(fake_unlink_path, FAKE_OPEN_PATH_BYTES, "%s",
+                 (const char *)a1);
+        if (strcmp((const char *)a1, "bird-launch-request") == 0 ||
+            strcmp((const char *)a1, LAUNCH_REQUEST) == 0)
+            fake_unlinked_launch_request = 1;
+        return 0;
+    }
     if (number == 38) {
         fake_rename_calls++;
-        return 0;
+        snprintf(fake_rename_old_path, FAKE_OPEN_PATH_BYTES, "%s",
+                 (const char *)a1);
+        snprintf(fake_rename_new_path, FAKE_OPEN_PATH_BYTES, "%s",
+                 (const char *)a3);
+        return fake_rename_result;
     }
     if (number == 63) {
         u64 available;
@@ -105,6 +127,7 @@ long bird_test_syscall6(long number, long a0, long a1, long a2, long a3,
             fake_profile_log_bytes += bytes;
         }
 #endif
+        if (fake_write_result) return fake_write_result;
         return a2; /* discard production diagnostics */
     }
     if (number == 101) {
@@ -115,6 +138,7 @@ long bird_test_syscall6(long number, long a0, long a1, long a2, long a3,
     }
     if (number == 113) {
         struct timespec *value = (struct timespec *)a1;
+        fake_clock_calls++;
         value->sec = fake_now_ms / 1000;
         value->nsec = (fake_now_ms % 1000) * 1000000L +
                       fake_now_sub_ms_ns;
@@ -132,10 +156,18 @@ static void reset_fake_file(long open_result, const char *payload,
     fake_open_calls = 0;
     fake_create_calls = 0;
     fake_rename_calls = 0;
+    fake_rename_result = 0;
+    fake_rename_old_path[0] = 0;
+    fake_rename_new_path[0] = 0;
+    fake_unlink_calls = 0;
+    fake_unlink_path[0] = 0;
+    fake_unlinked_launch_request = 0;
+    fake_write_result = 0;
     fake_payload = payload ? payload : "";
     fake_payload_bytes = payload ? (u64)strlen(payload) : 0;
     fake_payload_offset = 0;
     fake_terminal_read = terminal_read;
+    fake_clock_calls = 0;
 }
 
 static void set_fake_open_script(const long *results, unsigned count) {
@@ -863,6 +895,306 @@ static int run_dirty_region_render_tests(void) {
     return ok;
 }
 
+static void setup_navigation_test(struct navigation_batch *batch, u32 test_view) {
+    setup_test_framebuffer(1U, fake_framebuffer);
+    memset(fake_framebuffer, 0x5a, RG34XX_FB_BYTES);
+    clear_favorites();
+    favorites_loaded = 1;
+    favorite_count = 0U;
+    view = test_view;
+    selection = 0U;
+    active_system = 0U;
+    active_media_category = 0U;
+    media_section = CATALOG_MEDIA_SECTION_LISTEN;
+    selected_status = test_view == VIEW_SYSTEMS
+                          ? "CATALOG READY FROM FIRMWARE"
+                          : (test_view == VIEW_GAMES
+                                 ? "ROM STORAGE READY"
+                                 : "DIRECT FRAMEBUFFER READY");
+    battery_percent = -1;
+    charging_state = -1;
+    pending_launch.kind = PENDING_LAUNCH_NONE;
+    pending_render_invalid = 0U;
+    h700_input = 1;
+    reset_input_latches();
+    runtime_dir_fd = FAKE_FD;
+    storage_dir_fd = FAKE_FD;
+    config_dir_fd = FAKE_FD;
+    reset_navigation_batch(batch);
+    draw_screen();
+    reset_fake_file(FAKE_FD, 0, 0);
+}
+
+static int run_navigation_batch_tests(void) {
+    struct navigation_batch batch;
+    struct input_event event;
+    struct ui_resume_state resume;
+    u64 before_hash;
+    u32 index;
+    int action;
+    int ok = 1;
+
+    event.sec = 0;
+    event.usec = 0;
+    event.type = EV_KEY;
+    event.code = BTN_DPAD_DOWN;
+    event.value = 1;
+
+    /* A drained burst mutates the final in-memory selection without touching
+     * pixels or the filesystem, then publishes one dirty render and one
+     * atomic resume replacement at the batch boundary. */
+    setup_navigation_test(&batch, VIEW_MAIN);
+    before_hash = framebuffer_hash();
+    for (index = 0; index < 3U; index++)
+        action = handle_batched_input_event(&batch, &event);
+    ok &= check(action == ACTION_NONE && selection == 3U && batch.active &&
+                    batch.event_count == 3U &&
+                    framebuffer_hash() == before_hash &&
+                    fake_create_calls == 0U && fake_rename_calls == 0U,
+                "navigation burst performed work before its batch boundary");
+    finish_navigation_batch(&batch);
+    ok &= check(!batch.active && selection == 3U &&
+                    fake_create_calls == 1U && fake_rename_calls == 1U &&
+                    fake_open_path_count == 1U &&
+                    strcmp(fake_open_path[0],
+                           "bird-launcher-ui-resume.tmp") == 0 &&
+                    strcmp(fake_rename_old_path,
+                           "bird-launcher-ui-resume.tmp") == 0 &&
+                    strcmp(fake_rename_new_path,
+                           "bird-launcher-ui-resume") == 0,
+                "navigation batch did not atomically commit one resume state");
+    ok &= dirty_framebuffer_matches_full(
+        1U, "batched navigation pixels differ from a full render");
+
+    /* Vendor ABS press/release and SYN records remain one batch. Neutral
+     * latch traffic must neither flush early nor duplicate the movement. */
+    setup_navigation_test(&batch, VIEW_MAIN);
+    h700_input = 0;
+    event.type = EV_ABS;
+    event.code = ABS_HAT0Y;
+    event.value = 1;
+    (void)handle_batched_input_event(&batch, &event);
+    event.type = 0U;
+    event.code = 0U;
+    event.value = 0;
+    (void)handle_batched_input_event(&batch, &event);
+    event.type = EV_ABS;
+    event.code = ABS_HAT0Y;
+    event.value = 0;
+    (void)handle_batched_input_event(&batch, &event);
+    ok &= check(batch.active && batch.event_count == 1U && selection == 1U &&
+                    axis_y == 0 && fake_create_calls == 0U,
+                "vendor ABS/SYN traffic split or duplicated navigation");
+    finish_navigation_batch(&batch);
+    ok &= check(fake_create_calls == 1U && fake_rename_calls == 1U,
+                "vendor ABS batch did not publish exactly once");
+
+    /* Both production controller maps retain their existing page and action
+     * buttons; Phase 4 changes event ordering only. */
+    setup_navigation_test(&batch, VIEW_SYSTEMS);
+    h700_input = 0;
+    event.type = EV_KEY;
+    event.code = MUOS_BTN_TR;
+    event.value = 1;
+    (void)handle_batched_input_event(&batch, &event);
+    finish_navigation_batch(&batch);
+    ok &= check(selection == SYSTEM_ROWS,
+                "vendor page-down mapping changed during batching");
+    event.code = BTN_SOUTH;
+    action = handle_batched_input_event(&batch, &event);
+    ok &= check(action == ACTION_NONE && view == VIEW_GAMES &&
+                    active_system == SYSTEM_ROWS,
+                "vendor select mapping changed during batching");
+    event.code = BTN_EAST;
+    action = handle_batched_input_event(&batch, &event);
+    ok &= check(action == ACTION_NONE && view == VIEW_SYSTEMS,
+                "vendor back mapping changed during batching");
+    setup_navigation_test(&batch, VIEW_GAMES);
+    h700_input = 0;
+    storage_ready = 1;
+    event.code = BUTTON_Y;
+    action = handle_batched_input_event(&batch, &event);
+    ok &= check(action == ACTION_NONE && is_favorite(0U),
+                "vendor favorite mapping changed during batching");
+
+    /* The explicit cap prevents a permanently busy evdev source from keeping
+     * an arbitrarily large unpublished recovery window. */
+    setup_navigation_test(&batch, VIEW_MAIN);
+    event.type = EV_KEY;
+    event.code = BTN_DPAD_DOWN;
+    event.value = 1;
+    for (index = 0; index < NAVIGATION_BATCH_MAX_EVENTS + 1U; index++)
+        (void)handle_batched_input_event(&batch, &event);
+    ok &= check(batch.active && batch.event_count == 1U &&
+                    fake_create_calls == 1U && fake_rename_calls == 1U,
+                "navigation batch cap did not publish the first bounded batch");
+    finish_navigation_batch(&batch);
+    ok &= check(!batch.active && fake_create_calls == 2U &&
+                    fake_rename_calls == 2U,
+                "navigation tail was not committed after the bounded batch");
+
+    setup_navigation_test(&batch, VIEW_MAIN);
+    event.type = EV_KEY;
+    event.code = BTN_DPAD_DOWN;
+    event.value = 1;
+    (void)handle_batched_input_event(&batch, &event);
+    event.type = 0U;
+    event.code = 0U;
+    event.value = 0;
+    for (index = 1U; index < NAVIGATION_BATCH_MAX_RECORDS; index++)
+        (void)handle_batched_input_event(&batch, &event);
+    ok &= check(!batch.active && fake_create_calls == 1U &&
+                    fake_rename_calls == 1U,
+                "non-navigation records bypassed the unpublished-batch cap");
+
+    setup_navigation_test(&batch, VIEW_FAVORITES);
+    event.type = EV_KEY;
+    event.code = BTN_DPAD_DOWN;
+    event.value = 1;
+    action = handle_batched_input_event(&batch, &event);
+    ok &= check(action == ACTION_NONE && !batch.active && selection == 0U &&
+                    fake_create_calls == 0U && fake_rename_calls == 0U,
+                "empty view created a phantom navigation batch");
+
+    /* A is an ordering boundary: it flushes navigation first and enters the
+     * system selected by the final event in that burst. */
+    setup_navigation_test(&batch, VIEW_SYSTEMS);
+    (void)handle_batched_input_event(&batch, &event);
+    (void)handle_batched_input_event(&batch, &event);
+    event.code = BTN_EAST;
+    action = handle_batched_input_event(&batch, &event);
+    ok &= check(action == ACTION_NONE && !batch.active &&
+                    active_system == 2U && view == VIEW_GAMES && selection == 0U &&
+                    fake_create_calls == 2U && fake_rename_calls == 2U,
+                "selection action did not observe the final batched navigation state");
+
+    /* Y is also ordered after the burst and therefore changes only the final
+     * selected game. The physical button mapping itself is unchanged. */
+    setup_navigation_test(&batch, VIEW_GAMES);
+    storage_ready = 1;
+    event.code = BTN_DPAD_DOWN;
+    (void)handle_batched_input_event(&batch, &event);
+    event.code = BTN_NORTH;
+    action = handle_batched_input_event(&batch, &event);
+    ok &= check(action == ACTION_NONE && !batch.active && selection == 1U &&
+                    !is_favorite(0U) && is_favorite(1U),
+                "favorite action did not use the final batched selection");
+
+    /* Pending content remains cancellable throughout the in-memory batch and
+     * is retired immediately after the visible movement barrier. */
+    setup_navigation_test(&batch, VIEW_GAMES);
+    pending_launch.kind = PENDING_LAUNCH_GAME;
+    pending_launch.index = 0U;
+    event.code = BTN_DPAD_DOWN;
+    (void)handle_batched_input_event(&batch, &event);
+    ok &= check(pending_launch.kind == PENDING_LAUNCH_GAME && batch.active,
+                "pending launch was cancelled before the visible batch commit");
+    finish_navigation_batch(&batch);
+    ok &= check(pending_launch.kind == PENDING_LAUNCH_NONE && !batch.active,
+                "visible navigation did not cancel the pending launch");
+
+    /* B flushes the older movement before changing views, so no uncommitted
+     * selection survives across the back-navigation ordering boundary. */
+    setup_navigation_test(&batch, VIEW_GAMES);
+    pending_launch.kind = PENDING_LAUNCH_GAME;
+    pending_launch.index = 0U;
+    event.code = BTN_DPAD_DOWN;
+    (void)handle_batched_input_event(&batch, &event);
+    event.code = BTN_SOUTH;
+    action = handle_batched_input_event(&batch, &event);
+    ok &= check(action == ACTION_NONE && !batch.active &&
+                    pending_launch.kind == PENDING_LAUNCH_NONE &&
+                    view == VIEW_SYSTEMS && selection == active_system,
+                "back action crossed an uncommitted navigation batch");
+
+    /* A direct content action may follow a navigation batch, but it can exit
+     * only after the final selection's request and resume state both commit. */
+    setup_navigation_test(&batch, VIEW_GAMES);
+    storage_ready = 1;
+    event.code = BTN_DPAD_DOWN;
+    (void)handle_batched_input_event(&batch, &event);
+    event.code = BTN_EAST;
+    action = handle_batched_input_event(&batch, &event);
+    ok &= check(action == ACTION_LAUNCH && !batch.active && selection == 1U &&
+                    fake_rename_calls == 3U,
+                "content handoff did not commit the final batched selection");
+
+    setup_navigation_test(&batch, VIEW_GAMES);
+    storage_ready = 1;
+    fake_rename_result = -EIO_LINUX;
+    event.code = BTN_EAST;
+    action = handle_batched_input_event(&batch, &event);
+    ok &= check(action == ACTION_NONE &&
+                    pending_launch.kind == PENDING_LAUNCH_NONE &&
+                    fake_rename_calls >= 1U && fake_unlink_calls >= 2U &&
+                    fake_unlinked_launch_request,
+                "launcher exit survived a failed authoritative resume handoff");
+
+    /* UI-resume publication never truncates the last committed descriptor.
+     * A failed atomic replace removes only its temporary candidate. */
+    setup_navigation_test(&batch, VIEW_MAIN);
+    reset_fake_file(FAKE_FD, 0, 0);
+    fake_write_result = -EIO_LINUX;
+    ok &= check(save_ui_resume() < 0 && fake_rename_calls == 0U &&
+                    fake_unlink_calls == 1U &&
+                    strcmp(fake_unlink_path,
+                           "bird-launcher-ui-resume.tmp") == 0,
+                "failed resume write damaged the committed descriptor");
+    reset_fake_file(FAKE_FD, 0, 0);
+    fake_rename_result = -EIO_LINUX;
+    ok &= check(save_ui_resume() < 0 && fake_rename_calls == 1U &&
+                    fake_unlink_calls == 1U &&
+                    strcmp(fake_unlink_path,
+                           "bird-launcher-ui-resume.tmp") == 0,
+                "failed resume replacement damaged more than its temporary file");
+
+    reset_fake_file(FAKE_FD, 0, 0);
+    ok &= check(write_handoff_action(ACTION_LAUNCH) == 0 &&
+                    fake_create_calls == 1U && fake_rename_calls == 1U &&
+                    strcmp(fake_open_path[0], "bird-launch-action.tmp") == 0 &&
+                    strcmp(fake_rename_new_path, "bird-launch-action") == 0,
+                "early action was not atomically published before exit");
+    reset_fake_file(FAKE_FD, 0, 0);
+    fake_write_result = -EIO_LINUX;
+    ok &= check(write_handoff_action(ACTION_LAUNCH) < 0 &&
+                    fake_rename_calls == 0U && fake_unlink_calls == 1U &&
+                    strcmp(fake_unlink_path, "bird-launch-action.tmp") == 0,
+                "short/failed early action write was accepted");
+
+    setup_navigation_test(&batch, VIEW_GAMES);
+    reset_fake_file(FAKE_FD, 0, 0);
+    fake_rename_result = -EIO_LINUX;
+    ok &= check(publish_handoff_action(ACTION_LAUNCH) < 0 &&
+                    fake_unlinked_launch_request &&
+                    strcmp(selected_status, "HANDOFF PUBLICATION FAILED") == 0,
+                "failed early action publication was allowed to exit");
+
+    /* A valid descriptor survives the read until application() atomically
+     * refreshes it; invalid bytes are still removed instead of recurring. */
+    setup_navigation_test(&batch, VIEW_MAIN);
+    resume.magic = UI_RESUME_MAGIC;
+    resume.view = VIEW_SYSTEMS;
+    resume.active_index = 0U;
+    resume.selection = 2U;
+    reset_fake_file(FAKE_FD, 0, 0);
+    fake_payload = (const char *)&resume;
+    fake_payload_bytes = sizeof(resume);
+    ok &= check(load_ui_resume() == 1 && view == VIEW_SYSTEMS &&
+                    selection == 2U && fake_unlink_calls == 0U,
+                "valid resume load opened a startup read/unlink crash gap");
+    resume.view = VIEW_MAIN;
+    resume.selection = 4U;
+    reset_fake_file(FAKE_FD, 0, 0);
+    fake_payload = (const char *)&resume;
+    fake_payload_bytes = sizeof(resume);
+    ok &= check(load_ui_resume() == 0 && fake_unlink_calls == 1U &&
+                    strcmp(fake_unlink_path,
+                           "bird-launcher-ui-resume") == 0,
+                "invalid resume descriptor was retained across recovery");
+
+    return ok;
+}
+
 #ifdef BIRD_PROFILE
 static void reset_profile_log(void) {
     fake_profile_log_bytes = 0;
@@ -898,15 +1230,19 @@ static void reset_profile_storage_diagnostics(void) {
 
 static int run_profile_tests(void) {
     const struct bird_profile_render_totals *render;
+    struct navigation_batch batch;
     struct input_event event;
     u64 before_syscalls;
     u64 before_diagnostics;
     u64 prior_input_samples;
     u64 maximum_physical;
     u64 first_storage_report_bytes;
+    u64 unbatched_physical;
+    u64 unbatched_syscalls;
     long open_script[4];
     u32 old_first;
     u32 old_selection;
+    unsigned clocks_after_first;
     int action;
     int ok = 1;
 
@@ -1100,8 +1436,8 @@ static int run_profile_tests(void) {
                 "input-to-barrier timing lost sub-millisecond precision");
     fake_now_sub_ms_ns = 0;
 
-    /* Measure today's D-pad ordering. The save and ordinary diagnostics are
-     * intentionally before its render barrier until Phase 4 changes them. */
+    /* A D-pad response publishes pixels first. The atomic resume replacement
+     * and ordinary diagnostics must be entirely after its render barrier. */
     bird_profile_reset();
     setup_test_framebuffer(1U, fake_framebuffer);
     setup_main_view();
@@ -1133,22 +1469,24 @@ static int run_profile_tests(void) {
                     render->physical_bytes == render->visible_bytes,
                 "fixed-page movement exceeded its dirty-region byte bounds");
     ok &= check(bird_profile.input_to_barrier_samples == 1U &&
-                    bird_profile.event_pre_barrier_filesystem_ops > 0U &&
-                    bird_profile.event_pre_barrier_diagnostic_writes > 0U &&
-                    bird_profile.event_pre_barrier_diagnostic_bytes > 0U,
-                "existing pre-barrier filesystem/diagnostic work was not measured");
-    ok &= check(bird_profile.resume_before_barrier == 1U &&
-                    bird_profile.barrier_to_resume_samples == 0U,
-                "current resume-before-barrier order was not represented honestly");
+                    bird_profile.event_pre_barrier_filesystem_ops == 0U &&
+                    bird_profile.event_pre_barrier_diagnostic_writes == 0U &&
+                    bird_profile.event_pre_barrier_diagnostic_bytes == 0U,
+                "movement performed filesystem or diagnostic work before pixels");
+    ok &= check(bird_profile.resume_before_barrier == 0U &&
+                    bird_profile.barrier_to_resume_samples == 1U &&
+                    bird_profile.navigation_events == 1U &&
+                    bird_profile.navigation_batches == 1U,
+                "post-barrier movement persistence or batch metrics are wrong");
     ok &= check(bird_profile.syscalls < 64U &&
                     profile_syscall_category_sum() == bird_profile.syscalls,
                 "movement syscall categories or upper bound are wrong");
     ok &= check(
-        bird_profile.event_pre_barrier_syscall_kind[PROFILE_SYSCALL_OPENAT] > 0U &&
-            bird_profile.event_pre_barrier_syscall_kind[PROFILE_SYSCALL_CLOSE] > 0U &&
-            bird_profile.event_pre_barrier_syscall_kind[PROFILE_SYSCALL_WRITE] >
-                bird_profile.event_pre_barrier_diagnostic_writes,
-        "event-local syscall categories missed the resume transaction");
+        bird_profile.event_pre_barrier_syscall_kind[PROFILE_SYSCALL_OPENAT] == 0U &&
+            bird_profile.event_pre_barrier_syscall_kind[PROFILE_SYSCALL_CLOSE] == 0U &&
+            bird_profile.event_pre_barrier_syscall_kind[PROFILE_SYSCALL_WRITE] == 0U &&
+            bird_profile.event_pre_barrier_syscall_kind[PROFILE_SYSCALL_RENAMEAT] == 0U,
+        "movement issued a persistence syscall before the framebuffer barrier");
 #ifdef BIRD_PROFILE_DEEP
     ok &= check(bird_profile_deep.catalog_iterations == 0U &&
                     bird_profile_deep.string_bytes > 0U &&
@@ -1179,11 +1517,14 @@ static int run_profile_tests(void) {
                 "a later non-render event captured a prior barrier");
 
     printf("launcher profile benchmark scenario=movement syscalls=%lu "
+           "navigation_events=%lu navigation_batches=%lu "
            "filesystem_namespace_before_barrier=%lu "
            "file_writes_before_barrier=%lu closes_before_barrier=%lu "
            "diagnostics_before_barrier=%lu "
            "logical_pixels=%lu visible_bytes=%lu pages=%lu physical_bytes=%lu\n",
            (unsigned long)bird_profile.syscalls,
+           (unsigned long)bird_profile.navigation_events,
+           (unsigned long)bird_profile.navigation_batches,
            (unsigned long)bird_profile.event_pre_barrier_filesystem_ops,
            (unsigned long)(
                bird_profile.event_pre_barrier_syscall_kind[PROFILE_SYSCALL_WRITE] -
@@ -1217,6 +1558,147 @@ static int run_profile_tests(void) {
            (unsigned long)bird_profile_deep.fallback_pixel_stores,
            (unsigned long)bird_profile_deep.fallback_byte_stores);
 #endif
+
+    /* Keep an unbatched semantic reference as benchmark output, not a brittle
+     * exact-count contract. It establishes the work eliminated by coalescing. */
+    bird_profile_reset();
+    setup_test_framebuffer(1U, fake_framebuffer);
+    setup_main_view();
+    runtime_dir_fd = FAKE_FD;
+    h700_input = 1;
+    reset_fake_file(FAKE_FD, 0, 0);
+    event.type = EV_KEY;
+    event.code = BTN_DPAD_DOWN;
+    event.value = 1;
+    BIRD_PROFILE_BEGIN_EVENT();
+    (void)handle_event(&event);
+    BIRD_PROFILE_FINISH_EVENT();
+    BIRD_PROFILE_BEGIN_EVENT();
+    (void)handle_event(&event);
+    BIRD_PROFILE_FINISH_EVENT();
+    BIRD_PROFILE_BEGIN_EVENT();
+    (void)handle_event(&event);
+    BIRD_PROFILE_FINISH_EVENT();
+    render = &bird_profile.render[PROFILE_RENDER_SELECTION_MOVEMENT];
+    unbatched_physical = render->physical_bytes;
+    unbatched_syscalls = bird_profile.syscalls;
+    ok &= check(selection == 3U && render->commits == 3U &&
+                    bird_profile.navigation_events == 3U &&
+                    bird_profile.navigation_batches == 3U &&
+                    bird_profile.barrier_to_resume_samples == 3U,
+                "unbatched navigation reference lost its semantic commits");
+    printf("launcher profile benchmark scenario=movement-unbatched "
+           "events=%lu batches=%lu renders=%lu resume_commits=%lu syscalls=%lu "
+           "physical_bytes=%lu\n",
+           (unsigned long)bird_profile.navigation_events,
+           (unsigned long)bird_profile.navigation_batches,
+           (unsigned long)render->commits,
+           (unsigned long)bird_profile.barrier_to_resume_samples,
+           (unsigned long)unbatched_syscalls,
+           (unsigned long)unbatched_physical);
+
+    /* Three already-buffered D-pad edges publish one response and one resume
+     * transaction, with no filesystem or diagnostics ahead of the pixels. */
+    bird_profile_reset();
+    setup_test_framebuffer(1U, fake_framebuffer);
+    setup_main_view();
+    runtime_dir_fd = FAKE_FD;
+    h700_input = 1;
+    reset_navigation_batch(&batch);
+    reset_fake_file(FAKE_FD, 0, 0);
+    event.type = EV_KEY;
+    event.code = BTN_DPAD_DOWN;
+    event.value = 1;
+    (void)handle_batched_input_event(&batch, &event);
+    clocks_after_first = fake_clock_calls;
+    (void)handle_batched_input_event(&batch, &event);
+    (void)handle_batched_input_event(&batch, &event);
+    ok &= check(fake_clock_calls == clocks_after_first,
+                "coalesced navigation sampled redundant profile clocks");
+    finish_navigation_batch(&batch);
+    render = &bird_profile.render[PROFILE_RENDER_SELECTION_MOVEMENT];
+    ok &= check(selection == 3U && render->commits == 1U &&
+                    bird_profile.navigation_events == 3U &&
+                    bird_profile.navigation_batches == 1U &&
+                    bird_profile.input_to_barrier_samples == 1U &&
+                    bird_profile.barrier_to_resume_samples == 1U &&
+                    bird_profile.resume_before_barrier == 0U &&
+                    bird_profile.event_pre_barrier_filesystem_ops == 0U &&
+                    bird_profile.event_pre_barrier_diagnostic_writes == 0U &&
+                    bird_profile.syscalls < 20U &&
+                    render->physical_bytes < 400000U &&
+                    bird_profile.syscalls < unbatched_syscalls &&
+                    render->physical_bytes < unbatched_physical &&
+                    fake_create_calls == 1U && fake_rename_calls == 1U,
+                "batched movement did not produce one post-barrier transaction");
+    printf("launcher profile benchmark scenario=movement-batch "
+           "events=%lu batches=%lu renders=%lu resume_commits=%lu syscalls=%lu "
+           "filesystem_namespace_before_barrier=%lu "
+           "diagnostics_before_barrier=%lu physical_bytes=%lu\n",
+           (unsigned long)bird_profile.navigation_events,
+           (unsigned long)bird_profile.navigation_batches,
+           (unsigned long)render->commits,
+           (unsigned long)bird_profile.barrier_to_resume_samples,
+           (unsigned long)bird_profile.syscalls,
+           (unsigned long)bird_profile.event_pre_barrier_filesystem_ops,
+           (unsigned long)bird_profile.event_pre_barrier_diagnostic_writes,
+           (unsigned long)render->physical_bytes);
+    reset_profile_log();
+    bird_profile.interactive_barrier_seen = 1;
+    bird_profile_note_exit_and_emit();
+    ok &= check(profile_log_contains(
+                    "navigation_events=3 navigation_batches=1"),
+                "exit profile omitted navigation batch aggregates");
+
+    /* A following action is timestamped and baselined when it is read, before
+     * the older navigation batch is flushed. Its interval and syscall scope
+     * must describe the same real span. */
+    bird_profile_reset();
+    setup_test_framebuffer(1U, fake_framebuffer);
+    clear_favorites();
+    favorites_loaded = 1;
+    view = VIEW_SYSTEMS;
+    selection = 0U;
+    selected_status = "CATALOG READY FROM FIRMWARE";
+    runtime_dir_fd = FAKE_FD;
+    h700_input = 1;
+    reset_navigation_batch(&batch);
+    reset_fake_file(FAKE_FD, 0, 0);
+    event.type = EV_KEY;
+    event.code = BTN_DPAD_DOWN;
+    event.value = 1;
+    (void)handle_batched_input_event(&batch, &event);
+    event.code = BTN_EAST;
+    action = handle_batched_input_event(&batch, &event);
+    ok &= check(action == ACTION_NONE && !batch.active &&
+                    view == VIEW_GAMES && active_system == 1U &&
+                    bird_profile.input_to_barrier_samples == 2U &&
+                    bird_profile.barrier_to_resume_samples == 2U &&
+                    bird_profile.resume_before_barrier == 0U &&
+                    bird_profile.event_pre_barrier_filesystem_ops > 0U &&
+                    bird_profile.event_pre_barrier_diagnostic_writes > 0U,
+                "mixed navigation/action profile used mismatched interval baselines");
+
+    bird_profile_reset();
+    setup_test_framebuffer(1U, fake_framebuffer);
+    clear_favorites();
+    favorites_loaded = 1;
+    view = VIEW_FAVORITES;
+    selection = 0U;
+    h700_input = 1;
+    reset_navigation_batch(&batch);
+    event.type = EV_KEY;
+    event.code = BTN_DPAD_DOWN;
+    event.value = 1;
+    (void)handle_batched_input_event(&batch, &event);
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_STATUS);
+    rectangle(0, 0, 1, 1, 0U);
+    BIRD_PROFILE_BARRIER();
+    ok &= check(!batch.active && !bird_profile.event_active &&
+                    bird_profile.input_to_barrier_samples == 0U &&
+                    bird_profile.navigation_events == 0U &&
+                    bird_profile.navigation_batches == 0U,
+                "empty view left a profile event active for a later barrier");
 
     /* Crossing row seven changes the current scrolling viewport. */
     bird_profile_reset();
@@ -1532,6 +2014,7 @@ int main(void) {
     ok &= run_framebuffer_primitive_tests();
     ok &= run_full_render_golden_tests();
     ok &= run_dirty_region_render_tests();
+    ok &= run_navigation_batch_tests();
     ok &= run_storage_handoff_tests();
 
     /* ENOENT alone establishes a new, successfully loaded empty collection. */
@@ -1603,8 +2086,15 @@ int main(void) {
     ok &= check(poll_descriptor_failed(POLLERR) &&
                     poll_descriptor_failed(POLLHUP) &&
                     poll_descriptor_failed(POLLNVAL) &&
+                    poll_descriptor_failed(POLLIN | POLLHUP) &&
                     !poll_descriptor_failed(POLLIN),
                 "poll descriptor error/hup/nval classification is incomplete");
+    ok &= check(input_drain_allows_pending_dispatch(-EAGAIN, 0) &&
+                    !input_drain_allows_pending_dispatch(-EIO_LINUX, 0) &&
+                    !input_drain_allows_pending_dispatch(
+                        (long)sizeof(struct input_event) - 1L, 0) &&
+                    !input_drain_allows_pending_dispatch(-EAGAIN, 1),
+                "incomplete or reconnecting input drain allowed pending dispatch");
     delay = POLL_RETRY_INITIAL_MS;
     fake_sleep_calls = 0;
     for (opens = 0; opens < 32U; opens++)
