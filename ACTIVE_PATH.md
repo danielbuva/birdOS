@@ -53,6 +53,13 @@ rebuild or trim the release kernel yet.
 
 ## Build and deployment
 
+The normal macOS entry point is `./build-and-deploy.sh --release`, or
+`./build-and-deploy.sh --profile` for lightweight launcher counters. It chooses
+one release ID before the build, passes that ID to both canonical scripts and
+selects a fresh timestamped ID whenever the preferred immutable directory or
+archived GitHub release tag is already occupied. `--release-id ID` chooses a
+different preferred ID and `--dry-run` performs the read-only preflight only.
+
 1. `build-stock-root-compat.sh` validates the pinned upstream inputs and the
    exact upstream files it consumes.
 2. It compiles the final-root launcher, PID waiter, controls worker and power
@@ -65,10 +72,11 @@ rebuild or trim the release kernel yet.
    then stages the complete release in a hidden sibling below
    `/flash/bird-releases/` without modifying the active runtime.
 5. It verifies the staged tree against the release manifest, atomically
-   renames it to `/flash/bird-releases/v6.23`, and records the manifest digest
-   in that release's `.complete` marker. Older complete releases remain intact.
+   renames it to `/flash/bird-releases/<release-id>`, and records the manifest
+   digest in that release's `.complete` marker. The previously selected complete
+   release remains intact throughout staging and verification.
 6. The active extlinux entry refers only to its versioned kernel,
-   initramfs and DTB paths and passes `bird_release=v6.23`. One verified
+   initramfs and DTB paths and passes the matching `bird_release` ID. One verified
    temporary-file rename of `/flash/extlinux/extlinux.conf` is the activation
    point; the separate fallback entry names its preserved top-level assets.
 7. Legacy same-volume Port layout conversion is an explicit card-data migration
@@ -77,6 +85,18 @@ rebuild or trim the release kernel yet.
    outside the runtime transaction. The updater refuses a nonempty legacy tree
    or an unverified PortMaster provider, so both conditions must be resolved
    before selector activation without producing a mixed birdOS runtime.
+
+When the small `BIRD` partition lacks room for another staged release, the
+top-level command uses a guarded two-slot lifecycle. It never retires the
+release named by the active extlinux selector. It validates one inactive
+release's `.complete` marker, canonical manifest, file set, modes, sizes and
+hashes; packages those exact installed bytes; and publishes them as an attested
+release in the private GitHub archive repository. Only after the published
+assets, attestation, and downloaded canonical manifest verify does it remove
+that exact inactive directory. A draft or failed upload is resumable and does
+not change the card. GitHub release immutability must be enabled or reclamation
+is refused. The new card release is then built and installed through the same
+canonical builder and transactional updater described above.
 
 The builder fixes locale, timezone, umask and generated filesystem metadata,
 and it rejects a persistent source-tree change during the build. Repeatability

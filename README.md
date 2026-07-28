@@ -27,6 +27,50 @@ Use [`ROADMAP.md`](ROADMAP.md) for planned work and
 Historical measurements and the complete version-by-version narrative live in
 [`docs/history/PROJECT_CHRONOLOGY.md`](docs/history/PROJECT_CHRONOLOGY.md).
 
+## Build and deploy from macOS
+
+Insert the RG34XX-SP card and wait for exactly one `BIRD` and one `BIRD-DATA`
+volume to mount. From the repository root, use one command:
+
+```sh
+./build-and-deploy.sh --release
+```
+
+For a launcher profiling build:
+
+```sh
+./build-and-deploy.sh --profile
+```
+
+To name the preferred immutable release explicitly, or to perform a read-only
+preflight without deleting, building, or deploying anything:
+
+```sh
+./build-and-deploy.sh --release --release-id v6.24
+./build-and-deploy.sh --profile --dry-run
+```
+
+If the preferred ID is already present on the card or in the GitHub archive,
+the command automatically selects an unused timestamped ID. It never overwrites
+a completed release. The
+command verifies the fixed removable-card identity, pinned inputs, toolchain,
+free space and generated canonical manifest before invoking the existing
+transactional updater.
+
+The card keeps the selected complete release until its replacement is fully
+staged and verified. If `BIRD` needs staging space, the command may select one
+inactive complete release, verify its installed manifest and every file, and
+archive its exact bytes in the private, immutable GitHub release repository
+`danielbuva/birdOS-release-archive`. It removes that inactive directory only
+after GitHub release attestation, asset verification, and a downloaded-manifest
+comparison all succeed. Upload interruption leaves the inactive card release
+and boot selector unchanged; rerunning the same command resumes a draft archive.
+ROMs, BIOS, media, saves, and `BIRD-DATA` content are outside this lifecycle.
+
+Run `./build-and-deploy.sh --help` for the complete contract and, after a
+profiling boot, collect
+`BIRD-DATA/MUOS/Bird/log/early-initramfs-latest.log`.
+
 ## Repository map
 
 - [`ACTIVE_PATH.md`](ACTIVE_PATH.md): authoritative active build, deployment,
@@ -37,6 +81,8 @@ Historical measurements and the complete version-by-version narrative live in
   integration sources.
 - [`firmware/mac-update-rocknix-stock-root-v6.sh`](firmware/mac-update-rocknix-stock-root-v6.sh):
   guarded transactional card deployment.
+- [`build-and-deploy.sh`](build-and-deploy.sh): guarded one-command macOS build,
+  manifest validation and deployment entry point.
 - [`launcher/bird-launcher.c`](launcher/bird-launcher.c): active freestanding
   launcher source.
 - [`DEVICE_PROFILE.md`](DEVICE_PROFILE.md): fixed hardware and experience

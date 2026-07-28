@@ -57,6 +57,7 @@ DATA=$TMP/BIRD-DATA
 STORAGE_SOURCE=$TMP/storage.ext4
 RUNTIME=$DATA/MUOS/runtime/ROCKNIX-SYSTEM
 INFO=$TMP/device-info.tsv
+UPDATER_RELEASE_ID=v6.23
 
 mkdir -p "$CARD/bird" "$CARD/extlinux" "$BIRD/bird" "$BIRD/extlinux" \
 	"$DATA/MUOS/runtime" "$DATA/MUOS/Bird/boot-state/releases/v6.22" \
@@ -189,6 +190,7 @@ run_updater() {
 	FAILPOINT=$1
 	LC_ALL=${TEST_LOCALE:-C} TMPDIR=${TEST_TMPDIR:-$HOST_TMP} \
 	BIRD_HOST_TEST_MODE=1 BIRD=$BIRD DATA=$DATA \
+	BIRD_RELEASE_ID=$UPDATER_RELEASE_ID \
 	CANDIDATE=$CARD MANIFEST=$MANIFEST \
 	STORAGE_SOURCE=$STORAGE_SOURCE BIRD_DEVICE_INFO=$INFO \
 	BIRD_TEST_FAILPOINT=$FAILPOINT \
@@ -703,5 +705,39 @@ if run_updater none >"$TMP/bad-candidate.out" 2>"$TMP/bad-candidate.err"; then
 fi
 grep -q 'candidate size changed: bird/bird-suspend.sh' "$TMP/bad-candidate.err"
 [ "$(sha256 "$BIRD/extlinux/extlinux.conf")" = "$ACTIVE_SHA" ]
+
+# A caller-selected release ID must drive the manifest contract, immutable
+# directory, selector and boot-attempt namespace together. Rebuild only the
+# small fixture selector and its canonical file record; every other byte stays
+# identical to the already-verified candidate.
+cp "$RELEASE/bird/bird-suspend.sh" "$CARD/bird/bird-suspend.sh"
+DYNAMIC_ID=v6.23-host-test
+DYNAMIC_CARD=$TMP/dynamic-build/card
+mkdir -p "${DYNAMIC_CARD%/*}"
+cp -R "$CARD" "$DYNAMIC_CARD"
+sed "s#v6\.23#$DYNAMIC_ID#g" "$CARD/extlinux/extlinux.conf" \
+	>"$DYNAMIC_CARD/extlinux/extlinux.conf"
+DYNAMIC_SELECTOR_BYTES=$(bytes "$DYNAMIC_CARD/extlinux/extlinux.conf")
+DYNAMIC_SELECTOR_SHA=$(sha256 "$DYNAMIC_CARD/extlinux/extlinux.conf")
+DYNAMIC_MANIFEST=$TMP/dynamic-build/deploy-manifest.tsv
+awk -F '\t' -v release="$DYNAMIC_ID" -v selector_bytes="$DYNAMIC_SELECTOR_BYTES" \
+	-v selector_sha="$DYNAMIC_SELECTOR_SHA" 'BEGIN {OFS="\t"}
+	$1 == "release" {$2=release}
+	$1 == "file" && $2 == "extlinux/extlinux.conf" {
+		$4=selector_bytes
+		$5=selector_sha
+	}
+	{print}
+' "$GOOD_MANIFEST" >"$DYNAMIC_MANIFEST"
+CARD=$DYNAMIC_CARD
+MANIFEST=$DYNAMIC_MANIFEST
+UPDATER_RELEASE_ID=$DYNAMIC_ID
+run_updater none >"$TMP/dynamic-release.out"
+DYNAMIC_RELEASE=$BIRD/bird-releases/$DYNAMIC_ID
+[ -f "$DYNAMIC_RELEASE/.complete" ]
+cmp "$DYNAMIC_MANIFEST" "$DYNAMIC_RELEASE/deploy-manifest.tsv"
+grep -Fq "bird_release=$DYNAMIC_ID" "$BIRD/extlinux/extlinux.conf"
+[ "$(cat "$DATA/MUOS/Bird/boot-state/releases/$DYNAMIC_ID/attempts")" = 0 ]
+[ -f "$BIRD/bird-releases/v6.23/.complete" ]
 
 printf '%s\n' 'stock-root updater transaction tests passed'

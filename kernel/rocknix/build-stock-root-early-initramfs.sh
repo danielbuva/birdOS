@@ -14,7 +14,8 @@ configure_reproducible_build_environment() {
 configure_reproducible_build_environment
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
-OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.23}
+RELEASE_ID=${BIRD_RELEASE_ID:-v6.23}
+OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-$RELEASE_ID}
 OFFICIAL_INIT=${OFFICIAL_INIT:-$ROOT/kernel/work/rocknix-official-initramfs-20260701/ramdisk/init}
 JOYPAD=${JOYPAD:-$ROOT/kernel/work/rocknix-system-exact-20260701/usr/lib/kernel-overlays/base/lib/modules/7.0.11/rocknix-joypad/rocknix-singleadc-joypad.ko}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
@@ -35,6 +36,11 @@ fail() {
 	printf 'error: %s\n' "$*" >&2
 	exit 1
 }
+
+case "$RELEASE_ID" in
+	''|[![:alnum:]]*|*[![:alnum:]._-]*) fail "unsafe Bird release ID: $RELEASE_ID" ;;
+esac
+[ "${#RELEASE_ID}" -le 64 ] || fail 'Bird release ID is longer than 64 bytes'
 
 LAUNCHER_PROFILE_FLAGS=
 case "${BIRD_LAUNCHER_PROFILE:-none}" in
@@ -170,6 +176,9 @@ cp -fp "$ROOT/kernel/rocknix/stock-root/bird-early.sh" \
 	"$PAYLOAD/bird-early.sh"
 cp -fp "$ROOT/kernel/rocknix/stock-root/bird-release-loader.sh" \
 	"$PAYLOAD/bird-release-loader.sh"
+sed "s#BIRD_LOADER_RELEASE=v6\.23\$#BIRD_LOADER_RELEASE=$RELEASE_ID#" \
+	"$ROOT/kernel/rocknix/stock-root/bird-release-loader.sh" \
+	>"$PAYLOAD/bird-release-loader.sh"
 cp -fp "$JOYPAD" "$PAYLOAD/opt/bird/rocknix-singleadc-joypad.ko"
 chmod 0755 "$PAYLOAD/init" "$PAYLOAD/bird-early.sh" \
 	"$PAYLOAD/bird-release-loader.sh"
@@ -177,6 +186,8 @@ chmod 0644 "$PAYLOAD/opt/bird/rocknix-singleadc-joypad.ko"
 bash -n "$PAYLOAD/init" || fail 'overlaid ROCKNIX init syntax failed'
 bash -n "$PAYLOAD/bird-early.sh" || fail 'Bird early hook syntax failed'
 bash -n "$PAYLOAD/bird-release-loader.sh" || fail 'release loader syntax failed'
+grep -Fq "BIRD_LOADER_RELEASE=$RELEASE_ID" \
+	"$PAYLOAD/bird-release-loader.sh" || fail 'release loader identity generation failed'
 
 find "$PAYLOAD" -type d -exec chmod 0755 {} +
 find "$PAYLOAD" -exec touch -t 202601010000.00 {} +

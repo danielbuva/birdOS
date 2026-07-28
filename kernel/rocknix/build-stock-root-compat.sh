@@ -21,7 +21,8 @@ SOURCE=${SOURCE:-/Volumes/BIRD}
 SYSTEM_SOURCE=${SYSTEM_SOURCE:-/Volumes/BIRD-DATA/MUOS/runtime/ROCKNIX-SYSTEM}
 STORAGE=${STORAGE:-$HOME/rocknix-reference-result/storage.ext4}
 SYSTEM_TREE=${SYSTEM_TREE:-$ROOT/kernel/work/rocknix-system-exact-20260701}
-OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.23}
+RELEASE_ID=${BIRD_RELEASE_ID:-v6.23}
+OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-$RELEASE_ID}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
 LLD=${LLD:-/opt/homebrew/opt/lld/bin/ld.lld}
 READELF=${READELF:-/opt/homebrew/opt/llvm/bin/llvm-readelf}
@@ -42,7 +43,6 @@ PORTMASTER_SH_SHA=554c92cf5ea6656a6bfbd1ddd81619fdf4ff0524ac40d14c19193f2aa33da8
 PORTMASTER_MOD_SHA=8eaf22ed31bbf446c5113b56b55666f42317f8f81d96e1c86a0f04dde07277a1
 PORTMASTER_FUNCS_SHA=f72b9971c2964e44592dd3ffca1b3ccf0ae31e9c4dd2cb32508a6990f81a5d22
 PORTMASTER_HARBOURMASTER_SHA=74f55c5cf9335ac56dc6b4dbbdd8c26a0a198e4117b2887323eec070c734ff40
-RELEASE_ID=v6.23
 FALLBACK_KERNEL=${FALLBACK_KERNEL:-$SOURCE/KERNEL.fallback}
 OFFICIAL_INIT=${OFFICIAL_INIT:-$ROOT/kernel/work/rocknix-official-initramfs-20260701/ramdisk/init}
 JOYPAD=${JOYPAD:-$ROOT/kernel/work/rocknix-system-exact-20260701/usr/lib/kernel-overlays/base/lib/modules/7.0.11/rocknix-joypad/rocknix-singleadc-joypad.ko}
@@ -59,6 +59,12 @@ fail() {
 	exit 1
 }
 
+case "$RELEASE_ID" in
+	''|[![:alnum:]]*|*[![:alnum:]._-]*) fail "unsafe Bird release ID: $RELEASE_ID" ;;
+esac
+[ "${#RELEASE_ID}" -le 64 ] || fail 'Bird release ID is longer than 64 bytes'
+export BIRD_RELEASE_ID="$RELEASE_ID"
+
 LAUNCHER_PROFILE_FLAGS=
 case "${BIRD_LAUNCHER_PROFILE:-none}" in
 	none|0|'') ;;
@@ -67,6 +73,12 @@ case "${BIRD_LAUNCHER_PROFILE:-none}" in
 	*) fail "unknown BIRD_LAUNCHER_PROFILE mode: $BIRD_LAUNCHER_PROFILE" ;;
 esac
 export BIRD_LAUNCHER_PROFILE
+
+BIRD_BUILD_PREFLIGHT_ONLY=${BIRD_BUILD_PREFLIGHT_ONLY:-0}
+case "$BIRD_BUILD_PREFLIGHT_ONLY" in
+	0|1) ;;
+	*) fail 'invalid Bird build preflight mode' ;;
+esac
 
 sha256() {
 	BIRD_SHA256_LINE=$(shasum -a 256 "$1") || return 1
@@ -167,6 +179,10 @@ is_regular_file "$PORTMASTER_ARCHIVE" || fail 'exact PortMaster archive missing 
 [ -x "$CLANG" ] || fail 'LLVM clang missing'
 [ -x "$LLD" ] || fail 'LLVM lld missing'
 [ -x "$READELF" ] || fail 'LLVM readelf missing'
+if [ "$BIRD_BUILD_PREFLIGHT_ONLY" = 1 ]; then
+	printf 'Canonical pinned-input preflight passed for release %s.\n' "$RELEASE_ID"
+	exit 0
+fi
 [ ! -e "$OUTPUT" ] || fail "output already exists: $OUTPUT"
 
 mkdir -p "$OUTPUT/card/bird" "$OUTPUT/card/extlinux" "$OUTPUT/build"
@@ -325,6 +341,16 @@ cp -fp "$ROOT/kernel/rocknix/stock-root/extlinux.conf" \
 cp -fp "$ROOT/kernel/rocknix/stock-root/extlinux.fallback.conf" \
 	"$OUTPUT/card/extlinux/extlinux.fallback.conf"
 touch "$OUTPUT/card/SYSTEM"
+
+# These three generated runtime files must agree with the manifest release.
+# Their committed sources retain v6.23 as the accepted direct-test default;
+# only candidate output is specialized for a selected immutable release ID.
+sed "s#v6\.23#$RELEASE_ID#g" \
+	"$ROOT/kernel/rocknix/stock-root/extlinux.conf" \
+	>"$OUTPUT/card/extlinux/extlinux.conf"
+sed "s#^RELEASE_ID=v6\.23\$#RELEASE_ID=$RELEASE_ID#" \
+	"$ROOT/kernel/rocknix/stock-root/supervisor.sh" \
+	>"$OUTPUT/card/bird/supervisor.sh"
 chmod 0644 "$OUTPUT/card/SYSTEM"
 chmod 0755 "$OUTPUT/card/post-flash.sh" "$OUTPUT/card/mount-storage.sh" \
 	"$OUTPUT/card/bird/090-ui_service" \
@@ -431,7 +457,7 @@ grep -q "^  INITRD /bird-releases/$RELEASE_ID/bird-initramfs.cpio.gz$" \
 	"$OUTPUT/card/extlinux/extlinux.conf" || fail 'versioned early initramfs selector missing'
 grep -q "^  FDT /bird-releases/$RELEASE_ID/dtb.img$" \
 	"$OUTPUT/card/extlinux/extlinux.conf" || fail 'versioned DTB selector missing'
-grep -q "bird_release=$RELEASE_ID" \
+grep -Fq "bird_release=$RELEASE_ID" \
 	"$OUTPUT/card/extlinux/extlinux.conf" || fail 'release identity missing from kernel command line'
 grep -q 'BIRD_LOADER_SELECTOR_SHA=f6434463ef51f752' \
 	"$OUTPUT/build/early-initramfs/payload/bird-release-loader.sh" || \
@@ -724,7 +750,7 @@ if grep -Fq '"$PIDWAIT" "$pid" &' "$OUTPUT/card/bird/supervisor.sh"; then
 fi
 grep -q '^ATTEMPTS_TMP=\$ATTEMPTS\.tmp\.\$\$$' \
 	"$OUTPUT/card/bird/supervisor.sh" || fail 'atomic boot-attempt temporary missing'
-grep -q '^RELEASE_ID=v6\.23$' \
+grep -Fqx "RELEASE_ID=$RELEASE_ID" \
 	"$OUTPUT/card/bird/supervisor.sh" || fail 'release-scoped boot-attempt identity missing'
 grep -Fq 'boot-state/releases/$RELEASE_ID/attempts' \
 	"$OUTPUT/card/bird/supervisor.sh" || fail 'release-scoped boot-attempt path missing'

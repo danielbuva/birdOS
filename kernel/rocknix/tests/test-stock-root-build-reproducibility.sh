@@ -128,7 +128,7 @@ build_early() (
 	export TZ
 	OUTPUT=$3
 	mkdir -p "$OUTPUT/build" "$OUTPUT/card"
-	OUTPUT=$OUTPUT "$EARLY_BUILDER"
+	BIRD_RELEASE_ID=${4:-v6.23} OUTPUT=$OUTPUT "$EARLY_BUILDER"
 )
 
 FIRST=$TMP/output-umask-022-utc
@@ -172,5 +172,17 @@ if first != second:
         print(f"{key}: {first.get(key)!r} != {second.get(key)!r}", file=sys.stderr)
     raise SystemExit("early-initramfs outputs differ across umask/TZ/output path")
 PY
+
+# A selected immutable release must be compiled into the production loader;
+# its host-test default remains independent and the generated shell stays
+# syntactically valid.
+CUSTOM=$TMP/output-custom-release
+CUSTOM_ID=v6.23-repro-test
+build_early 022 UTC "$CUSTOM" "$CUSTOM_ID" >"$TMP/custom-build.log"
+grep -Fq "BIRD_LOADER_RELEASE=$CUSTOM_ID" \
+	"$CUSTOM/build/early-initramfs/payload/bird-release-loader.sh" || \
+	fail 'custom release ID did not reach the early release loader'
+bash -n "$CUSTOM/build/early-initramfs/payload/bird-release-loader.sh" || \
+	fail 'custom release loader is not valid shell'
 
 printf 'stock-root build reproducibility tests: PASS\n'

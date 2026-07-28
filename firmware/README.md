@@ -19,6 +19,11 @@ Both operations validate the same removable p1/p6 card identity and serialize
 through one host-side atomic card lock. This protects concurrent Mac processes;
 it is not a claim of FAT metadata durability across sudden power loss.
 
+For ordinary builds and deployments, invoke the guarded repository-level
+`./build-and-deploy.sh --release` or `./build-and-deploy.sh --profile` command
+instead of calling the updater directly. The lower-level updater remains the
+transaction authority and is still useful to the host fault-injection suite.
+
 Their contracts are defined by [`ACTIVE_PATH.md`](../ACTIVE_PATH.md); the
 firmware experiments documented below are historical evidence.
 

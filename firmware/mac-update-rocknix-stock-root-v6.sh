@@ -11,7 +11,7 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 BIRD=${BIRD:-/Volumes/BIRD}
 DATA=${DATA:-/Volumes/BIRD-DATA}
-CANDIDATE=${CANDIDATE:-$ROOT/kernel/work/bird-rocknix-stock-root-v6.23/card}
+CANDIDATE=${CANDIDATE:-$ROOT/kernel/work/bird-rocknix-stock-root-${BIRD_RELEASE_ID:-v6.23}/card}
 MANIFEST=${MANIFEST:-$CANDIDATE/../deploy-manifest.tsv}
 STORAGE_SOURCE=${STORAGE_SOURCE:-$HOME/rocknix-reference-result/storage.ext4}
 BIRD_HOST_TEST_MODE=${BIRD_HOST_TEST_MODE:-0}
@@ -22,19 +22,17 @@ BIRD_TEST_MANIFEST_GATE=${BIRD_TEST_MANIFEST_GATE:-}
 RUNTIME=$DATA/MUOS/runtime/ROCKNIX-SYSTEM
 STORAGE_TARGET=$DATA/MUOS/runtime/ROCKNIX-STORAGE
 
-RELEASE_ID=v6.23
-BIRD_BYTES=134217728
-BIRD_OFFSET=16777216
-DISK_BYTES=512074186752
-ROOT_BYTES=8589934592
-ROOT_OFFSET=163577856
-DATA_BYTES=503320672768
-DATA_OFFSET=8753512448
+RELEASE_ID=${BIRD_RELEASE_ID:-v6.23}
 
 fail() {
 	printf 'error: %s\n' "$*" >&2
 	exit 1
 }
+
+case "$RELEASE_ID" in
+	''|[![:alnum:]]*|*[![:alnum:]._-]*) fail "unsafe Bird release ID: $RELEASE_ID" ;;
+esac
+[ "${#RELEASE_ID}" -le 64 ] || fail 'Bird release ID is longer than 64 bytes'
 
 case "$BIRD_HOST_TEST_MODE" in
 	0)
@@ -78,19 +76,8 @@ test_failpoint_active() {
 	[ "$BIRD_HOST_TEST_MODE" = 1 ] && [ "$BIRD_TEST_FAILPOINT" = "$1" ]
 }
 
-field() {
-	if [ -n "$BIRD_DEVICE_INFO" ]; then
-		awk -F '\t' -v device="$1" -v key="$2" \
-			'$1 == device && $2 == key {print $3; exit}' "$BIRD_DEVICE_INFO"
-		return
-	fi
-	diskutil info "$1" | awk -F: -v key="$2" \
-		'$1 ~ "^[[:space:]]*" key "[[:space:]]*$" {sub(/^[[:space:]]*/, "", $2); print $2; exit}'
-}
-
-disk_bytes() {
-	field "$1" 'Disk Size' | sed -n 's/.*(\([0-9][0-9]*\) Bytes).*/\1/p'
-}
+# shellcheck source=mac-stock-root-card-identity.sh
+. "$ROOT/firmware/mac-stock-root-card-identity.sh"
 
 sha256() {
 	shasum -a 256 "$1" | awk '{print $1}'
@@ -161,7 +148,7 @@ TAB=$(printf '\t')
 # Fail closed on unknown records, malformed fields, unsafe paths and duplicate
 # destinations. `file` plus explicit empty-`dir` records are the sole deploy
 # inventory used below; input records are the sole external-byte contract.
-awk -F '\t' '
+awk -F '\t' -v expected_release="$RELEASE_ID" '
 	function safe_path(path) {
 		return path ~ /^[A-Za-z0-9._\/-]+$/ &&
 		       path !~ /(^|\/)\.\.?($|\/)/
@@ -171,7 +158,7 @@ awk -F '\t' '
 		next
 	}
 	$1 == "release" {
-		if (NF != 2 || $2 != "v6.23" || release++) exit 1
+		if (NF != 2 || $2 != expected_release || release++) exit 1
 		next
 	}
 	$1 == "target-mode-policy" {
@@ -294,24 +281,7 @@ if [ -n "$BIRD_TEST_MANIFEST_GATE" ]; then
 	done
 fi
 
-WHOLE=$(field "$BIRD" 'Part of Whole')
-[ -n "$WHOLE" ] || fail 'cannot identify card parent'
-[ "$WHOLE" = "$(field "$DATA" 'Part of Whole')" ] || fail 'volumes are on different disks'
-[ "$(field "/dev/$WHOLE" 'Device Location')" = External ] || \
-	[ "$(field "/dev/$WHOLE" 'Protocol')" = 'Secure Digital' ] || \
-	fail 'refusing disk that is neither external nor a physical SD card'
-[ "$(field "/dev/$WHOLE" 'Removable Media')" = Removable ] || fail 'refusing non-removable disk'
-[ "$(disk_bytes "/dev/$WHOLE")" = "$DISK_BYTES" ] || fail 'whole-card size changed'
-[ "$(field "$BIRD" 'Device Identifier')" = "${WHOLE}s1" ] || fail 'BIRD is not p1'
-[ "$(field "$DATA" 'Device Identifier')" = "${WHOLE}s6" ] || fail 'data is not p6'
-[ "$(field "$BIRD" 'Partition Offset' | awk '{print $1}')" = "$BIRD_OFFSET" ] || fail 'p1 offset changed'
-[ "$(disk_bytes "$BIRD")" = "$BIRD_BYTES" ] || fail 'p1 size changed'
-[ "$(field "/dev/${WHOLE}s5" 'Partition Offset' | awk '{print $1}')" = "$ROOT_OFFSET" ] || fail 'p5 offset changed'
-[ "$(disk_bytes "/dev/${WHOLE}s5")" = "$ROOT_BYTES" ] || fail 'p5 size changed'
-[ "$(field "$DATA" 'Partition Offset' | awk '{print $1}')" = "$DATA_OFFSET" ] || fail 'p6 offset changed'
-[ "$(disk_bytes "$DATA")" = "$DATA_BYTES" ] || fail 'p6 size changed'
-[ "$(field "$BIRD" 'Volume Read-Only')" = No ] || fail 'BIRD is read-only'
-[ "$(field "$DATA" 'Volume Read-Only')" = No ] || fail 'data is read-only'
+validate_stock_root_card_identity
 
 # Serialize every host-side card mutation with the same inherited advisory
 # transaction lock used by the explicit Ports migration. The owner symlink is
@@ -690,7 +660,7 @@ mv -f "$ATTEMPTS_TEMP" "$ATTEMPTS"
 sync
 [ "$(cat "$ATTEMPTS")" = 0 ] || fail 'boot-attempt reset transaction failed'
 
-# This verified rename is the only operation that makes v6.23 bootable.
+# This verified rename is the only operation that makes this release bootable.
 test_failpoint before-selector-activation
 SELECTOR_MODE=$(manifest_file_field extlinux/extlinux.conf 3)
 SELECTOR_BYTES=$(manifest_file_field extlinux/extlinux.conf 4)
@@ -735,7 +705,7 @@ fi
 # the newly armed release; the loader recreates it before any future fallback.
 rm -f "$BIRD/bird-loader-failure.txt" 2>/dev/null || :
 
-printf 'Bird stock-root v6.23 activated on /dev/%s.\n' "$WHOLE"
+printf 'Bird stock-root %s activated on /dev/%s.\n' "$RELEASE_ID" "$WHOLE"
 printf 'Complete immutable release: %s\n' "$RELEASE"
 printf 'Canonical manifest: %s\n' "$MANIFEST_SHA"
 printf 'Legacy Port data preflight is clean; no user content was moved.\n'
@@ -754,9 +724,9 @@ printf 'Early content selections remain queued until the app contract is ready.\
 printf 'Late generic display ownership and fixed-profile autostart no-ops are removed.\n'
 printf 'Shutdown keeps the config checkpoint without a full interactive-profile load.\n'
 printf 'The low-battery red LED threshold is fixed at 41 percent.\n'
-printf 'Storage readiness has a bounded self-healing probe until success.\n'
+printf 'Storage readiness uses one ordered post-prepare_sysroot anchor acquisition.\n'
 printf 'Storage/config are retained after prepare_sysroot and before switch_root.\n'
-printf 'A failed final-root anchor retires into the systemd fallback.\n'
+printf 'A broken anchor contract remains an explicit supervisor recovery condition.\n'
 printf 'The application compositor uses one fixed card1/DSI-1 profile.\n'
 printf 'RF-kill state management now exists only inside network sessions.\n'
 printf 'PortMaster networking waits for one usable NetworkManager link.\n'
