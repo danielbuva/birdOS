@@ -18,6 +18,16 @@ typedef signed long s64;
 #if defined(BIRD_PROFILE_DEEP) && !defined(BIRD_PROFILE)
 #define BIRD_PROFILE 1
 #endif
+#if defined(BIRD_REUSE_UBOOT_FRAME) && \
+    !defined(BIRD_BOOT_FRAME_MANIFEST_VERIFIED)
+#error "U-Boot frame reuse requires an active manifest-verified boot asset"
+#endif
+#if defined(BIRD_REUSE_UBOOT_FRAME) && \
+    (!defined(BIRD_BOOT_FRAME_VISIBLE_HASH_A) || \
+     !defined(BIRD_BOOT_FRAME_VISIBLE_HASH_B) || \
+     !defined(BIRD_BOOT_FRAME_ASSET_ID))
+#error "U-Boot frame reuse requires the generated boot-frame contract"
+#endif
 
 #include "catalog.generated.h"
 
@@ -31,6 +41,8 @@ typedef signed long s64;
 #define PROT_READ 1
 #define PROT_WRITE 2
 #define MAP_SHARED 1
+#define MAP_PRIVATE 2
+#define SEEK_END 2
 
 #define FBIOGET_VSCREENINFO 0x4600
 #define FBIOGET_FSCREENINFO 0x4602
@@ -100,10 +112,18 @@ typedef signed long s64;
 #ifndef UI_RESUME_TEMP
 #define UI_RESUME_TEMP UI_RESUME_PATH ".tmp"
 #endif
+#ifndef FRAME_RESUME_PATH
+#define FRAME_RESUME_PATH "/run/muos/bird-launcher-frame-resume"
+#endif
+#ifndef FRAME_RESUME_TEMP
+#define FRAME_RESUME_TEMP FRAME_RESUME_PATH ".tmp"
+#endif
 #if defined(HANDOFF_ACTION_PATH) && !defined(HANDOFF_ACTION_TEMP)
 #define HANDOFF_ACTION_TEMP HANDOFF_ACTION_PATH ".tmp"
 #endif
 #define UI_RESUME_MAGIC 0x42495244U
+#define FRAME_RESUME_MAGIC 0x4246524dU
+#define FRAME_RESUME_VERSION 4U
 #ifndef FAVORITES_PATH
 #define FAVORITES_PATH "/mnt/mmc/MUOS/bespoke-launcher/favorites.txt"
 #endif
@@ -133,14 +153,15 @@ typedef signed long s64;
 #define VIEW_FAVORITES 4U
 #define VIEW_MEDIA_CATEGORIES 5U
 #define VIEW_MEDIA_ENTRIES 6U
-#define SYSTEM_ROWS 8U
-#define GAME_ROWS 8U
+#define VIEW_TOOLS 7U
+#define VIEW_QUIT 8U
 #define ACTION_NONE 0
 #define ACTION_RECOVER 1
 #define ACTION_LAUNCH 10
 #define ACTION_SHUTDOWN 11
 #define ACTION_PORTMASTER 12
 #define ACTION_RELOAD 13
+#define ACTION_REBOOT 14
 
 #define POLL_RESULT_READY 0
 #define POLL_RESULT_INTERRUPTED 1
@@ -154,8 +175,40 @@ typedef signed long s64;
 #define PENDING_LAUNCH_GAME 1U
 #define PENDING_LAUNCH_MEDIA 2U
 #define INPUT_EVENT_SCAN_COUNT 32
+#define PREFERRED_INPUT_EVENT 4
 #define NAVIGATION_BATCH_MAX_EVENTS 16U
 #define NAVIGATION_BATCH_MAX_RECORDS 32U
+#define POWER_EVENT_READ_BUDGET 8U
+#define STARTUP_FRAMEBUFFER_WRITE_BUDGET 2100000UL
+#define INHERITED_BOOT_FRAME_WRITE_BUDGET 500000UL
+#define RECOVERY_FRAMEBUFFER_WRITE_BUDGET 65536UL
+
+#define FRAME_RECOVERY_NONE 0U
+#define FRAME_RECOVERY_MATCHED 1U
+#define FRAME_RECOVERY_INVALID 2U
+#define FRAME_RECOVERY_MISMATCH 3U
+#define FRAME_RECOVERY_UNSUPPORTED 4U
+#define FRAME_RECOVERY_CANDIDATE 5U
+#define FRAME_REGION_HEADER 0U
+#define FRAME_REGION_CONTENT 1U
+#define FRAME_REGION_FOOTER 2U
+#define FRAME_REGION_COUNT 3U
+
+#define STARTUP_TASK_PROFILE 0U
+#define STARTUP_TASK_LOG_FRAME 1U
+#define STARTUP_TASK_LOG_FORMAT 2U
+#define STARTUP_TASK_LOG_INPUT 3U
+#define STARTUP_TASK_CHECKPOINT 4U
+#define STARTUP_TASK_POWER_ANCHOR 5U
+#define STARTUP_TASK_POWER_EVENT 6U
+#define STARTUP_TASK_POWER_CHARGING 7U
+#define STARTUP_TASK_POWER_PERCENT 8U
+#define STARTUP_TASK_POWER_RENDER 9U
+#define STARTUP_TASK_STORAGE 10U
+#define STARTUP_TASK_FAVORITES 11U
+#define STARTUP_TASK_STORAGE_LOG 12U
+#define STARTUP_TASK_FRAME_CLEANUP 13U
+#define STARTUP_TASK_DONE 14U
 
 /* The accepted stock-root image uses Linux 7.0.11 sun4i-drm fbdev
  * emulation with CONFIG_DRM_FBDEV_OVERALLOC=100. RG34XX-SP measurements show
@@ -230,6 +283,54 @@ struct fb_var_screeninfo {
     u32 reserved[4];
 };
 
+#define MENU_FRAME_X 160
+#define MENU_FRAME_RIGHT 560
+#define MENU_TOP_BAR_X MENU_FRAME_X
+#define MENU_TOP_BAR_Y 36
+#define MENU_TOP_BAR_WIDTH (MENU_FRAME_RIGHT - MENU_FRAME_X)
+#define MENU_TOP_BAR_H 40
+#define SIDEBAR_X MENU_FRAME_X
+#define SIDEBAR_Y 104
+#define SIDEBAR_WIDTH 32
+#define MENU_LEFT (SIDEBAR_X + SIDEBAR_WIDTH)
+#define MENU_CONTENT_Y SIDEBAR_Y
+#define MENU_CONTENT_RIGHT MENU_FRAME_RIGHT
+#define MENU_CONTENT_WIDTH (MENU_CONTENT_RIGHT - MENU_LEFT)
+#define MENU_CONTENT_H 288
+#define MENU_DIVIDER_WIDTH 10
+#define MENU_ROW_LEFT (MENU_LEFT + MENU_DIVIDER_WIDTH)
+#define MENU_ROW_WIDTH (MENU_CONTENT_RIGHT - MENU_ROW_LEFT)
+#define MENU_ROW_SPACING 32
+#define MENU_ROW_H MENU_ROW_SPACING
+#define MENU_ROW_START_Y (MENU_CONTENT_Y + 5)
+#define MENU_PAGE_ROWS (MENU_CONTENT_H / MENU_ROW_SPACING)
+#define SYSTEM_ROWS MENU_PAGE_ROWS
+#define GAME_ROWS MENU_PAGE_ROWS
+#define MENU_MAIN_ROW_START_Y MENU_CONTENT_Y
+#define MENU_MAIN_ROW_SPACING MENU_ROW_SPACING
+#define MENU_MAIN_ROW_H MENU_ROW_H
+#define MENU_MAIN_TEXT_Y_OFFSET 5
+#define MENU_TEXT_X (MENU_ROW_LEFT + 12)
+#define MENU_LIST_TEXT_LIMIT 18U
+#define MENU_LABEL_SCALE 2
+#define MENU_SIDEBAR_SCALE 3
+#define MENU_SIDEBAR_LETTER_ADVANCE 20
+#define MENU_ITEM_SCALE_X 3
+#define MENU_ITEM_SCALE_Y 3
+#define MENU_FOOTER_Y 404
+#define MENU_FOOTER_H 60
+#define MENU_STATUS_Y 407
+#define MENU_HELP_X_OFFSET 2
+#define MENU_HELP_Y 429
+#define MENU_CONTROL_TEXT_GAP 6
+#define MENU_BATTERY_ICON_MIN_X 489
+#define MENU_BATTERY_ICON_Y 47
+#define MENU_BATTERY_TEXT_RIGHT 552
+#define MENU_SCROLL_INITIAL_DELAY_MS 2500U
+#define MENU_SCROLL_STEP_MS 150U
+#define MENU_SCROLL_GAP 3U
+
+
 struct fb_fix_screeninfo {
     char id[16];
     u64 smem_start;
@@ -286,6 +387,50 @@ struct ui_resume_state {
     u32 selection;
 };
 
+struct frame_fingerprint {
+    u64 visible_a;
+    u64 visible_b;
+    u64 region[FRAME_REGION_COUNT];
+    u64 unused_x_hash;
+    u32 unused_x_nonzero;
+};
+
+struct frame_resume_state {
+    u32 magic;
+    u32 version;
+    struct ui_resume_state ui;
+    u32 framebuffer_path;
+    u32 framebuffer_bytes;
+    s32 charging_state;
+    s32 battery_percent;
+    u32 favorites_loaded;
+    u32 favorite_count;
+    u8 favorites[(CATALOG_ENTRY_COUNT + 7U) / 8U];
+    u64 hash_a;
+    u64 hash_b;
+    /* Diagnostics below do not authorize pixel reuse and are deliberately
+     * outside bind_frame_resume_state(); the descriptor digest still protects
+     * them from accidental corruption. */
+    u64 region_hash[FRAME_REGION_COUNT];
+    u64 unused_x_hash;
+    u32 unused_x_nonzero;
+    u32 reserved;
+    u64 descriptor_hash_a;
+    u64 descriptor_hash_b;
+};
+
+struct startup_work_state {
+    u32 task;
+    u32 frame_recovery;
+    u64 started_ms;
+    u64 interactive_frame_ms;
+    u64 marker_ms;
+    int resume_loaded;
+    int previous_charging;
+    int previous_battery;
+    int boot_frame_reused;
+};
+
 struct pending_launch_state {
     u32 kind;
     u32 index;
@@ -304,6 +449,10 @@ static struct fb_var_screeninfo fb_var;
 static struct fb_fix_screeninfo fb_fix;
 static volatile u8 *fb;
 static int fb_fd = -1;
+#ifdef BIRD_STATIC_BASE_PATH
+static const u8 *static_base;
+static int static_base_fd = -1;
+#endif
 static u32 framebuffer_path;
 static u64 framebuffer_mismatch_mask;
 static int input_fd = -1;
@@ -311,6 +460,8 @@ static int power_event_fd = -1;
 static int h700_input;
 static int charging_state = -1;
 static int battery_percent = -1;
+static int displayed_charging_state = -1;
+static int displayed_battery_percent = -1;
 static int runtime_dir_fd = -1;
 static int input_dir_fd = -1;
 static int power_dir_fd = -1;
@@ -324,6 +475,7 @@ static int storage_signal_disabled;
 static int storage_handoff_signaled;
 static int storage_probe_attempted;
 static int power_event_disabled;
+static u64 input_ready_ms;
 static char input_path[32] = "/dev/input/event0";
 static u32 view;
 static u32 selection;
@@ -336,18 +488,45 @@ static int storage_ready;
 static int favorites_loaded;
 static u32 favorite_count;
 static u8 favorites[(CATALOG_ENTRY_COUNT + 7U) / 8U];
+static u16 favorite_indices[CATALOG_ENTRY_COUNT];
 static u64 next_favorites_retry;
 static u64 favorites_retry_ms = FAVORITES_RETRY_INITIAL_MS;
 static u32 favorites_retry_count;
 static char live_path[LIVE_PATH_BYTES];
 static struct pending_launch_state pending_launch;
 static u32 pending_render_invalid;
+static u64 footer_background[(MENU_TOP_BAR_WIDTH * MENU_FOOTER_H) / 2U];
+static int footer_background_captured;
+static int frame_recovery_fingerprint_attempted;
+static u32 frame_recovery_region_mismatch_mask;
+static int frame_recovery_unused_x_changed;
+static u64 frame_recovery_expected_hash_a;
+static u64 frame_recovery_expected_hash_b;
+static u64 frame_recovery_actual_hash_a;
+static u64 frame_recovery_actual_hash_b;
+static int frame_recovery_snapshot_restored;
+
+struct selected_text_scroll_state {
+    const char *text;
+    u32 view;
+    u32 selection;
+    u32 context;
+    u32 length;
+    u32 offset;
+    u64 deadline_ms;
+};
+
+static struct selected_text_scroll_state selected_text_scroll;
 
 static void probe_storage(void);
 static const char *selected_status = "DIRECT FRAMEBUFFER READY";
 
-static const char *menu_item[4] = {"PLAY", "LISTEN", "READ", "WATCH"};
-static const char *play_item[4] = {"LIBRARY", "FAVORITES", "PORTMASTER", "SHUTDOWN"};
+static const char *menu_item[6] = {
+    "PLAY", "LISTEN", "READ", "WATCH", "TOOLS", "QUIT"
+};
+static const char *play_item[2] = {"SYSTEMS", "FAVORITES"};
+static const char *tools_item[1] = {"PORTMASTER"};
+static const char *quit_item[3] = {"RELOAD", "REBOOT", "SHUTDOWN"};
 
 /* Five-wide uppercase bitmap alphabet plus the exact punctuation this UI uses. */
 static const struct glyph font[] = {
@@ -390,6 +569,7 @@ enum bird_profile_render_reason {
     PROFILE_RENDER_BATTERY,
     PROFILE_RENDER_FAVORITES_COMPLETION,
     PROFILE_RENDER_RECOVERY,
+    PROFILE_RENDER_TEXT_SCROLL,
     PROFILE_RENDER_REASON_COUNT,
 };
 
@@ -468,6 +648,9 @@ struct bird_profile_state {
     u64 input_to_barrier_samples;
     u64 navigation_events;
     u64 navigation_batches;
+    u64 frame_fingerprint_physical_bytes_read;
+    u64 frame_fingerprint_visible_bytes_compared;
+    u64 frame_fingerprint_pages_read;
     u64 event_pre_barrier_filesystem_ops;
     u64 event_pre_barrier_diagnostic_writes;
     u64 event_pre_barrier_diagnostic_bytes;
@@ -676,7 +859,7 @@ static u64 bird_profile_page_count(u64 mask) {
     return count;
 }
 
-static void bird_profile_note_barrier(void) {
+static void bird_profile_note_barrier(int interactive) {
     struct bird_profile_render_totals *total;
     u64 now;
     u64 delta;
@@ -690,8 +873,7 @@ static void bird_profile_note_barrier(void) {
     total->pages_written += bird_profile_page_count(bird_profile.current_page_mask);
     total->physical_bytes += bird_profile.current_physical_bytes;
     bird_profile.barrier_generation++;
-    if (!bird_profile.interactive_barrier_seen &&
-        bird_profile.current_render_reason == PROFILE_RENDER_STARTUP_FULL) {
+    if (interactive && !bird_profile.interactive_barrier_seen) {
         bird_profile.interactive_barrier_seen = 1;
         bird_profile.interactive_barrier_ns = now;
         bird_profile.interactive_barrier_order = ++bird_profile.milestone_sequence;
@@ -770,13 +952,16 @@ static void bird_profile_deep_note_string(u64 bytes) {
 #define BIRD_PROFILE_RENDER(reason) bird_profile_begin_render(reason)
 #define BIRD_PROFILE_RECTANGLE(x, y, width, height) \
     bird_profile_note_rectangle(x, y, width, height)
-#define BIRD_PROFILE_BARRIER() bird_profile_note_barrier()
+#define BIRD_PROFILE_BARRIER() bird_profile_note_barrier(1)
+#define BIRD_PROFILE_NONINTERACTIVE_BARRIER() bird_profile_note_barrier(0)
 #define BIRD_PROFILE_APPLICATION_ENTRY(now) bird_profile_application_entry(now)
 #define BIRD_PROFILE_INPUT_OPENED() bird_profile_input_opened()
 #define BIRD_PROFILE_BEGIN_EVENT() bird_profile_begin_event()
 #define BIRD_PROFILE_FINISH_EVENT() bird_profile_finish_event()
 #define BIRD_PROFILE_NAVIGATION_EVENT() bird_profile_navigation_event()
 #define BIRD_PROFILE_NAVIGATION_BATCH() bird_profile_navigation_batch()
+#define BIRD_PROFILE_FRAME_HASH(physical_bytes, visible_bytes, pages) \
+    bird_profile_frame_hash(physical_bytes, visible_bytes, pages)
 #define BIRD_PROFILE_MARK_SELECTION() bird_profile_mark_selection()
 #define BIRD_PROFILE_CANCEL_SELECTION() bird_profile_cancel_selection()
 #define BIRD_PROFILE_RESUME_COMMITTED() bird_profile_resume_committed()
@@ -790,6 +975,7 @@ static void bird_profile_deep_note_string(u64 bytes) {
 #define BIRD_PROFILE_RENDER(reason)
 #define BIRD_PROFILE_RECTANGLE(x, y, width, height)
 #define BIRD_PROFILE_BARRIER()
+#define BIRD_PROFILE_NONINTERACTIVE_BARRIER()
 #define BIRD_PROFILE_DEEP_STRING(bytes)
 #define BIRD_PROFILE_DEEP_STRING_BYTE()
 #define BIRD_PROFILE_DEEP_CATALOG_ITERATION()
@@ -808,6 +994,7 @@ static void bird_profile_deep_note_string(u64 bytes) {
 #define BIRD_PROFILE_FINISH_EVENT()
 #define BIRD_PROFILE_NAVIGATION_EVENT()
 #define BIRD_PROFILE_NAVIGATION_BATCH()
+#define BIRD_PROFILE_FRAME_HASH(physical_bytes, visible_bytes, pages)
 #define BIRD_PROFILE_MARK_SELECTION()
 #define BIRD_PROFILE_CANCEL_SELECTION()
 #define BIRD_PROFILE_RESUME_COMMITTED()
@@ -815,6 +1002,83 @@ static void bird_profile_deep_note_string(u64 bytes) {
 #define BIRD_PROFILE_EMIT_STARTUP()
 #define BIRD_PROFILE_EXIT_AND_EMIT()
 #endif
+
+/* Keep every runtime consumer behind this fixed-index interface. Generated
+ * strings live in one immutable pool and fixed-width arrays carry only byte
+ * offsets or scalar fields; no catalog pointer table needs relocation. These
+ * accessors remain in the launcher translation unit so the optimizer can
+ * inline each pool lookup completely. */
+static const char *catalog_system_name(u32 index) {
+    return catalog_string_pool + catalog_system_name_offsets[index];
+}
+
+static const char *catalog_system_core(u32 index) {
+    return catalog_string_pool + catalog_system_core_offsets[index];
+}
+
+static u32 catalog_system_first(u32 index) {
+    return catalog_system_firsts[index];
+}
+
+static u32 catalog_system_entry_count(u32 index) {
+    return catalog_system_counts[index];
+}
+
+static u32 catalog_system_launch_kind(u32 index) {
+    return catalog_system_launch_kinds[index];
+}
+
+static const char *catalog_entry_name(u32 index) {
+    return catalog_string_pool + catalog_entry_name_offsets[index];
+}
+
+static const char *catalog_entry_path(u32 index) {
+    return catalog_string_pool + catalog_entry_path_offsets[index];
+}
+
+static u32 catalog_entry_system(u32 index) {
+    return catalog_entry_systems[index];
+}
+
+static const char *catalog_media_category_name(u32 index) {
+    return catalog_string_pool + catalog_media_category_name_offsets[index];
+}
+
+static const char *catalog_media_category_core(u32 index) {
+    return catalog_string_pool + catalog_media_category_core_offsets[index];
+}
+
+static u32 catalog_media_category_first(u32 index) {
+    return catalog_media_category_firsts[index];
+}
+
+static u32 catalog_media_category_entry_count(u32 index) {
+    return catalog_media_category_counts[index];
+}
+
+static u32 catalog_media_category_section(u32 index) {
+    return catalog_media_category_sections[index];
+}
+
+static u32 catalog_media_category_launch_kind(u32 index) {
+    return catalog_media_category_launch_kinds[index];
+}
+
+static const char *catalog_media_entry_name(u32 index) {
+    return catalog_string_pool + catalog_media_entry_name_offsets[index];
+}
+
+static const char *catalog_media_entry_path(u32 index) {
+    return catalog_string_pool + catalog_media_entry_path_offsets[index];
+}
+
+static u32 __attribute__((unused)) catalog_media_entry_category(u32 index) {
+    return catalog_media_entry_categories[index];
+}
+
+static u32 catalog_entry_path_order_index(u32 ordinal) {
+    return (u32)catalog_entry_path_order_xor[ordinal] ^ ordinal;
+}
 
 #ifdef BIRD_HOST_TEST
 extern long bird_test_syscall6(long number, long a0, long a1, long a2,
@@ -865,6 +1129,15 @@ static long sys_ioctl(int fd, u64 request, void *arg) {
 
 static void *sys_mmap(u64 length) {
     return (void *)syscall6(222, 0, (long)length, PROT_READ | PROT_WRITE, MAP_SHARED, fb_fd, 0);
+}
+
+static void *sys_mmap_readonly(int fd, u64 length) {
+    return (void *)syscall6(222, 0, (long)length, PROT_READ,
+                            MAP_PRIVATE, fd, 0);
+}
+
+static long sys_lseek(int fd, s64 offset, int whence) {
+    return syscall6(62, fd, (long)offset, whence, 0, 0, 0);
 }
 
 static long sys_munmap(void *address, u64 length) {
@@ -927,11 +1200,14 @@ static int string_starts_with(const char *text, const char *prefix) {
 /* Runtime, input, and power exist before the storage handoff. Storage is
  * deliberately excluded: opening its mountpoint before mount --move would
  * retain the covered empty directory forever. */
-static void refresh_path_anchors(void) {
+static void open_critical_path_anchors(void) {
     if (runtime_dir_fd < 0)
         runtime_dir_fd = (int)sys_open("/run/muos", O_RDONLY | O_NONBLOCK);
     if (input_dir_fd < 0)
         input_dir_fd = (int)sys_open("/dev/input", O_RDONLY | O_NONBLOCK);
+}
+
+static void open_power_path_anchor(void) {
     if (power_dir_fd < 0)
         power_dir_fd = (int)sys_open("/sys/class/power_supply/battery",
                                      O_RDONLY | O_NONBLOCK);
@@ -1224,6 +1500,7 @@ static const char *bird_profile_render_name[PROFILE_RENDER_REASON_COUNT] = {
     "battery",
     "favorites-completion",
     "recovery",
+    "text-scroll",
 };
 
 static const char *bird_profile_syscall_name[PROFILE_SYSCALL_KIND_COUNT] = {
@@ -1303,6 +1580,13 @@ static void bird_profile_navigation_event(void) {
 
 static void bird_profile_navigation_batch(void) {
     bird_profile.navigation_batches++;
+}
+
+static void bird_profile_frame_hash(u64 physical_bytes, u64 visible_bytes,
+                                    u64 pages) {
+    bird_profile.frame_fingerprint_physical_bytes_read += physical_bytes;
+    bird_profile.frame_fingerprint_visible_bytes_compared += visible_bytes;
+    bird_profile.frame_fingerprint_pages_read += pages;
 }
 
 static void bird_profile_finish_event(void) {
@@ -1522,6 +1806,14 @@ static void bird_profile_emit_startup(void) {
     bird_profile_write_number(bird_profile.pre_barrier_diagnostic_writes);
     bird_profile_write_text(" pre_barrier_diagnostic_bytes=");
     bird_profile_write_number(bird_profile.pre_barrier_diagnostic_bytes);
+    bird_profile_write_text(" frame_fingerprint_physical_bytes_read=");
+    bird_profile_write_number(
+        bird_profile.frame_fingerprint_physical_bytes_read);
+    bird_profile_write_text(" frame_fingerprint_visible_bytes_compared=");
+    bird_profile_write_number(
+        bird_profile.frame_fingerprint_visible_bytes_compared);
+    bird_profile_write_text(" frame_fingerprint_pages_read=");
+    bird_profile_write_number(bird_profile.frame_fingerprint_pages_read);
     bird_profile_write_text("\n");
     bird_profile_emit_framebuffer_format();
     bird_profile.emitting = 0;
@@ -1595,6 +1887,14 @@ static void bird_profile_note_exit_and_emit(void) {
     bird_profile_write_number(bird_profile.navigation_events);
     bird_profile_write_text(" navigation_batches=");
     bird_profile_write_number(bird_profile.navigation_batches);
+    bird_profile_write_text(" frame_fingerprint_physical_bytes_read=");
+    bird_profile_write_number(
+        bird_profile.frame_fingerprint_physical_bytes_read);
+    bird_profile_write_text(" frame_fingerprint_visible_bytes_compared=");
+    bird_profile_write_number(
+        bird_profile.frame_fingerprint_visible_bytes_compared);
+    bird_profile_write_text(" frame_fingerprint_pages_read=");
+    bird_profile_write_number(bird_profile.frame_fingerprint_pages_read);
     bird_profile_write_text(" event_pre_barrier_filesystem_namespace_ops=");
     bird_profile_write_number(bird_profile.event_pre_barrier_filesystem_ops);
     bird_profile_write_text(" event_pre_barrier_diagnostic_writes=");
@@ -1795,12 +2095,13 @@ static void schedule_power_event_retry(const char *reason) {
     power_event_retry_ms = next_retry_delay(power_event_retry_ms);
 }
 
-static void try_power_event_open(void) {
-    u64 now;
+static void try_power_event_open_at(u64 now, int time_sampled) {
     int reopened;
     if (power_event_fd >= 0 || power_event_disabled) return;
-    now = boot_ms();
-    if (now < next_power_event_retry) return;
+    if (next_power_event_retry) {
+        if (!time_sampled) now = boot_ms();
+        if (now < next_power_event_retry) return;
+    }
     reopened = open_power_events();
     if (reopened < 0) {
         schedule_power_event_retry("open-failed");
@@ -1810,6 +2111,10 @@ static void try_power_event_open(void) {
     if (power_event_retry_count)
         log_text("power_uevent result=recovered\n");
     next_power_event_retry = 0;
+}
+
+static void try_power_event_open(void) {
+    try_power_event_open_at(0U, 0);
 }
 
 static void disable_storage_signal(const char *reason) {
@@ -1867,15 +2172,44 @@ static int write_exact(int fd, const char *buffer, u64 length) {
     return 0;
 }
 
-static int path_matches(const char *line, u32 length, const char *path) {
-    u32 i;
-    for (i = 0; i < length; i++) {
+static int compare_catalog_path(const char *line, u32 length,
+                                const char *path) {
+    u32 offset = 0U;
+    while (offset < length && path[offset]) {
+        u8 left = (u8)line[offset];
+        u8 right = (u8)path[offset];
         BIRD_PROFILE_DEEP_STRING_BYTE();
         BIRD_PROFILE_DEEP_STRING_BYTE();
-        if (!path[i] || path[i] != line[i]) return 0;
+        if (left < right) return -1;
+        if (left > right) return 1;
+        offset++;
+    }
+    if (offset == length) {
+        BIRD_PROFILE_DEEP_STRING_BYTE();
+        return path[offset] ? -1 : 0;
     }
     BIRD_PROFILE_DEEP_STRING_BYTE();
-    return path[length] == 0;
+    return 1;
+}
+
+static u32 catalog_find_entry_by_path(const char *line, u32 length) {
+    u32 low = 0U;
+    u32 high = CATALOG_ENTRY_COUNT;
+    while (low < high) {
+        u32 middle = low + (high - low) / 2U;
+        u32 catalog_index = catalog_entry_path_order_index(middle);
+        int comparison;
+        BIRD_PROFILE_DEEP_CATALOG_ITERATION();
+        comparison = compare_catalog_path(
+            line, length, catalog_entry_path(catalog_index));
+        if (comparison < 0)
+            high = middle;
+        else if (comparison > 0)
+            low = middle + 1U;
+        else
+            return catalog_index;
+    }
+    return CATALOG_ENTRY_COUNT;
 }
 
 static int bitmap_is_favorite(const u8 *bitmap, u32 catalog_index) {
@@ -1895,34 +2229,72 @@ static int is_favorite(u32 catalog_index) {
     return bitmap_is_favorite(favorites, catalog_index);
 }
 
+static u32 favorite_index_lower_bound(const u16 *indices, u32 count,
+                                      u32 catalog_index) {
+    u32 low = 0U;
+    u32 high = count;
+    while (low < high) {
+        u32 middle = low + (high - low) / 2U;
+        if ((u32)indices[middle] < catalog_index)
+            low = middle + 1U;
+        else
+            high = middle;
+    }
+    return low;
+}
+
 static void set_favorite(u32 catalog_index, int enabled) {
-    bitmap_set_favorite(favorites, catalog_index, enabled);
+    u32 position;
+    u32 offset;
+    int current;
+    if (catalog_index >= CATALOG_ENTRY_COUNT) return;
+    current = is_favorite(catalog_index);
+    if (current == !!enabled) return;
+    position = favorite_index_lower_bound(favorite_indices, favorite_count,
+                                          catalog_index);
+    if (enabled) {
+        for (offset = favorite_count; offset > position; offset--)
+            favorite_indices[offset] = favorite_indices[offset - 1U];
+        favorite_indices[position] = (u16)catalog_index;
+        bitmap_set_favorite(favorites, catalog_index, 1);
+        favorite_count++;
+        return;
+    }
+    if (position >= favorite_count ||
+        (u32)favorite_indices[position] != catalog_index)
+        return;
+    for (offset = position + 1U; offset < favorite_count; offset++)
+        favorite_indices[offset - 1U] = favorite_indices[offset];
+    favorite_count--;
+    bitmap_set_favorite(favorites, catalog_index, 0);
 }
 
 static u32 favorite_catalog_index(u32 ordinal) {
-    u32 catalog_index;
-    for (catalog_index = 0; catalog_index < CATALOG_ENTRY_COUNT; catalog_index++) {
-        BIRD_PROFILE_DEEP_CATALOG_ITERATION();
-        if (!is_favorite(catalog_index)) continue;
-        if (!ordinal) return catalog_index;
-        ordinal--;
-    }
-    return CATALOG_ENTRY_COUNT;
+    if (ordinal >= favorite_count) return CATALOG_ENTRY_COUNT;
+    return favorite_indices[ordinal];
 }
 
 static int match_favorite_path(const char *line, u32 length, u8 *bitmap,
                                u32 *count) {
-    u32 catalog_index;
-    for (catalog_index = 0; catalog_index < CATALOG_ENTRY_COUNT; catalog_index++) {
-        BIRD_PROFILE_DEEP_CATALOG_ITERATION();
-        if (!path_matches(line, length, catalog_entries[catalog_index].path)) continue;
-        if (!bitmap_is_favorite(bitmap, catalog_index)) {
-            bitmap_set_favorite(bitmap, catalog_index, 1);
-            (*count)++;
-        }
-        return 1;
+    u32 catalog_index = catalog_find_entry_by_path(line, length);
+    if (catalog_index >= CATALOG_ENTRY_COUNT) return 0;
+    if (!bitmap_is_favorite(bitmap, catalog_index)) {
+        bitmap_set_favorite(bitmap, catalog_index, 1);
+        (*count)++;
     }
-    return 0;
+    return 1;
+}
+
+static u32 rebuild_favorite_index(const u8 *bitmap) {
+    u32 catalog_index;
+    u32 count = 0U;
+    for (catalog_index = 0U; catalog_index < CATALOG_ENTRY_COUNT;
+         catalog_index++) {
+        BIRD_PROFILE_DEEP_CATALOG_ITERATION();
+        if (bitmap_is_favorite(bitmap, catalog_index))
+            favorite_indices[count++] = (u16)catalog_index;
+    }
+    return count;
 }
 
 static void log_favorite_line_issue(u64 line_number, const char *reason,
@@ -2006,7 +2378,8 @@ static void finish_favorites_load(const u8 *bitmap, u32 count,
                                   const char *result) {
     u32 i;
     for (i = 0; i < sizeof(favorites); i++) favorites[i] = bitmap[i];
-    favorite_count = count;
+    favorite_count = rebuild_favorite_index(favorites);
+    if (favorite_count != count) result = "index-recovered";
     favorites_loaded = 1;
     next_favorites_retry = 0;
     favorites_retry_ms = FAVORITES_RETRY_INITIAL_MS;
@@ -2097,18 +2470,22 @@ static void load_favorites(void) {
     finish_favorites_load(candidate, candidate_count, "ready");
 }
 
+static void capture_ui_resume_state(struct ui_resume_state *state) {
+    state->magic = UI_RESUME_MAGIC;
+    state->view = view;
+    if (view == VIEW_MEDIA_ENTRIES)
+        state->active_index = active_media_category;
+    else if (view == VIEW_MEDIA_CATEGORIES)
+        state->active_index = media_section;
+    else
+        state->active_index = active_system;
+    state->selection = selection;
+}
+
 static int save_ui_resume(void) {
     struct ui_resume_state state;
     long fd;
-    state.magic = UI_RESUME_MAGIC;
-    state.view = view;
-    if (view == VIEW_MEDIA_ENTRIES)
-        state.active_index = active_media_category;
-    else if (view == VIEW_MEDIA_CATEGORIES)
-        state.active_index = media_section;
-    else
-        state.active_index = active_system;
-    state.selection = selection;
+    capture_ui_resume_state(&state);
 
     /* Keep the last committed navigation batch readable until the replacement
      * is complete. A crash between the framebuffer barrier and this rename
@@ -2148,7 +2525,7 @@ static int write_handoff_action(int action) {
 #ifdef HANDOFF_ACTION_PATH
     char value[3];
     long fd;
-    if (action < ACTION_LAUNCH || action > ACTION_PORTMASTER) return 0;
+    if (action < ACTION_LAUNCH || action > ACTION_REBOOT) return 0;
     value[0] = (char)('0' + action / 10);
     value[1] = (char)('0' + action % 10);
     value[2] = '\n';
@@ -2184,24 +2561,28 @@ static int load_ui_resume(void) {
 
     if (count != (long)sizeof(state) || state.magic != UI_RESUME_MAGIC)
         goto invalid;
-    if (state.view == VIEW_MAIN || state.view == VIEW_PLAY) {
-        if (state.selection >= 4U) goto invalid;
+    if (state.view == VIEW_MAIN) {
+        if (state.selection >= 6U) goto invalid;
+    } else if (state.view == VIEW_PLAY) {
+        if (state.selection >= 2U) goto invalid;
+    } else if (state.view == VIEW_TOOLS) {
+        if (state.selection >= 1U) goto invalid;
+    } else if (state.view == VIEW_QUIT) {
+        if (state.selection >= 3U) goto invalid;
     } else if (state.view == VIEW_SYSTEMS) {
         if (state.selection >= CATALOG_SYSTEM_COUNT) goto invalid;
     } else if (state.view == VIEW_GAMES) {
         if (state.active_index >= CATALOG_SYSTEM_COUNT ||
-            state.selection >= catalog_systems[state.active_index].count)
+            state.selection >= catalog_system_entry_count(state.active_index))
             goto invalid;
     } else if (state.view == VIEW_FAVORITES) {
-        load_favorites();
-        if (favorites_loaded) {
-            if (!favorite_count) state.selection = 0;
-            else if (state.selection >= favorite_count)
-                state.selection = favorite_count - 1U;
-        }
+        /* Storage and Favorites initialization are post-marker work. Until
+         * then a cold resume renders the explicit loading state; a verified
+         * retained frame restores the exact Favorites snapshot separately. */
     } else if (state.view == VIEW_MEDIA_ENTRIES) {
         if (state.active_index >= CATALOG_MEDIA_CATEGORY_COUNT ||
-            state.selection >= catalog_media_categories[state.active_index].count)
+            state.selection >=
+                catalog_media_category_entry_count(state.active_index))
             goto invalid;
     } else if (state.view == VIEW_MEDIA_CATEGORIES) {
         if (state.active_index < CATALOG_MEDIA_SECTION_LISTEN ||
@@ -2218,11 +2599,21 @@ static int load_ui_resume(void) {
         active_system = state.active_index;
     else if (view == VIEW_MEDIA_ENTRIES) {
         active_media_category = state.active_index;
-        media_section = catalog_media_categories[active_media_category].section;
+        media_section = catalog_media_category_section(active_media_category);
     } else if (view == VIEW_MEDIA_CATEGORIES)
         media_section = state.active_index;
     selection = state.selection;
     selected_status = "RETURNED TO PREVIOUS SCREEN";
+    return 1;
+invalid:
+    /* The deferred checkpoint atomically replaces malformed state after the
+     * menu is interactive. Do not add a startup unlink/write crash window. */
+    return 0;
+}
+
+static void log_ui_resume_loaded(void) {
+    struct ui_resume_state state;
+    capture_ui_resume_state(&state);
     log_text("ui_resume_load boot_ms=");
     log_number(boot_ms());
     log_text(" view=");
@@ -2232,15 +2623,336 @@ static int load_ui_resume(void) {
     log_text(" selection=");
     log_number(selection);
     log_text(" result=ready\n");
-    return 1;
+}
 
-invalid:
-    fixed_unlink(UI_RESUME_PATH);
+static void fingerprint_framebuffer(struct frame_fingerprint *fingerprint) {
+    /* mmap supplies page alignment; the exact 2,880-byte stride and even
+     * width keep every two-pixel volatile load 8-byte aligned. */
+    volatile u64 *pixel_pairs = (volatile u64 *)fb;
+    u64 visible_a = 1469598103934665603UL;
+    u64 visible_b = 0x9e3779b97f4a7c15UL;
+    u64 unused_x_hash = 0x6a09e667f3bcc909UL;
+    u32 unused_x_nonzero = 0U;
+    u32 pair_index = 0U;
+    u32 region_index;
+    BIRD_PROFILE_FRAME_HASH(RG34XX_FB_BYTES,
+                            RG34XX_FB_WIDTH * RG34XX_FB_HEIGHT * 3UL, 1U);
+    for (region_index = 0; region_index < FRAME_REGION_COUNT;
+         region_index++) {
+        u64 region_a;
+        u64 region_b;
+        u32 pairs_remaining;
+        if (region_index == FRAME_REGION_HEADER) {
+            region_a = 0x243f6a8885a308d3UL;
+            region_b = 0x082efa98ec4e6c89UL;
+            pairs_remaining = 95U * (RG34XX_FB_WIDTH / 2U);
+        } else if (region_index == FRAME_REGION_CONTENT) {
+            region_a = 0x13198a2e03707344UL;
+            region_b = 0x452821e638d01377UL;
+            pairs_remaining = (RG34XX_FB_HEIGHT - 95U - 66U) *
+                              (RG34XX_FB_WIDTH / 2U);
+        } else {
+            region_a = 0xa4093822299f31d0UL;
+            region_b = 0xbe5466cf34e90c6cUL;
+            pairs_remaining = 66U * (RG34XX_FB_WIDTH / 2U);
+        }
+        while (pairs_remaining--) {
+            u64 physical = *pixel_pairs++;
+            u64 visible = physical & 0x00ffffff00ffffffUL;
+            u64 unused_x = ((physical >> 24) & 0xffU) |
+                           ((physical >> 48) & 0xff00U);
+            region_a ^= visible;
+            region_a *= 1099511628211UL;
+            region_b += visible;
+            region_b += region_b << 10;
+            region_b ^= region_b >> 6;
+            if (unused_x) {
+                unused_x_hash ^= unused_x | ((u64)pair_index << 16);
+                unused_x_hash = (unused_x_hash << 9) |
+                                (unused_x_hash >> (64U - 9U));
+                unused_x_nonzero += (unused_x & 0xffU) != 0U;
+                unused_x_nonzero += (unused_x & 0xff00U) != 0U;
+            }
+            pair_index++;
+        }
+        region_b += region_b << 3;
+        region_b ^= region_b >> 11;
+        region_b += region_b << 15;
+        fingerprint->region[region_index] =
+            region_a ^ region_b;
+        visible_a ^= region_a;
+        visible_a *= 1099511628211UL;
+        visible_a ^= region_b;
+        visible_a *= 1099511628211UL;
+        visible_b += region_a;
+        visible_b += visible_b << 10;
+        visible_b ^= visible_b >> 6;
+        visible_b += region_b;
+        visible_b += visible_b << 10;
+        visible_b ^= visible_b >> 6;
+    }
+    visible_b += visible_b << 3;
+    visible_b ^= visible_b >> 11;
+    visible_b += visible_b << 15;
+    fingerprint->visible_a = visible_a;
+    fingerprint->visible_b = visible_b;
+    fingerprint->unused_x_hash = unused_x_hash;
+    fingerprint->unused_x_nonzero = unused_x_nonzero;
+}
+
+#ifdef BIRD_REUSE_UBOOT_FRAME
+static int inherited_boot_frame_matches(void) {
+    struct frame_fingerprint fingerprint;
+    if (framebuffer_path != FRAMEBUFFER_PATH_RG34XX_XRGB8888 ||
+        fb_fix.smem_len != RG34XX_FB_BYTES)
+        return 0;
+    fingerprint_framebuffer(&fingerprint);
+    return fingerprint.visible_a == (u64)BIRD_BOOT_FRAME_VISIBLE_HASH_A &&
+           fingerprint.visible_b == (u64)BIRD_BOOT_FRAME_VISIBLE_HASH_B;
+}
+#endif
+
+static void hash_frame_resume_bytes(const u8 *bytes, u64 length,
+                                    u64 *hash_a, u64 *hash_b) {
+    u64 offset;
+    u64 a = *hash_a;
+    u64 b = *hash_b;
+    for (offset = 0; offset < length; offset++) {
+        u64 byte = bytes[offset];
+        a ^= byte;
+        a *= 1099511628211UL;
+        b += byte;
+        b += b << 10;
+        b ^= b >> 6;
+    }
+    b += b << 3;
+    b ^= b >> 11;
+    b += b << 15;
+    *hash_a = a;
+    *hash_b = b;
+}
+
+static void bind_frame_resume_state(const struct frame_resume_state *state,
+                                    u64 *hash_a, u64 *hash_b) {
+    const u8 *bytes = (const u8 *)&state->ui;
+    u64 length = (u64)((const u8 *)&state->hash_a - bytes);
+    hash_frame_resume_bytes(bytes, length, hash_a, hash_b);
+}
+
+static void frame_resume_descriptor_hash(
+    const struct frame_resume_state *state, u64 *hash_a, u64 *hash_b) {
+    const u8 *bytes = (const u8 *)state;
+    u64 length = (u64)((const u8 *)&state->descriptor_hash_a - bytes);
+    *hash_a = 1469598103934665603UL;
+    *hash_b = 0x9e3779b97f4a7c15UL;
+    hash_frame_resume_bytes(bytes, length, hash_a, hash_b);
+}
+
+static void seal_frame_resume_descriptor(struct frame_resume_state *state) {
+    frame_resume_descriptor_hash(state, &state->descriptor_hash_a,
+                                 &state->descriptor_hash_b);
+}
+
+static int frame_resume_descriptor_is_sealed(
+    const struct frame_resume_state *state) {
+    u64 hash_a;
+    u64 hash_b;
+    frame_resume_descriptor_hash(state, &hash_a, &hash_b);
+    return state->descriptor_hash_a == hash_a &&
+           state->descriptor_hash_b == hash_b;
+}
+
+static int capture_frame_resume_state(struct frame_resume_state *state) {
+    struct frame_fingerprint fingerprint;
+    u64 offset;
+    if (framebuffer_path != FRAMEBUFFER_PATH_RG34XX_XRGB8888 ||
+        fb_fix.smem_len != RG34XX_FB_BYTES ||
+        (pending_render_invalid & RENDER_INVALID_CONTENT))
+        return -1;
+    for (offset = 0; offset < sizeof(*state); offset++)
+        ((u8 *)state)[offset] = 0U;
+    state->magic = FRAME_RESUME_MAGIC;
+    state->version = FRAME_RESUME_VERSION;
+    capture_ui_resume_state(&state->ui);
+    state->framebuffer_path = framebuffer_path;
+    state->framebuffer_bytes = RG34XX_FB_BYTES;
+    /* Bind the values that actually produced the retained pixels. Startup
+     * power reads may update the live values before their deferred render. */
+    state->charging_state = displayed_charging_state;
+    state->battery_percent = displayed_battery_percent;
+    state->favorites_loaded = favorites_loaded ? 1U : 0U;
+    state->favorite_count = favorite_count;
+    for (offset = 0; offset < sizeof(state->favorites); offset++)
+        state->favorites[offset] = favorites[offset];
+    fingerprint_framebuffer(&fingerprint);
+    state->hash_a = fingerprint.visible_a;
+    state->hash_b = fingerprint.visible_b;
+    for (offset = 0; offset < FRAME_REGION_COUNT; offset++)
+        state->region_hash[offset] = fingerprint.region[offset];
+    state->unused_x_hash = fingerprint.unused_x_hash;
+    state->unused_x_nonzero = fingerprint.unused_x_nonzero;
+    bind_frame_resume_state(state, &state->hash_a, &state->hash_b);
+    seal_frame_resume_descriptor(state);
     return 0;
 }
 
-static int save_favorites(void) {
+static int frame_resume_favorites_are_consistent(
+    const struct frame_resume_state *state) {
     u32 catalog_index;
+    u32 count = 0U;
+    for (catalog_index = 0U;
+         catalog_index < (u32)(sizeof(state->favorites) * 8U);
+         catalog_index++) {
+        if (!bitmap_is_favorite(state->favorites, catalog_index)) continue;
+        if (catalog_index >= CATALOG_ENTRY_COUNT) return 0;
+        count++;
+    }
+    if (count != state->favorite_count) return 0;
+    if (!state->favorites_loaded && count) return 0;
+    return 1;
+}
+
+static int frame_resume_state_is_candidate(
+    const struct frame_resume_state *state) {
+    struct ui_resume_state current;
+    if (state->magic != FRAME_RESUME_MAGIC ||
+        state->version != FRAME_RESUME_VERSION ||
+        state->charging_state < -1 || state->charging_state > 1 ||
+        state->battery_percent < -1 || state->battery_percent > 100 ||
+        state->favorites_loaded > 1U ||
+        state->favorite_count > CATALOG_ENTRY_COUNT ||
+        !frame_resume_favorites_are_consistent(state) ||
+        !frame_resume_descriptor_is_sealed(state))
+        return 0;
+    if (framebuffer_path != FRAMEBUFFER_PATH_RG34XX_XRGB8888 ||
+        state->framebuffer_path != FRAMEBUFFER_PATH_RG34XX_XRGB8888 ||
+        fb_fix.smem_len != RG34XX_FB_BYTES ||
+        state->framebuffer_bytes != RG34XX_FB_BYTES)
+        return 0;
+    capture_ui_resume_state(&current);
+    if (state->ui.magic != current.magic ||
+        state->ui.view != current.view ||
+        state->ui.selection != current.selection)
+        return 0;
+    if ((current.view == VIEW_GAMES ||
+         current.view == VIEW_MEDIA_ENTRIES ||
+         current.view == VIEW_MEDIA_CATEGORIES) &&
+        state->ui.active_index != current.active_index)
+        return 0;
+    return 1;
+}
+
+static int frame_resume_state_matches(const struct frame_resume_state *state) {
+    struct frame_fingerprint fingerprint;
+    u64 hash_a;
+    u64 hash_b;
+    u32 region;
+    if (!frame_resume_state_is_candidate(state)) return 0;
+    fingerprint_framebuffer(&fingerprint);
+    hash_a = fingerprint.visible_a;
+    hash_b = fingerprint.visible_b;
+    bind_frame_resume_state(state, &hash_a, &hash_b);
+    frame_recovery_fingerprint_attempted = 1;
+    frame_recovery_region_mismatch_mask = 0U;
+    for (region = 0; region < FRAME_REGION_COUNT; region++) {
+        if (state->region_hash[region] != fingerprint.region[region])
+            frame_recovery_region_mismatch_mask |= 1U << region;
+    }
+    frame_recovery_unused_x_changed =
+        state->unused_x_hash != fingerprint.unused_x_hash ||
+        state->unused_x_nonzero != fingerprint.unused_x_nonzero;
+    frame_recovery_expected_hash_a = state->hash_a;
+    frame_recovery_expected_hash_b = state->hash_b;
+    frame_recovery_actual_hash_a = hash_a;
+    frame_recovery_actual_hash_b = hash_b;
+    return state->hash_a == hash_a && state->hash_b == hash_b;
+}
+
+static u32 read_frame_resume_candidate(struct frame_resume_state *state) {
+    long fd;
+    long count;
+    if (framebuffer_path != FRAMEBUFFER_PATH_RG34XX_XRGB8888)
+        return FRAME_RECOVERY_UNSUPPORTED;
+    fd = fixed_open(FRAME_RESUME_PATH, O_RDONLY);
+    if (fd < 0) return FRAME_RECOVERY_NONE;
+    count = sys_read((int)fd, state, sizeof(*state));
+    sys_close((int)fd);
+    if (count != (long)sizeof(*state) ||
+        state->magic != FRAME_RESUME_MAGIC ||
+        state->version != FRAME_RESUME_VERSION ||
+        !frame_resume_descriptor_is_sealed(state))
+        return FRAME_RECOVERY_INVALID;
+    if (!frame_resume_state_is_candidate(state))
+        return FRAME_RECOVERY_MISMATCH;
+    return FRAME_RECOVERY_CANDIDATE;
+}
+
+static void restore_frame_resume_snapshot(
+    const struct frame_resume_state *state) {
+    u64 offset;
+    charging_state = state->charging_state;
+    battery_percent = state->battery_percent;
+    displayed_charging_state = state->charging_state;
+    displayed_battery_percent = state->battery_percent;
+    favorites_loaded = (int)state->favorites_loaded;
+    for (offset = 0; offset < sizeof(favorites); offset++)
+        favorites[offset] = state->favorites[offset];
+    favorite_count = rebuild_favorite_index(favorites);
+    frame_recovery_snapshot_restored = 1;
+}
+
+static u32 restore_frame_resume_candidate(
+    const struct frame_resume_state *state) {
+    /* The prior launcher frame can become visible as Sway releases scanout.
+     * Never add the full-frame verification delay before direct input has
+     * reopened; a missing input path falls back instead of claiming reuse. */
+    if (input_fd < 0 || !frame_resume_state_is_candidate(state))
+        return FRAME_RECOVERY_MISMATCH;
+    restore_frame_resume_snapshot(state);
+    if (!frame_resume_state_matches(state)) return FRAME_RECOVERY_MISMATCH;
+    return FRAME_RECOVERY_MATCHED;
+}
+
+static u32 __attribute__((unused)) inspect_frame_resume(void) {
+    struct frame_resume_state state;
+    u32 result = read_frame_resume_candidate(&state);
+    if (result == FRAME_RECOVERY_CANDIDATE)
+        result = restore_frame_resume_candidate(&state);
+    return result;
+}
+
+static int publish_frame_resume(void) {
+    struct frame_resume_state state;
+    long fd;
+    if (capture_frame_resume_state(&state) < 0) return -1;
+    fd = fixed_create(FRAME_RESUME_TEMP,
+                      O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (fd < 0) return -1;
+    if (write_exact((int)fd, (const char *)&state, sizeof(state)) < 0) {
+        sys_close((int)fd);
+        fixed_unlink(FRAME_RESUME_TEMP);
+        return -1;
+    }
+    sys_close((int)fd);
+    if (fixed_rename(FRAME_RESUME_TEMP, FRAME_RESUME_PATH) < 0) {
+        fixed_unlink(FRAME_RESUME_TEMP);
+        return -1;
+    }
+    return 0;
+}
+
+static int action_preserves_frame(int action) {
+    return action == ACTION_LAUNCH || action == ACTION_PORTMASTER ||
+           action == ACTION_RELOAD;
+}
+
+static void clear_frame_resume(void) {
+    fixed_unlink(FRAME_RESUME_TEMP);
+    fixed_unlink(FRAME_RESUME_PATH);
+}
+
+static int save_favorites(void) {
+    u32 ordinal;
     long fd;
 
     /* Never replace a known-good file from an empty or partially read view. */
@@ -2252,11 +2964,11 @@ static int save_favorites(void) {
                       O_WRONLY | O_CREAT | O_TRUNC, 0600);
     if (fd < 0) return -1;
 
-    for (catalog_index = 0; catalog_index < CATALOG_ENTRY_COUNT; catalog_index++) {
+    for (ordinal = 0U; ordinal < favorite_count; ordinal++) {
+        u32 catalog_index = favorite_catalog_index(ordinal);
         const char *path;
         BIRD_PROFILE_DEEP_CATALOG_ITERATION();
-        if (!is_favorite(catalog_index)) continue;
-        path = catalog_entries[catalog_index].path;
+        path = catalog_entry_path(catalog_index);
         if (!catalog_path_supported(path)) {
             sys_close((int)fd);
             fixed_unlink(FAVORITES_TEMP);
@@ -2282,10 +2994,11 @@ static int save_favorites(void) {
     return 0;
 }
 
-static void save_recent(const struct catalog_entry *entry) {
+static void save_recent(u32 catalog_index) {
+    const char *path = catalog_entry_path(catalog_index);
     long fd;
     int result = -1;
-    if (!catalog_path_supported(entry->path)) {
+    if (!catalog_path_supported(path)) {
         log_text("recent_save boot_ms=");
         log_number(boot_ms());
         log_text(" result=unsupported-path\n");
@@ -2293,7 +3006,7 @@ static void save_recent(const struct catalog_entry *entry) {
     }
     fd = fixed_create(RECENT_TEMP, O_WRONLY | O_CREAT | O_TRUNC, 0600);
     if (fd >= 0) {
-        if (write_exact((int)fd, entry->path, string_length(entry->path)) == 0 &&
+        if (write_exact((int)fd, path, string_length(path)) == 0 &&
             write_exact((int)fd, "\n", 1) == 0)
             result = 0;
         sys_close((int)fd);
@@ -2302,7 +3015,7 @@ static void save_recent(const struct catalog_entry *entry) {
         log_text("recent_save boot_ms=");
         log_number(boot_ms());
         log_text(" result=ready path=");
-        log_text(entry->path);
+        log_text(path);
         log_text("\n");
         return;
     }
@@ -2489,16 +3202,22 @@ static const struct glyph *find_glyph(char c) {
     return &font[0];
 }
 
-static void draw_character(int x, int y, char c, int scale, u32 value) {
+static void draw_character_scaled(int x, int y, char c,
+                                  int scale_x, int scale_y, u32 value) {
     const struct glyph *glyph = find_glyph(c);
     int row;
     int column;
     for (row = 0; row < 7; row++) {
         for (column = 0; column < 5; column++) {
             if (glyph->row[row] & (1U << (4 - column)))
-                rectangle(x + column * scale, y + row * scale, scale, scale, value);
+                rectangle(x + column * scale_x, y + row * scale_y,
+                          scale_x, scale_y, value);
         }
     }
+}
+
+static void draw_character(int x, int y, char c, int scale, u32 value) {
+    draw_character_scaled(x, y, c, scale, scale, value);
 }
 
 static void draw_text(int x, int y, const char *text, int scale, u32 value) {
@@ -2516,12 +3235,49 @@ static void draw_text_limited(int x, int y, const char *text, int scale, u32 val
     }
 }
 
-static void draw_battery_percent(u32 charging, u32 idle) {
+static void draw_item_text_limited(int x, int y, const char *text,
+                                   u32 value, u32 limit) {
+    while (*text && limit) {
+        draw_character_scaled(x, y, *text++, MENU_ITEM_SCALE_X,
+                              MENU_ITEM_SCALE_Y, value);
+        x += 6 * MENU_ITEM_SCALE_X;
+        limit--;
+    }
+}
+
+static void draw_item_text(int x, int y, const char *text, u32 value) {
+    draw_item_text_limited(x, y, text, value, 0xffffffffU);
+}
+
+static void draw_item_text_window(int x, int y, const char *text,
+                                  u32 length, u32 offset, u32 value) {
+    u32 index;
+    u32 cycle = length + MENU_SCROLL_GAP;
+    for (index = 0U; index < MENU_LIST_TEXT_LIMIT; index++) {
+        u32 source = offset + index;
+        char character;
+        if (!offset && source >= length) break;
+        source %= cycle;
+        character = source < length ? text[source] : ' ';
+        draw_character_scaled(x, y, character, MENU_ITEM_SCALE_X,
+                              MENU_ITEM_SCALE_Y, value);
+        x += 6 * MENU_ITEM_SCALE_X;
+    }
+}
+
+static void draw_battery_status(u32 charging, u32 idle, u32 panel) {
     char label[5];
     u32 length = 0;
     int value = battery_percent;
-    if (value < 0 || value > 100) return;
-    if (value == 100) {
+    u32 tone = charging_state == 1 ? charging : idle;
+    u32 fill = 0U;
+    int label_x;
+    int icon_x;
+
+    if (value < 0 || value > 100) {
+        label[length++] = '-';
+        label[length++] = '-';
+    } else if (value == 100) {
         label[length++] = '1';
         label[length++] = '0';
         label[length++] = '0';
@@ -2533,8 +3289,21 @@ static void draw_battery_percent(u32 charging, u32 idle) {
     }
     label[length++] = '%';
     label[length] = 0;
-    draw_text((int)fb_var.xres - 32 - (int)(length * 12U), 30, label, 2,
-              charging_state == 1 ? charging : idle);
+    label_x = MENU_BATTERY_TEXT_RIGHT -
+              (int)(length * 6U * MENU_LABEL_SCALE);
+    icon_x = label_x - 15;
+    rectangle(icon_x, MENU_BATTERY_ICON_Y, 10, 18, tone);
+    rectangle(icon_x + 3, MENU_BATTERY_ICON_Y - 2, 4, 2, tone);
+    rectangle(icon_x + 2, MENU_BATTERY_ICON_Y + 2, 6, 14, panel);
+    if (value >= 0 && value <= 100) {
+        fill = ((u32)value * 14U + 99U) / 100U;
+        if (fill)
+            rectangle(icon_x + 2,
+                      MENU_BATTERY_ICON_Y + 16 - (int)fill,
+                      6, (int)fill, tone);
+    }
+    draw_text(label_x,
+              MENU_TOP_BAR_Y + 13, label, MENU_LABEL_SCALE, tone);
 }
 
 static u32 media_category_first(void) {
@@ -2566,19 +3335,24 @@ static const char *empty_media_text(void) {
 }
 
 static u32 current_count(void) {
-    if (view == VIEW_MAIN) return 4U;
-    if (view == VIEW_PLAY) return 4U;
+    if (view == VIEW_MAIN) return 6U;
+    if (view == VIEW_PLAY) return 2U;
+    if (view == VIEW_TOOLS) return 1U;
+    if (view == VIEW_QUIT) return 3U;
     if (view == VIEW_SYSTEMS) return CATALOG_SYSTEM_COUNT;
-    if (view == VIEW_GAMES) return catalog_systems[active_system].count;
+    if (view == VIEW_GAMES) return catalog_system_entry_count(active_system);
     if (view == VIEW_FAVORITES) return favorite_count;
     if (view == VIEW_MEDIA_CATEGORIES) return media_category_count();
     if (view == VIEW_MEDIA_ENTRIES)
-        return catalog_media_categories[active_media_category].count;
+        return catalog_media_category_entry_count(active_media_category);
     return 0U;
 }
 
-/* Keep the accepted one-row scrolling policy explicit. A different fixed-page
- * or sticky-band viewport is a product decision, not a rendering shortcut. */
+/* Phase 3B uses stable fixed pages. The row count is derived from the exact
+ * content height so every page is nine complete row slots with no clipped
+ * tenth row or unused partial-row strip. Movement within every page remains a
+ * two-row dirty update. Selection alone therefore reconstructs the exact page
+ * after resume without adding another persisted state field. */
 static u32 viewport_first(u32 current_view, u32 current_selection) {
     u32 rows = (current_view == VIEW_SYSTEMS ||
                 current_view == VIEW_MEDIA_CATEGORIES)
@@ -2588,79 +3362,457 @@ static u32 viewport_first(u32 current_view, u32 current_selection) {
         current_view != VIEW_MEDIA_CATEGORIES &&
         current_view != VIEW_MEDIA_ENTRIES)
         return 0U;
-    return current_selection < rows ? 0U : current_selection - rows + 1U;
+    return (current_selection / rows) * rows;
+}
+
+struct launcher_palette {
+    u32 background;
+    u32 panel;
+    u32 menu_panel;
+    u32 menu_shadow;
+    u32 selected;
+    u32 primary;
+    u32 muted;
+    u32 sidebar;
+    u32 ink;
+    u32 charging;
+};
+
+static void load_launcher_palette(struct launcher_palette *palette) {
+    palette->background = color(10, 14, 20);
+    palette->panel = color(239, 226, 217);
+    palette->sidebar = color(239, 226, 217);
+    palette->menu_panel = color(36, 10, 18);
+    palette->menu_shadow = color(15, 8, 12);
+    palette->selected = color(239, 226, 217);
+    palette->primary = color(239, 226, 217);
+    palette->muted = color(205, 170, 169);
+    palette->ink = color(36, 10, 18);
+    palette->charging = color(88, 137, 104);
+}
+
+#ifdef BIRD_STATIC_BASE_PATH
+static void open_static_base(void) {
+    long mapped;
+    if (framebuffer_path != FRAMEBUFFER_PATH_RG34XX_XRGB8888) return;
+    static_base_fd = (int)sys_open(BIRD_STATIC_BASE_PATH, O_RDONLY);
+    if (static_base_fd < 0) return;
+    if (sys_lseek(static_base_fd, 0, SEEK_END) != (long)RG34XX_FB_BYTES) {
+        sys_close(static_base_fd);
+        static_base_fd = -1;
+        return;
+    }
+    mapped = (long)sys_mmap_readonly(static_base_fd, RG34XX_FB_BYTES);
+    if ((u64)mapped >= (u64)-4095L) {
+        sys_close(static_base_fd);
+        static_base_fd = -1;
+        return;
+    }
+    static_base = (const u8 *)mapped;
+}
+
+static void close_static_base(void) {
+    if (static_base) {
+        sys_munmap((void *)static_base, RG34XX_FB_BYTES);
+        static_base = 0;
+    }
+    if (static_base_fd >= 0) {
+        sys_close(static_base_fd);
+        static_base_fd = -1;
+    }
+}
+#else
+#define open_static_base() ((void)0)
+#define close_static_base() ((void)0)
+#endif
+
+static int static_base_is_available(void) {
+#ifdef BIRD_STATIC_BASE_PATH
+    return static_base != 0;
+#else
+    return 0;
+#endif
+}
+
+#ifdef BIRD_STATIC_BASE_PATH
+static void copy_static_base_region(u32 x, u32 y, u32 width, u32 height) {
+    u32 row;
+    BIRD_PROFILE_RECTANGLE(x, y, width, height);
+    for (row = 0U; row < height; row++) {
+        const u32 *source = (const u32 *)(static_base +
+            (u64)(y + row) * RG34XX_FB_STRIDE + x * 4U);
+        volatile u32 *target = (volatile u32 *)(fb +
+            (u64)(y + row) * RG34XX_FB_STRIDE + x * 4U);
+        u32 pixels = width;
+        if (((u64)target & 7U) && pixels) {
+            *target++ = *source++;
+            pixels--;
+            BIRD_PROFILE_DEEP_FAST_U32_STORES(1U);
+        }
+        while (pixels >= 2U) {
+            *(volatile u64 *)target = *(const u64 *)source;
+            target += 2;
+            source += 2;
+            pixels -= 2U;
+            BIRD_PROFILE_DEEP_FAST_U64_STORES(1U);
+        }
+        if (pixels) {
+            *target = *source;
+            BIRD_PROFILE_DEEP_FAST_U32_STORES(1U);
+        }
+    }
+}
+#endif
+
+static int copy_static_base(void) {
+#ifdef BIRD_STATIC_BASE_PATH
+    if (!static_base ||
+        framebuffer_path != FRAMEBUFFER_PATH_RG34XX_XRGB8888)
+        return 0;
+    copy_static_base_region(0U, 0U, 720U, 36U);
+    copy_static_base_region(0U, 36U, 160U, 40U);
+    copy_static_base_region(560U, 36U, 160U, 40U);
+    copy_static_base_region(0U, 76U, 720U, 28U);
+    copy_static_base_region(0U, 104U, 160U, 288U);
+    copy_static_base_region(560U, 104U, 160U, 288U);
+    copy_static_base_region(0U, 392U, 163U, 3U);
+    copy_static_base_region(560U, 392U, 160U, 3U);
+    copy_static_base_region(0U, 395U, 720U, 85U);
+    return 1;
+#else
+    return 0;
+#endif
+}
+
+static void capture_footer_background(void) {
+    u32 row;
+    if (framebuffer_path != FRAMEBUFFER_PATH_RG34XX_XRGB8888 ||
+        static_base_is_available() || footer_background_captured || !fb)
+        return;
+    for (row = 0U; row < MENU_FOOTER_H; row++) {
+        const volatile u64 *source =
+            (const volatile u64 *)(fb +
+                (u64)(MENU_FOOTER_Y + row) * RG34XX_FB_STRIDE +
+                MENU_FRAME_X * 4U);
+        u64 *target = footer_background +
+            row * (MENU_TOP_BAR_WIDTH / 2U);
+        u32 pair;
+        for (pair = 0U; pair < MENU_TOP_BAR_WIDTH / 2U; pair++)
+            target[pair] = source[pair];
+    }
+    footer_background_captured = 1;
+}
+
+static void restore_footer_background(int y, int height) {
+    u32 row;
+    int source_y = y - MENU_FOOTER_Y;
+    if (source_y < 0 || source_y + height > MENU_FOOTER_H) return;
+    if (framebuffer_path != FRAMEBUFFER_PATH_RG34XX_XRGB8888) {
+        rectangle(MENU_FRAME_X, y, MENU_TOP_BAR_WIDTH, height,
+                  color(10, 14, 20));
+        return;
+    }
+    BIRD_PROFILE_RECTANGLE(MENU_FRAME_X, y, MENU_TOP_BAR_WIDTH, height);
+    for (row = 0U; row < (u32)height; row++) {
+        const u64 *source;
+        volatile u64 *target = (volatile u64 *)(fb +
+            (u64)(y + (int)row) * RG34XX_FB_STRIDE +
+            MENU_FRAME_X * 4U);
+        u32 pairs = MENU_TOP_BAR_WIDTH / 2U;
+        if (static_base_is_available()) {
+#ifdef BIRD_STATIC_BASE_PATH
+            source = (const u64 *)(static_base +
+                (u64)(y + (int)row) * RG34XX_FB_STRIDE +
+                MENU_FRAME_X * 4U);
+#else
+            source = 0;
+#endif
+        } else if (footer_background_captured)
+            source = footer_background +
+                (u32)(source_y + (int)row) * pairs;
+        else {
+            rectangle(MENU_FRAME_X, y + (int)row,
+                      MENU_TOP_BAR_WIDTH, 1, color(10, 14, 20));
+            continue;
+        }
+        while (pairs >= 4U) {
+            target[0] = source[0];
+            target[1] = source[1];
+            target[2] = source[2];
+            target[3] = source[3];
+            target += 4;
+            source += 4;
+            pairs -= 4U;
+            BIRD_PROFILE_DEEP_FAST_U64_STORES(4U);
+        }
+        while (pairs--) {
+            *target++ = *source++;
+            BIRD_PROFILE_DEEP_FAST_U64_STORES(1U);
+        }
+    }
+}
+
+static void draw_static_chrome(const struct launcher_palette *palette) {
+    rectangle(SIDEBAR_X + 3, SIDEBAR_Y + MENU_CONTENT_H,
+              MENU_CONTENT_RIGHT - (SIDEBAR_X + 3), 3,
+              palette->menu_shadow);
+    rectangle(MENU_TOP_BAR_X, MENU_TOP_BAR_Y,
+              MENU_TOP_BAR_WIDTH, MENU_TOP_BAR_H,
+              palette->panel);
+    rectangle(SIDEBAR_X, SIDEBAR_Y, SIDEBAR_WIDTH,
+              MENU_CONTENT_H, palette->sidebar);
+    rectangle(MENU_LEFT, MENU_CONTENT_Y, MENU_CONTENT_WIDTH,
+              MENU_CONTENT_H, palette->menu_panel);
+    rectangle(MENU_LEFT, MENU_CONTENT_Y, MENU_DIVIDER_WIDTH,
+              MENU_CONTENT_H, color(55, 18, 29));
+}
+
+static void draw_static_base(const struct launcher_palette *palette) {
+    if (copy_static_base()) {
+        draw_static_chrome(palette);
+        return;
+    }
+    /* The fallback writes every visible pixel exactly once. It reproduces the
+     * final static chrome without first clearing the full frame and then
+     * overpainting large panels, keeping Phase 5A inside one-page traffic. */
+    rectangle(0, 0, 720, 36, palette->background);
+    rectangle(0, 36, 160, 40, palette->background);
+    rectangle(160, 36, 400, 40, palette->panel);
+    rectangle(560, 36, 160, 40, palette->background);
+    rectangle(0, 76, 720, 28, palette->background);
+    rectangle(0, 104, 160, 288, palette->background);
+    rectangle(160, 104, 32, 288, palette->sidebar);
+    rectangle(192, 104, 10, 288, color(55, 18, 29));
+    rectangle(202, 104, 358, 288, palette->menu_panel);
+    rectangle(560, 104, 160, 288, palette->background);
+    rectangle(0, 392, 163, 3, palette->background);
+    rectangle(163, 392, 397, 3, palette->menu_shadow);
+    rectangle(560, 392, 160, 3, palette->background);
+    rectangle(0, 395, 720, 85, palette->background);
 }
 
 static u32 current_catalog_index(void) {
     if (view == VIEW_GAMES) {
-        const struct catalog_system *system = &catalog_systems[active_system];
-        if (selection < system->count) return system->first + selection;
+        if (selection < catalog_system_entry_count(active_system))
+            return catalog_system_first(active_system) + selection;
     }
     if (view == VIEW_FAVORITES && selection < favorite_count)
         return favorite_catalog_index(selection);
     return CATALOG_ENTRY_COUNT;
 }
 
-struct launcher_palette {
-    u32 background;
-    u32 panel;
-    u32 selected;
-    u32 primary;
-    u32 muted;
-};
+static u32 breadcrumb_push_text(char *out, u32 length, u32 limit,
+                               const char *text) {
+    while (*text && length + 1U < limit) {
+        out[length++] = *text++;
+    }
+    return length;
+}
 
-static void load_launcher_palette(struct launcher_palette *palette) {
-    palette->background = color(10, 14, 20);
-    palette->panel = color(19, 26, 36);
-    palette->selected = color(232, 166, 48);
-    palette->primary = color(244, 246, 248);
-    palette->muted = color(139, 151, 166);
+static u32 breadcrumb_push_separator(char *out, u32 length, u32 limit) {
+    return breadcrumb_push_text(out, length, limit, " / ");
+}
+
+static void draw_character_rotated_ccw(int x, int y, char c, int scale,
+                                      u32 value) {
+    const struct glyph *glyph = find_glyph(c);
+    int row;
+    int column;
+    for (row = 0; row < 7; row++) {
+        for (column = 0; column < 5; column++) {
+            if (glyph->row[row] & (1U << (4 - column)))
+                rectangle(x + row * scale,
+                          y + (4 - column) * scale,
+                          scale, scale, value);
+        }
+    }
+}
+
+static void draw_text_vertical(int x, int y, const char *text, int scale,
+                               u32 value, u32 length) {
+    u32 index;
+    for (index = 0U; index < length; index++)
+        draw_character_rotated_ccw(
+            x, y + (int)(length - index - 1U) *
+                       MENU_SIDEBAR_LETTER_ADVANCE,
+            text[index], scale, value);
+}
+
+static const char *current_sidebar_label(void) {
+    const char *label = "HOME";
+    if (view == VIEW_PLAY)
+        label = "PLAY";
+    else if (view == VIEW_TOOLS)
+        label = "TOOLS";
+    else if (view == VIEW_QUIT)
+        label = "QUIT";
+    else if (view == VIEW_SYSTEMS)
+        label = "SYSTEMS";
+    else if (view == VIEW_GAMES)
+        label = catalog_system_name(active_system);
+    else if (view == VIEW_FAVORITES)
+        label = "FAVORITES";
+    else if (view == VIEW_MEDIA_CATEGORIES)
+        label = media_section_name();
+    else if (view == VIEW_MEDIA_ENTRIES)
+        label = catalog_media_category_name(active_media_category);
+    return label;
+}
+
+static void draw_sidebar_label(const struct launcher_palette *palette) {
+    const char *label = current_sidebar_label();
+    u32 length;
+    int width;
+    int height;
+    int x;
+    int y;
+
+    length = (u32)string_length(label);
+    if (length > (u32)((MENU_CONTENT_H - 5 * MENU_SIDEBAR_SCALE) /
+                       MENU_SIDEBAR_LETTER_ADVANCE + 1))
+        length = (u32)((MENU_CONTENT_H - 5 * MENU_SIDEBAR_SCALE) /
+                       MENU_SIDEBAR_LETTER_ADVANCE + 1);
+    width = 7 * MENU_SIDEBAR_SCALE;
+    height = length ? (int)(length - 1U) *
+                          MENU_SIDEBAR_LETTER_ADVANCE +
+                      5 * MENU_SIDEBAR_SCALE : 0;
+    x = SIDEBAR_X + (SIDEBAR_WIDTH - width) / 2;
+    y = SIDEBAR_Y + (MENU_CONTENT_H - height) / 2;
+    draw_text_vertical(x, y, label, MENU_SIDEBAR_SCALE,
+                       palette->ink, length);
+}
+
+static u32 current_breadcrumb(char *path, u32 limit) {
+    u32 length;
+
+    length = 0U;
+    if (view == VIEW_MAIN) {
+        if (limit) path[0] = 0;
+        return 0U;
+    } else if (view == VIEW_PLAY) {
+        length = breadcrumb_push_text(path, length, limit, "PLAY");
+    } else if (view == VIEW_TOOLS) {
+        length = breadcrumb_push_text(path, length, limit, "TOOLS");
+    } else if (view == VIEW_QUIT) {
+        length = breadcrumb_push_text(path, length, limit, "QUIT");
+    } else if (view == VIEW_SYSTEMS) {
+        length = breadcrumb_push_text(path, length, limit, "PLAY");
+        length = breadcrumb_push_separator(path, length, limit);
+        length = breadcrumb_push_text(path, length, limit, "SYSTEMS");
+    } else if (view == VIEW_GAMES) {
+        length = breadcrumb_push_text(path, length, limit, "PLAY");
+        length = breadcrumb_push_separator(path, length, limit);
+        length = breadcrumb_push_text(path, length, limit, "SYSTEMS");
+        length = breadcrumb_push_separator(path, length, limit);
+        length = breadcrumb_push_text(path, length, limit,
+                                     catalog_system_name(active_system));
+    } else if (view == VIEW_FAVORITES) {
+        length = breadcrumb_push_text(path, length, limit, "PLAY");
+        length = breadcrumb_push_separator(path, length, limit);
+        length = breadcrumb_push_text(path, length, limit, "FAVORITES");
+    } else if (view == VIEW_MEDIA_CATEGORIES) {
+        length = breadcrumb_push_text(path, length, limit,
+                                     media_section_name());
+    } else {
+        length = breadcrumb_push_text(path, length, limit,
+                                     media_section_name());
+        length = breadcrumb_push_separator(path, length, limit);
+        length = breadcrumb_push_text(path, length, limit,
+                                     catalog_media_category_name(
+                                         active_media_category));
+    }
+    if (limit) path[length < limit ? length : limit - 1U] = 0;
+    return length;
+}
+
+static void draw_breadcrumb(const struct launcher_palette *palette) {
+    char path[64];
+    u32 length = current_breadcrumb(path, sizeof(path));
+
+    if (length) {
+        draw_text_limited(MENU_TOP_BAR_X + 20,
+                          MENU_TOP_BAR_Y + 13,
+                          path, MENU_LABEL_SCALE,
+                          palette->ink, 23U);
+    }
 }
 
 static void draw_header(const struct launcher_palette *palette) {
-    if (view == VIEW_MAIN || view == VIEW_PLAY) {
-        draw_text(32, 22, view == VIEW_MAIN ? "BIRDOS // RG34-SP" : "PLAY",
-                  4, palette->primary);
-        draw_text(34, 62,
-                  view == VIEW_MAIN ? "BESPOKE CONSOLE"
-                                    : "LIBRARY // TOOLS // POWER",
-                  2, palette->muted);
-    } else if (view == VIEW_SYSTEMS) {
-        draw_text(32, 22, "GAMES", 4, palette->primary);
-        draw_text(34, 62, "EMBEDDED CATALOG // NO SCAN", 2,
-                  palette->muted);
-    } else if (view == VIEW_GAMES) {
-        const struct catalog_system *system = &catalog_systems[active_system];
-        draw_text(32, 22, system->name, 4, palette->primary);
-        draw_text(34, 62, "CACHED GAMES // STORAGE ASYNC", 2,
-                  palette->muted);
-    } else if (view == VIEW_FAVORITES) {
-        draw_text(32, 22, "FAVORITES", 4, palette->primary);
-        draw_text(34, 62, "EXACT PATH CACHE // NO SCAN", 2,
-                  palette->muted);
-    } else if (view == VIEW_MEDIA_CATEGORIES) {
-        draw_text(32, 22, media_section_name(), 4, palette->primary);
-        draw_text(34, 62, "EMBEDDED MEDIA CATALOG // NO SCAN", 2,
-                  palette->muted);
-    } else if (view == VIEW_MEDIA_ENTRIES) {
-        const struct catalog_media_category *category =
-            &catalog_media_categories[active_media_category];
-        draw_text(32, 22, category->name, 4, palette->primary);
-        draw_text(34, 62, "CACHED MEDIA // STORAGE ASYNC", 2,
-                  palette->muted);
-    }
+    draw_sidebar_label(palette);
+    draw_breadcrumb(palette);
+}
+
+static u32 selected_text_context(void) {
+    if (view == VIEW_GAMES) return active_system;
+    if (view == VIEW_MEDIA_CATEGORIES) return media_section;
+    if (view == VIEW_MEDIA_ENTRIES) return active_media_category;
+    return 0U;
+}
+
+static const char *current_selected_text(void) {
+    if (selection >= current_count()) return 0;
+    if (view == VIEW_MAIN) return menu_item[selection];
+    if (view == VIEW_PLAY) return play_item[selection];
+    if (view == VIEW_TOOLS) return tools_item[selection];
+    if (view == VIEW_QUIT) return quit_item[selection];
+    if (view == VIEW_SYSTEMS) return catalog_system_name(selection);
+    if (view == VIEW_GAMES)
+        return catalog_entry_name(catalog_system_first(active_system) +
+                                  selection);
+    if (view == VIEW_FAVORITES)
+        return catalog_entry_name(favorite_catalog_index(selection));
+    if (view == VIEW_MEDIA_CATEGORIES)
+        return catalog_media_category_name(media_category_first() + selection);
+    if (view == VIEW_MEDIA_ENTRIES)
+        return catalog_media_entry_name(
+            catalog_media_category_first(active_media_category) + selection);
+    return 0;
+}
+
+static void reset_selected_text_scroll(void) {
+    selected_text_scroll.text = 0;
+    selected_text_scroll.deadline_ms = 0U;
+    selected_text_scroll.offset = 0U;
+    selected_text_scroll.length = 0U;
+}
+
+static void bind_selected_text_scroll(const char *text) {
+    u32 context = selected_text_context();
+    u32 length;
+    if (selected_text_scroll.text == text &&
+        selected_text_scroll.view == view &&
+        selected_text_scroll.selection == selection &&
+        selected_text_scroll.context == context)
+        return;
+    reset_selected_text_scroll();
+    if (!text) return;
+    length = (u32)string_length(text);
+    selected_text_scroll.text = text;
+    selected_text_scroll.view = view;
+    selected_text_scroll.selection = selection;
+    selected_text_scroll.context = context;
+    selected_text_scroll.length = length;
+    if (length <= MENU_LIST_TEXT_LIMIT) return;
+    selected_text_scroll.deadline_ms = boot_ms() +
+                                       MENU_SCROLL_INITIAL_DELAY_MS;
 }
 
 static void draw_main_row(u32 item_index,
                           const struct launcher_palette *palette) {
-    const char **items = view == VIEW_MAIN ? menu_item : play_item;
-    int y = 122 + (int)item_index * 64;
+    const char **items = view == VIEW_MAIN ? menu_item :
+                         (view == VIEW_PLAY ? play_item :
+                          (view == VIEW_TOOLS ? tools_item : quit_item));
+    int top = MENU_MAIN_ROW_START_Y +
+              (int)item_index * MENU_MAIN_ROW_SPACING;
+    int y = top + MENU_MAIN_TEXT_Y_OFFSET;
     if (item_index == selection) {
-        rectangle(92, y - 10, 492, 52, palette->selected);
-        draw_text(108, y + 4, ">", 3, palette->background);
-        draw_text(148, y, items[item_index], 4, palette->background);
+        bind_selected_text_scroll(items[item_index]);
+        rectangle(MENU_ROW_LEFT, top, MENU_ROW_WIDTH, MENU_MAIN_ROW_H,
+                  palette->selected);
+        draw_item_text_limited(MENU_TEXT_X, y, items[item_index],
+                               palette->ink, MENU_LIST_TEXT_LIMIT);
     } else {
-        draw_text(148, y, items[item_index], 4, palette->primary);
+        draw_item_text(MENU_TEXT_X, y, items[item_index], palette->primary);
     }
 }
 
@@ -2669,40 +3821,52 @@ static void draw_list_row(u32 item_index, u32 screen_row,
     const char *name;
     u32 catalog_index = CATALOG_ENTRY_COUNT;
     int is_selected = item_index == selection;
-    int y = 102 + (int)screen_row * 38;
+    int top = MENU_CONTENT_Y + (int)screen_row * MENU_ROW_SPACING;
+    int y = top + 5;
 
     if (view == VIEW_SYSTEMS) {
-        name = catalog_systems[item_index].name;
+        name = catalog_system_name(item_index);
     } else if (view == VIEW_GAMES) {
-        catalog_index = catalog_systems[active_system].first + item_index;
-        name = catalog_entries[catalog_index].name;
+        catalog_index = catalog_system_first(active_system) + item_index;
+        name = catalog_entry_name(catalog_index);
     } else if (view == VIEW_FAVORITES) {
         catalog_index = favorite_catalog_index(item_index);
-        name = catalog_entries[catalog_index].name;
+        name = catalog_entry_name(catalog_index);
     } else if (view == VIEW_MEDIA_CATEGORIES) {
-        name = catalog_media_categories[media_category_first() + item_index].name;
+        name = catalog_media_category_name(media_category_first() + item_index);
     } else {
-        const struct catalog_media_category *category =
-            &catalog_media_categories[active_media_category];
-        name = catalog_media_entries[category->first + item_index].name;
+        name = catalog_media_entry_name(
+            catalog_media_category_first(active_media_category) + item_index);
     }
 
     if (is_selected) {
-        rectangle(32, y - 7, 656, 31, palette->selected);
-        draw_text(44, y, ">", 2, palette->background);
-        draw_text_limited(72, y, name, 2, palette->background, 50U);
+        bind_selected_text_scroll(name);
+        rectangle(MENU_ROW_LEFT, top, MENU_ROW_WIDTH, MENU_ROW_H,
+                  palette->selected);
+        if (selected_text_scroll.text == name &&
+            selected_text_scroll.offset)
+            draw_item_text_window(MENU_TEXT_X, y, name,
+                                  selected_text_scroll.length,
+                                  selected_text_scroll.offset,
+                                  palette->ink);
+        else
+            draw_item_text_limited(MENU_TEXT_X, y, name, palette->ink,
+                                   MENU_LIST_TEXT_LIMIT);
     } else {
-        draw_text_limited(72, y, name, 2, palette->primary, 50U);
+        draw_item_text_limited(MENU_TEXT_X, y, name, palette->primary,
+                               MENU_LIST_TEXT_LIMIT);
     }
     if (view == VIEW_GAMES && is_favorite(catalog_index))
-        draw_text(654, y, "*", 2,
-                  is_selected ? palette->background : palette->selected);
+        draw_text(MENU_CONTENT_RIGHT - 18,
+                  y, "*", MENU_LABEL_SCALE,
+                  is_selected ? palette->ink : palette->primary);
 }
 
 static void draw_content(const struct launcher_palette *palette) {
     u32 i;
-    if (view == VIEW_MAIN || view == VIEW_PLAY) {
-        for (i = 0; i < 4U; i++) draw_main_row(i, palette);
+    if (view == VIEW_MAIN || view == VIEW_PLAY ||
+        view == VIEW_TOOLS || view == VIEW_QUIT) {
+        for (i = 0; i < current_count(); i++) draw_main_row(i, palette);
     } else {
         u32 count = current_count();
         u32 rows = (view == VIEW_SYSTEMS ||
@@ -2710,91 +3874,191 @@ static void draw_content(const struct launcher_palette *palette) {
                        ? SYSTEM_ROWS : GAME_ROWS;
         u32 first = viewport_first(view, selection);
         if (view == VIEW_FAVORITES && !count)
-            draw_text(72, 160,
-                      favorites_loaded ? "NO FAVORITES YET"
-                                       : "LOADING FAVORITES",
-                      3, palette->primary);
+            draw_item_text(MENU_TEXT_X, MENU_CONTENT_Y + 56,
+                           favorites_loaded ? "NO FAVORITES YET"
+                                            : "LOADING FAVORITES",
+                           palette->primary);
         if (view == VIEW_MEDIA_CATEGORIES && !count)
-            draw_text(72, 160, empty_media_text(), 3, palette->primary);
+            draw_item_text(MENU_TEXT_X, MENU_CONTENT_Y + 56,
+                           empty_media_text(), palette->primary);
         for (i = 0; i < rows && first + i < count; i++)
             draw_list_row(first + i, i, palette);
     }
 }
 
-static void draw_status(const struct launcher_palette *palette) {
-    draw_text(32, (int)fb_var.yres - 54, selected_status, 2,
-              palette->muted);
+static void draw_face_button(int x, int y, char button,
+                             const struct launcher_palette *palette) {
+    rectangle(x + 4, y, 6, 2, palette->primary);
+    rectangle(x + 2, y + 2, 10, 2, palette->primary);
+    rectangle(x, y + 4, 14, 6, palette->primary);
+    rectangle(x + 2, y + 10, 10, 2, palette->primary);
+    rectangle(x + 4, y + 12, 6, 2, palette->primary);
+    draw_character(x + 5, y + 3, button, 1, palette->ink);
+}
+
+static void draw_shoulder_button(int x, int y, char side,
+                                 const struct launcher_palette *palette) {
+    rectangle(x + 2, y, 16, 2, palette->primary);
+    rectangle(x, y + 2, 20, 10, palette->primary);
+    rectangle(x + 2, y + 12, 16, 2, palette->primary);
+    draw_character(x + 5, y + 3, side, 1, palette->ink);
+    draw_character(x + 11, y + 3, '1', 1, palette->ink);
+}
+
+static int control_group_width(const char *label) {
+    return 14 + MENU_CONTROL_TEXT_GAP +
+           (int)string_length(label) * 6 * MENU_LABEL_SCALE;
+}
+
+static int draw_control_group(int x, char button, const char *label,
+                              const struct launcher_palette *palette) {
+    draw_face_button(x, MENU_HELP_Y, button, palette);
+    x += 14 + MENU_CONTROL_TEXT_GAP;
+    draw_text(x, MENU_HELP_Y, label, MENU_LABEL_SCALE, palette->primary);
+    return x + (int)string_length(label) * 6 * MENU_LABEL_SCALE;
+}
+
+static int page_control_width(void) {
+    return 20 + MENU_CONTROL_TEXT_GAP + 20 + MENU_CONTROL_TEXT_GAP +
+           4 * 6 * MENU_LABEL_SCALE;
+}
+
+static int draw_page_control(int x,
+                             const struct launcher_palette *palette) {
+    draw_shoulder_button(x, MENU_HELP_Y, 'L', palette);
+    x += 20 + MENU_CONTROL_TEXT_GAP;
+    draw_shoulder_button(x, MENU_HELP_Y, 'R', palette);
+    x += 20 + MENU_CONTROL_TEXT_GAP;
+    draw_text(x, MENU_HELP_Y, "PAGE", MENU_LABEL_SCALE, palette->primary);
+    return x + 4 * 6 * MENU_LABEL_SCALE;
 }
 
 static void draw_help(const struct launcher_palette *palette) {
-    if (view == VIEW_MAIN)
-        draw_text(32, (int)fb_var.yres - 28,
-                  "DPAD MOVE   A SELECT   B RELOAD", 2, palette->primary);
-    else if (view == VIEW_PLAY)
-        draw_text(32, (int)fb_var.yres - 28,
-                  "DPAD MOVE   A SELECT   B BACK", 2, palette->primary);
-    else if (view == VIEW_GAMES)
-        draw_text(32, (int)fb_var.yres - 28,
-                  "DPAD MOVE  L1 R1 PAGE  A LAUNCH  Y FAV  B BACK", 2,
-                  palette->primary);
-    else if (view == VIEW_FAVORITES)
-        draw_text(32, (int)fb_var.yres - 28,
-                  "DPAD MOVE  L1 R1 PAGE  A LAUNCH  Y REMOVE  B BACK", 2,
-                  palette->primary);
-    else if (view == VIEW_SYSTEMS)
-        draw_text(32, (int)fb_var.yres - 28,
-                  "DPAD MOVE  L1 R1 PAGE  A OPEN  B BACK", 2,
-                  palette->primary);
-    else if (view == VIEW_MEDIA_CATEGORIES)
-        draw_text(32, (int)fb_var.yres - 28,
-                  "DPAD MOVE  L1 R1 PAGE  A OPEN  B BACK", 2,
-                  palette->primary);
-    else if (view == VIEW_MEDIA_ENTRIES)
-        draw_text(32, (int)fb_var.yres - 28,
-                  "DPAD MOVE  L1 R1 PAGE  A PLAY  B BACK", 2,
-                  palette->primary);
-    else
-        draw_text(32, (int)fb_var.yres - 28,
-                  "DPAD MOVE   A OPEN   B BACK", 2, palette->primary);
+    const int gap = 10;
+    const char *action = (view == VIEW_SYSTEMS ||
+                          view == VIEW_MEDIA_CATEGORIES)
+                             ? "OPEN" :
+                         (view == VIEW_MAIN || view == VIEW_PLAY ||
+                          view == VIEW_TOOLS || view == VIEW_QUIT)
+                             ? "SELECT" : "PLAY";
+    int paged = view == VIEW_SYSTEMS || view == VIEW_GAMES ||
+                view == VIEW_FAVORITES ||
+                view == VIEW_MEDIA_CATEGORIES ||
+                view == VIEW_MEDIA_ENTRIES;
+    int favorite_action = view == VIEW_GAMES || view == VIEW_FAVORITES;
+    const char *favorite_label = view == VIEW_FAVORITES ? "DEL" : "FAV";
+    int show_back = view != VIEW_MAIN;
+    int width = control_group_width(action);
+    int x;
+    if (paged) width += page_control_width() + gap;
+    if (favorite_action)
+        width += control_group_width(favorite_label) + gap;
+    if (show_back) width += control_group_width("BACK") + gap;
+    x = MENU_FRAME_X + (MENU_TOP_BAR_WIDTH - width) / 2 +
+        MENU_HELP_X_OFFSET;
+    if (paged) {
+        x = draw_page_control(x, palette) + gap;
+    }
+    x = draw_control_group(x, 'A', action, palette) + gap;
+    if (favorite_action)
+        x = draw_control_group(x, 'Y', favorite_label, palette) + gap;
+    if (show_back) (void)draw_control_group(x, 'B', "BACK", palette);
 }
 
-static void framebuffer_barrier(void) {
+static void framebuffer_store_barrier(void) {
 #ifndef BIRD_HOST_TEST
     __asm__ volatile("dmb ishst" ::: "memory");
 #endif
+}
+
+static void framebuffer_barrier(void) {
+    framebuffer_store_barrier();
     BIRD_PROFILE_BARRIER();
 }
 
+static void framebuffer_noninteractive_barrier(void) {
+    framebuffer_store_barrier();
+    BIRD_PROFILE_NONINTERACTIVE_BARRIER();
+}
+
 static void redraw_content_region(const struct launcher_palette *palette) {
-    rectangle(32, 95, 656, (int)fb_var.yres - 161,
-              palette->background);
+    rectangle(MENU_LEFT, MENU_CONTENT_Y,
+              MENU_CONTENT_WIDTH, MENU_CONTENT_H,
+              palette->menu_panel);
+    rectangle(MENU_LEFT, MENU_CONTENT_Y, MENU_DIVIDER_WIDTH, MENU_CONTENT_H,
+              color(55, 18, 29));
     draw_content(palette);
 }
 
-static void redraw_status_region(const struct launcher_palette *palette) {
-    rectangle(32, (int)fb_var.yres - 54, 656, 14, palette->panel);
-    draw_status(palette);
-}
-
 static void redraw_battery_region(const struct launcher_palette *palette) {
-    rectangle((int)fb_var.xres - 80, 30, 48, 14, palette->panel);
-    draw_battery_percent(palette->selected, palette->muted);
+    rectangle(MENU_BATTERY_ICON_MIN_X - 2, MENU_TOP_BAR_Y + 6,
+              MENU_FRAME_RIGHT - MENU_BATTERY_ICON_MIN_X + 2,
+              MENU_TOP_BAR_H - 12, palette->panel);
+    draw_battery_status(palette->charging, palette->ink, palette->panel);
 }
 
 static void draw_screen(void) {
     struct launcher_palette palette;
     load_launcher_palette(&palette);
-    rectangle(0, 0, (int)fb_var.xres, (int)fb_var.yres,
-              palette.background);
-    rectangle(0, 0, (int)fb_var.xres, 92, palette.panel);
-    rectangle(0, (int)fb_var.yres - 66, (int)fb_var.xres, 66,
-              palette.panel);
-    rectangle(32, 86, 656, 3, palette.selected);
+    draw_static_base(&palette);
+    capture_footer_background();
     draw_header(&palette);
     draw_content(&palette);
-    draw_battery_percent(palette.selected, palette.muted);
-    draw_status(&palette);
+    draw_battery_status(palette.charging, palette.ink, palette.panel);
     draw_help(&palette);
+    pending_render_invalid = 0U;
+    framebuffer_barrier();
+    displayed_charging_state = charging_state;
+    displayed_battery_percent = battery_percent;
+}
+
+static void draw_interactive_screen(void) {
+    struct launcher_palette palette;
+    load_launcher_palette(&palette);
+    /* The surrounding backdrop is already authoritative while the launcher
+     * owns the framebuffer. Repaint only the fixed opaque chrome and dynamic
+     * UI so verified inherited-frame builds can omit the duplicate early
+     * wallpaper without losing it on the first view change. */
+    draw_static_chrome(&palette);
+    capture_footer_background();
+    restore_footer_background(MENU_HELP_Y,
+                              7 * MENU_LABEL_SCALE + 2);
+    draw_header(&palette);
+    draw_content(&palette);
+    draw_battery_status(palette.charging, palette.ink, palette.panel);
+    draw_help(&palette);
+    pending_render_invalid = 0U;
+    framebuffer_barrier();
+    displayed_charging_state = charging_state;
+    displayed_battery_percent = battery_percent;
+}
+
+static void draw_startup_base(void) {
+    struct launcher_palette palette;
+    load_launcher_palette(&palette);
+    footer_background_captured = 0;
+    draw_static_base(&palette);
+    pending_render_invalid = 0U;
+    framebuffer_noninteractive_barrier();
+    displayed_charging_state = -1;
+    displayed_battery_percent = -1;
+}
+
+static void draw_startup_menu_overlay(void) {
+    struct launcher_palette palette;
+    load_launcher_palette(&palette);
+    capture_footer_background();
+    draw_header(&palette);
+    draw_content(&palette);
+    draw_battery_status(palette.charging, palette.ink, palette.panel);
+    draw_help(&palette);
+    pending_render_invalid = 0U;
+    framebuffer_barrier();
+    displayed_charging_state = charging_state;
+    displayed_battery_percent = battery_percent;
+}
+
+static void draw_recovery_update(void) {
     pending_render_invalid = 0U;
     framebuffer_barrier();
 }
@@ -2804,7 +4068,6 @@ static void draw_status_update(void) {
     load_launcher_palette(&palette);
     if (pending_render_invalid & RENDER_INVALID_CONTENT)
         redraw_content_region(&palette);
-    redraw_status_region(&palette);
     pending_render_invalid = 0U;
     framebuffer_barrier();
 }
@@ -2814,18 +4077,17 @@ static void draw_battery_update(void) {
     load_launcher_palette(&palette);
     if (pending_render_invalid & RENDER_INVALID_CONTENT)
         redraw_content_region(&palette);
-    if (pending_render_invalid & RENDER_INVALID_STATUS)
-        redraw_status_region(&palette);
     redraw_battery_region(&palette);
     pending_render_invalid = 0U;
     framebuffer_barrier();
+    displayed_charging_state = charging_state;
+    displayed_battery_percent = battery_percent;
 }
 
 static void draw_content_and_status_update(void) {
     struct launcher_palette palette;
     load_launcher_palette(&palette);
     redraw_content_region(&palette);
-    redraw_status_region(&palette);
     pending_render_invalid = 0U;
     framebuffer_barrier();
 }
@@ -2838,34 +4100,90 @@ static void draw_selection_update(u32 old_selection, u32 old_first) {
     if ((pending_render_invalid & RENDER_INVALID_CONTENT) ||
         new_first != old_first) {
         redraw_content_region(&palette);
-    } else if (view == VIEW_MAIN || view == VIEW_PLAY) {
-        int old_y = 122 + (int)old_selection * 64;
-        int new_y = 122 + (int)selection * 64;
-        rectangle(92, old_y - 10, 492, 52, palette.background);
+    } else if (view == VIEW_MAIN || view == VIEW_PLAY ||
+               view == VIEW_TOOLS || view == VIEW_QUIT) {
+        int old_y = MENU_MAIN_ROW_START_Y +
+                    (int)old_selection * MENU_MAIN_ROW_SPACING;
+        rectangle(MENU_ROW_LEFT, old_y, MENU_ROW_WIDTH,
+                  MENU_MAIN_ROW_H, palette.menu_panel);
         draw_main_row(old_selection, &palette);
-        if (selection != old_selection) {
-            rectangle(92, new_y - 10, 492, 52, palette.background);
+        if (selection != old_selection)
             draw_main_row(selection, &palette);
-        }
     } else {
         u32 old_row = old_selection - old_first;
         u32 new_row = selection - new_first;
-        int old_y = 102 + (int)old_row * 38;
-        int new_y = 102 + (int)new_row * 38;
-        rectangle(32, old_y - 7, 656, 31, palette.background);
+        int old_y = MENU_CONTENT_Y + (int)old_row * MENU_ROW_SPACING;
+        rectangle(MENU_ROW_LEFT, old_y, MENU_ROW_WIDTH,
+                  MENU_ROW_H, palette.menu_panel);
         draw_list_row(old_selection, old_row, &palette);
-        if (selection != old_selection) {
-            rectangle(32, new_y - 7, 656, 31, palette.background);
+        if (selection != old_selection)
             draw_list_row(selection, new_row, &palette);
-        }
     }
-    redraw_status_region(&palette);
     pending_render_invalid = 0U;
     framebuffer_barrier();
 }
 
+static u64 selected_text_scroll_poll_timeout(u64 timeout_ms) {
+    u64 now;
+    u64 wait;
+    bind_selected_text_scroll(current_selected_text());
+    if (!selected_text_scroll.deadline_ms) return timeout_ms;
+    now = boot_ms();
+    wait = selected_text_scroll.deadline_ms > now
+               ? selected_text_scroll.deadline_ms - now
+               : 0U;
+    return wait < timeout_ms ? wait : timeout_ms;
+}
+
+static int service_selected_text_scroll(void) {
+    struct launcher_palette palette;
+    const char *text;
+    u64 now;
+    u32 first;
+    if (!selected_text_scroll.deadline_ms) return 0;
+    text = current_selected_text();
+    if (
+        selected_text_scroll.text != text ||
+        selected_text_scroll.view != view ||
+        selected_text_scroll.selection != selection ||
+        selected_text_scroll.context != selected_text_context())
+        return 0;
+    now = boot_ms();
+    if (now < selected_text_scroll.deadline_ms) return 0;
+    selected_text_scroll.offset++;
+    if (selected_text_scroll.offset >=
+        selected_text_scroll.length + MENU_SCROLL_GAP) {
+        selected_text_scroll.offset = 0U;
+        selected_text_scroll.deadline_ms = now +
+                                           MENU_SCROLL_INITIAL_DELAY_MS;
+    } else {
+        selected_text_scroll.deadline_ms = now + MENU_SCROLL_STEP_MS;
+    }
+
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_TEXT_SCROLL);
+    load_launcher_palette(&palette);
+    if (view == VIEW_MAIN || view == VIEW_PLAY ||
+        view == VIEW_TOOLS || view == VIEW_QUIT) {
+        int y = MENU_MAIN_ROW_START_Y +
+                (int)selection * MENU_MAIN_ROW_SPACING;
+        rectangle(MENU_ROW_LEFT, y, MENU_ROW_WIDTH,
+                  MENU_MAIN_ROW_H, palette.menu_panel);
+        draw_main_row(selection, &palette);
+    } else {
+        first = viewport_first(view, selection);
+        rectangle(MENU_ROW_LEFT,
+                  MENU_CONTENT_Y + (int)(selection - first) *
+                                       MENU_ROW_SPACING,
+                  MENU_ROW_WIDTH, MENU_ROW_H, palette.menu_panel);
+        draw_list_row(selection, selection - first, &palette);
+    }
+    framebuffer_barrier();
+    return 1;
+}
+
 static int publish_handoff_action(int action) {
     if (write_handoff_action(action) == 0) return 0;
+    clear_frame_resume();
     if (action == ACTION_LAUNCH)
         fixed_unlink(LAUNCH_REQUEST);
     BIRD_PROFILE_CANCEL_SELECTION();
@@ -2932,30 +4250,32 @@ static int write_content_request(u8 launch_kind, const char *core,
 }
 
 static int launch_catalog_entry(u32 catalog_index) {
-    const struct catalog_entry *entry;
-    const struct catalog_system *system;
+    u32 system_index;
+    const char *catalog_path;
     const char *path;
     long fd;
     int action;
     if (catalog_index >= CATALOG_ENTRY_COUNT) return ACTION_NONE;
-    entry = &catalog_entries[catalog_index];
-    system = &catalog_systems[entry->system];
-    path = resolve_live_path(entry->path);
+    system_index = catalog_entry_system(catalog_index);
+    catalog_path = catalog_entry_path(catalog_index);
+    path = resolve_live_path(catalog_path);
     fd = path ? fixed_open(path, O_RDONLY | O_NONBLOCK) : -1;
     log_text("rom_test boot_ms=");
     log_number(boot_ms());
     log_text(" path=");
-    log_text(entry->path);
-    if (path != entry->path) {
+    log_text(catalog_path);
+    if (path != catalog_path) {
         log_text(" live=");
         log_text(path ? path : "path-too-long");
     }
     if (fd >= 0) {
         sys_close((int)fd);
         log_text(" result=ready\n");
-        action = write_content_request(system->launch_kind, system->core,
-                                       entry->name, entry->path, "STARTING GAME");
-        if (action == ACTION_LAUNCH) save_recent(entry);
+        action = write_content_request(
+            catalog_system_launch_kind(system_index),
+            catalog_system_core(system_index), catalog_entry_name(catalog_index),
+            catalog_path, "STARTING GAME");
+        if (action == ACTION_LAUNCH) save_recent(catalog_index);
         return action;
     }
     selected_status = "WAITING FOR ROM STORAGE";
@@ -2964,32 +4284,34 @@ static int launch_catalog_entry(u32 catalog_index) {
 }
 
 static int launch_media_entry(u32 category_index, u32 item_index) {
-    const struct catalog_media_category *category;
-    const struct catalog_media_entry *entry;
+    const char *catalog_path;
     const char *path;
     u32 entry_index;
     long fd;
     if (category_index >= CATALOG_MEDIA_CATEGORY_COUNT)
         return ACTION_NONE;
-    category = &catalog_media_categories[category_index];
-    if (item_index >= category->count) return ACTION_NONE;
-    entry_index = category->first + item_index;
-    entry = &catalog_media_entries[entry_index];
-    path = resolve_live_path(entry->path);
+    if (item_index >= catalog_media_category_entry_count(category_index))
+        return ACTION_NONE;
+    entry_index = catalog_media_category_first(category_index) + item_index;
+    catalog_path = catalog_media_entry_path(entry_index);
+    path = resolve_live_path(catalog_path);
     fd = path ? fixed_open(path, O_RDONLY | O_NONBLOCK) : -1;
     log_text("media_test boot_ms=");
     log_number(boot_ms());
     log_text(" path=");
-    log_text(entry->path);
-    if (path != entry->path) {
+    log_text(catalog_path);
+    if (path != catalog_path) {
         log_text(" live=");
         log_text(path ? path : "path-too-long");
     }
     if (fd >= 0) {
         sys_close((int)fd);
         log_text(" result=ready\n");
-        return write_content_request(category->launch_kind, category->core,
-                                     entry->name, entry->path, "STARTING MEDIA");
+        return write_content_request(
+            catalog_media_category_launch_kind(category_index),
+            catalog_media_category_core(category_index),
+            catalog_media_entry_name(entry_index), catalog_path,
+            "STARTING MEDIA");
     }
     selected_status = "WAITING FOR MEDIA STORAGE";
     log_text(" result=not-ready\n");
@@ -3092,7 +4414,7 @@ static void toggle_current_favorite(void) {
         draw_status_update();
         return;
     }
-    if (!catalog_path_supported(catalog_entries[catalog_index].path)) {
+    if (!catalog_path_supported(catalog_entry_path(catalog_index))) {
         selected_status = "UNSUPPORTED FAVORITE PATH";
         log_text("favorite_toggle result=unsupported-path\n");
         BIRD_PROFILE_RENDER(PROFILE_RENDER_STATUS);
@@ -3102,17 +4424,9 @@ static void toggle_current_favorite(void) {
 
     was_favorite = is_favorite(catalog_index);
     set_favorite(catalog_index, !was_favorite);
-    if (was_favorite)
-        favorite_count--;
-    else
-        favorite_count++;
 
     if (save_favorites() < 0) {
         set_favorite(catalog_index, was_favorite);
-        if (was_favorite)
-            favorite_count++;
-        else
-            favorite_count--;
         selected_status = "FAVORITES SAVE FAILED";
         log_text("favorite_toggle result=save-failed path=");
     } else {
@@ -3123,7 +4437,7 @@ static void toggle_current_favorite(void) {
         if (view == VIEW_FAVORITES && selection >= favorite_count)
             selection = favorite_count ? favorite_count - 1U : 0U;
     }
-    log_text(catalog_entries[catalog_index].path);
+    log_text(catalog_entry_path(catalog_index));
     log_text("\n");
     BIRD_PROFILE_RENDER(PROFILE_RENDER_STATUS);
     if (!favorite_changed)
@@ -3144,7 +4458,7 @@ static int select_current(void) {
         if (selection == 0U) {
             view = VIEW_PLAY;
             selection = 0U;
-            selected_status = "PLAY LIBRARY READY";
+            selected_status = "PLAY SYSTEMS READY";
         } else if (selection == 1U) {
             media_section = CATALOG_MEDIA_SECTION_LISTEN;
             view = VIEW_MEDIA_CATEGORIES;
@@ -3155,11 +4469,19 @@ static int select_current(void) {
             view = VIEW_MEDIA_CATEGORIES;
             selection = 0U;
             selected_status = "READING LIBRARY READY FROM FIRMWARE";
-        } else {
+        } else if (selection == 3U) {
             media_section = CATALOG_MEDIA_SECTION_WATCH;
             view = VIEW_MEDIA_CATEGORIES;
             selection = 0U;
             selected_status = "VIDEO CATALOG READY FROM FIRMWARE";
+        } else if (selection == 4U) {
+            view = VIEW_TOOLS;
+            selection = 0U;
+            selected_status = "TOOLS READY";
+        } else {
+            view = VIEW_QUIT;
+            selection = 0U;
+            selected_status = "QUIT OPTIONS READY";
         }
     } else if (view == VIEW_PLAY) {
         if (selection == 0U) {
@@ -3170,12 +4492,20 @@ static int select_current(void) {
             view = VIEW_FAVORITES;
             selection = 0U;
             selected_status = favorites_loaded ? "FAVORITES READY" : "FAVORITES LOAD WITH STORAGE";
-        } else if (selection == 2U) {
-            selected_status = "CONNECTING PORTMASTER";
-            if (save_ui_resume() == 0)
-                action = ACTION_PORTMASTER;
-            else
-                selected_status = "RETURN STATE SAVE FAILED";
+        }
+    } else if (view == VIEW_TOOLS) {
+        selected_status = "CONNECTING PORTMASTER";
+        if (save_ui_resume() == 0)
+            action = ACTION_PORTMASTER;
+        else
+            selected_status = "RETURN STATE SAVE FAILED";
+    } else if (view == VIEW_QUIT) {
+        if (selection == 0U) {
+            selected_status = "RELOADING LAUNCHER";
+            action = ACTION_RELOAD;
+        } else if (selection == 1U) {
+            selected_status = "REBOOTING";
+            action = ACTION_REBOOT;
         } else {
             selected_status = "SHUTTING DOWN";
             action = ACTION_SHUTDOWN;
@@ -3208,7 +4538,8 @@ static int select_current(void) {
         }
     } else if (view == VIEW_MEDIA_ENTRIES) {
         if (active_media_category < CATALOG_MEDIA_CATEGORY_COUNT &&
-            selection < catalog_media_categories[active_media_category].count) {
+            selection <
+                catalog_media_category_entry_count(active_media_category)) {
             if (storage_ready) {
                 cancel_pending_launch("direct-selection");
                 action = launch_media_entry(active_media_category, selection);
@@ -3220,7 +4551,7 @@ static int select_current(void) {
     BIRD_PROFILE_RENDER(view != profile_original_view
                             ? PROFILE_RENDER_VIEW_CHANGE
                             : PROFILE_RENDER_STATUS);
-    draw_screen();
+    draw_interactive_screen();
     if (action == ACTION_NONE) preserve_early_handoff_state();
     return action;
 }
@@ -3259,6 +4590,7 @@ static void stage_selection_move(struct navigation_batch *batch,
 
 static void commit_navigation_batch(struct navigation_batch *batch) {
     if (!batch->active) return;
+    reset_selected_text_scroll();
     BIRD_PROFILE_RENDER(batch->old_first != viewport_first(view, selection)
                             ? PROFILE_RENDER_VIEWPORT_CHANGE
                             : PROFILE_RENDER_SELECTION_MOVEMENT);
@@ -3285,9 +4617,9 @@ static int handle_back(void) {
     if (view == VIEW_FAVORITES) {
         view = VIEW_PLAY;
         selection = 1U;
-        selected_status = "PLAY LIBRARY READY";
+        selected_status = "PLAY SYSTEMS READY";
         BIRD_PROFILE_RENDER(PROFILE_RENDER_VIEW_CHANGE);
-        draw_screen();
+        draw_interactive_screen();
         cancel_pending_launch("back");
         preserve_early_handoff_state();
         return 0;
@@ -3297,7 +4629,7 @@ static int handle_back(void) {
         selection = active_system;
         selected_status = "CATALOG READY FROM FIRMWARE";
         BIRD_PROFILE_RENDER(PROFILE_RENDER_VIEW_CHANGE);
-        draw_screen();
+        draw_interactive_screen();
         cancel_pending_launch("back");
         preserve_early_handoff_state();
         return 0;
@@ -3305,9 +4637,9 @@ static int handle_back(void) {
     if (view == VIEW_SYSTEMS) {
         view = VIEW_PLAY;
         selection = 0U;
-        selected_status = "PLAY LIBRARY READY";
+        selected_status = "PLAY SYSTEMS READY";
         BIRD_PROFILE_RENDER(PROFILE_RENDER_VIEW_CHANGE);
-        draw_screen();
+        draw_interactive_screen();
         cancel_pending_launch("back");
         preserve_early_handoff_state();
         return 0;
@@ -3317,7 +4649,27 @@ static int handle_back(void) {
         selection = 0U;
         selected_status = "DIRECT FRAMEBUFFER READY";
         BIRD_PROFILE_RENDER(PROFILE_RENDER_VIEW_CHANGE);
-        draw_screen();
+        draw_interactive_screen();
+        cancel_pending_launch("back");
+        preserve_early_handoff_state();
+        return 0;
+    }
+    if (view == VIEW_TOOLS) {
+        view = VIEW_MAIN;
+        selection = 4U;
+        selected_status = "DIRECT FRAMEBUFFER READY";
+        BIRD_PROFILE_RENDER(PROFILE_RENDER_VIEW_CHANGE);
+        draw_interactive_screen();
+        cancel_pending_launch("back");
+        preserve_early_handoff_state();
+        return 0;
+    }
+    if (view == VIEW_QUIT) {
+        view = VIEW_MAIN;
+        selection = 5U;
+        selected_status = "DIRECT FRAMEBUFFER READY";
+        BIRD_PROFILE_RENDER(PROFILE_RENDER_VIEW_CHANGE);
+        draw_interactive_screen();
         cancel_pending_launch("back");
         preserve_early_handoff_state();
         return 0;
@@ -3327,7 +4679,7 @@ static int handle_back(void) {
         selection = active_media_category - media_category_first();
         selected_status = "MEDIA CATALOG READY FROM FIRMWARE";
         BIRD_PROFILE_RENDER(PROFILE_RENDER_VIEW_CHANGE);
-        draw_screen();
+        draw_interactive_screen();
         cancel_pending_launch("back");
         preserve_early_handoff_state();
         return 0;
@@ -3339,13 +4691,23 @@ static int handle_back(void) {
                         : (media_section == CATALOG_MEDIA_SECTION_READ ? 2U : 3U);
         selected_status = "DIRECT FRAMEBUFFER READY";
         BIRD_PROFILE_RENDER(PROFILE_RENDER_VIEW_CHANGE);
-        draw_screen();
+        draw_interactive_screen();
         cancel_pending_launch("back");
         preserve_early_handoff_state();
         return 0;
     }
+    if (view != VIEW_MAIN) return ACTION_NONE;
+    selected_status = "DIRECT EVDEV INPUT READY";
+    if (selection != 0U) {
+        u32 old_selection = selection;
+        selection = 0U;
+        reset_selected_text_scroll();
+        BIRD_PROFILE_RENDER(PROFILE_RENDER_SELECTION_MOVEMENT);
+        draw_selection_update(old_selection, 0U);
+    }
     cancel_pending_launch("back");
-    return ACTION_RELOAD;
+    preserve_early_handoff_state();
+    return ACTION_NONE;
 }
 
 static void reset_input_latches(void) {
@@ -3646,30 +5008,26 @@ static void probe_storage(void) {
         sys_close(storage_signal_fd);
         storage_signal_fd = -1;
     }
-    {
-        int was_favorites_loaded = favorites_loaded;
-        int favorites_completed;
-        load_favorites();
-        favorites_completed = !was_favorites_loaded && favorites_loaded;
-        if (view == VIEW_FAVORITES) {
-            if (!favorite_count)
-                selection = 0U;
-            else if (selection >= favorite_count)
-                selection = favorite_count - 1U;
-            BIRD_PROFILE_RENDER(favorites_completed
-                                    ? PROFILE_RENDER_FAVORITES_COMPLETION
-                                    : PROFILE_RENDER_STATUS);
-            if (favorites_completed)
-                draw_content_and_status_update();
-            else
-                draw_status_update();
-        }
-    }
     log_text("storage_ready boot_ms=");
     log_number(now);
     log_text(" path=" ROM_ROOT " ui_redraw=");
     log_text(view == VIEW_FAVORITES ? "favorites" : "deferred");
     log_text("\n");
+}
+
+static void load_favorites_and_update_view(void) {
+    int was_loaded;
+    if (!storage_ready || favorites_loaded) return;
+    was_loaded = favorites_loaded;
+    load_favorites();
+    if (!was_loaded && favorites_loaded && view == VIEW_FAVORITES) {
+        if (!favorite_count)
+            selection = 0U;
+        else if (selection >= favorite_count)
+            selection = favorite_count - 1U;
+        BIRD_PROFILE_RENDER(PROFILE_RENDER_FAVORITES_COMPLETION);
+        draw_content_and_status_update();
+    }
 }
 
 static void set_input_path(int index) {
@@ -3684,52 +5042,68 @@ static void set_input_path(int index) {
     input_path[position] = 0;
 }
 
-static int open_fixed_input(void) {
+static int fixed_input_scan_index(int order) {
+    int index;
+    if (!order) return PREFERRED_INPUT_EVENT;
+    index = order - 1;
+    return index >= PREFERRED_INPUT_EVENT ? index + 1 : index;
+}
+
+static int open_fixed_input_once(void) {
     char name[128];
-    u64 deadline = boot_ms() + DEVICE_WAIT_MS;
+    int order;
     int index;
 
-    while (boot_ms() < deadline) {
-        for (index = 0; index < INPUT_EVENT_SCAN_COUNT; index++) {
-            set_input_path(index);
-            input_fd = (int)fixed_open(input_path, O_RDONLY | O_NONBLOCK);
-            if (input_fd < 0) continue;
+    for (order = 0; order < INPUT_EVENT_SCAN_COUNT; order++) {
+        index = fixed_input_scan_index(order);
+        set_input_path(index);
+        input_fd = (int)fixed_open(input_path, O_RDONLY | O_NONBLOCK);
+        if (input_fd < 0) continue;
 
-            name[0] = 0;
-            sys_ioctl(input_fd, EVIOCGNAME_128, name);
-            name[127] = 0;
-            if (string_equal(name, "muOS-Keys")) {
-                h700_input = 0;
-                goto found;
-            }
-            if (string_equal(name, "H700 Gamepad")) {
-                h700_input = 1;
-                goto found;
-            }
-            sys_close(input_fd);
-            input_fd = -1;
+        name[0] = 0;
+        sys_ioctl(input_fd, EVIOCGNAME_128, name);
+        name[127] = 0;
+        if (string_equal(name, "muOS-Keys")) {
+            h700_input = 0;
+            goto found;
         }
-        sys_nanosleep(1000000L);
+        if (string_equal(name, "H700 Gamepad")) {
+            h700_input = 1;
+            goto found;
+        }
+        sys_close(input_fd);
+        input_fd = -1;
     }
-    if (input_fd < 0) {
-        log_text("error wait fixed RG34XX-SP input\n");
-        return -1;
-    }
+    input_fd = -1;
+    return -1;
 
 found:
     BIRD_PROFILE_INPUT_OPENED();
     reset_input_latches();
+    input_ready_ms = boot_ms();
+    return 0;
+}
+
+static int open_fixed_input(void) {
+    u64 deadline = boot_ms() + DEVICE_WAIT_MS;
+    while (boot_ms() < deadline) {
+        if (open_fixed_input_once() == 0) return 0;
+        sys_nanosleep(1000000L);
+    }
+    log_text("error wait fixed RG34XX-SP input\n");
+    return -1;
+}
+
+static void log_input_ready(void) {
     log_text("input ");
     log_text(input_path);
     log_text(" name=");
-    log_text(name[0] ? name : "unknown");
+    log_text(h700_input ? "H700 Gamepad" : "muOS-Keys");
     log_text(" map=");
     log_text(h700_input ? "mainline-h700" : "vendor-muos");
     log_text(" ready_boot_ms=");
-    log_number(boot_ms());
+    log_number(input_ready_ms);
     log_text("\n");
-
-    return 0;
 }
 
 static int reconnect_input(const char *reason) {
@@ -3739,100 +5113,67 @@ static int reconnect_input(const char *reason) {
     log_text(reason);
     log_text("\n");
     abandon_input();
-    return open_fixed_input();
+    if (open_fixed_input() < 0) return -1;
+    log_input_ready();
+    return 0;
 }
 
-static int application(void) {
-#ifdef BIRD_PROFILE
-    u64 profile_started_ns = bird_profile_now_ns();
-#endif
-    u64 started = boot_ms();
-    u64 deadline;
-    u64 poll_retry_ms = POLL_RETRY_INITIAL_MS;
-    u32 poll_error_count = 0;
-    int exit_action = ACTION_NONE;
-    BIRD_PROFILE_APPLICATION_ENTRY(profile_started_ns);
-    log_text("direct launcher start boot_ms=");
-    log_number(started);
+static const char *frame_recovery_name(u32 result) {
+    if (result == FRAME_RECOVERY_MATCHED) return "matched";
+    if (result == FRAME_RECOVERY_INVALID) return "invalid";
+    if (result == FRAME_RECOVERY_MISMATCH) return "mismatch";
+    if (result == FRAME_RECOVERY_UNSUPPORTED) return "unsupported";
+    if (result == FRAME_RECOVERY_CANDIDATE) return "candidate";
+    return "absent";
+}
+
+static void reset_frame_recovery_diagnostics(void) {
+    frame_recovery_fingerprint_attempted = 0;
+    frame_recovery_region_mismatch_mask = 0U;
+    frame_recovery_unused_x_changed = 0;
+    frame_recovery_expected_hash_a = 0U;
+    frame_recovery_expected_hash_b = 0U;
+    frame_recovery_actual_hash_a = 0U;
+    frame_recovery_actual_hash_b = 0U;
+    frame_recovery_snapshot_restored = 0;
+}
+
+static void log_frame_recovery(u32 result) {
+    log_text("frame_recovery result=");
+    log_text(frame_recovery_name(result));
+    log_text(" snapshot=");
+    log_text(frame_recovery_snapshot_restored ? "restored" : "none");
+    if (frame_recovery_fingerprint_attempted) {
+        log_text(" visible_region_mismatch_mask=");
+        log_number(frame_recovery_region_mismatch_mask);
+        log_text(" unused_x=");
+        log_text(frame_recovery_unused_x_changed ? "changed" : "stable");
+        log_text(" expected_bound_a=");
+        log_number(frame_recovery_expected_hash_a);
+        log_text(" actual_bound_a=");
+        log_number(frame_recovery_actual_hash_a);
+        log_text(" expected_bound_b=");
+        log_number(frame_recovery_expected_hash_b);
+        log_text(" actual_bound_b=");
+        log_number(frame_recovery_actual_hash_b);
+    }
     log_text("\n");
+}
 
-    refresh_path_anchors();
-    log_text("path_anchors runtime=");
-    log_text(runtime_dir_fd >= 0 ? "ready" : "missing");
-    log_text(" input=");
-    log_text(input_dir_fd >= 0 ? "ready" : "missing");
-    log_text(" power=");
-    log_text(power_dir_fd >= 0 ? "ready" : "missing");
-    log_text(" storage=");
-    log_text(storage_dir_fd >= 0 ? "ready" : "missing");
-    log_text(" config=");
-    log_text(config_dir_fd >= 0 ? "ready" : "missing");
-    log_text("\n");
+static int startup_work_pending(const struct startup_work_state *work) {
+    return work->task < STARTUP_TASK_DONE;
+}
 
-    deadline = boot_ms() + DEVICE_WAIT_MS;
-    while (boot_ms() < deadline) {
-        fb_fd = (int)sys_open("/dev/fb0", O_RDWR);
-        if (fb_fd >= 0) break;
-        sys_nanosleep(1000000L);
-    }
-    if (fb_fd < 0) {
-        log_text("error wait /dev/fb0\n");
-        return 2;
-    }
-    if (sys_ioctl(fb_fd, FBIOGET_VSCREENINFO, &fb_var) < 0 ||
-        sys_ioctl(fb_fd, FBIOGET_FSCREENINFO, &fb_fix) < 0) {
-        log_text("error framebuffer ioctl\n");
-        sys_close(fb_fd);
-        return 3;
-    }
-    configure_framebuffer_path();
+static int retained_frame_can_wait_for_verification(u32 recovery) {
+    return recovery == FRAME_RECOVERY_CANDIDATE && input_fd >= 0;
+}
 
-    log_text("framebuffer visible=");
-    log_number(fb_var.xres);
-    log_text("x");
-    log_number(fb_var.yres);
-    log_text(" virtual=");
-    log_number(fb_var.xres_virtual);
-    log_text("x");
-    log_number(fb_var.yres_virtual);
-    log_text(" bpp=");
-    log_number(fb_var.bits_per_pixel);
-    log_text(" stride=");
-    log_number(fb_fix.line_length);
-    log_text(" bytes=");
-    log_number(fb_fix.smem_len);
-    log_text(framebuffer_path == FRAMEBUFFER_PATH_RG34XX_XRGB8888
-                 ? " path=rg34xx-xrgb8888 page=fixed-0\n"
-                 : " path=diagnostic-fallback\n");
+static u64 startup_input_timeout(const struct startup_work_state *work,
+                                 u64 timeout_ms) {
+    return startup_work_pending(work) ? 0U : timeout_ms;
+}
 
-    if (fb_var.bits_per_pixel != 16 && fb_var.bits_per_pixel != 24 && fb_var.bits_per_pixel != 32) {
-        log_text("error unsupported framebuffer depth\n");
-        sys_close(fb_fd);
-        return 4;
-    }
-
-    fb = (volatile u8 *)sys_mmap(fb_fix.smem_len);
-    if ((u64)fb >= (u64)-4095L) {
-        log_text("error framebuffer mmap\n");
-        sys_close(fb_fd);
-        return 5;
-    }
-
-    /*
-     * Paint before input discovery so an absent or late joypad can never keep
-     * the kernel boot logo on screen.  The ready marker remains below the
-     * input gate: the watchdog is cancelled only when the menu is usable.
-    */
-    load_ui_resume();
-#ifdef PERSIST_UI_STATE
-    /* Refresh the bridge even when no button is pressed between two process
-     * owners. A valid prior descriptor remains in place until this atomic
-     * replacement, so startup recovery never opens a read/unlink gap. */
-    (void)save_ui_resume();
-#endif
-    try_power_event_open();
-    charging_state = read_charging_state();
-    battery_percent = read_battery_percent();
+static void log_startup_power(void) {
     log_text("power battery_state=");
     log_text(charging_state == 1 ? "charging" :
              (charging_state == 0 ? "not-charging" : "unavailable"));
@@ -3847,35 +5188,419 @@ static int application(void) {
     log_text(" boot_ms=");
     log_number(boot_ms());
     log_text("\n");
-    BIRD_PROFILE_RENDER(PROFILE_RENDER_STARTUP_FULL);
-    draw_screen();
-    log_text("first_frame_visible boot_ms=");
-    log_number(boot_ms());
-    log_text(" input_ready=0\n");
+}
 
-    if (open_fixed_input() < 0) {
+static void service_startup_work_step(struct startup_work_state *work) {
+    switch (work->task) {
+    case STARTUP_TASK_PROFILE:
+        BIRD_PROFILE_EMIT_STARTUP();
+        break;
+    case STARTUP_TASK_LOG_FRAME:
+        log_text("direct launcher start boot_ms=");
+        log_number(work->started_ms);
+        log_text("\nfirst_frame_visible boot_ms=");
+        log_number(work->interactive_frame_ms);
+        log_text(" input_ready=1 render=");
+        log_text(work->frame_recovery == FRAME_RECOVERY_MATCHED
+                     ? "recovery" : "full");
+        log_text(" boot_frame=");
+        if (work->boot_frame_reused)
+            log_text("verified-reuse");
+        else if (static_base_is_available())
+            log_text("native-base");
+        else
+            log_text("procedural-fallback");
+#ifdef BIRD_REUSE_UBOOT_FRAME
+        log_text(" boot_asset_id=");
+        log_number((u64)BIRD_BOOT_FRAME_ASSET_ID);
+#endif
+        log_text("\nfirst_frame boot_ms=");
+        log_number(work->marker_ms);
+        log_text(" input_ready=1 catalog_entries=");
+        log_number(CATALOG_ENTRY_COUNT);
+        log_text(" media_entries=");
+        log_number(CATALOG_MEDIA_ENTRY_COUNT);
+        log_text("\n");
+        break;
+    case STARTUP_TASK_LOG_FORMAT:
+        log_text("path_anchors runtime=");
+        log_text(runtime_dir_fd >= 0 ? "ready" : "missing");
+        log_text(" input=");
+        log_text(input_dir_fd >= 0 ? "ready" : "missing");
+        log_text(" power=");
+        log_text(power_dir_fd >= 0 ? "ready" : "deferred");
+        log_text(" storage=");
+        log_text(storage_dir_fd >= 0 ? "ready" : "deferred");
+        log_text(" config=");
+        log_text(config_dir_fd >= 0 ? "ready" : "deferred");
+        log_text("\nframebuffer visible=");
+        log_number(fb_var.xres);
+        log_text("x");
+        log_number(fb_var.yres);
+        log_text(" virtual=");
+        log_number(fb_var.xres_virtual);
+        log_text("x");
+        log_number(fb_var.yres_virtual);
+        log_text(" bpp=");
+        log_number(fb_var.bits_per_pixel);
+        log_text(" stride=");
+        log_number(fb_fix.line_length);
+        log_text(" bytes=");
+        log_number(fb_fix.smem_len);
+        log_text(framebuffer_path == FRAMEBUFFER_PATH_RG34XX_XRGB8888
+                     ? " path=rg34xx-xrgb8888 page=fixed-0\n"
+                     : " path=diagnostic-fallback\n");
+        break;
+    case STARTUP_TASK_LOG_INPUT:
+        log_input_ready();
+        if (work->resume_loaded) log_ui_resume_loaded();
+        log_frame_recovery(work->frame_recovery);
+        break;
+    case STARTUP_TASK_CHECKPOINT:
+#ifdef PERSIST_UI_STATE
+        (void)save_ui_resume();
+#endif
+        break;
+    case STARTUP_TASK_POWER_ANCHOR:
+        open_power_path_anchor();
+        break;
+    case STARTUP_TASK_POWER_EVENT:
+        try_power_event_open();
+        break;
+    case STARTUP_TASK_POWER_CHARGING:
+        charging_state = read_charging_state();
+        break;
+    case STARTUP_TASK_POWER_PERCENT:
+        battery_percent = read_battery_percent();
+        break;
+    case STARTUP_TASK_POWER_RENDER:
+        if (charging_state != work->previous_charging ||
+            battery_percent != work->previous_battery) {
+            BIRD_PROFILE_RENDER(PROFILE_RENDER_BATTERY);
+            draw_battery_update();
+        }
+        log_startup_power();
+        break;
+    case STARTUP_TASK_STORAGE:
+        if (STORAGE_READY_SIGNAL[0])
+            open_storage_signal_once();
+        else
+            probe_storage();
+        break;
+    case STARTUP_TASK_FAVORITES:
+        load_favorites_and_update_view();
+        break;
+    case STARTUP_TASK_STORAGE_LOG:
+        if (STORAGE_READY_SIGNAL[0]) {
+            log_text("storage_signal=");
+            log_text(storage_signal_fd >= 0 ? "ready" :
+                     (storage_signal_disabled ? "contract-failed" : "missing"));
+            log_text(" boot_ms=");
+            log_number(boot_ms());
+            log_text("\n");
+        }
+        break;
+    case STARTUP_TASK_FRAME_CLEANUP:
+        clear_frame_resume();
+        break;
+    default:
+        work->task = STARTUP_TASK_DONE;
+        return;
+    }
+    work->task++;
+}
+
+static int service_startup_work_after_input_sample(
+    struct startup_work_state *work, int exit_action,
+    long input_terminal_result, int input_reconnect_required) {
+    if (exit_action != ACTION_NONE || !startup_work_pending(work) ||
+        !input_drain_allows_pending_dispatch(input_terminal_result,
+                                             input_reconnect_required))
+        return 0;
+    service_startup_work_step(work);
+    return 1;
+}
+
+static u64 idle_background_poll_timeout(int startup_ready, u64 timeout_ms) {
+    u64 deadline = 0U;
+    u64 now;
+    u64 retry_wait;
+    if (!startup_ready || !timeout_ms) return 0U;
+    if ((!STORAGE_READY_SIGNAL[0] && !storage_probe_attempted) ||
+        (power_event_fd < 0 && !power_event_disabled &&
+         !next_power_event_retry) ||
+        (storage_ready && !favorites_loaded && !next_favorites_retry))
+        return 0U;
+    if (power_event_fd < 0 && !power_event_disabled)
+        deadline = next_power_event_retry;
+    if (storage_ready && !favorites_loaded &&
+        (!deadline || next_favorites_retry < deadline))
+        deadline = next_favorites_retry;
+    if (!deadline) return timeout_ms;
+    now = boot_ms();
+    retry_wait = deadline > now ? deadline - now : 0U;
+    return retry_wait < timeout_ms ? retry_wait : timeout_ms;
+}
+
+static int service_storage_poll_event(short revents, int polled) {
+    long count;
+    if (!polled || !revents) return 0;
+    if (poll_descriptor_failed(revents)) {
+        disable_storage_signal(
+            (revents & POLLNVAL) ? "poll-nval" :
+            ((revents & POLLHUP) ? "poll-hup" : "poll-error"));
+        return 1;
+    }
+    if (revents & POLLIN) {
+        char storage_event[32];
+        /* This FIFO publishes one readiness edge. Consume at most one read
+         * attempt after each clean input sample so an auxiliary descriptor
+         * can never monopolize the event loop. An interrupted read is simply
+         * retried after the next input sample. */
+        count = sys_read(storage_signal_fd, storage_event,
+                         sizeof(storage_event));
+        if (count > 0) {
+            log_text("storage_signal_received boot_ms=");
+            log_number(boot_ms());
+            log_text("\n");
+            receive_storage_handoff_signal();
+        } else if (count < 0 && count != -EAGAIN && count != -EINTR) {
+            disable_storage_signal("read-error");
+        }
+        return 1;
+    }
+    return 0;
+}
+
+static int service_power_poll_event(short revents, int polled) {
+    long count;
+    if (!polled || !revents) return 0;
+    if (poll_descriptor_failed(revents)) {
+        schedule_power_event_retry(
+            (revents & POLLNVAL) ? "poll-nval" :
+            ((revents & POLLHUP) ? "poll-hup" : "poll-error"));
+        return 1;
+    }
+    if (revents & POLLIN) {
+        char uevent[2049];
+        u32 read_attempts = 0U;
+        int previous = charging_state;
+        int previous_percent = battery_percent;
+        int power_changed = 0;
+        /* Coalesce a bounded uevent burst into one sysfs snapshot and one
+         * possible battery render. If the budget is exhausted, the live
+         * descriptor remains readable and the next clean input sample gets
+         * the next background slot. EINTR counts toward the same bound. */
+        while (read_attempts < POWER_EVENT_READ_BUDGET) {
+            read_attempts++;
+            count = sys_read(power_event_fd, uevent, sizeof(uevent) - 1U);
+            if (count > 0) {
+                uevent[count] = 0;
+                if (is_power_supply_uevent(uevent, (u64)count))
+                    power_changed = 1;
+                continue;
+            }
+            if (count == -EINTR) continue;
+            if (count < 0 && count != -EAGAIN)
+                schedule_power_event_retry("read-error");
+            break;
+        }
+        if (power_changed) {
+            charging_state = read_charging_state();
+            battery_percent = read_battery_percent();
+        }
+        if (power_changed && (charging_state != previous ||
+                              battery_percent != previous_percent)) {
+            log_text("power battery_state=");
+            log_text(charging_state == 1 ? "charging" :
+                     (charging_state == 0 ? "not-charging" : "unavailable"));
+            log_text(" boot_ms=");
+            log_number(boot_ms());
+            log_text(" percent=");
+            if (battery_percent >= 0)
+                log_number((u64)battery_percent);
+            else
+                log_text("unavailable");
+            log_text("\n");
+            BIRD_PROFILE_RENDER(PROFILE_RENDER_BATTERY);
+            draw_battery_update();
+        }
+        return 1;
+    }
+    return 0;
+}
+
+static int service_idle_background_after_input(
+    int startup_ready, short storage_revents, int storage_polled,
+    short power_revents, int power_polled) {
+    u64 now = 0U;
+    int sampled_time = 0;
+    if (!startup_ready) return 0;
+    if (service_storage_poll_event(storage_revents, storage_polled)) return 1;
+    if (service_power_poll_event(power_revents, power_polled)) return 1;
+    if (!STORAGE_READY_SIGNAL[0] && !storage_probe_attempted) {
+        probe_storage();
+        return 1;
+    }
+    if (storage_ready && !favorites_loaded) {
+        if (!next_favorites_retry) {
+            load_favorites_and_update_view();
+            return 1;
+        }
+        now = boot_ms();
+        sampled_time = 1;
+        if (now >= next_favorites_retry) {
+            load_favorites_and_update_view();
+            return 1;
+        }
+    }
+    if (power_event_fd < 0 && !power_event_disabled) {
+        if (!next_power_event_retry) {
+            try_power_event_open();
+            return 1;
+        }
+        if (!sampled_time) now = boot_ms();
+        if (now >= next_power_event_retry) {
+            try_power_event_open_at(now, 1);
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int service_post_input_work(
+    int startup_ready, short storage_revents, int storage_polled,
+    short power_revents, int power_polled, int *exit_action,
+    long input_terminal_result, int input_reconnect_required) {
+    if (*exit_action != ACTION_NONE ||
+        !input_drain_allows_pending_dispatch(input_terminal_result,
+                                             input_reconnect_required))
+        return 0;
+    /* A ready pending intent is foreground work. Dispatch it before any
+     * continuously readable auxiliary descriptor can consume another slot.
+     * When storage is not ready, its readiness edge still runs below as the
+     * one background unit for this input sample. */
+    if (startup_ready && storage_ready &&
+        pending_launch.kind != PENDING_LAUNCH_NONE) {
+        *exit_action = dispatch_pending_launch();
+        return 1;
+    }
+    return service_idle_background_after_input(startup_ready, storage_revents,
+                                              storage_polled, power_revents,
+                                              power_polled);
+}
+
+static int application(void) {
+#ifdef BIRD_PROFILE
+    u64 profile_started_ns = bird_profile_now_ns();
+#endif
+    u64 started = boot_ms();
+    u64 deadline;
+    u64 poll_retry_ms = POLL_RETRY_INITIAL_MS;
+    u32 poll_error_count = 0;
+    int exit_action = ACTION_NONE;
+    int input_preopened;
+    int frame_resume_snapshot_ready;
+    int startup_base_ready = 0;
+    struct frame_resume_state frame_resume;
+    struct startup_work_state startup_work;
+    BIRD_PROFILE_APPLICATION_ENTRY(profile_started_ns);
+
+    open_critical_path_anchors();
+    /* On a normal content return, input already exists. Open it before
+     * inspecting framebuffer state so retained interactive rows are never
+     * deliberately preserved while the launcher waits for an input device. */
+    input_preopened = open_fixed_input_once() == 0;
+
+    deadline = boot_ms() + DEVICE_WAIT_MS;
+    while (boot_ms() < deadline) {
+        fb_fd = (int)sys_open("/dev/fb0", O_RDWR);
+        if (fb_fd >= 0) break;
+        sys_nanosleep(1000000L);
+    }
+    if (fb_fd < 0) {
+        log_text("error wait /dev/fb0\n");
+        if (input_preopened) abandon_input();
+        return 2;
+    }
+    if (sys_ioctl(fb_fd, FBIOGET_VSCREENINFO, &fb_var) < 0 ||
+        sys_ioctl(fb_fd, FBIOGET_FSCREENINFO, &fb_fix) < 0) {
+        log_text("error framebuffer ioctl\n");
+        sys_close(fb_fd);
+        if (input_preopened) abandon_input();
+        return 3;
+    }
+    configure_framebuffer_path();
+
+    if (fb_var.bits_per_pixel != 16 && fb_var.bits_per_pixel != 24 && fb_var.bits_per_pixel != 32) {
+        log_text("error unsupported framebuffer depth\n");
+        sys_close(fb_fd);
+        if (input_preopened) abandon_input();
+        return 4;
+    }
+
+    fb = (volatile u8 *)sys_mmap(fb_fix.smem_len);
+    if ((u64)fb >= (u64)-4095L) {
+        log_text("error framebuffer mmap\n");
+        sys_close(fb_fd);
+        if (input_preopened) abandon_input();
+        return 5;
+    }
+    open_static_base();
+
+    startup_work.started_ms = started;
+    startup_work.boot_frame_reused = 0;
+    startup_work.resume_loaded = load_ui_resume();
+    reset_frame_recovery_diagnostics();
+    startup_work.frame_recovery = read_frame_resume_candidate(&frame_resume);
+    frame_resume_snapshot_ready =
+        startup_work.frame_recovery == FRAME_RECOVERY_CANDIDATE;
+    if (!retained_frame_can_wait_for_verification(
+            startup_work.frame_recovery)) {
+        startup_work.boot_frame_reused = 0;
+#ifdef BIRD_REUSE_UBOOT_FRAME
+        if (startup_work.frame_recovery != FRAME_RECOVERY_CANDIDATE &&
+            inherited_boot_frame_matches()) {
+            startup_work.boot_frame_reused = 1;
+            startup_base_ready = 1;
+        } else
+#endif
+        {
+            BIRD_PROFILE_RENDER(PROFILE_RENDER_STARTUP_FULL);
+            draw_startup_base();
+            startup_base_ready = 1;
+        }
+        if (startup_work.frame_recovery == FRAME_RECOVERY_CANDIDATE)
+            startup_work.frame_recovery = FRAME_RECOVERY_MISMATCH;
+    }
+
+    if (input_fd < 0 && open_fixed_input() < 0) {
+        close_static_base();
         sys_munmap((void *)fb, fb_fix.smem_len);
         sys_close(fb_fd);
         return 6;
     }
-    if (STORAGE_READY_SIGNAL[0]) {
-        open_storage_signal_once();
-        log_text("storage_signal=");
-        log_text(storage_signal_fd >= 0 ? "ready" :
-                 (storage_signal_disabled ? "contract-failed" : "missing"));
-        log_text(" boot_ms=");
-        log_number(boot_ms());
-        log_text("\n");
+    if (startup_work.frame_recovery == FRAME_RECOVERY_CANDIDATE)
+        startup_work.frame_recovery =
+            restore_frame_resume_candidate(&frame_resume);
+    else if (frame_resume_snapshot_ready)
+        restore_frame_resume_snapshot(&frame_resume);
+    if (startup_work.frame_recovery == FRAME_RECOVERY_MATCHED) {
+        BIRD_PROFILE_RENDER(PROFILE_RENDER_RECOVERY);
+        draw_recovery_update();
+    } else if (startup_base_ready) {
+        BIRD_PROFILE_RENDER(PROFILE_RENDER_STARTUP_FULL);
+        draw_startup_menu_overlay();
+    } else {
+        BIRD_PROFILE_RENDER(PROFILE_RENDER_STARTUP_FULL);
+        draw_screen();
     }
+    startup_work.interactive_frame_ms = boot_ms();
+    startup_work.marker_ms = boot_ms();
+    startup_work.previous_charging = charging_state;
+    startup_work.previous_battery = battery_percent;
+    startup_work.task = STARTUP_TASK_PROFILE;
     mark_first_frame();
-    BIRD_PROFILE_EMIT_STARTUP();
-    log_text("first_frame boot_ms=");
-    log_number(boot_ms());
-    log_text(" input_ready=1 catalog_entries=");
-    log_number(CATALOG_ENTRY_COUNT);
-    log_text(" media_entries=");
-    log_number(CATALOG_MEDIA_ENTRY_COUNT);
-    log_text("\n");
 
 service_events:
     while (exit_action == ACTION_NONE) {
@@ -3887,33 +5612,18 @@ service_events:
         long count;
         long poll_result;
         u64 timeout_ms = (u64)-1;
-        u64 now;
         u64 poll_count = 1;
         int input_reconnect_after_drain = 0;
         int power_index = -1;
         int storage_index = -1;
+        int startup_ready = !startup_work_pending(&startup_work);
 
         reset_navigation_batch(&navigation_batch);
 
-        if (!STORAGE_READY_SIGNAL[0] && !storage_probe_attempted)
-            probe_storage();
-        if (storage_ready && !favorites_loaded) {
-            int was_loaded = favorites_loaded;
-            load_favorites();
-            if (!was_loaded && favorites_loaded && view == VIEW_FAVORITES) {
-                if (!favorite_count)
-                    selection = 0U;
-                else if (selection >= favorite_count)
-                    selection = favorite_count - 1U;
-                BIRD_PROFILE_RENDER(PROFILE_RENDER_FAVORITES_COMPLETION);
-                draw_content_and_status_update();
-            }
-        }
-        try_power_event_open();
         polls[0].fd = input_fd;
         polls[0].events = POLLIN;
         polls[0].revents = 0;
-        if (power_event_fd >= 0) {
+        if (startup_ready && power_event_fd >= 0) {
             power_index = (int)poll_count;
             polls[poll_count].fd = power_event_fd;
             polls[poll_count].events = POLLIN;
@@ -3923,7 +5633,7 @@ service_events:
         if (storage_ready && pending_launch.kind != PENDING_LAUNCH_NONE) {
             /* Sample already-buffered B/navigation before automatic dispatch. */
             timeout_ms = 0;
-        } else if (!storage_ready) {
+        } else if (startup_ready && !storage_ready) {
             if (storage_signal_fd >= 0) {
                 storage_index = (int)poll_count;
                 polls[poll_count].fd = storage_signal_fd;
@@ -3932,16 +5642,12 @@ service_events:
                 poll_count++;
             }
         }
-        now = boot_ms();
-        if (power_event_fd < 0 && !power_event_disabled) {
-            u64 retry_wait = next_power_event_retry > now
-                                 ? next_power_event_retry - now : 0;
-            if (retry_wait < timeout_ms) timeout_ms = retry_wait;
-        }
-        if (storage_ready && !favorites_loaded) {
-            u64 retry_wait = next_favorites_retry > now
-                                 ? next_favorites_retry - now : 0;
-            if (retry_wait < timeout_ms) timeout_ms = retry_wait;
+        if (!startup_ready) {
+            /* A zero-time input sample precedes every bounded startup task. */
+            timeout_ms = startup_input_timeout(&startup_work, timeout_ms);
+        } else {
+            timeout_ms = idle_background_poll_timeout(startup_ready, timeout_ms);
+            timeout_ms = selected_text_scroll_poll_timeout(timeout_ms);
         }
         if (timeout_ms != (u64)-1) {
             poll_timeout.sec = (s64)(timeout_ms / 1000UL);
@@ -3990,82 +5696,6 @@ service_events:
             }
         }
 
-        if (storage_index >= 0 &&
-            poll_descriptor_failed(polls[storage_index].revents)) {
-            disable_storage_signal(
-                (polls[storage_index].revents & POLLNVAL) ? "poll-nval" :
-                ((polls[storage_index].revents & POLLHUP) ? "poll-hup" :
-                                                           "poll-error"));
-        } else if (storage_index >= 0 &&
-                   (polls[storage_index].revents & POLLIN)) {
-            char storage_event[32];
-            int storage_event_received = 0;
-            for (;;) {
-                count = sys_read(storage_signal_fd, storage_event,
-                                 sizeof(storage_event));
-                if (count > 0) {
-                    storage_event_received = 1;
-                    continue;
-                }
-                if (count == -EINTR) continue;
-                if (count < 0 && count != -EAGAIN)
-                    disable_storage_signal("read-error");
-                break;
-            }
-            if (storage_event_received) {
-                log_text("storage_signal_received boot_ms=");
-                log_number(boot_ms());
-                log_text("\n");
-                receive_storage_handoff_signal();
-            }
-        }
-
-        if (power_index >= 0 &&
-            poll_descriptor_failed(polls[power_index].revents)) {
-            schedule_power_event_retry(
-                (polls[power_index].revents & POLLNVAL) ? "poll-nval" :
-                ((polls[power_index].revents & POLLHUP) ? "poll-hup" :
-                                                         "poll-error"));
-        } else if (power_index >= 0 && (polls[power_index].revents & POLLIN)) {
-            char uevent[2049];
-            int previous = charging_state;
-            int previous_percent = battery_percent;
-            int power_changed = 0;
-            for (;;) {
-                count = sys_read(power_event_fd, uevent, sizeof(uevent) - 1U);
-                if (count > 0) {
-                    uevent[count] = 0;
-                    if (is_power_supply_uevent(uevent, (u64)count))
-                        power_changed = 1;
-                    continue;
-                }
-                if (count == -EINTR) continue;
-                if (count < 0 && count != -EAGAIN)
-                    schedule_power_event_retry("read-error");
-                break;
-            }
-            if (power_changed) {
-                charging_state = read_charging_state();
-                battery_percent = read_battery_percent();
-            }
-            if (power_changed && (charging_state != previous ||
-                                  battery_percent != previous_percent)) {
-                log_text("power battery_state=");
-                log_text(charging_state == 1 ? "charging" :
-                         (charging_state == 0 ? "not-charging" : "unavailable"));
-                log_text(" boot_ms=");
-                log_number(boot_ms());
-                log_text(" percent=");
-                if (battery_percent >= 0)
-                    log_number((u64)battery_percent);
-                else
-                    log_text("unavailable");
-                log_text("\n");
-                BIRD_PROFILE_RENDER(PROFILE_RENDER_BATTERY);
-                draw_battery_update();
-            }
-        }
-
         for (;;) {
             count = sys_read(input_fd, &event, sizeof(event));
             if (count == (long)sizeof(event)) {
@@ -4100,11 +5730,34 @@ service_events:
             !input_drain_allows_pending_dispatch(
                 count, input_reconnect_after_drain))
             continue;
-        if (exit_action == ACTION_NONE && storage_ready &&
-            pending_launch.kind != PENDING_LAUNCH_NONE)
-            exit_action = dispatch_pending_launch();
+        if (service_startup_work_after_input_sample(
+                &startup_work, exit_action, count,
+                input_reconnect_after_drain)) {
+            continue;
+        }
+        if (startup_ready && service_selected_text_scroll()) continue;
+        if (service_post_input_work(
+                startup_ready,
+                storage_index >= 0 ? polls[storage_index].revents : 0,
+                storage_index >= 0,
+                power_index >= 0 ? polls[power_index].revents : 0,
+                power_index >= 0, &exit_action, count,
+                input_reconnect_after_drain)) {
+            /* Every foreground dispatch or deferred unit yields before any
+             * further background work. A failed dispatch therefore exposes
+             * its status to a fresh input sample too. */
+            continue;
+        }
     }
 
+    if (action_preserves_frame(exit_action)) {
+        if (publish_frame_resume() < 0) {
+            clear_frame_resume();
+            log_text("frame_recovery_publish result=failed\n");
+        } else {
+            log_text("frame_recovery_publish result=ready\n");
+        }
+    }
     if (publish_handoff_action(exit_action) < 0) {
         exit_action = ACTION_NONE;
         goto service_events;
@@ -4117,7 +5770,9 @@ service_events:
     else if (exit_action == ACTION_PORTMASTER)
         log_text("exit reason=portmaster-request boot_ms=");
     else if (exit_action == ACTION_RELOAD)
-        log_text("exit reason=b-button boot_ms=");
+        log_text("exit reason=user-reload boot_ms=");
+    else if (exit_action == ACTION_REBOOT)
+        log_text("exit reason=reboot-request boot_ms=");
     else
         log_text("exit reason=runtime-recovery boot_ms=");
     log_number(boot_ms());
@@ -4125,6 +5780,7 @@ service_events:
     if (power_event_fd >= 0) sys_close(power_event_fd);
     if (storage_signal_fd >= 0) sys_close(storage_signal_fd);
     sys_close(input_fd);
+    close_static_base();
     sys_munmap((void *)fb, fb_fix.smem_len);
     sys_close(fb_fd);
     if (config_dir_fd >= 0) sys_close(config_dir_fd);
@@ -4135,7 +5791,7 @@ service_events:
     BIRD_PROFILE_EXIT_AND_EMIT();
     if (exit_action == ACTION_LAUNCH || exit_action == ACTION_SHUTDOWN ||
         exit_action == ACTION_PORTMASTER || exit_action == ACTION_RELOAD ||
-        exit_action == ACTION_RECOVER)
+        exit_action == ACTION_REBOOT || exit_action == ACTION_RECOVER)
         return exit_action;
     return 0;
 }

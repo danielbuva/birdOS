@@ -24,8 +24,8 @@ RG34XX-SP gate on 2026-07-26. Its canonical deploy-manifest digest is
 
 - Language: English only.
 - Startup destination: the custom launcher's four-item main menu.
-- Network: completely off at boot; loaded only for an explicit network task
-  such as PortMaster or scraping.
+- Network: completely off at boot; loaded only for the explicit PortMaster
+  network task.
 - Game discovery: a generated cache, never a boot-time directory scan.
 - Storage readiness: the cached collection remains browsable while storage is
   made ready asynchronously; launching is gated on the selected ROM path.
@@ -37,9 +37,13 @@ RG34XX-SP gate on 2026-07-26. Its canonical deploy-manifest digest is
   closure, with birdOS replacing its frontend and selected generic policy.
 - Boot recovery: loader or post-flash verification failure selects the
   preserved clean-root fallback immediately; repeated full-stack startup
-  failure selects it at the fixed attempt threshold. Both paths verify the
-  recovery assets before changing the selector. B on the main menu reloads
-  birdOS; it does not choose the boot fallback or enter another frontend.
+  failure before an honest interactive frame selects it at the fixed attempt
+  threshold. The verified runtime plus input-open framebuffer marker commits
+  boot health before the graphical supervisor, so a usable-menu refresh or
+  reboot cannot consume the threshold. Both fallback paths verify the recovery
+  assets before changing the selector. B on the main menu refreshes birdOS
+  in-process; it neither opens a stock frontend nor chooses or modifies the
+  boot fallback.
 
 ## Launcher menu
 
@@ -49,16 +53,21 @@ The permanent fixed shell starts with exactly:
 2. Listen
 3. Read
 4. Watch
+5. Tools
+6. Quit
 
 It embeds only its English bitmap glyphs, draws directly to the Linux
 framebuffer, reads evdev directly, and remains the permanent shell. B from Home
-requests a bounded birdOS launcher reload; there is no inactivity handoff to
-another frontend and no UI route into the boot fallback.
+refreshes that frame in-process and is not a UI route into the boot fallback.
 
-Play contains Library, Favorites, PortMaster and Shutdown. Library opens the
-embedded 5,953-title, 27-system game catalogue. It is browsable before ROM
+Play contains Systems and Favorites. Systems opens the
+embedded 5,984-title, 27-system game catalogue. It is browsable before ROM
 storage mounts; storage readiness and individual ROM availability remain
 separate.
+
+Tools currently contains only PortMaster. Quit contains Reload, Reboot and
+Shutdown. These remain explicit launcher handoffs rather than direct power or
+process-management syscalls from the UI.
 
 Favorites is an exact-path cache, not a scan. Y adds or removes the selected
 title, an atomic text file persists the selection across boots and catalogue
@@ -70,17 +79,20 @@ releases display and input ownership while content runs, then returns to the
 exact previous view and row. No automatic core discovery is part of this
 device.
 
-Listen and Watch open their own compiled category/file catalogues. The current
-card has three MP3s below `MEDIA/LISTEN/AW` and six films below
-`MEDIA/WATCH/MOVIES`. Both use the firmware-native MPV bridge and controller
-map. Read is a deliberate empty destination until its reader and supported
-formats are fixed. None of these views scans storage at boot.
+Listen, Read and Watch open their own compiled category/file catalogues. The
+current card contributes 51 audio files, five EPUB/PDF books and eight films.
+Listen and Watch use the firmware-native MPV bridge; Read opens the exact
+selected EPUB or PDF through the installed KOReader PortMaster application.
+None of these views scans storage at boot.
 
-PortMaster is the explicit network boundary: its selected session may acquire
-Wi-Fi, resolver and time services, then release them before returning. Network
-profile setup remains a separate device acceptance item and never enters
-offline boot. Shutdown requests the normal ordered systemd poweroff path from
-the birdOS menu; neither action enters another frontend.
+PortMaster is an explicit network boundary: its selected session may acquire
+Wi-Fi, resolver and time services, then release them before returning. Saved
+network configuration is used only by that direct scoped session; network setup
+never enters offline boot. The currently accepted provider is the official
+`2026.07.28-1212` managed inventory. Its runtime-generated Python caches are
+never trusted as provider code: every PortMaster, Port and KOReader execution
+uses a fresh tmpfs `PYTHONPYCACHEPREFIX` and disables bytecode writes. Shutdown
+requests the normal ordered systemd poweroff path from the birdOS menu.
 
 The active boot path has no animation or startup sound while earliest
 interaction is being optimized. The fixed controls worker owns manual
@@ -106,10 +118,11 @@ idle pass now blocks on the fixed evdev descriptor instead of waking every
 later optimization targets rather than reasons to delay larger boot and init
 wins.
 
-## Decisions reserved for the visual phase
+## Further visual decisions
 
-- Final color palette and wallpaper.
-- Final font design and sizes.
+- Replacement artwork for the currently pinned static wallpaper.
+- Whether any animation can justify a fixed framebuffer-write and battery
+  budget without adding an ordinary idle wakeup.
 - Animation motion and duration.
 - Boot sound.
 - Whether History/Resume gets a permanent first-level entry.

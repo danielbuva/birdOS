@@ -12,6 +12,8 @@ case "$BIRD_HOST_TEST_MODE" in
 		BIRD_SYSTEM_REL=MUOS/runtime/ROCKNIX-SYSTEM
 		BIRD_STORAGE_REL=MUOS/runtime/ROCKNIX-STORAGE
 		BIRD_STATE_REL=MUOS/Bird/boot-state
+		BIRD_FIRST_FRAME=/run/muos/bird-first-frame-ready
+		BIRD_FIRST_FRAME_WAIT_TICKS=1000
 		;;
 	1)
 		BIRD_FLASH_ROOT=${BIRD_FLASH_ROOT:-/flash}
@@ -20,9 +22,15 @@ case "$BIRD_HOST_TEST_MODE" in
 		BIRD_SYSTEM_REL=${BIRD_SYSTEM_REL:-MUOS/runtime/ROCKNIX-SYSTEM}
 		BIRD_STORAGE_REL=${BIRD_STORAGE_REL:-MUOS/runtime/ROCKNIX-STORAGE}
 		BIRD_STATE_REL=${BIRD_STATE_REL:-MUOS/Bird/boot-state}
+		BIRD_FIRST_FRAME=${BIRD_FIRST_FRAME:?}
+		BIRD_FIRST_FRAME_WAIT_TICKS=${BIRD_FIRST_FRAME_WAIT_TICKS:-2}
 		case "$BIRD_FLASH_ROOT:$BIRD_DATA_MOUNT" in
 			/var/folders/*:/var/folders/*|/private/tmp/*:/private/tmp/*|/tmp/*:/tmp/*) ;;
 			*) printf '%s\n' 'unsafe Bird post-flash test paths' >&2; return 1 ;;
+		esac
+		case "$BIRD_FIRST_FRAME" in
+			/var/folders/*|/private/tmp/*|/tmp/*) ;;
+			*) printf '%s\n' 'unsafe Bird first-frame test path' >&2; return 1 ;;
 		esac
 		case "$BIRD_DATA_DEVICE" in /dev/bird-test) ;; *) return 1 ;; esac
 		;;
@@ -54,7 +62,10 @@ write_attempts() (
 	VALUE=$1
 	TEMP=$STATE_DIR/.attempts.$$
 	umask 077
-	printf '%s\n' "$VALUE" >"$TEMP" || return 1
+	printf '%s\n' "$VALUE" >"$TEMP" || {
+		rm -f "$TEMP"
+		return 1
+	}
 	[ "$(cat "$TEMP" 2>/dev/null)" = "$VALUE" ] || {
 		rm -f "$TEMP"
 		return 1
@@ -69,6 +80,25 @@ write_attempts() (
 	}
 	[ "$(cat "$ATTEMPTS_FILE" 2>/dev/null)" = "$VALUE" ] || return 1
 	sync || return 1
+)
+
+commit_first_usable_frame() (
+	# This is the boot-health boundary: the release runtime has verified and
+	# the launcher has published a framebuffer barrier reached with input open.
+	# Do not defer the reset to the later graphical supervisor; a deliberate
+	# user refresh or reboot after an already-usable menu is not a failed boot.
+	# Return 2 when the marker times out, 3 when the marker exists but its state
+	# reset cannot be committed, and 4 when the bounded wait itself fails. This
+	# distinction prevents persistence trouble from denying an observed usable
+	# frame while still allowing a genuinely marker-less third boot to recover.
+	COUNT=0
+	while [ ! -f "$BIRD_FIRST_FRAME" ] && \
+		[ "$COUNT" -lt "$BIRD_FIRST_FRAME_WAIT_TICKS" ]; do
+		"$BIRD_LOADER_BUSYBOX" usleep 20000 || return 4
+		COUNT=$((COUNT + 1))
+	done
+	[ -f "$BIRD_FIRST_FRAME" ] || return 2
+	write_attempts 0 || return 3
 )
 
 fallback_boot() {
@@ -261,13 +291,6 @@ write_attempts "$ATTEMPTS" || {
 	return 1
 }
 
-# Two failed full-stack starts are enough evidence to return to the preserved
-# clean-root kernel. The fallback is selected before the third candidate boot.
-if [ "$ATTEMPTS" -ge 3 ]; then
-	fallback_boot bird-attempts 'Candidate retry budget exhausted'
-	return 1
-fi
-
 [ -f "$SYSTEM_SOURCE" ] || {
 	fallback_boot bird-system "Missing $SYSTEM_SOURCE"
 	return 1
@@ -309,3 +332,48 @@ mount --bind "$SYSTEM_SOURCE" "$BIRD_FLASH_ROOT/SYSTEM" || {
 BIRD_SYSTEM_BIND_MOUNTED=1
 
 export BIRD_DATA_MOUNT BIRD_STORAGE_REL BIRD_ATTEMPTS_REL BIRD_RELEASE
+FIRST_FRAME_COMMIT_RESULT=0
+commit_first_usable_frame || FIRST_FRAME_COMMIT_RESULT=$?
+
+# A marker that appears on the final polling boundary is still authoritative.
+# If the wait command itself failed at that boundary, make one direct reset
+# attempt instead of classifying an already-visible interactive menu as absent.
+FIRST_FRAME_OBSERVED=0
+case "$FIRST_FRAME_COMMIT_RESULT" in
+	0)
+		FIRST_FRAME_OBSERVED=1
+		;;
+	3)
+		FIRST_FRAME_OBSERVED=1
+		;;
+	*)
+		if [ -f "$BIRD_FIRST_FRAME" ]; then
+			FIRST_FRAME_OBSERVED=1
+			FIRST_FRAME_COMMIT_RESULT=0
+			write_attempts 0 || FIRST_FRAME_COMMIT_RESULT=3
+		fi
+		;;
+esac
+
+if [ "$FIRST_FRAME_COMMIT_RESULT" -eq 3 ]; then
+	# The honest frame wins even when p6 cannot persist its reset. The final-root
+	# supervisor observes the same marker and retains its bounded reset retry.
+	{ printf '%s\n' \
+		'bird post-flash: first usable frame observed; attempt reset deferred' \
+		>/dev/kmsg; } 2>/dev/null || :
+elif [ "$FIRST_FRAME_COMMIT_RESULT" -ne 0 ]; then
+	# The final-root supervisor retains its existing child/replacement health
+	# race and can commit the attempt later. Absence here is not permission to
+	# replace a verified release with the recovery UI.
+	{ printf 'bird post-flash: first usable frame unavailable result=%s\n' \
+		"$FIRST_FRAME_COMMIT_RESULT" >/dev/kmsg; } 2>/dev/null || :
+fi
+
+# Two starts that never reach a usable menu consume the fixed budget, but the
+# third boot still gets to prove its current interactive frame. Never replace
+# an already-usable release merely because older boots were interrupted before
+# their health transaction completed.
+if [ "$FIRST_FRAME_OBSERVED" -eq 0 ] && [ "$ATTEMPTS" -ge 3 ]; then
+	fallback_boot bird-attempts 'Candidate retry budget exhausted'
+	return 1
+fi

@@ -19,7 +19,7 @@
 static long fake_now_ms;
 static long fake_now_sub_ms_ns;
 static long fake_open_result;
-#define FAKE_OPEN_SCRIPT_MAX 16U
+#define FAKE_OPEN_SCRIPT_MAX 64U
 static long fake_open_script[FAKE_OPEN_SCRIPT_MAX];
 static unsigned fake_open_script_count;
 static unsigned fake_open_script_index;
@@ -36,11 +36,32 @@ static unsigned fake_unlink_calls;
 static char fake_unlink_path[FAKE_OPEN_PATH_BYTES];
 static int fake_unlinked_launch_request;
 static unsigned fake_close_calls;
+static long fake_ioctl_result;
+#define FAKE_IOCTL_SCRIPT_MAX 64U
+static long fake_ioctl_script[FAKE_IOCTL_SCRIPT_MAX];
+static const char *fake_ioctl_name_script[FAKE_IOCTL_SCRIPT_MAX];
+static unsigned fake_ioctl_script_count;
+static unsigned fake_ioctl_script_index;
+static unsigned fake_ioctl_calls;
 static long fake_write_result;
+#define FAKE_WRITE_CAPTURE_BYTES 16384U
+static char fake_write_capture[FAKE_WRITE_CAPTURE_BYTES];
+static u64 fake_write_capture_bytes;
+static int fake_capture_file_writes;
 static const char *fake_payload;
 static u64 fake_payload_bytes;
 static u64 fake_payload_offset;
 static long fake_terminal_read;
+#define FAKE_READ_SCRIPT_MAX 64U
+struct fake_read_step {
+    long result;
+    const char *payload;
+};
+static struct fake_read_step fake_read_script[FAKE_READ_SCRIPT_MAX];
+static unsigned fake_read_script_count;
+static unsigned fake_read_script_index;
+static int fake_read_fd[FAKE_READ_SCRIPT_MAX * 2U];
+static unsigned fake_read_fd_count;
 static unsigned fake_sleep_calls;
 static unsigned fake_clock_calls;
 static s64 fake_last_sleep_ns;
@@ -87,6 +108,19 @@ long bird_test_syscall6(long number, long a0, long a1, long a2, long a3,
         fake_close_calls++;
         return 0;
     }
+    if (number == 29) {
+        long result = fake_ioctl_result;
+        const char *name = 0;
+        if (fake_ioctl_script_index < fake_ioctl_script_count) {
+            result = fake_ioctl_script[fake_ioctl_script_index];
+            name = fake_ioctl_name_script[fake_ioctl_script_index];
+            fake_ioctl_script_index++;
+        }
+        fake_ioctl_calls++;
+        if (result >= 0 && (u64)a1 == EVIOCGNAME_128 && name)
+            snprintf((char *)a2, 128U, "%s", name);
+        return result;
+    }
     if (number == 82) return 0;
     if (number == 35) {
         fake_unlink_calls++;
@@ -108,6 +142,20 @@ long bird_test_syscall6(long number, long a0, long a1, long a2, long a3,
     if (number == 63) {
         u64 available;
         u64 bytes;
+        if (fake_read_fd_count < sizeof(fake_read_fd) / sizeof(fake_read_fd[0]))
+            fake_read_fd[fake_read_fd_count++] = (int)a0;
+        if (fake_read_script_index < fake_read_script_count) {
+            struct fake_read_step *step =
+                &fake_read_script[fake_read_script_index++];
+            if (step->result <= 0) return step->result;
+            bytes = (u64)step->result < (u64)a2
+                        ? (u64)step->result : (u64)a2;
+            if (step->payload)
+                memcpy((void *)a1, step->payload, (size_t)bytes);
+            else
+                memset((void *)a1, 0, (size_t)bytes);
+            return (long)bytes;
+        }
         if (fake_payload_offset >= fake_payload_bytes)
             return fake_terminal_read;
         available = fake_payload_bytes - fake_payload_offset;
@@ -128,6 +176,15 @@ long bird_test_syscall6(long number, long a0, long a1, long a2, long a3,
         }
 #endif
         if (fake_write_result) return fake_write_result;
+        if (fake_capture_file_writes && a0 == FAKE_FD &&
+            fake_write_capture_bytes < FAKE_WRITE_CAPTURE_BYTES) {
+            u64 available = FAKE_WRITE_CAPTURE_BYTES -
+                            fake_write_capture_bytes;
+            u64 bytes = (u64)a2 < available ? (u64)a2 : available;
+            memcpy(fake_write_capture + fake_write_capture_bytes,
+                   (const void *)a1, (size_t)bytes);
+            fake_write_capture_bytes += bytes;
+        }
         return a2; /* discard production diagnostics */
     }
     if (number == 101) {
@@ -162,12 +219,55 @@ static void reset_fake_file(long open_result, const char *payload,
     fake_unlink_calls = 0;
     fake_unlink_path[0] = 0;
     fake_unlinked_launch_request = 0;
+    fake_ioctl_result = -EBADF_LINUX;
+    fake_ioctl_script_count = 0;
+    fake_ioctl_script_index = 0;
+    fake_ioctl_calls = 0;
     fake_write_result = 0;
     fake_payload = payload ? payload : "";
     fake_payload_bytes = payload ? (u64)strlen(payload) : 0;
     fake_payload_offset = 0;
     fake_terminal_read = terminal_read;
+    fake_read_script_count = 0U;
+    fake_read_script_index = 0U;
+    fake_read_fd_count = 0U;
     fake_clock_calls = 0;
+    fake_write_capture_bytes = 0U;
+    fake_capture_file_writes = 0;
+}
+
+static void begin_fake_file_write_capture(void) {
+    fake_write_capture_bytes = 0U;
+    fake_capture_file_writes = 1;
+}
+
+static void end_fake_file_write_capture(void) {
+    fake_capture_file_writes = 0;
+}
+
+static void set_fake_read_script(const struct fake_read_step *steps,
+                                 unsigned count) {
+    unsigned index;
+    if (count > FAKE_READ_SCRIPT_MAX) count = FAKE_READ_SCRIPT_MAX;
+    for (index = 0; index < count; index++)
+        fake_read_script[index] = steps[index];
+    fake_read_script_count = count;
+    fake_read_script_index = 0U;
+}
+
+static unsigned fake_read_count_for_fd(int fd) {
+    unsigned count = 0U;
+    unsigned index;
+    for (index = 0; index < fake_read_fd_count; index++)
+        if (fake_read_fd[index] == fd) count++;
+    return count;
+}
+
+static int fake_opened_path(const char *path) {
+    unsigned index;
+    for (index = 0U; index < fake_open_path_count; index++)
+        if (strcmp(fake_open_path[index], path) == 0) return 1;
+    return 0;
 }
 
 static void set_fake_open_script(const long *results, unsigned count) {
@@ -177,6 +277,18 @@ static void set_fake_open_script(const long *results, unsigned count) {
         fake_open_script[index] = results[index];
     fake_open_script_count = count;
     fake_open_script_index = 0;
+}
+
+static void set_fake_ioctl_script(const long *results, const char **names,
+                                  unsigned count) {
+    unsigned index;
+    if (count > FAKE_IOCTL_SCRIPT_MAX) count = FAKE_IOCTL_SCRIPT_MAX;
+    for (index = 0; index < count; index++) {
+        fake_ioctl_script[index] = results[index];
+        fake_ioctl_name_script[index] = names ? names[index] : 0;
+    }
+    fake_ioctl_script_count = count;
+    fake_ioctl_script_index = 0;
 }
 
 static void reset_favorites(void) {
@@ -211,6 +323,269 @@ static void setup_test_framebuffer(u32 pages, u8 *memory) {
     fb_fix.smem_len = fb_fix.line_length * TEST_FB_HEIGHT * pages;
     fb = memory;
     configure_framebuffer_path();
+}
+
+static u64 host_catalog_string_hash(const char *value) {
+    u64 hash = 1469598103934665603UL;
+    while (*value) {
+        hash ^= (u8)*value++;
+        hash *= 1099511628211UL;
+    }
+    return hash;
+}
+
+static int run_phase7_catalog_and_favorites_tests(void) {
+    char favorites_file[1024];
+    char expected_file[8192];
+    char expected_request[8192];
+    static const char utf8_e_acute[] = {(char)0xc3, (char)0xa9, 0};
+    static const char utf8_e_grave[] = {(char)0xc3, (char)0xa8, 0};
+    struct frame_resume_state snapshot;
+    u32 index;
+    u32 system_index;
+    u32 media_index;
+    u64 compact_record_bytes;
+    const char *retained_name;
+    const char *retained_path;
+    u64 retained_name_hash;
+    u64 retained_path_hash;
+    int ok = 1;
+
+    compact_record_bytes =
+        sizeof(catalog_system_name_offsets) +
+        sizeof(catalog_system_core_offsets) + sizeof(catalog_system_firsts) +
+        sizeof(catalog_system_counts) + sizeof(catalog_system_launch_kinds) +
+        sizeof(catalog_entry_name_offsets) + sizeof(catalog_entry_path_offsets) +
+        sizeof(catalog_entry_systems) +
+        sizeof(catalog_media_category_name_offsets) +
+        sizeof(catalog_media_category_core_offsets) +
+        sizeof(catalog_media_category_firsts) +
+        sizeof(catalog_media_category_counts) +
+        sizeof(catalog_media_category_sections) +
+        sizeof(catalog_media_category_launch_kinds) +
+        sizeof(catalog_media_entry_name_offsets) +
+        sizeof(catalog_media_entry_path_offsets) +
+        sizeof(catalog_media_entry_categories);
+    ok &= check(sizeof(catalog_string_pool) == CATALOG_STRING_POOL_BYTES &&
+                    catalog_string_pool[CATALOG_STRING_POOL_BYTES - 1U] == 0 &&
+                    compact_record_bytes == CATALOG_RECORD_BYTES &&
+                    sizeof(catalog_entry_path_order_xor) ==
+                        CATALOG_PATH_ORDER_BYTES &&
+                    CATALOG_METADATA_BYTES ==
+                        CATALOG_RECORD_BYTES + CATALOG_PATH_ORDER_BYTES &&
+                    CATALOG_STATIC_BYTES ==
+                        CATALOG_STRING_POOL_BYTES + CATALOG_METADATA_BYTES,
+                "compact catalog byte accounting does not match its arrays");
+    ok &= check(CATALOG_STRING_POOL_BYTES <= 460000U &&
+                    CATALOG_RECORD_BYTES <= 56U * 1024U &&
+                    CATALOG_PATH_ORDER_BYTES <= 16U * 1024U,
+                "compact catalog exceeded its explicit static-data budget");
+
+    retained_name = catalog_entry_name(0U);
+    retained_path = catalog_entry_path(CATALOG_ENTRY_COUNT - 1U);
+    retained_name_hash = host_catalog_string_hash(retained_name);
+    retained_path_hash = host_catalog_string_hash(retained_path);
+
+    /* The generated representation is private to the accessor block. Verify
+     * its stable logical contract before Favorites depends on it. */
+    for (system_index = 0U; system_index < CATALOG_SYSTEM_COUNT;
+         system_index++) {
+        u32 first = catalog_system_first(system_index);
+        u32 count = catalog_system_entry_count(system_index);
+        ok &= check(catalog_system_name(system_index)[0] &&
+                        catalog_system_core(system_index)[0] &&
+                        first <= CATALOG_ENTRY_COUNT &&
+                        count <= CATALOG_ENTRY_COUNT - first,
+                    "catalog system accessor returned an invalid range");
+        for (index = first; index < first + count; index++)
+            ok &= check(catalog_entry_system(index) == system_index,
+                        "catalog entry accessor lost its system identity");
+    }
+    for (index = 0U; index < CATALOG_ENTRY_COUNT; index++) {
+        u32 catalog_index = catalog_entry_path_order_index(index);
+        const char *path = catalog_entry_path(catalog_index);
+        ok &= check(catalog_index < CATALOG_ENTRY_COUNT &&
+                        catalog_entry_name(catalog_index)[0] && path[0] == '/' &&
+                        catalog_find_entry_by_path(path, (u32)strlen(path)) ==
+                            catalog_index,
+                    "catalog path index failed an accessor round trip");
+        if (index) {
+            u32 previous = catalog_entry_path_order_index(index - 1U);
+            ok &= check(strcmp(catalog_entry_path(previous), path) < 0,
+                        "catalog path index is not strictly ordered");
+        }
+    }
+    {
+        const char *missing = "/mnt/mmc/ROMS/not-in-catalog.bird";
+        ok &= check(catalog_find_entry_by_path(
+                        missing, (u32)strlen(missing)) == CATALOG_ENTRY_COUNT,
+                    "catalog path index returned a false match");
+    }
+    ok &= check(compare_catalog_path("abc", 3U, "abc") == 0 &&
+                    compare_catalog_path("abc", 3U, "abcd") < 0 &&
+                    compare_catalog_path("abcd", 4U, "abc") > 0 &&
+                    compare_catalog_path(utf8_e_grave, 2U,
+                                         utf8_e_acute) < 0 &&
+                    compare_catalog_path(utf8_e_acute, 2U,
+                                         utf8_e_grave) > 0,
+                "catalog path comparator lost prefix or unsigned-byte order");
+
+    for (media_index = 0U; media_index < CATALOG_MEDIA_CATEGORY_COUNT;
+         media_index++) {
+        u32 first = catalog_media_category_first(media_index);
+        u32 count = catalog_media_category_entry_count(media_index);
+        ok &= check(catalog_media_category_name(media_index)[0] &&
+                        catalog_media_category_core(media_index)[0] &&
+                        first <= CATALOG_MEDIA_ENTRY_COUNT &&
+                        count <= CATALOG_MEDIA_ENTRY_COUNT - first,
+                    "media category accessor returned an invalid range");
+        for (index = first; index < first + count; index++)
+            ok &= check(catalog_media_entry_category(index) == media_index &&
+                            catalog_media_entry_name(index)[0] &&
+                            catalog_media_entry_path(index)[0] == '/',
+                        "media entry accessor lost its category identity");
+    }
+    ok &= check(host_catalog_string_hash(retained_name) == retained_name_hash &&
+                    host_catalog_string_hash(retained_path) ==
+                        retained_path_hash &&
+                    retained_name == catalog_entry_name(0U) &&
+                    retained_path ==
+                        catalog_entry_path(CATALOG_ENTRY_COUNT - 1U),
+                "catalog accessors did not return stable pooled pointers");
+
+    /* Favorites remain in catalog order regardless of toggle order. Ordinal
+     * mapping is O(1), duplicate mutations are idempotent, and a removal
+     * shifts only the fixed index suffix while retaining bitmap membership. */
+    clear_favorites();
+    set_favorite(CATALOG_ENTRY_COUNT - 1U, 1);
+    set_favorite(2U, 1);
+    set_favorite(100U, 1);
+    set_favorite(2U, 1);
+    ok &= check(favorite_count == 3U && favorite_catalog_index(0U) == 2U &&
+                    favorite_catalog_index(1U) == 100U &&
+                    favorite_catalog_index(2U) == CATALOG_ENTRY_COUNT - 1U &&
+                    favorite_catalog_index(3U) == CATALOG_ENTRY_COUNT,
+                "Favorites index did not preserve catalog ordering");
+    set_favorite(100U, 0);
+    set_favorite(100U, 0);
+    ok &= check(favorite_count == 2U && is_favorite(2U) &&
+                    !is_favorite(100U) &&
+                    is_favorite(CATALOG_ENTRY_COUNT - 1U) &&
+                    favorite_catalog_index(0U) == 2U &&
+                    favorite_catalog_index(1U) == CATALOG_ENTRY_COUNT - 1U,
+                "Favorites removal left its fixed index inconsistent");
+
+    /* Persistence remains exact-path based and may arrive in any order with
+     * duplicates. Publication sorts only the in-memory ordinal index; it does
+     * not change membership or the on-disk compatibility contract. */
+    {
+        const char *first_path = catalog_entry_path(0U);
+        const char *middle_path =
+            catalog_entry_path(CATALOG_ENTRY_COUNT / 2U);
+        const char *last_path = catalog_entry_path(CATALOG_ENTRY_COUNT - 1U);
+        int bytes = snprintf(favorites_file, sizeof(favorites_file),
+                             "%s\n%s\n%s\n%s\n", last_path, first_path,
+                             middle_path, first_path);
+        ok &= check(bytes > 0 && (u32)bytes < sizeof(favorites_file),
+                    "Favorites path-order fixture exceeded its host buffer");
+        reset_favorites();
+        reset_fake_file(FAKE_FD, favorites_file, 0);
+        load_favorites();
+        ok &= check(favorites_loaded && favorite_count == 3U &&
+                        favorite_catalog_index(0U) == 0U &&
+                        favorite_catalog_index(1U) ==
+                            CATALOG_ENTRY_COUNT / 2U &&
+                        favorite_catalog_index(2U) ==
+                            CATALOG_ENTRY_COUNT - 1U,
+                    "Favorites path load did not publish catalog order");
+
+        bytes = snprintf(expected_file, sizeof(expected_file), "%s\n%s\n%s\n",
+                         first_path, middle_path, last_path);
+        ok &= check(bytes > 0 && (u32)bytes < sizeof(expected_file),
+                    "Favorites save fixture exceeded its host buffer");
+        reset_fake_file(FAKE_FD, 0, 0);
+        begin_fake_file_write_capture();
+        ok &= check(save_favorites() == 0,
+                    "indexed Favorites failed its exact-byte save");
+        end_fake_file_write_capture();
+        ok &= check(fake_write_capture_bytes == (u64)bytes &&
+                        memcmp(fake_write_capture, expected_file,
+                               (size_t)bytes) == 0,
+                    "Favorites save changed exact path order or bytes");
+    }
+
+    /* Accessor wiring must preserve the exact content-handoff protocol and
+     * recent-file path, not merely return nonempty fields. */
+    runtime_dir_fd = FAKE_FD;
+    storage_dir_fd = FAKE_FD;
+    config_dir_fd = FAKE_FD;
+    view = VIEW_GAMES;
+    active_system = 0U;
+    selection = 0U;
+    reset_fake_file(FAKE_FD, 0, 0);
+    begin_fake_file_write_capture();
+    index = (u32)snprintf(
+        expected_request, sizeof(expected_request), "%u\n%s\n%s\n%s\n",
+        catalog_system_launch_kind(0U), catalog_system_core(0U),
+        catalog_entry_name(0U), catalog_entry_path(0U));
+    ok &= check(index < sizeof(expected_request) &&
+                    launch_catalog_entry(0U) == ACTION_LAUNCH,
+                "game accessor handoff did not launch");
+    end_fake_file_write_capture();
+    ok &= check(
+        fake_write_capture_bytes ==
+                (u64)index + sizeof(struct ui_resume_state) +
+                    strlen(catalog_entry_path(0U)) + 1U &&
+            memcmp(fake_write_capture, expected_request, index) == 0 &&
+            memcmp(fake_write_capture + fake_write_capture_bytes -
+                       strlen(catalog_entry_path(0U)) - 1U,
+                   catalog_entry_path(0U),
+                   strlen(catalog_entry_path(0U))) == 0 &&
+            fake_write_capture[fake_write_capture_bytes - 1U] == '\n',
+        "game request or recent path changed through catalog accessors");
+
+    view = VIEW_MEDIA_ENTRIES;
+    active_media_category = 0U;
+    media_section = CATALOG_MEDIA_SECTION_LISTEN;
+    selection = 0U;
+    reset_fake_file(FAKE_FD, 0, 0);
+    begin_fake_file_write_capture();
+    index = (u32)snprintf(
+        expected_request, sizeof(expected_request), "%u\n%s\n%s\n%s\n",
+        catalog_media_category_launch_kind(0U),
+        catalog_media_category_core(0U), catalog_media_entry_name(0U),
+        catalog_media_entry_path(0U));
+    ok &= check(index < sizeof(expected_request) &&
+                    launch_media_entry(0U, 0U) == ACTION_LAUNCH,
+                "media accessor handoff did not launch");
+    end_fake_file_write_capture();
+    ok &= check(fake_write_capture_bytes ==
+                        (u64)index + sizeof(struct ui_resume_state) &&
+                    memcmp(fake_write_capture, expected_request, index) == 0,
+                "media request changed through catalog accessors");
+    runtime_dir_fd = -1;
+    storage_dir_fd = -1;
+    config_dir_fd = -1;
+
+    memset(&snapshot, 0, sizeof(snapshot));
+    snapshot.favorites_loaded = 1U;
+    snapshot.favorite_count = 2U;
+    bitmap_set_favorite(snapshot.favorites, 3U, 1);
+    bitmap_set_favorite(snapshot.favorites, CATALOG_ENTRY_COUNT - 2U, 1);
+    restore_frame_resume_snapshot(&snapshot);
+    ok &= check(favorites_loaded && favorite_count == 2U &&
+                    favorite_catalog_index(0U) == 3U &&
+                    favorite_catalog_index(1U) ==
+                        CATALOG_ENTRY_COUNT - 2U,
+                "retained Favorites bitmap did not rebuild ordinal order");
+    clear_favorites();
+    favorites_loaded = 0;
+    charging_state = -1;
+    battery_percent = -1;
+    displayed_charging_state = -1;
+    displayed_battery_percent = -1;
+    frame_recovery_snapshot_restored = 0;
+    return ok;
 }
 
 static void draw_phase2_primitive_pattern(void) {
@@ -346,6 +721,7 @@ static void setup_main_view(void) {
     charging_state = -1;
     pending_launch.kind = PENDING_LAUNCH_NONE;
     pending_render_invalid = 0U;
+    reset_selected_text_scroll();
 }
 
 static void reset_storage_handoff_state(void) {
@@ -442,6 +818,180 @@ static int run_storage_handoff_tests(void) {
     return ok;
 }
 
+static int input_path_is(unsigned position, int event_index) {
+    char expected[32];
+    snprintf(expected, sizeof(expected), "/dev/input/event%d", event_index);
+    return position < fake_open_path_count &&
+           strcmp(fake_open_path[position], expected) == 0;
+}
+
+static int run_preferred_input_probe_tests(void) {
+    long open_results[INPUT_EVENT_SCAN_COUNT];
+    long ioctl_results[INPUT_EVENT_SCAN_COUNT];
+    const char *ioctl_names[INPUT_EVENT_SCAN_COUNT];
+    int seen[INPUT_EVENT_SCAN_COUNT];
+    unsigned index;
+    int event_index;
+    int ok = 1;
+
+    /* The measured RG34XX-SP node is accepted immediately, without opening
+     * any fallback candidate or closing the retained descriptor. */
+    reset_fake_file(-ENOENT, 0, 0);
+    fake_close_calls = 0U;
+    open_results[0] = 70;
+    ioctl_results[0] = 0;
+    ioctl_names[0] = "H700 Gamepad";
+    set_fake_open_script(open_results, 1U);
+    set_fake_ioctl_script(ioctl_results, ioctl_names, 1U);
+    input_fd = -1;
+    axis_x = 1;
+    axis_y = -1;
+    ok &= check(open_fixed_input_once() == 0 && input_fd == 70 &&
+                    h700_input == 1 && input_path_is(0U, 4) &&
+                    fake_open_path_count == 1U && fake_open_calls <= 1U &&
+                    fake_ioctl_calls <= 1U && fake_close_calls == 0U &&
+                    axis_x == 0 && axis_y == 0,
+                "preferred H700 input did not take the one-candidate path");
+    abandon_input();
+
+    /* A missing preferred node falls through directly. Since no descriptor
+     * was acquired, only the accepted fallback remains open. */
+    reset_fake_file(-ENOENT, 0, 0);
+    fake_close_calls = 0U;
+    open_results[0] = -ENOENT;
+    open_results[1] = 71;
+    ioctl_results[0] = 0;
+    ioctl_names[0] = "H700 Gamepad";
+    set_fake_open_script(open_results, 2U);
+    set_fake_ioctl_script(ioctl_results, ioctl_names, 1U);
+    input_fd = -1;
+    ok &= check(open_fixed_input_once() == 0 && input_fd == 71 &&
+                    h700_input == 1 && input_path_is(0U, 4) &&
+                    input_path_is(1U, 0) && fake_open_calls <= 2U &&
+                    fake_ioctl_calls <= 1U && fake_close_calls == 0U,
+                "missing preferred input did not fall back to event0");
+    abandon_input();
+
+    /* A live non-controller at event4 must be closed before event0 is kept. */
+    reset_fake_file(-ENOENT, 0, 0);
+    fake_close_calls = 0U;
+    open_results[0] = 72;
+    open_results[1] = 73;
+    ioctl_results[0] = 0;
+    ioctl_results[1] = 0;
+    ioctl_names[0] = "Unrelated input";
+    ioctl_names[1] = "H700 Gamepad";
+    set_fake_open_script(open_results, 2U);
+    set_fake_ioctl_script(ioctl_results, ioctl_names, 2U);
+    input_fd = -1;
+    ok &= check(open_fixed_input_once() == 0 && input_fd == 73 &&
+                    h700_input == 1 && input_path_is(0U, 4) &&
+                    input_path_is(1U, 0) && fake_open_calls <= 2U &&
+                    fake_ioctl_calls <= 2U && fake_close_calls == 1U,
+                "rejected preferred input descriptor leaked before fallback");
+    abandon_input();
+
+    /* EVIOCGNAME failure is a rejected candidate too: its fd is closed and
+     * the validated fallback is retained. */
+    reset_fake_file(-ENOENT, 0, 0);
+    fake_close_calls = 0U;
+    open_results[0] = 74;
+    open_results[1] = 75;
+    ioctl_results[0] = -EIO_LINUX;
+    ioctl_results[1] = 0;
+    ioctl_names[0] = 0;
+    ioctl_names[1] = "H700 Gamepad";
+    set_fake_open_script(open_results, 2U);
+    set_fake_ioctl_script(ioctl_results, ioctl_names, 2U);
+    input_fd = -1;
+    ok &= check(open_fixed_input_once() == 0 && input_fd == 75 &&
+                    h700_input == 1 && input_path_is(0U, 4) &&
+                    input_path_is(1U, 0) && fake_open_calls <= 2U &&
+                    fake_ioctl_calls <= 2U && fake_close_calls == 1U,
+                "failed preferred EVIOCGNAME did not close and fall back");
+    abandon_input();
+
+    /* The vendor node remains accepted and selects the existing vendor map;
+     * the navigation suite separately exercises its ABS and button bindings. */
+    reset_fake_file(-ENOENT, 0, 0);
+    fake_close_calls = 0U;
+    open_results[0] = 76;
+    ioctl_results[0] = 0;
+    ioctl_names[0] = "muOS-Keys";
+    set_fake_open_script(open_results, 1U);
+    set_fake_ioctl_script(ioctl_results, ioctl_names, 1U);
+    input_fd = -1;
+    h700_input = 1;
+    ok &= check(open_fixed_input_once() == 0 && input_fd == 76 &&
+                    h700_input == 0 && input_path_is(0U, 4) &&
+                    fake_open_path_count == 1U && fake_open_calls <= 1U &&
+                    fake_ioctl_calls <= 1U && fake_close_calls == 0U,
+                "preferred muOS-Keys input did not select the vendor map");
+    abandon_input();
+
+    /* If every candidate opens but names an unrelated device, the bounded
+     * fallback visits each node once, closes every fd, and retains none. */
+    for (index = 0; index < INPUT_EVENT_SCAN_COUNT; index++) {
+        open_results[index] = 100L + (long)index;
+        ioctl_results[index] = 0;
+        ioctl_names[index] = "Unrelated input";
+        seen[index] = 0;
+    }
+    reset_fake_file(-ENOENT, 0, 0);
+    fake_close_calls = 0U;
+    set_fake_open_script(open_results, INPUT_EVENT_SCAN_COUNT);
+    set_fake_ioctl_script(ioctl_results, ioctl_names,
+                          INPUT_EVENT_SCAN_COUNT);
+    input_fd = -1;
+    ok &= check(open_fixed_input_once() < 0 && input_fd == -1 &&
+                    fake_open_calls <= INPUT_EVENT_SCAN_COUNT &&
+                    fake_ioctl_calls <= fake_open_calls &&
+                    fake_close_calls == fake_ioctl_calls &&
+                    fake_open_path_count == INPUT_EVENT_SCAN_COUNT &&
+                    input_path_is(0U, 4) && input_path_is(1U, 0),
+                "exhaustive input fallback was unbounded or leaked an fd");
+    for (index = 0; index < fake_open_path_count; index++) {
+        event_index = -1;
+        if (sscanf(fake_open_path[index], "/dev/input/event%d",
+                   &event_index) != 1 || event_index < 0 ||
+            event_index >= INPUT_EVENT_SCAN_COUNT || seen[event_index]) {
+            ok &= check(0,
+                        "exhaustive input fallback repeated an event node");
+            break;
+        }
+        seen[event_index] = 1;
+    }
+    for (index = 0; index < INPUT_EVENT_SCAN_COUNT; index++)
+        ok &= check(seen[index],
+                    "exhaustive input fallback omitted an event node");
+
+    /* Reconnect closes the broken descriptor and successful reacquisition
+     * clears both axis latches before the replacement can emit an edge. */
+    reset_fake_file(-ENOENT, 0, 0);
+    fake_close_calls = 0U;
+    open_results[0] = 80;
+    ioctl_results[0] = 0;
+    ioctl_names[0] = "H700 Gamepad";
+    set_fake_open_script(open_results, 1U);
+    set_fake_ioctl_script(ioctl_results, ioctl_names, 1U);
+    fake_now_ms = 1000;
+    input_fd = 79;
+    axis_x = 1;
+    axis_y = -1;
+    ok &= check(reconnect_input("host-preferred-probe") == 0 &&
+                    input_fd == 80 && h700_input == 1 &&
+                    input_path_is(0U, 4) && fake_close_calls == 1U &&
+                    fake_open_calls <= 1U && fake_ioctl_calls <= 1U &&
+                    axis_x == 0 && axis_y == 0,
+                "preferred reconnect leaked its old fd or retained latches");
+    abandon_input();
+    fake_close_calls = 0U;
+#ifdef BIRD_PROFILE
+    bird_profile_reset();
+#endif
+    return ok;
+}
+
 static u64 framebuffer_hash(void) {
     u64 value = 1469598103934665603UL;
     u64 i;
@@ -450,6 +1000,939 @@ static u64 framebuffer_hash(void) {
         value *= 1099511628211UL;
     }
     return value;
+}
+
+static u32 framebuffer_pixel(u32 x, u32 y) {
+    u32 value;
+    memcpy(&value, fake_framebuffer +
+                       ((u64)y * RG34XX_FB_STRIDE + (u64)x * 4U),
+           sizeof(value));
+    return value;
+}
+
+static int framebuffer_region_is_color(u32 x, u32 y, u32 width,
+                                       u32 height, u32 expected) {
+    u32 row;
+    u32 column;
+    for (row = 0U; row < height; row++) {
+        for (column = 0U; column < width; column++) {
+            if (framebuffer_pixel(x + column, y + row) != expected)
+                return 0;
+        }
+    }
+    return 1;
+}
+
+static int framebuffer_regions_equal(const u8 *left, const u8 *right,
+                                     u32 x, u32 y, u32 width, u32 height) {
+    u32 row;
+    for (row = 0U; row < height; row++) {
+        u64 offset = (u64)(y + row) * RG34XX_FB_STRIDE + (u64)x * 4U;
+        if (memcmp(left + offset, right + offset,
+                   (size_t)width * 4U) != 0)
+            return 0;
+    }
+    return 1;
+}
+
+static int buffer_region_is_color(const u8 *buffer, u32 x, u32 y,
+                                  u32 width, u32 height, u32 expected) {
+    u32 row;
+    u32 column;
+    for (row = 0U; row < height; row++) {
+        const u32 *pixels = (const u32 *)(buffer +
+            (u64)(y + row) * RG34XX_FB_STRIDE + (u64)x * 4U);
+        for (column = 0U; column < width; column++) {
+            if (pixels[column] != expected)
+                return 0;
+        }
+    }
+    return 1;
+}
+
+static int framebuffer_visible_rgb_equal(const u8 *left, const u8 *right) {
+    u64 offset;
+    for (offset = 0; offset < RG34XX_FB_BYTES; offset += 4U) {
+        if (left[offset] != right[offset] ||
+            left[offset + 1U] != right[offset + 1U] ||
+            left[offset + 2U] != right[offset + 2U])
+            return 0;
+    }
+    return 1;
+}
+
+#ifdef BIRD_TEST_BOOT_FRAME_XRGB
+static int load_boot_frame_fixture(u8 *target) {
+    FILE *asset = fopen(BIRD_TEST_BOOT_FRAME_XRGB, "rb");
+    int ok = asset != NULL &&
+             fread(target, 1U, RG34XX_FB_BYTES, asset) == RG34XX_FB_BYTES &&
+             fgetc(asset) == EOF;
+    if (asset) fclose(asset);
+    return ok;
+}
+#endif
+
+static int run_phase5_startup_tests(void) {
+    struct frame_resume_state state;
+    struct frame_resume_state fallback_state;
+    struct startup_work_state work;
+    u32 candidate;
+    u64 byte_offset;
+    u8 saved_byte;
+    int ok = 1;
+    int seen_input_index[INPUT_EVENT_SCAN_COUNT];
+    int order;
+
+    memset(&work, 0, sizeof(work));
+    work.task = STARTUP_TASK_PROFILE;
+    ok &= check(startup_input_timeout(&work, 500U) == 0U,
+                "deferred startup work blocked the immediate input sample");
+    work.task = STARTUP_TASK_DONE;
+    ok &= check(startup_input_timeout(&work, 500U) == 500U,
+                "completed startup work changed the ordinary poll timeout");
+    memset(seen_input_index, 0, sizeof(seen_input_index));
+    for (order = 0; order < INPUT_EVENT_SCAN_COUNT; order++) {
+        int index = fixed_input_scan_index(order);
+        ok &= check(index >= 0 && index < INPUT_EVENT_SCAN_COUNT &&
+                        !seen_input_index[index],
+                    "preferred input scan omitted or duplicated an event");
+        if (index >= 0 && index < INPUT_EVENT_SCAN_COUNT)
+            seen_input_index[index] = 1;
+    }
+    ok &= check(fixed_input_scan_index(0) == PREFERRED_INPUT_EVENT &&
+                    fixed_input_scan_index(1) == 0 &&
+                    fixed_input_scan_index(INPUT_EVENT_SCAN_COUNT - 1) ==
+                        INPUT_EVENT_SCAN_COUNT - 1,
+                "hardware input event was not tried before fallback scan");
+    input_fd = -1;
+    ok &= check(!retained_frame_can_wait_for_verification(
+                        FRAME_RECOVERY_CANDIDATE),
+                "retained rows survived without an open input descriptor");
+    input_fd = FAKE_FD;
+    ok &= check(retained_frame_can_wait_for_verification(
+                        FRAME_RECOVERY_CANDIDATE) &&
+                    !retained_frame_can_wait_for_verification(
+                        FRAME_RECOVERY_MATCHED),
+                "retained-row gate did not require an open candidate");
+
+    /* The production helper is called only after an input drain. A failed or
+     * reconnecting drain cannot run background work, and one clean sample
+     * advances exactly one bounded task before input is sampled again. */
+    memset(&work, 0, sizeof(work));
+    work.task = STARTUP_TASK_STORAGE_LOG;
+    storage_signal_fd = -1;
+    storage_signal_disabled = 0;
+    reset_fake_file(FAKE_FD, 0, 0);
+    ok &= check(!service_startup_work_after_input_sample(
+                        &work, ACTION_LAUNCH, -EAGAIN, 0) &&
+                    !service_startup_work_after_input_sample(
+                        &work, ACTION_NONE, -EIO_LINUX, 0) &&
+                    !service_startup_work_after_input_sample(
+                        &work, ACTION_NONE, -EAGAIN, 1) &&
+                    work.task == STARTUP_TASK_STORAGE_LOG &&
+                    fake_unlink_calls == 0U,
+                "deferred work crossed an input/action interruption");
+    ok &= check(service_startup_work_after_input_sample(
+                        &work, ACTION_NONE, -EAGAIN, 0) &&
+                    work.task == STARTUP_TASK_FRAME_CLEANUP &&
+                    fake_unlink_calls == 0U,
+                "one input sample did not advance exactly one deferred task");
+    ok &= check(service_startup_work_after_input_sample(
+                        &work, ACTION_NONE, -EAGAIN, 0) &&
+                    work.task == STARTUP_TASK_DONE &&
+                    fake_unlink_calls == 2U,
+                "the next input sample did not advance the next task");
+
+    setup_test_framebuffer(1U, fake_framebuffer);
+    setup_main_view();
+    clear_favorites();
+    favorites_loaded = 1;
+    set_favorite(0U, 1);
+    memset(fake_framebuffer, 0x5a, RG34XX_FB_BYTES);
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_STARTUP_FULL);
+    draw_startup_base();
+    ok &= check(framebuffer_pixel(10U, 10U) == color(10U, 14U, 20U) &&
+                    framebuffer_pixel(MENU_TOP_BAR_X, MENU_TOP_BAR_Y) ==
+                        color(239U, 226U, 217U) &&
+                    framebuffer_pixel(SIDEBAR_X, SIDEBAR_Y) ==
+                        color(239U, 226U, 217U) &&
+                    framebuffer_pixel(MENU_ROW_LEFT,
+                                      MENU_MAIN_ROW_START_Y) ==
+                        color(36U, 10U, 18U) &&
+                    framebuffer_pixel(MENU_FRAME_X, MENU_FOOTER_Y) ==
+                        color(10U, 14U, 20U),
+                "Phase 5A fallback exposed interactive menu pixels");
+#if defined(BIRD_STATIC_BASE_PATH) && defined(BIRD_TEST_BOOT_FRAME_XRGB)
+    ok &= check(load_boot_frame_fixture(fake_framebuffer_reference),
+                "final-root XRGB fixture was unavailable");
+    ok &= check(
+        buffer_region_is_color(fake_framebuffer_reference,
+                               MENU_TOP_BAR_X, MENU_TOP_BAR_Y,
+                               MENU_TOP_BAR_WIDTH, MENU_TOP_BAR_H, 0U) &&
+            buffer_region_is_color(fake_framebuffer_reference,
+                                   SIDEBAR_X, SIDEBAR_Y,
+                                   MENU_CONTENT_RIGHT - SIDEBAR_X,
+                                   MENU_CONTENT_H, 0U) &&
+            buffer_region_is_color(fake_framebuffer_reference,
+                                   SIDEBAR_X + 3,
+                                   MENU_CONTENT_Y + MENU_CONTENT_H,
+                                   MENU_FRAME_RIGHT - (SIDEBAR_X + 3),
+                                   3U, 0U),
+        "native XRGB base retained pixels hidden by opaque launcher chrome");
+    static_base = fake_framebuffer_reference;
+    memset(fake_framebuffer, 0x5a, RG34XX_FB_BYTES);
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_RECOVERY);
+    draw_startup_base();
+    ok &= check(
+        framebuffer_regions_equal(fake_framebuffer,
+                                  fake_framebuffer_reference,
+                                  0U, 0U, RG34XX_FB_WIDTH, 36U) &&
+            framebuffer_regions_equal(fake_framebuffer,
+                                      fake_framebuffer_reference,
+                                      0U, 395U, RG34XX_FB_WIDTH,
+                                      RG34XX_FB_HEIGHT - 395U) &&
+            framebuffer_region_is_color(MENU_TOP_BAR_X, MENU_TOP_BAR_Y,
+                                        MENU_TOP_BAR_WIDTH, MENU_TOP_BAR_H,
+                                        color(239U, 226U, 217U)) &&
+            framebuffer_region_is_color(SIDEBAR_X, SIDEBAR_Y,
+                                        SIDEBAR_WIDTH, MENU_CONTENT_H,
+                                        color(239U, 226U, 217U)) &&
+            framebuffer_region_is_color(MENU_LEFT, MENU_CONTENT_Y,
+                                        MENU_DIVIDER_WIDTH, MENU_CONTENT_H,
+                                        color(55U, 18U, 29U)) &&
+            framebuffer_region_is_color(MENU_LEFT + MENU_DIVIDER_WIDTH,
+                                        MENU_CONTENT_Y,
+                                        MENU_CONTENT_WIDTH - MENU_DIVIDER_WIDTH,
+                                        MENU_CONTENT_H,
+                                        color(36U, 10U, 18U)),
+        "final-root recovery did not compose sparse native base and chrome");
+    static_base = 0;
+    memcpy(fake_framebuffer_reference, fake_framebuffer, RG34XX_FB_BYTES);
+    memset(fake_framebuffer, 0x5a, RG34XX_FB_BYTES);
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_STARTUP_FULL);
+    draw_startup_base();
+    ok &= check(
+        framebuffer_regions_equal(fake_framebuffer,
+                                  fake_framebuffer_reference,
+                                  MENU_TOP_BAR_X, MENU_TOP_BAR_Y,
+                                  MENU_TOP_BAR_WIDTH, MENU_TOP_BAR_H) &&
+            framebuffer_regions_equal(fake_framebuffer,
+                                      fake_framebuffer_reference,
+                                      SIDEBAR_X, SIDEBAR_Y,
+                                      SIDEBAR_WIDTH, MENU_CONTENT_H) &&
+            framebuffer_regions_equal(fake_framebuffer,
+                                      fake_framebuffer_reference,
+                                      MENU_LEFT, MENU_CONTENT_Y,
+                                      MENU_DIVIDER_WIDTH, MENU_CONTENT_H) &&
+            framebuffer_regions_equal(fake_framebuffer,
+                                      fake_framebuffer_reference,
+                                      MENU_ROW_LEFT, MENU_CONTENT_Y,
+                                      MENU_ROW_WIDTH, MENU_CONTENT_H) &&
+            framebuffer_regions_equal(fake_framebuffer,
+                                      fake_framebuffer_reference,
+                                      SIDEBAR_X + 3,
+                                      MENU_CONTENT_Y + MENU_CONTENT_H,
+                                      MENU_FRAME_RIGHT - (SIDEBAR_X + 3),
+                                      3U),
+        "fallback and generated static chrome are not byte-identical");
+#endif
+#ifdef BIRD_REUSE_UBOOT_FRAME
+#ifdef BIRD_TEST_BOOT_FRAME_XRGB
+    ok &= check(load_boot_frame_fixture(fake_framebuffer_reference),
+                "generated U-Boot XRGB fixture was unavailable");
+    static_base = fake_framebuffer_reference;
+    draw_startup_base();
+    static_base = 0;
+#endif
+    ok &= check(inherited_boot_frame_matches(),
+                "manifest-matched generated boot frame was not reusable");
+    fake_framebuffer[3U] ^= 0xffU;
+    ok &= check(inherited_boot_frame_matches(),
+                "unused X byte rejected a visibly identical boot frame");
+    fake_framebuffer[3U] ^= 0xffU;
+    fake_framebuffer[0U] ^= 1U;
+    ok &= check(!inherited_boot_frame_matches(),
+                "changed visible boot pixel passed inherited-frame matching");
+    fake_framebuffer[0U] ^= 1U;
+
+    /* A verified-reuse production build intentionally has no early static
+     * asset. Known-good view changes must preserve the inherited backdrop
+     * outside the fixed opaque launcher chrome. */
+    {
+        u32 inherited_backdrop = framebuffer_pixel(10U, 10U);
+        setup_main_view();
+        selected_status = "DIRECT FRAMEBUFFER READY";
+        draw_startup_menu_overlay();
+        view = VIEW_PLAY;
+        selection = 0U;
+        selected_status = "PLAY SYSTEMS READY";
+        draw_interactive_screen();
+        ok &= check(inherited_backdrop != color(10U, 14U, 20U) &&
+                        framebuffer_pixel(10U, 10U) == inherited_backdrop,
+                    "verified-reuse view change erased the inherited backdrop");
+    }
+#endif
+
+    selected_status = "STARTING GAME";
+    charging_state = 0;
+    battery_percent = 77;
+    setup_test_framebuffer(1U, fake_framebuffer_reference);
+    memset(fake_framebuffer_reference, 0x5a, RG34XX_FB_BYTES);
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_STARTUP_FULL);
+    draw_screen();
+    setup_test_framebuffer(1U, fake_framebuffer);
+    memset(fake_framebuffer, 0x5a, RG34XX_FB_BYTES);
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_STARTUP_FULL);
+    draw_startup_base();
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_STARTUP_FULL);
+    draw_startup_menu_overlay();
+    ok &= check(framebuffer_visible_rgb_equal(fake_framebuffer,
+                                               fake_framebuffer_reference),
+                "startup-base overlay diverged from the full interactive frame");
+    view = VIEW_SYSTEMS;
+    selection = 0U;
+    selected_status = "CATALOG READY FROM FIRMWARE";
+    setup_test_framebuffer(1U, fake_framebuffer_reference);
+    memset(fake_framebuffer_reference, 0x5a, RG34XX_FB_BYTES);
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_STARTUP_FULL);
+    draw_screen();
+    setup_test_framebuffer(1U, fake_framebuffer);
+    memset(fake_framebuffer, 0x5a, RG34XX_FB_BYTES);
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_STARTUP_FULL);
+    draw_startup_base();
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_STARTUP_FULL);
+    draw_startup_menu_overlay();
+    ok &= check(framebuffer_visible_rgb_equal(fake_framebuffer,
+                                               fake_framebuffer_reference),
+                "non-main startup overlay left stale U-Boot header pixels");
+    setup_main_view();
+    selected_status = "STARTING GAME";
+    charging_state = 0;
+    battery_percent = 77;
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_STARTUP_FULL);
+    draw_screen();
+    charging_state = 1;
+    battery_percent = 88;
+    ok &= check(capture_frame_resume_state(&state) == 0 &&
+                    state.charging_state == 0 &&
+                    state.battery_percent == 77 &&
+                    state.favorite_count == 1U &&
+                    bitmap_is_favorite(state.favorites, 0U) &&
+                    frame_resume_state_matches(&state),
+                "exact retained framebuffer did not qualify for recovery");
+    pending_render_invalid = RENDER_INVALID_CONTENT;
+    ok &= check(capture_frame_resume_state(&state) < 0,
+                "stale content pixels qualified for retained recovery");
+    pending_render_invalid = 0U;
+
+    /* X has no scanout-visible bits in the exact measured framebuffer. DRM
+     * may normalize it while ownership changes, so X-only differences must
+     * not force a visually redundant full render. */
+    saved_byte = fake_framebuffer[3U];
+    fake_framebuffer[3U] ^= 0xffU;
+    reset_frame_recovery_diagnostics();
+    ok &= check(frame_resume_state_matches(&state) &&
+                    frame_recovery_fingerprint_attempted &&
+                    frame_recovery_region_mismatch_mask == 0U &&
+                    frame_recovery_unused_x_changed,
+                "unused-X-only change rejected a visible-equivalent frame");
+    fake_framebuffer[3U] = saved_byte;
+
+    byte_offset = 10U * RG34XX_FB_STRIDE + 10U * 4U;
+    saved_byte = fake_framebuffer[byte_offset];
+    fake_framebuffer[byte_offset] ^= 1U;
+    reset_frame_recovery_diagnostics();
+    ok &= check(!frame_resume_state_matches(&state) &&
+                    frame_recovery_region_mismatch_mask ==
+                        (1U << FRAME_REGION_HEADER) &&
+                    !frame_recovery_unused_x_changed,
+                "header RGB change passed retained-frame verification");
+    fake_framebuffer[byte_offset] = saved_byte;
+
+    byte_offset = 120U * RG34XX_FB_STRIDE + 10U * 4U;
+    saved_byte = fake_framebuffer[byte_offset];
+    fake_framebuffer[byte_offset] ^= 1U;
+    reset_frame_recovery_diagnostics();
+    ok &= check(!frame_resume_state_matches(&state) &&
+                    frame_recovery_region_mismatch_mask ==
+                        (1U << FRAME_REGION_CONTENT) &&
+                    !frame_recovery_unused_x_changed,
+                "content RGB change passed retained-frame verification");
+    fake_framebuffer[byte_offset] = saved_byte;
+
+    byte_offset = 450U * RG34XX_FB_STRIDE + 10U * 4U;
+    saved_byte = fake_framebuffer[byte_offset];
+    fake_framebuffer[byte_offset] ^= 1U;
+    reset_frame_recovery_diagnostics();
+    ok &= check(!frame_resume_state_matches(&state) &&
+                    frame_recovery_region_mismatch_mask ==
+                        (1U << FRAME_REGION_FOOTER) &&
+                    !frame_recovery_unused_x_changed,
+                "footer RGB change passed retained-frame verification");
+    fake_framebuffer[byte_offset] = saved_byte;
+
+    fake_framebuffer[3U] ^= 0xffU;
+    byte_offset = 120U * RG34XX_FB_STRIDE + 10U * 4U;
+    fake_framebuffer[byte_offset] ^= 1U;
+    reset_frame_recovery_diagnostics();
+    ok &= check(!frame_resume_state_matches(&state) &&
+                    frame_recovery_region_mismatch_mask ==
+                        (1U << FRAME_REGION_CONTENT) &&
+                    frame_recovery_unused_x_changed,
+                "combined X and RGB change lost recovery diagnostics");
+    fake_framebuffer[3U] ^= 0xffU;
+    fake_framebuffer[byte_offset] ^= 1U;
+
+    state.battery_percent = 78;
+    ok &= check(!frame_resume_state_matches(&state),
+                "changed recovery metadata passed frame verification");
+    state.battery_percent = 77;
+    state.favorites[0] ^= 1U;
+    ok &= check(!frame_resume_state_matches(&state),
+                "changed Favorites snapshot passed frame verification");
+    state.favorites[0] ^= 1U;
+    selection = 1U;
+    ok &= check(!frame_resume_state_matches(&state),
+                "changed UI state passed retained-frame verification");
+    selection = 0U;
+    ok &= check(frame_resume_state_matches(&state),
+                "restored retained frame no longer verified");
+    state.descriptor_hash_a ^= 1U;
+#ifdef BIRD_PROFILE
+    bird_profile_reset();
+#endif
+    reset_fake_file(FAKE_FD, 0, -EAGAIN);
+    fake_payload = (const char *)&state;
+    fake_payload_bytes = sizeof(state);
+    ok &= check(read_frame_resume_candidate(&state) ==
+                        FRAME_RECOVERY_INVALID &&
+                    !frame_recovery_snapshot_restored,
+                "corrupt frame descriptor digest passed the read boundary");
+#ifdef BIRD_PROFILE
+    ok &= check(
+        bird_profile.frame_fingerprint_physical_bytes_read == 0U &&
+            bird_profile.frame_fingerprint_visible_bytes_compared == 0U &&
+            bird_profile.frame_fingerprint_pages_read == 0U,
+        "corrupt frame descriptor scanned the framebuffer");
+#endif
+    state.descriptor_hash_a ^= 1U;
+    state.version--;
+    ok &= check(!frame_resume_state_is_candidate(&state),
+                "old frame descriptor version qualified for recovery");
+#ifdef BIRD_PROFILE
+    bird_profile_reset();
+#endif
+    reset_fake_file(FAKE_FD, 0, -EAGAIN);
+    fake_payload = (const char *)&state;
+    fake_payload_bytes = sizeof(state);
+    ok &= check(read_frame_resume_candidate(&state) ==
+                        FRAME_RECOVERY_INVALID,
+                "old frame descriptor version passed the read boundary");
+    state.version = FRAME_RESUME_VERSION;
+    reset_fake_file(FAKE_FD, 0, -EAGAIN);
+    fake_payload = (const char *)&state;
+    fake_payload_bytes = sizeof(state) - 1U;
+    ok &= check(read_frame_resume_candidate(&state) ==
+                        FRAME_RECOVERY_INVALID,
+                "truncated frame descriptor passed the read boundary");
+#ifdef BIRD_PROFILE
+    ok &= check(
+        bird_profile.frame_fingerprint_physical_bytes_read == 0U &&
+            bird_profile.frame_fingerprint_visible_bytes_compared == 0U &&
+            bird_profile.frame_fingerprint_pages_read == 0U,
+        "invalid frame descriptor scanned the framebuffer");
+#endif
+
+    reset_fake_file(FAKE_FD, 0, -EAGAIN);
+    fake_payload = (const char *)&state;
+    fake_payload_bytes = sizeof(state);
+    input_fd = -1;
+#ifdef BIRD_PROFILE
+    bird_profile_reset();
+#endif
+    candidate = read_frame_resume_candidate(&state);
+    ok &= check(candidate == FRAME_RECOVERY_CANDIDATE &&
+                    restore_frame_resume_candidate(&state) ==
+                        FRAME_RECOVERY_MISMATCH,
+                "retained frame was verified before input opened");
+#ifdef BIRD_PROFILE
+    ok &= check(bird_profile.frame_fingerprint_physical_bytes_read == 0U &&
+                    bird_profile.frame_fingerprint_visible_bytes_compared ==
+                        0U &&
+                    bird_profile.frame_fingerprint_pages_read == 0U,
+                "pre-input retained-frame path scanned framebuffer bytes");
+#endif
+    input_fd = FAKE_FD;
+    charging_state = -1;
+    battery_percent = -1;
+    displayed_charging_state = -1;
+    displayed_battery_percent = -1;
+    clear_favorites();
+    favorites_loaded = 0;
+    fake_payload_offset = 0U;
+    ok &= check(inspect_frame_resume() == FRAME_RECOVERY_MATCHED &&
+                    charging_state == 0 && battery_percent == 77 &&
+                    displayed_charging_state == 0 &&
+                    displayed_battery_percent == 77 &&
+                    favorites_loaded && favorite_count == 1U &&
+                    is_favorite(0U),
+                "published frame descriptor did not restore volatile display state");
+#ifdef BIRD_PROFILE
+    ok &= check(bird_profile.frame_fingerprint_physical_bytes_read ==
+                        RG34XX_FB_BYTES &&
+                    bird_profile.frame_fingerprint_visible_bytes_compared ==
+                        RG34XX_FB_WIDTH * RG34XX_FB_HEIGHT * 3UL &&
+                    bird_profile.frame_fingerprint_pages_read == 1U,
+                "post-input recovery omitted framebuffer-read accounting");
+    printf("launcher profile benchmark scenario=frame-fingerprint "
+           "physical_bytes_read=%lu visible_bytes_compared=%lu "
+           "pages_read=%lu pixel_pair_iterations=%u\n",
+           (unsigned long)
+               bird_profile.frame_fingerprint_physical_bytes_read,
+           (unsigned long)
+               bird_profile.frame_fingerprint_visible_bytes_compared,
+           (unsigned long)bird_profile.frame_fingerprint_pages_read,
+           (unsigned)(RG34XX_FB_WIDTH * RG34XX_FB_HEIGHT / 2U));
+    bird_profile_reset();
+    load_favorites_and_update_view();
+    ok &= check(bird_profile.render[
+                        PROFILE_RENDER_FAVORITES_COMPLETION].commits == 0U,
+                "matched recovery redundantly completed Favorites");
+#endif
+
+    reset_fake_file(FAKE_FD, 0, 0);
+    ok &= check(publish_frame_resume() == 0 &&
+                    fake_create_calls == 1U && fake_rename_calls == 1U &&
+                    (strcmp(fake_rename_old_path, FRAME_RESUME_TEMP) == 0 ||
+                     strcmp(fake_rename_old_path,
+                            "bird-launcher-frame-resume.tmp") == 0) &&
+                    (strcmp(fake_rename_new_path, FRAME_RESUME_PATH) == 0 ||
+                     strcmp(fake_rename_new_path,
+                            "bird-launcher-frame-resume") == 0),
+                "frame recovery descriptor was not atomically published");
+
+    memcpy(fake_framebuffer_reference, fake_framebuffer, RG34XX_FB_BYTES);
+    for (byte_offset = 3U; byte_offset < RG34XX_FB_BYTES;
+         byte_offset += 4U)
+        fake_framebuffer[byte_offset] ^= 0xffU;
+    reset_frame_recovery_diagnostics();
+    ok &= check(frame_resume_state_matches(&state) &&
+                    frame_recovery_region_mismatch_mask == 0U &&
+                    frame_recovery_unused_x_changed,
+                "full-page unused-X normalization rejected retained RGB");
+    selected_status = "RETURNED TO PREVIOUS SCREEN";
+    setup_test_framebuffer(1U, fake_framebuffer);
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_RECOVERY);
+    draw_recovery_update();
+    setup_test_framebuffer(1U, fake_framebuffer_reference);
+    setup_main_view();
+    selected_status = "RETURNED TO PREVIOUS SCREEN";
+    charging_state = 0;
+    battery_percent = 77;
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_STARTUP_FULL);
+    draw_screen();
+    ok &= check(memcmp(fake_framebuffer, fake_framebuffer_reference,
+                       RG34XX_FB_BYTES) != 0 &&
+                    framebuffer_visible_rgb_equal(
+                        fake_framebuffer, fake_framebuffer_reference),
+                "retained-frame recovery differs visibly from a full render");
+
+    setup_test_framebuffer(2U, fake_framebuffer);
+#ifdef BIRD_PROFILE
+    bird_profile_reset();
+#endif
+    ok &= check(capture_frame_resume_state(&state) < 0 &&
+                    inspect_frame_resume() == FRAME_RECOVERY_UNSUPPORTED,
+                "diagnostic framebuffer entered retained-frame fast recovery");
+#ifdef BIRD_PROFILE
+    ok &= check(
+        bird_profile.frame_fingerprint_physical_bytes_read == 0U &&
+            bird_profile.frame_fingerprint_visible_bytes_compared == 0U &&
+            bird_profile.frame_fingerprint_pages_read == 0U,
+        "diagnostic framebuffer scanned the exact-path fingerprint");
+#endif
+
+    /* A sealed descriptor's volatile UI snapshot remains useful when a real
+     * RGB mismatch requires a full render. Restore it before that render so
+     * Favorites stars and displayed power do not wait for later navigation. */
+    setup_test_framebuffer(1U, fake_framebuffer);
+    view = VIEW_GAMES;
+    active_system = 0U;
+    selection = 0U;
+    selected_status = "STARTING GAME";
+    clear_favorites();
+    favorites_loaded = 1;
+    set_favorite(catalog_system_first(0U), 1);
+    charging_state = 0;
+    battery_percent = 77;
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_STARTUP_FULL);
+    draw_screen();
+    ok &= check(capture_frame_resume_state(&fallback_state) == 0,
+                "favorite fallback descriptor was not captured");
+    fake_framebuffer[10U * RG34XX_FB_STRIDE + 10U * 4U] ^= 1U;
+    fake_framebuffer[120U * RG34XX_FB_STRIDE + 10U * 4U] ^= 1U;
+    fake_framebuffer[450U * RG34XX_FB_STRIDE + 10U * 4U] ^= 1U;
+    clear_favorites();
+    favorites_loaded = 0;
+    charging_state = -1;
+    battery_percent = -1;
+    displayed_charging_state = -1;
+    displayed_battery_percent = -1;
+    reset_frame_recovery_diagnostics();
+    input_fd = FAKE_FD;
+    ok &= check(restore_frame_resume_candidate(&fallback_state) ==
+                        FRAME_RECOVERY_MISMATCH &&
+                    frame_recovery_region_mismatch_mask == 7U &&
+                    frame_recovery_snapshot_restored && favorites_loaded &&
+                    favorite_count == 1U &&
+                    is_favorite(catalog_system_first(0U)) &&
+                    charging_state == 0 && battery_percent == 77,
+                "RGB fallback discarded the sealed display snapshot");
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_STARTUP_FULL);
+    draw_screen();
+    memcpy(fake_framebuffer_reference, fake_framebuffer, RG34XX_FB_BYTES);
+    clear_favorites();
+    favorites_loaded = 0;
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_STARTUP_FULL);
+    draw_screen();
+    ok &= check(memcmp(fake_framebuffer, fake_framebuffer_reference,
+                       RG34XX_FB_BYTES) != 0,
+                "favorite snapshot did not affect fallback pixels");
+    favorites_loaded = 1;
+    set_favorite(catalog_system_first(0U), 1);
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_STARTUP_FULL);
+    draw_screen();
+    ok &= check(memcmp(fake_framebuffer, fake_framebuffer_reference,
+                       RG34XX_FB_BYTES) == 0,
+                "snapshot fallback differs from canonical favorite render");
+    input_fd = -1;
+    return ok;
+}
+
+static int run_phase6_background_tests(void) {
+    static const char unrelated_event[] =
+        "change@/devices/virtual/input/input0\0SUBSYSTEM=input\0";
+    static const char relevant_event_a[] =
+        "change@/devices/platform/battery\0ACTION=change\0"
+        "SUBSYSTEM=power_supply\0";
+    static const char relevant_event_b[] =
+        "change@/devices/platform/charger\0ACTION=change\0"
+        "SUBSYSTEM=power_supply\0";
+    static const char charging_value[] = "Charging\n";
+    static const char percent_value[] = "75\n";
+    struct navigation_batch cancel_batch;
+    struct input_event cancel_event;
+    struct fake_read_step read_steps[16];
+    long storage_opens[4];
+    char oversized_unrelated[2048];
+    unsigned reads_before;
+    unsigned index;
+    int post_action;
+    int ok = 1;
+
+    /* No-op work does not read the clock. Unfinished startup and an initial
+     * acquisition request an immediate input sample without reading it either. */
+    fake_now_ms = 0;
+    fake_clock_calls = 0;
+    storage_ready = 1;
+    favorites_loaded = 1;
+    storage_signal_fd = -1;
+    storage_signal_disabled = 0;
+    storage_probe_attempted = 1;
+    power_event_fd = -1;
+    power_event_disabled = 1;
+    next_power_event_retry = 0;
+    ok &= check(idle_background_poll_timeout(1U, 77U) == 77U &&
+                    fake_clock_calls == 0U,
+                "idle background timeout caused a clock read unnecessarily");
+    ok &= check(idle_background_poll_timeout(0U, 77U) == 0U &&
+                    fake_clock_calls == 0U,
+                "unfinished startup did not request an immediate input sample");
+    power_event_disabled = 0;
+    next_power_event_retry = 0;
+    ok &= check(idle_background_poll_timeout(1U, (u64)-1) == 0U &&
+                    fake_clock_calls == 0U,
+                "initial background acquisition read the clock");
+
+    /* Power retry deadline is deferred until interactive startup and should
+     * convert to a minimum timeout via the shared background timeout helper. */
+    fake_now_ms = 1000;
+    fake_clock_calls = 0;
+    power_event_fd = -1;
+    power_event_disabled = 0;
+    next_power_event_retry = 2200;
+    power_event_retry_count = 0;
+    ok &= check(idle_background_poll_timeout(1U, (u64)-1) == 1200U &&
+                    fake_clock_calls == 1U,
+                "idle background timeout did not use the bounded power retry");
+    fake_clock_calls = 0;
+    ok &= check(idle_background_poll_timeout(1U, 0U) == 0U &&
+                    fake_clock_calls == 0U,
+                "already-immediate input sample read a retry clock");
+
+    /* Favorites and power share one current-time sample when both retry
+     * deadlines are still in the future. */
+    storage_ready = 1;
+    favorites_loaded = 0;
+    next_favorites_retry = 2000U;
+    power_event_fd = -1;
+    power_event_disabled = 0;
+    next_power_event_retry = 2200U;
+    fake_clock_calls = 0;
+    ok &= check(!service_idle_background_after_input(1, 0, 0, 0, 0) &&
+                    fake_clock_calls == 1U,
+                "background retry checks did not share one clock sample");
+
+    /* Simultaneous storage and power failures consume only the storage slot.
+     * Power remains untouched until a new input sample. */
+    reset_storage_handoff_state();
+    storage_ready = 1;
+    favorites_loaded = 1;
+    storage_signal_fd = FAKE_FD;
+    storage_signal_disabled = 0;
+    storage_probe_attempted = 1;
+    power_event_fd = 42;
+    power_event_disabled = 0;
+    power_event_retry_count = 0;
+    next_power_event_retry = 0;
+    pending_launch.kind = PENDING_LAUNCH_NONE;
+    reset_fake_file(FAKE_FD, 0, -EAGAIN);
+    fake_close_calls = 0U;
+    post_action = ACTION_NONE;
+    ok &= check(service_post_input_work(
+                    1, POLLHUP, 1, POLLHUP, 1,
+                    &post_action, -EAGAIN, 0) &&
+                storage_signal_disabled && storage_signal_fd == -1 &&
+                power_event_fd == 42 && fake_close_calls == 1U &&
+                post_action == ACTION_NONE,
+                "one background slot handled more than storage");
+    ok &= check(service_post_input_work(
+                    1, 0, 0, POLLHUP, 1,
+                    &post_action, -EAGAIN, 0) &&
+                power_event_fd == -1 && fake_close_calls == 2U &&
+                post_action == ACTION_NONE,
+                "next clean sample did not advance exactly one power unit");
+
+    /* Exit, failed drains and reconnects suppress post-input background work. */
+    storage_ready = 1;
+    favorites_loaded = 1;
+    storage_signal_fd = FAKE_FD;
+    storage_signal_disabled = 0;
+    power_event_fd = 42;
+    power_event_disabled = 0;
+    reset_fake_file(FAKE_FD, 0, 0);
+    fake_close_calls = 0U;
+    post_action = ACTION_SHUTDOWN;
+    ok &= check(!service_post_input_work(
+                    1, POLLHUP, 1, POLLHUP, 1,
+                    &post_action, -EAGAIN, 0),
+                "post-input background crossed an exit action");
+    post_action = ACTION_NONE;
+    ok &= check(!service_post_input_work(
+                    1, POLLHUP, 1, POLLHUP, 1,
+                    &post_action, -EIO_LINUX, 0),
+                "post-input background crossed a failed input drain");
+    ok &= check(!service_post_input_work(
+                    1, POLLHUP, 1, POLLHUP, 1,
+                    &post_action, -EAGAIN, 1) &&
+                    storage_signal_fd == FAKE_FD &&
+                    !storage_signal_disabled && power_event_fd == 42 &&
+                    fake_close_calls == 0U,
+                "post-input background crossed an exit or invalid input drain");
+    pending_launch.kind = PENDING_LAUNCH_NONE;
+
+    /* A storage-ready pending intent is foreground work. It dispatches after
+     * the clean input drain and before a simultaneously readable power fd can
+     * consume any event or open either power-supply attribute. */
+    runtime_dir_fd = FAKE_FD;
+    input_dir_fd = FAKE_FD;
+    power_dir_fd = FAKE_FD;
+    storage_dir_fd = FAKE_FD;
+    config_dir_fd = FAKE_FD;
+    storage_ready = 1;
+    favorites_loaded = 1;
+    view = VIEW_GAMES;
+    active_system = 0U;
+    selection = 0U;
+    pending_launch.kind = PENDING_LAUNCH_GAME;
+    pending_launch.index = 0U;
+    pending_launch.active_index = 0U;
+    power_event_fd = 42;
+    power_event_disabled = 0;
+    reset_fake_file(FAKE_FD, 0, -EAGAIN);
+    post_action = ACTION_NONE;
+    ok &= check(service_post_input_work(
+                    1, 0, 0, POLLIN, 1, &post_action, -EAGAIN, 0) &&
+                    post_action == ACTION_LAUNCH &&
+                    pending_launch.kind == PENDING_LAUNCH_NONE &&
+                    fake_read_count_for_fd(42) == 0U &&
+                    !fake_opened_path("status") &&
+                    !fake_opened_path("capacity") &&
+                    fake_opened_path("bird-launch-request"),
+                "ready pending launch was starved by a readable power fd");
+
+    /* Cancellation committed by the just-finished input batch remains
+     * authoritative: the same post-input scheduler sees no intent to launch. */
+    setup_test_framebuffer(1U, fake_framebuffer);
+    memset(fake_framebuffer, 0x5a, RG34XX_FB_BYTES);
+    clear_favorites();
+    favorites_loaded = 1;
+    view = VIEW_GAMES;
+    active_system = 0U;
+    selection = 0U;
+    selected_status = "GAME QUEUED // STORAGE MOUNTING";
+    charging_state = 0;
+    battery_percent = 50;
+    storage_ready = 1;
+    pending_launch.kind = PENDING_LAUNCH_GAME;
+    pending_launch.index = 0U;
+    pending_launch.active_index = 0U;
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_STARTUP_FULL);
+    draw_screen();
+    reset_navigation_batch(&cancel_batch);
+    cancel_event.sec = 0;
+    cancel_event.usec = 0;
+    cancel_event.type = EV_KEY;
+    cancel_event.code = BTN_DPAD_DOWN;
+    cancel_event.value = 1;
+    h700_input = 1;
+    (void)handle_batched_input_event(&cancel_batch, &cancel_event);
+    finish_navigation_batch(&cancel_batch);
+    read_steps[0].result = (long)sizeof(unrelated_event) - 1L;
+    read_steps[0].payload = unrelated_event;
+    read_steps[1].result = -EAGAIN;
+    read_steps[1].payload = 0;
+    power_event_fd = 42;
+    reset_fake_file(FAKE_FD, 0, -EAGAIN);
+    set_fake_read_script(read_steps, 2U);
+    post_action = ACTION_NONE;
+    ok &= check(pending_launch.kind == PENDING_LAUNCH_NONE &&
+                    service_post_input_work(
+                        1, 0, 0, POLLIN, 1, &post_action, -EAGAIN, 0) &&
+                    post_action == ACTION_NONE &&
+                    !fake_opened_path("bird-launch-request"),
+                "completed navigation cancellation was followed by dispatch");
+
+    /* The one-shot storage FIFO consumes no more than one read attempt in a
+     * background slot. A positive edge still enters the existing exact
+     * acquisition path immediately. */
+    reset_storage_handoff_state();
+    storage_signal_fd = 42;
+    reset_fake_file(FAKE_FD, "ready\n", -EAGAIN);
+    storage_opens[0] = FAKE_FD;
+    storage_opens[1] = FAKE_FD;
+    storage_opens[2] = FAKE_FD;
+    storage_opens[3] = FAKE_FD;
+    set_fake_open_script(storage_opens, 4U);
+    ok &= check(service_storage_poll_event(POLLIN, 1) && storage_ready &&
+                    storage_handoff_signaled &&
+                    fake_read_count_for_fd(42) <= 1U,
+                "storage FIFO read was unbounded or missed its positive edge");
+
+    reset_storage_handoff_state();
+    storage_signal_fd = 42;
+    reset_fake_file(FAKE_FD, 0, -EINTR);
+    ok &= check(service_storage_poll_event(POLLIN, 1) &&
+                    fake_read_count_for_fd(42) <= 1U &&
+                    storage_signal_fd == 42 && !storage_handoff_signaled &&
+                    !storage_signal_disabled,
+                "interrupted storage FIFO read retried within one slot");
+
+    /* A large unrelated record followed by an unrelated storm yields after
+     * the fixed read budget without touching sysfs. The unread tail advances
+     * when a later clean input sample grants another background slot. */
+    storage_ready = 1;
+    favorites_loaded = 1;
+    memset(oversized_unrelated, 'x', sizeof(oversized_unrelated));
+    for (index = 0U; index < 10U; index++) {
+        read_steps[index].result = index == 0U
+                                       ? (long)sizeof(oversized_unrelated)
+                                       : (long)sizeof(unrelated_event) - 1L;
+        read_steps[index].payload = index == 0U
+                                        ? oversized_unrelated
+                                        : unrelated_event;
+    }
+    power_event_fd = 42;
+    power_event_disabled = 0;
+    reset_fake_file(FAKE_FD, 0, -EAGAIN);
+    set_fake_read_script(read_steps, 10U);
+    ok &= check(service_power_poll_event(POLLIN, 1) &&
+                    fake_read_count_for_fd(42) <= POWER_EVENT_READ_BUDGET &&
+                    fake_read_script_index == POWER_EVENT_READ_BUDGET &&
+                    fake_open_calls == 0U && power_event_fd == 42,
+                "unrelated power storm exceeded its slot or read sysfs");
+    reads_before = fake_read_count_for_fd(42);
+    ok &= check(service_power_poll_event(POLLIN, 1) &&
+                    fake_read_script_index == 10U &&
+                    fake_read_count_for_fd(42) > reads_before &&
+                    fake_read_count_for_fd(42) - reads_before <=
+                        POWER_EVENT_READ_BUDGET &&
+                    fake_open_calls == 0U,
+                "later power slot did not advance the unread storm tail");
+
+    /* EINTR consumes the same finite budget. A signal storm therefore cannot
+     * keep input from being sampled again. */
+    for (index = 0U; index < 12U; index++) {
+        read_steps[index].result = -EINTR;
+        read_steps[index].payload = 0;
+    }
+    power_event_fd = 42;
+    reset_fake_file(FAKE_FD, 0, -EAGAIN);
+    set_fake_read_script(read_steps, 12U);
+    ok &= check(service_power_poll_event(POLLIN, 1) &&
+                    fake_read_count_for_fd(42) <= POWER_EVENT_READ_BUDGET &&
+                    fake_read_script_index == POWER_EVENT_READ_BUDGET &&
+                    fake_open_calls == 0U,
+                "power EINTR storm was not bounded by the read budget");
+    reads_before = fake_read_count_for_fd(42);
+    ok &= check(service_power_poll_event(POLLIN, 1) &&
+                    fake_read_script_index == 12U &&
+                    fake_read_count_for_fd(42) > reads_before &&
+                    fake_read_count_for_fd(42) - reads_before <=
+                        POWER_EVENT_READ_BUDGET,
+                "power EINTR tail did not progress in a later slot");
+
+    /* Multiple relevant records in one slot are coalesced into one status and
+     * capacity snapshot, followed by at most one battery render. */
+    setup_test_framebuffer(1U, fake_framebuffer);
+    memset(fake_framebuffer, 0x5a, RG34XX_FB_BYTES);
+    setup_main_view();
+    charging_state = 0;
+    battery_percent = 50;
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_STARTUP_FULL);
+    draw_screen();
+#ifdef BIRD_PROFILE
+    bird_profile_reset();
+#endif
+    read_steps[0].result = (long)sizeof(relevant_event_a) - 1L;
+    read_steps[0].payload = relevant_event_a;
+    read_steps[1].result = (long)sizeof(relevant_event_b) - 1L;
+    read_steps[1].payload = relevant_event_b;
+    read_steps[2].result = -EAGAIN;
+    read_steps[2].payload = 0;
+    read_steps[3].result = (long)sizeof(charging_value) - 1L;
+    read_steps[3].payload = charging_value;
+    read_steps[4].result = (long)sizeof(percent_value) - 1L;
+    read_steps[4].payload = percent_value;
+    power_event_fd = 42;
+    power_event_disabled = 0;
+    reset_fake_file(FAKE_FD, 0, -EAGAIN);
+    set_fake_read_script(read_steps, 5U);
+    ok &= check(service_power_poll_event(POLLIN, 1) &&
+                    fake_read_count_for_fd(42) <= POWER_EVENT_READ_BUDGET &&
+                    fake_open_calls <= 2U && charging_state == 1 &&
+                    battery_percent == 75 && displayed_charging_state == 1 &&
+                    displayed_battery_percent == 75,
+                "relevant power burst did not coalesce one sysfs snapshot");
+#ifdef BIRD_PROFILE
+    ok &= check(bird_profile.render[PROFILE_RENDER_BATTERY].commits <= 1U &&
+                    bird_profile.render[PROFILE_RENDER_BATTERY].commits == 1U,
+                "relevant power burst committed more than one battery render");
+#endif
+    power_event_fd = -1;
+    power_event_disabled = 1;
+
+    return ok;
 }
 
 static void setup_full_render_golden(void) {
@@ -466,107 +1949,300 @@ static void setup_full_render_golden(void) {
     charging_state = -1;
     pending_launch.kind = PENDING_LAUNCH_NONE;
     pending_render_invalid = 0U;
+    reset_selected_text_scroll();
 }
 
 static int check_full_render_golden(u64 expected, const char *message) {
+    u64 actual;
     draw_screen();
-    return check(framebuffer_hash() == expected, message);
+    actual = framebuffer_hash();
+    if (actual != expected)
+        fprintf(stderr, "%s: expected=0x%016llx actual=0x%016llx\n",
+                message, (unsigned long long)expected,
+                (unsigned long long)actual);
+    return check(actual == expected, message);
 }
 
 static int run_full_render_golden_tests(void) {
+    char breadcrumb[64];
+    u32 psp_system = CATALOG_SYSTEM_COUNT;
+    u32 index;
     int ok = 1;
 
-    /* These hashes retain the accepted Phase 2 visual output with the
-     * hardware-measured XRGB8888 unused byte stored as zero. They keep later
-     * helpers from changing pixels while dirty-vs-full tests cover coherence. */
+    ok &= check(MENU_FRAME_X == RG34XX_FB_WIDTH - MENU_FRAME_RIGHT &&
+                    MENU_TOP_BAR_WIDTH == 400 &&
+                    MENU_CONTENT_H == 288 &&
+                    MENU_TOP_BAR_WIDTH * 100U / MENU_CONTENT_H == 138U,
+                "launcher chrome lost its centered MiSTer proportions");
+    ok &= check(MENU_LABEL_SCALE == 2 && MENU_ITEM_SCALE_X == 3 &&
+                    MENU_ITEM_SCALE_Y == 3,
+                "launcher visual contract no longer has exactly two scales");
+    ok &= check(MENU_PAGE_ROWS == 9U &&
+                    SYSTEM_ROWS == MENU_PAGE_ROWS &&
+                    GAME_ROWS == MENU_PAGE_ROWS &&
+                    MENU_CONTENT_H == MENU_PAGE_ROWS * MENU_ROW_SPACING &&
+                    MENU_ROW_H == MENU_ROW_SPACING,
+                "fixed page no longer exactly tiles nine complete rows");
+    ok &= check(MENU_MAIN_ROW_START_Y == MENU_CONTENT_Y &&
+                    MENU_MAIN_ROW_SPACING == MENU_ROW_SPACING &&
+                    MENU_MAIN_ROW_H == MENU_ROW_H &&
+                    MENU_MAIN_TEXT_Y_OFFSET == 5,
+                "main menu rows are no longer top-justified on the list grid");
+    ok &= check(MENU_ROW_LEFT == MENU_LEFT + MENU_DIVIDER_WIDTH &&
+                    MENU_ROW_LEFT + MENU_ROW_WIDTH == MENU_FRAME_RIGHT &&
+                    MENU_DIVIDER_WIDTH == 10,
+                "selection no longer preserves its dark divider and flush right edge");
+    ok &= check(MENU_HELP_X_OFFSET == 2 && MENU_HELP_Y == 429 &&
+                    MENU_HELP_Y + 7 * MENU_LABEL_SCALE ==
+                        (MENU_CONTENT_Y + MENU_CONTENT_H + RG34XX_FB_HEIGHT) /
+                            2 + 7,
+                "footer legend is not centered below the menu");
+    ok &= check(MENU_SIDEBAR_SCALE == 3 &&
+                    MENU_SIDEBAR_LETTER_ADVANCE == 20,
+                "sidebar label lost its larger, letter-spaced type");
+    ok &= check(MENU_BATTERY_TEXT_RIGHT == 552 &&
+                    MENU_BATTERY_ICON_MIN_X == 489,
+                "battery group lost its balanced top-bar inset");
+
     setup_full_render_golden();
     view = VIEW_MAIN;
     selected_status = "DIRECT FRAMEBUFFER READY";
-    ok &= check_full_render_golden(0x9a021a90fe889095UL,
-                                   "Phase 2 main-view pixels changed");
+    draw_screen();
+    ok &= check(framebuffer_region_is_color(
+                        MENU_ROW_LEFT, MENU_CONTENT_Y,
+                        MENU_TEXT_X - MENU_ROW_LEFT,
+                        MENU_MAIN_ROW_H, color(239U, 226U, 217U)) &&
+                    framebuffer_pixel(MENU_FRAME_RIGHT - 1U,
+                                      MENU_CONTENT_Y) ==
+                        color(239U, 226U, 217U) &&
+                    framebuffer_region_is_color(
+                        MENU_LEFT, MENU_CONTENT_Y,
+                        MENU_DIVIDER_WIDTH, MENU_MAIN_ROW_H,
+                        color(55U, 18U, 29U)),
+                "main selection gained an arrow, top margin, right margin, or lost its divider");
+    ok &= check(framebuffer_pixel(MENU_FRAME_RIGHT - 1U,
+                                  MENU_TOP_BAR_Y + 4U) ==
+                        color(239U, 226U, 217U) &&
+                    framebuffer_pixel(MENU_FRAME_RIGHT,
+                                      MENU_TOP_BAR_Y + 4U) ==
+                        color(10U, 14U, 20U) &&
+                    framebuffer_pixel(MENU_FRAME_X + 4U,
+                                      MENU_TOP_BAR_Y + MENU_TOP_BAR_H) ==
+                        color(10U, 14U, 20U),
+                "top bar regained a right or bottom shadow");
+    {
+        u64 without_log = framebuffer_hash();
+        selected_status = "THIS DIAGNOSTIC MUST NOT BE VISIBLE";
+        draw_screen();
+        ok &= check(framebuffer_hash() == without_log,
+                    "diagnostic status text remained visible in the footer");
+    }
+
+    setup_full_render_golden();
+    view = VIEW_SYSTEMS;
+    selection = MENU_PAGE_ROWS - 1U;
+    selected_status = "CATALOG READY FROM FIRMWARE";
+    draw_screen();
+    ok &= check(framebuffer_region_is_color(
+                        MENU_ROW_LEFT,
+                        MENU_CONTENT_Y +
+                            (MENU_PAGE_ROWS - 1U) * MENU_ROW_SPACING,
+                        MENU_TEXT_X - MENU_ROW_LEFT,
+                        MENU_ROW_H, color(239U, 226U, 217U)) &&
+                    framebuffer_pixel(
+                        MENU_FRAME_RIGHT - 1U,
+                        MENU_CONTENT_Y + MENU_CONTENT_H - 1U) ==
+                        color(239U, 226U, 217U),
+                "list selection gained an arrow or left a partial bottom row");
+
+    view = VIEW_MAIN;
+    ok &= check(strcmp(current_sidebar_label(), "HOME") == 0 &&
+                    current_breadcrumb(breadcrumb, sizeof(breadcrumb)) == 0U &&
+                    breadcrumb[0] == 0,
+                "home chrome exposed top text or lost its HOME rail");
+    view = VIEW_SYSTEMS;
+    ok &= check(strcmp(current_sidebar_label(), "SYSTEMS") == 0 &&
+                    current_breadcrumb(breadcrumb, sizeof(breadcrumb)) > 0U &&
+                    strcmp(breadcrumb, "PLAY / SYSTEMS") == 0,
+                "systems breadcrumb contract changed");
+    for (index = 0U; index < CATALOG_SYSTEM_COUNT; index++) {
+        if (strcmp(catalog_system_name(index), "PSP") == 0) {
+            psp_system = index;
+            break;
+        }
+    }
+    view = VIEW_GAMES;
+    active_system = psp_system < CATALOG_SYSTEM_COUNT ? psp_system : 0U;
+    ok &= check(psp_system < CATALOG_SYSTEM_COUNT &&
+                    strcmp(current_sidebar_label(), "PSP") == 0 &&
+                    current_breadcrumb(breadcrumb, sizeof(breadcrumb)) > 0U &&
+                    strcmp(breadcrumb, "PLAY / SYSTEMS / PSP") == 0,
+                "PSP breadcrumb contract changed");
+
+    /* These hashes pin the deliberate Phase 9 fixed-device visual contract
+     * with the hardware-measured XRGB8888 unused byte stored as zero. Dirty-
+     * versus-full tests separately protect renderer coherence. */
+    setup_full_render_golden();
+    view = VIEW_MAIN;
+    selected_status = "DIRECT FRAMEBUFFER READY";
+    ok &= check_full_render_golden(0xbcf899e7cf4ff2b0UL,
+                                   "Phase 9 main-view pixels changed");
 
     setup_full_render_golden();
     view = VIEW_PLAY;
-    selected_status = "PLAY LIBRARY READY";
-    ok &= check_full_render_golden(0x29b212de1134226dUL,
-                                   "Phase 2 Play-view pixels changed");
+    selected_status = "PLAY SYSTEMS READY";
+    ok &= check_full_render_golden(0x3e5e9e351bc7b6a4UL,
+                                   "Phase 9 Play-view pixels changed");
 
     setup_full_render_golden();
     view = VIEW_SYSTEMS;
     selected_status = "CATALOG READY FROM FIRMWARE";
-    ok &= check_full_render_golden(0x1564013b9270897bUL,
-                                   "Phase 2 Systems pixels changed");
+    ok &= check_full_render_golden(0x77a68baab14522ecUL,
+                                   "Phase 9 Systems pixels changed");
 
     setup_full_render_golden();
     view = VIEW_SYSTEMS;
     selection = SYSTEM_ROWS;
     selected_status = "DIRECT EVDEV INPUT READY";
-    ok &= check_full_render_golden(0x4af17f03e0947cf3UL,
-                                   "Phase 2 scrolled Systems pixels changed");
+    ok &= check_full_render_golden(0xac6b7e9c33eca1ccUL,
+                                   "Phase 9 fixed-page Systems pixels changed");
 
     setup_full_render_golden();
     view = VIEW_GAMES;
     set_favorite(0U, 1);
-    favorite_count = 1U;
     favorites_loaded = 1;
     selected_status = "ROM STORAGE READY";
-    ok &= check_full_render_golden(0xaa329c19dfcf2353UL,
-                                   "Phase 2 Games pixels changed");
+    ok &= check_full_render_golden(0xd8d89065aaf7510cUL,
+                                   "Phase 9 Games pixels changed");
 
     setup_full_render_golden();
     view = VIEW_FAVORITES;
     selected_status = "FAVORITES LOAD WITH STORAGE";
-    ok &= check_full_render_golden(0xe47cbe6ea1804441UL,
-                                   "Phase 2 loading-Favorites pixels changed");
+    ok &= check_full_render_golden(0x03b04c6a82012764UL,
+                                   "Phase 9 loading-Favorites pixels changed");
 
     setup_full_render_golden();
     view = VIEW_FAVORITES;
     set_favorite(0U, 1);
     set_favorite(1U, 1);
-    favorite_count = 2U;
     favorites_loaded = 1;
     selected_status = "FAVORITES READY";
-    ok &= check_full_render_golden(0xe6d5ee471721ff03UL,
-                                   "Phase 2 Favorites pixels changed");
+    ok &= check_full_render_golden(0x8e62f95496db9214UL,
+                                   "Phase 9 Favorites pixels changed");
 
     setup_full_render_golden();
     view = VIEW_MEDIA_CATEGORIES;
     selected_status = "AUDIO CATALOG READY FROM FIRMWARE";
-    ok &= check_full_render_golden(0x061f22c74ba05003UL,
-                                   "Phase 2 media-category pixels changed");
+    ok &= check_full_render_golden(0x12f46bfb57abc0d0UL,
+                                   "Phase 9 media-category pixels changed");
 
     setup_full_render_golden();
     view = VIEW_MEDIA_CATEGORIES;
     media_section = CATALOG_MEDIA_SECTION_READ;
     selected_status = "READING LIBRARY READY FROM FIRMWARE";
-    ok &= check_full_render_golden(0xd2a698a8eeebfa91UL,
-                                   "Phase 2 empty-media pixels changed");
+    ok &= check(CATALOG_READ_CATEGORY_COUNT == 1U &&
+                    catalog_media_category_entry_count(
+                        CATALOG_READ_CATEGORY_FIRST) == 5U &&
+                    catalog_media_category_launch_kind(
+                        CATALOG_READ_CATEGORY_FIRST) ==
+                        CATALOG_LAUNCH_KOREADER,
+                "embedded Read catalog did not retain five KOReader entries");
+    ok &= check_full_render_golden(0x6205f58fc79c6aa8UL,
+                                   "Phase 9 Read-category pixels changed");
 
     setup_full_render_golden();
     view = VIEW_MEDIA_ENTRIES;
     selected_status = "MEDIA STORAGE READY";
-    ok &= check_full_render_golden(0x1f1e262089fe38cbUL,
-                                   "Phase 2 media-entry pixels changed");
+    ok &= check_full_render_golden(0x818450a9f22b57f4UL,
+                                   "Phase 9 media-entry pixels changed");
 
     setup_full_render_golden();
     view = VIEW_MAIN;
     battery_percent = 100;
     charging_state = 1;
     selected_status = "DIRECT FRAMEBUFFER READY";
-    ok &= check_full_render_golden(0x3babda9a0be291bdUL,
-                                   "Phase 2 charging pixels changed");
+    ok &= check_full_render_golden(0xb0a6c209ea86fa10UL,
+                                   "Phase 9 charging pixels changed");
 
+    return ok;
+}
+
+static int run_selected_text_scroll_tests(void) {
+    const char *long_name;
+    u64 cycle_end;
+    int ok = 1;
+
+    setup_test_framebuffer(1U, fake_framebuffer);
+    setup_main_view();
+    fake_now_ms = 1000;
+    draw_screen();
+    ok &= check(!selected_text_scroll.deadline_ms &&
+                    selected_text_scroll_poll_timeout((u64)-1) == (u64)-1,
+                "short selection introduced an idle wakeup");
+
+    view = VIEW_GAMES;
+    active_system = 0U;
+    selection = 0U;
+    reset_selected_text_scroll();
+    long_name = current_selected_text();
+    ok &= check(long_name && string_length(long_name) > MENU_LIST_TEXT_LIMIT,
+                "scroll fixture no longer overflows the selected row");
+    draw_screen();
+    ok &= check(selected_text_scroll.offset == 0U &&
+                    selected_text_scroll.deadline_ms == 3500U &&
+                    selected_text_scroll_poll_timeout((u64)-1) == 2500U,
+                "overflow selection did not arm the 2.5-second delay");
+    fake_now_ms = 3499;
+    ok &= check(!service_selected_text_scroll() &&
+                    selected_text_scroll.offset == 0U,
+                "selected text scrolled before its initial delay");
+    fake_now_ms = 3500;
+    ok &= check(service_selected_text_scroll() &&
+                    selected_text_scroll.offset == 1U &&
+                    selected_text_scroll.deadline_ms == 3650U,
+                "selected text did not advance at its deadline");
+
+    cycle_end = selected_text_scroll.length + MENU_SCROLL_GAP - 1U;
+    selected_text_scroll.offset = (u32)cycle_end;
+    selected_text_scroll.deadline_ms = 4000U;
+    fake_now_ms = 4000;
+    ok &= check(service_selected_text_scroll() &&
+                    selected_text_scroll.offset == 0U &&
+                    selected_text_scroll.deadline_ms == 6500U,
+                "wrapped text did not pause for 2.5 seconds at its origin");
+
+    selection = 1U;
+    reset_selected_text_scroll();
+    draw_selection_update(0U, 0U);
+    ok &= check(selected_text_scroll.offset == 0U,
+                "leaving a selected row retained its scroll offset");
     return ok;
 }
 
 static int dirty_framebuffer_matches_full(u32 pages, const char *message) {
     u64 bytes = (u64)RG34XX_FB_BYTES * pages;
+    u64 offset;
     setup_test_framebuffer(pages, fake_framebuffer_reference);
     memset(fake_framebuffer_reference, 0xa5, (size_t)bytes);
     draw_screen();
-    return check(memcmp(fake_framebuffer, fake_framebuffer_reference,
-                        (size_t)bytes) == 0,
-                 message);
+    if (memcmp(fake_framebuffer, fake_framebuffer_reference,
+               (size_t)bytes) != 0) {
+        for (offset = 0; offset < bytes; offset++) {
+            if (fake_framebuffer[offset] != fake_framebuffer_reference[offset]) {
+                fprintf(stderr,
+                        "%s: first_difference=%llu x=%llu y=%llu "
+                        "dirty=0x%02x full=0x%02x\n",
+                        message, (unsigned long long)offset,
+                        (unsigned long long)((offset % RG34XX_FB_STRIDE) / 4U),
+                        (unsigned long long)(offset / RG34XX_FB_STRIDE),
+                        fake_framebuffer[offset],
+                        fake_framebuffer_reference[offset]);
+                break;
+            }
+        }
+        return check(0, message);
+    }
+    return 1;
 }
 
 static int run_dirty_region_render_tests(void) {
@@ -577,9 +2253,19 @@ static int run_dirty_region_render_tests(void) {
     int ok = 1;
 
     ok &= check(viewport_first(VIEW_SYSTEMS, SYSTEM_ROWS - 1U) == 0U &&
-                    viewport_first(VIEW_SYSTEMS, SYSTEM_ROWS) == 1U &&
+                    viewport_first(VIEW_SYSTEMS, SYSTEM_ROWS) == SYSTEM_ROWS &&
+                    viewport_first(VIEW_SYSTEMS, SYSTEM_ROWS + 1U) == SYSTEM_ROWS &&
+                    viewport_first(VIEW_SYSTEMS, SYSTEM_ROWS * 2U) ==
+                        SYSTEM_ROWS * 2U &&
+                    viewport_first(VIEW_GAMES, GAME_ROWS + 3U) == GAME_ROWS &&
+                    viewport_first(VIEW_FAVORITES, GAME_ROWS * 2U + 1U) ==
+                        GAME_ROWS * 2U &&
+                    viewport_first(VIEW_MEDIA_CATEGORIES, SYSTEM_ROWS + 2U) ==
+                        SYSTEM_ROWS &&
+                    viewport_first(VIEW_MEDIA_ENTRIES, GAME_ROWS + 2U) ==
+                        GAME_ROWS &&
                     viewport_first(VIEW_MAIN, 3U) == 0U,
-                "accepted one-row viewport policy changed");
+                "fixed-page viewport boundaries changed");
 
     /* Ordinary fixed-page movement changes only the old row, new row, and
      * status line, but must produce the exact same final pixels as a full
@@ -600,7 +2286,7 @@ static int run_dirty_region_render_tests(void) {
     memset(fake_framebuffer, 0x5a, RG34XX_FB_BYTES);
     setup_main_view();
     view = VIEW_PLAY;
-    selected_status = "PLAY LIBRARY READY";
+    selected_status = "PLAY SYSTEMS READY";
     draw_screen();
     old_selection = selection;
     old_first = viewport_first(view, selection);
@@ -628,7 +2314,22 @@ static int run_dirty_region_render_tests(void) {
     ok &= dirty_framebuffer_matches_full(
         1U, "list-row dirty movement differs from a full render");
 
-    /* Crossing row seven retains today's one-row scrolling and repaints the
+    /* Movement within a later fixed page remains a two-row dirty update. */
+    setup_test_framebuffer(1U, fake_framebuffer);
+    memset(fake_framebuffer, 0x5a, RG34XX_FB_BYTES);
+    view = VIEW_SYSTEMS;
+    selection = SYSTEM_ROWS;
+    selected_status = "CATALOG READY FROM FIRMWARE";
+    draw_screen();
+    old_selection = selection;
+    old_first = viewport_first(view, selection);
+    selection = SYSTEM_ROWS + 1U;
+    selected_status = "DIRECT EVDEV INPUT READY";
+    draw_selection_update(old_selection, old_first);
+    ok &= dirty_framebuffer_matches_full(
+        1U, "second-page dirty movement differs from a full render");
+
+    /* Crossing row seven changes to the next fixed page and repaints the
      * bounded content band rather than the header/footer or whole screen. */
     setup_test_framebuffer(1U, fake_framebuffer);
     memset(fake_framebuffer, 0x5a, RG34XX_FB_BYTES);
@@ -714,7 +2415,6 @@ static int run_dirty_region_render_tests(void) {
     memset(fake_framebuffer, 0x5a, RG34XX_FB_BYTES);
     clear_favorites();
     set_favorite(0U, 1);
-    favorite_count = 1U;
     favorites_loaded = 1;
     view = VIEW_GAMES;
     active_system = 0U;
@@ -734,7 +2434,6 @@ static int run_dirty_region_render_tests(void) {
     clear_favorites();
     set_favorite(0U, 1);
     set_favorite(1U, 1);
-    favorite_count = 2U;
     favorites_loaded = 1;
     view = VIEW_FAVORITES;
     selection = 0U;
@@ -771,7 +2470,6 @@ static int run_dirty_region_render_tests(void) {
     clear_favorites();
     set_favorite(0U, 1);
     set_favorite(1U, 1);
-    favorite_count = 2U;
     favorites_loaded = 1;
     storage_ready = 1;
     view = VIEW_FAVORITES;
@@ -785,6 +2483,48 @@ static int run_dirty_region_render_tests(void) {
                 "successful Favorites removal did not publish state");
     ok &= dirty_framebuffer_matches_full(
         1U, "successful Favorites removal dirty render differs from full");
+
+    setup_test_framebuffer(1U, fake_framebuffer);
+    memset(fake_framebuffer, 0x5a, RG34XX_FB_BYTES);
+    clear_favorites();
+    favorites_loaded = 1;
+    storage_ready = 1;
+    view = VIEW_GAMES;
+    active_system = 0U;
+    selection = 0U;
+    selected_status = "ROM STORAGE READY";
+    draw_screen();
+    reset_fake_file(FAKE_FD, 0, 0);
+    fake_write_result = -EIO_LINUX;
+    toggle_current_favorite();
+    ok &= check(!is_favorite(0U) && favorite_count == 0U &&
+                    favorite_catalog_index(0U) == CATALOG_ENTRY_COUNT &&
+                    selection == 0U,
+                "failed favorite add did not restore its indexed state");
+    ok &= dirty_framebuffer_matches_full(
+        1U, "failed favorite add rollback differs from a full render");
+
+    setup_test_framebuffer(1U, fake_framebuffer);
+    memset(fake_framebuffer, 0x5a, RG34XX_FB_BYTES);
+    clear_favorites();
+    set_favorite(0U, 1);
+    set_favorite(1U, 1);
+    favorites_loaded = 1;
+    storage_ready = 1;
+    view = VIEW_FAVORITES;
+    selection = 0U;
+    selected_status = "FAVORITES READY";
+    draw_screen();
+    reset_fake_file(FAKE_FD, 0, 0);
+    fake_rename_result = -EIO_LINUX;
+    toggle_current_favorite();
+    ok &= check(is_favorite(0U) && is_favorite(1U) &&
+                    favorite_count == 2U &&
+                    favorite_catalog_index(0U) == 0U &&
+                    favorite_catalog_index(1U) == 1U && selection == 0U,
+                "failed favorite removal did not restore its indexed state");
+    ok &= dirty_framebuffer_matches_full(
+        1U, "failed favorite removal rollback differs from a full render");
 
     setup_test_framebuffer(1U, fake_framebuffer);
     memset(fake_framebuffer, 0x5a, RG34XX_FB_BYTES);
@@ -1165,33 +2905,240 @@ static int run_navigation_batch_tests(void) {
     reset_fake_file(FAKE_FD, 0, 0);
     fake_rename_result = -EIO_LINUX;
     ok &= check(publish_handoff_action(ACTION_LAUNCH) < 0 &&
-                    fake_unlinked_launch_request &&
+                    fake_unlinked_launch_request && fake_unlink_calls == 4U &&
                     strcmp(selected_status, "HANDOFF PUBLICATION FAILED") == 0,
-                "failed early action publication was allowed to exit");
+                "failed action did not clear both frame paths and launch request");
 
     /* A valid descriptor survives the read until application() atomically
-     * refreshes it; invalid bytes are still removed instead of recurring. */
+     * refreshes it. Invalid bytes are also left untouched until that deferred
+     * checkpoint, so startup never creates an unlink/write crash window. */
     setup_navigation_test(&batch, VIEW_MAIN);
     resume.magic = UI_RESUME_MAGIC;
     resume.view = VIEW_SYSTEMS;
     resume.active_index = 0U;
-    resume.selection = 2U;
+    resume.selection = SYSTEM_ROWS + 1U;
     reset_fake_file(FAKE_FD, 0, 0);
     fake_payload = (const char *)&resume;
     fake_payload_bytes = sizeof(resume);
     ok &= check(load_ui_resume() == 1 && view == VIEW_SYSTEMS &&
-                    selection == 2U && fake_unlink_calls == 0U,
-                "valid resume load opened a startup read/unlink crash gap");
+                    selection == SYSTEM_ROWS + 1U &&
+                    viewport_first(view, selection) == SYSTEM_ROWS &&
+                    fake_unlink_calls == 0U,
+                "valid resume did not reconstruct its fixed page safely");
     resume.view = VIEW_MAIN;
-    resume.selection = 4U;
+    resume.selection = 6U;
     reset_fake_file(FAKE_FD, 0, 0);
     fake_payload = (const char *)&resume;
     fake_payload_bytes = sizeof(resume);
-    ok &= check(load_ui_resume() == 0 && fake_unlink_calls == 1U &&
-                    strcmp(fake_unlink_path,
-                           "bird-launcher-ui-resume") == 0,
-                "invalid resume descriptor was retained across recovery");
+    ok &= check(load_ui_resume() == 0 && fake_unlink_calls == 0U,
+                "invalid resume descriptor was mutated before the barrier");
+    reset_fake_file(FAKE_FD, 0, 0);
+    ok &= check(save_ui_resume() == 0 && fake_create_calls == 1U &&
+                    fake_rename_calls == 1U && fake_unlink_calls == 0U,
+                "deferred checkpoint did not replace invalid resume state");
 
+    /* A cold Favorites resume reads only the UI descriptor. Storage parsing
+     * and its diagnostics remain deferred until after the interactive frame. */
+    setup_navigation_test(&batch, VIEW_MAIN);
+    resume.magic = UI_RESUME_MAGIC;
+    resume.view = VIEW_FAVORITES;
+    resume.active_index = 0U;
+    resume.selection = 3U;
+    favorites_loaded = 0;
+    reset_fake_file(FAKE_FD, 0, 0);
+    fake_payload = (const char *)&resume;
+    fake_payload_bytes = sizeof(resume);
+#ifdef BIRD_PROFILE
+    bird_profile_reset();
+#endif
+    ok &= check(load_ui_resume() == 1 && view == VIEW_FAVORITES &&
+                    selection == 3U && fake_open_calls == 1U &&
+                    !favorites_loaded,
+                "Favorites resume performed storage initialization");
+#ifdef BIRD_PROFILE
+    ok &= check(bird_profile.pre_barrier_diagnostic_writes == 0U,
+                "Favorites resume logged before the interactive barrier");
+#endif
+
+    return ok;
+}
+
+static int run_user_reload_handoff_tests(void) {
+    struct navigation_batch batch;
+#ifdef BIRD_PROFILE
+    const struct bird_profile_render_totals *render;
+#endif
+    int action;
+    int result;
+    int ok = 1;
+
+    /* Main-page B returns to PLAY with an ordinary dirty selection update.
+     * It remains deliberately absent from the visible footer legend and
+     * commits resume state only after the row barrier. */
+    setup_navigation_test(&batch, VIEW_MAIN);
+    selection = 2U;
+    pending_launch.kind = PENDING_LAUNCH_GAME;
+    pending_launch.index = 4U;
+
+    /* Build the authoritative selection-zero content independently. Pixels
+     * outside the two dirty rows remain untouched: Home B is no longer a
+     * hidden full-screen recovery command. */
+    selected_status = "DIRECT EVDEV INPUT READY";
+    setup_test_framebuffer(1U, fake_framebuffer_reference);
+    memset(fake_framebuffer_reference, 0xa5, RG34XX_FB_BYTES);
+    selection = 0U;
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_STARTUP_FULL);
+    draw_screen();
+    setup_test_framebuffer(1U, fake_framebuffer);
+    selection = 2U;
+    selected_status = "DIRECT FRAMEBUFFER READY";
+    memset(fake_framebuffer, 0xa5, RG34XX_FB_BYTES);
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_STARTUP_FULL);
+    draw_screen();
+    memset(fake_framebuffer + 10U * RG34XX_FB_STRIDE + 10U * 4U,
+           0xde, 4U);
+    memset(fake_framebuffer + 200U * RG34XX_FB_STRIDE + 10U * 4U,
+           0xad, 4U);
+    memset(fake_framebuffer + 470U * RG34XX_FB_STRIDE + 700U * 4U,
+           0xbe, 4U);
+    reset_fake_file(FAKE_FD, 0, 0);
+#ifdef BIRD_PROFILE
+    bird_profile_reset();
+    fake_now_ms = 2863;
+    BIRD_PROFILE_BEGIN_EVENT();
+#endif
+    action = handle_back();
+#ifdef BIRD_PROFILE
+    BIRD_PROFILE_FINISH_EVENT();
+    render = &bird_profile.render[PROFILE_RENDER_SELECTION_MOVEMENT];
+#endif
+    ok &= check(action == ACTION_NONE && view == VIEW_MAIN &&
+                    selection == 0U &&
+                    pending_launch.kind == PENDING_LAUNCH_NONE &&
+                    fake_create_calls == 1U && fake_rename_calls == 1U &&
+                    strcmp(selected_status, "DIRECT EVDEV INPUT READY") == 0,
+                "main-page B did not return to the top selection");
+    ok &= check(framebuffer_regions_equal(
+                        fake_framebuffer, fake_framebuffer_reference,
+                        MENU_LEFT, MENU_CONTENT_Y,
+                        MENU_CONTENT_WIDTH, MENU_CONTENT_H) &&
+                    framebuffer_pixel(10U, 10U) == 0xdedededeU &&
+                    framebuffer_pixel(10U, 200U) == 0xadadadadU &&
+                    framebuffer_pixel(700U, 470U) == 0xbebebebeU,
+                "main-page B repainted outside its dirty selection rows");
+#ifdef BIRD_PROFILE
+    ok &= check(render->commits == 1U && render->pages_written == 1U &&
+                    bird_profile.render[PROFILE_RENDER_RECOVERY].commits ==
+                        0U,
+                "main-page B was not recorded as one selection render");
+    ok &= check(bird_profile.input_to_barrier_samples == 1U &&
+                    bird_profile.resume_before_barrier == 0U &&
+                    bird_profile.barrier_to_resume_samples == 1U &&
+                    bird_profile.event_pre_barrier_filesystem_ops == 0U &&
+                    bird_profile.event_pre_barrier_diagnostic_writes == 0U,
+                "main-page B persisted or logged before its row barrier");
+    printf("launcher profile benchmark scenario=home-b-top "
+           "renders=%lu logical_pixels=%lu visible_bytes=%lu pages=%lu "
+           "physical_bytes=%lu syscalls=%lu\n",
+           (unsigned long)render->commits,
+           (unsigned long)render->logical_pixels,
+           (unsigned long)render->visible_bytes,
+           (unsigned long)render->pages_written,
+           (unsigned long)render->physical_bytes,
+           (unsigned long)bird_profile.syscalls);
+#endif
+    ok &= check(!action_preserves_frame(action) &&
+                    action_preserves_frame(ACTION_RELOAD) &&
+                    action_preserves_frame(ACTION_LAUNCH) &&
+                    action_preserves_frame(ACTION_PORTMASTER) &&
+                    !action_preserves_frame(ACTION_SHUTDOWN) &&
+                    !action_preserves_frame(ACTION_REBOOT),
+                "legacy reload compatibility lost its framebuffer contract");
+
+    /* Action 13 remains readable for release compatibility with an older
+     * already-running launcher, but the current input path never emits it. */
+    reset_fake_file(FAKE_FD, 0, 0);
+    begin_fake_file_write_capture();
+    result = write_handoff_action(ACTION_RELOAD);
+    end_fake_file_write_capture();
+    ok &= check(result == 0 && fake_write_capture_bytes == 3U &&
+                    memcmp(fake_write_capture, "13\n", 3U) == 0 &&
+                    fake_rename_calls == 1U,
+                "reload handoff did not publish the canonical action");
+
+    reset_fake_file(FAKE_FD, 0, 0);
+    begin_fake_file_write_capture();
+    result = write_handoff_action(ACTION_REBOOT);
+    end_fake_file_write_capture();
+    ok &= check(result == 0 && fake_write_capture_bytes == 3U &&
+                    memcmp(fake_write_capture, "14\n", 3U) == 0 &&
+                    fake_rename_calls == 1U,
+                "reboot handoff did not publish the canonical action");
+
+    /* Nested B remains ordinary navigation; no current input path emits the
+     * legacy action 13 compatibility value. */
+    setup_navigation_test(&batch, VIEW_GAMES);
+    active_system = 3U;
+    selection = 2U;
+    reset_fake_file(FAKE_FD, 0, 0);
+    action = handle_back();
+    ok &= check(action == ACTION_NONE && view == VIEW_SYSTEMS &&
+                    selection == 3U && fake_create_calls == 1U &&
+                    fake_rename_calls == 1U,
+                "nested B changed from navigation into user reload");
+
+    return ok;
+}
+
+static int run_phase9_menu_hierarchy_tests(void) {
+    struct navigation_batch batch;
+    int action;
+    int ok = 1;
+
+    setup_navigation_test(&batch, VIEW_MAIN);
+    ok &= check(current_count() == 6U &&
+                    strcmp(menu_item[4], "TOOLS") == 0 &&
+                    strcmp(menu_item[5], "QUIT") == 0,
+                "home hierarchy did not expose Tools and Quit");
+
+    selection = 0U;
+    action = select_current();
+    ok &= check(action == ACTION_NONE && view == VIEW_PLAY &&
+                    current_count() == 2U &&
+                    strcmp(play_item[0], "SYSTEMS") == 0 &&
+                    strcmp(play_item[1], "FAVORITES") == 0,
+                "Play retained PortMaster/Shutdown or lost Systems/Favorites");
+    (void)handle_back();
+
+    selection = 4U;
+    action = select_current();
+    ok &= check(action == ACTION_NONE && view == VIEW_TOOLS &&
+                    current_count() == 1U &&
+                    strcmp(tools_item[0], "PORTMASTER") == 0,
+                "Tools did not own the single PortMaster entry");
+    reset_fake_file(FAKE_FD, 0, 0);
+    action = select_current();
+    ok &= check(action == ACTION_PORTMASTER,
+                "Tools PortMaster selection changed its handoff action");
+    (void)handle_back();
+
+    selection = 5U;
+    action = select_current();
+    ok &= check(action == ACTION_NONE && view == VIEW_QUIT &&
+                    current_count() == 3U &&
+                    strcmp(quit_item[0], "RELOAD") == 0 &&
+                    strcmp(quit_item[1], "REBOOT") == 0 &&
+                    strcmp(quit_item[2], "SHUTDOWN") == 0,
+                "Quit hierarchy changed");
+    selection = 0U;
+    ok &= check(select_current() == ACTION_RELOAD,
+                "Quit Reload action changed");
+    selection = 1U;
+    ok &= check(select_current() == ACTION_REBOOT,
+                "Quit Reboot action changed");
+    selection = 2U;
+    ok &= check(select_current() == ACTION_SHUTDOWN,
+                "Quit Shutdown action changed");
     return ok;
 }
 
@@ -1359,14 +3306,19 @@ static int run_profile_tests(void) {
     ok &= check(fake_profile_log_bytes == 0 && bird_profile.output_records == 0,
                 "profile output occurred before the interactive barrier");
 
-    /* Preserve the current milestone order exactly: the startup frame barrier
-     * precedes input discovery. Equal millisecond timestamps must not hide it. */
+    /* Phase 5A may publish a noninteractive base, but the readiness barrier
+     * cannot become interactive until input is open and menu rows are drawn. */
     setup_test_framebuffer(2U, fake_framebuffer);
     setup_main_view();
     bird_profile_application_entry((u64)fake_now_ms * 1000000UL);
     BIRD_PROFILE_RENDER(PROFILE_RENDER_STARTUP_FULL);
-    draw_screen();
+    draw_startup_base();
+    ok &= check(!bird_profile.interactive_barrier_seen,
+                "noninteractive startup base published readiness");
+    fake_now_ms++;
     bird_profile_input_opened();
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_STARTUP_FULL);
+    draw_startup_menu_overlay();
     bird_profile_first_frame_marked();
     before_syscalls = bird_profile.syscalls;
     before_diagnostics = bird_profile.diagnostic_writes;
@@ -1374,9 +3326,18 @@ static int run_profile_tests(void) {
     ok &= check(fake_profile_log_bytes > 0 && bird_profile.output_records >= 2,
                 "profile output did not become available after the barrier");
     ok &= check(profile_log_contains(
-                    "input_open_to_interactive_barrier_ns="
-                    "unavailable:barrier-before-input"),
-                "reversed startup milestone order was reported as a duration");
+                    "input_open_to_interactive_barrier_ns=") &&
+                    !profile_log_contains(
+                        "input_open_to_interactive_barrier_ns="
+                        "unavailable:barrier-before-input"),
+                "interactive startup barrier did not follow input open");
+    ok &= check(profile_log_contains(
+                    " frame_fingerprint_physical_bytes_read=0") &&
+                    profile_log_contains(
+                        " frame_fingerprint_visible_bytes_compared=0") &&
+                    profile_log_contains(
+                        " frame_fingerprint_pages_read=0"),
+                "startup profile omitted retained-frame read accounting");
     ok &= check(profile_log_contains(
                     "framebuffer_format path=diagnostic-fallback ") &&
                     profile_log_contains(
@@ -1393,14 +3354,71 @@ static int run_profile_tests(void) {
                 "profile serialization changed workload counters");
     render = &bird_profile.render[PROFILE_RENDER_STARTUP_FULL];
     maximum_physical = render->logical_pixels * 4U * 2U;
-    ok &= check(render->commits == 1U &&
-                    render->logical_pixels >= TEST_FB_WIDTH * TEST_FB_HEIGHT &&
-                    render->logical_pixels <= 600000U,
+    ok &= check(render->commits == 2U &&
+                    render->logical_pixels >=
+                        RG34XX_FB_WIDTH * RG34XX_FB_HEIGHT &&
+                    render->logical_pixels <= 500000U,
                 "startup render reason or logical-pixel bounds are wrong");
-    ok &= check(render->pages_written == 2U &&
+    ok &= check(render->pages_written == 4U &&
                     render->visible_bytes <= render->physical_bytes &&
                     render->physical_bytes <= maximum_physical,
                 "startup framebuffer page/byte metrics do not reconcile");
+
+    /* Production uses one exact XRGB8888 page. The Phase 5A fallback renders
+     * the honest base, then overlays only pixels made interactive by input. */
+    bird_profile_reset();
+    setup_test_framebuffer(1U, fake_framebuffer);
+    setup_main_view();
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_STARTUP_FULL);
+    draw_startup_base();
+    bird_profile_input_opened();
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_STARTUP_FULL);
+    draw_startup_menu_overlay();
+    render = &bird_profile.render[PROFILE_RENDER_STARTUP_FULL];
+    ok &= check(render->commits == 2U && render->pages_written == 2U &&
+                    render->physical_bytes <=
+                        STARTUP_FRAMEBUFFER_WRITE_BUDGET,
+                "Phase 5A startup exceeded its framebuffer-write budget");
+    printf("launcher profile benchmark scenario=phase5a-startup "
+           "renders=%lu pages=%lu physical_bytes=%lu budget=%lu\n",
+           (unsigned long)render->commits,
+           (unsigned long)render->pages_written,
+           (unsigned long)render->physical_bytes,
+           (unsigned long)STARTUP_FRAMEBUFFER_WRITE_BUDGET);
+
+    /* Once the manifest and hardware gates admit the inherited base, startup
+     * writes only the newly interactive menu pixels after input is open. */
+    bird_profile_reset();
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_STARTUP_FULL);
+    draw_startup_menu_overlay();
+    render = &bird_profile.render[PROFILE_RENDER_STARTUP_FULL];
+    ok &= check(render->commits == 1U && render->pages_written == 1U &&
+                    render->physical_bytes <=
+                        INHERITED_BOOT_FRAME_WRITE_BUDGET,
+                "Phase 5B inherited overlay exceeded its write budget");
+    printf("launcher profile benchmark scenario=phase5b-inherited-overlay "
+           "renders=%lu pages=%lu physical_bytes=%lu budget=%lu\n",
+           (unsigned long)render->commits,
+           (unsigned long)render->pages_written,
+           (unsigned long)render->physical_bytes,
+           (unsigned long)INHERITED_BOOT_FRAME_WRITE_BUDGET);
+
+    selected_status = "RETURNED TO PREVIOUS SCREEN";
+    bird_profile_reset();
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_RECOVERY);
+    draw_recovery_update();
+    render = &bird_profile.render[PROFILE_RENDER_RECOVERY];
+    ok &= check(render->commits == 1U && render->pages_written == 0U &&
+                    render->physical_bytes == 0U &&
+                    render->physical_bytes <=
+                        RECOVERY_FRAMEBUFFER_WRITE_BUDGET,
+                "retained recovery exceeded its framebuffer-write budget");
+    printf("launcher profile benchmark scenario=phase5-recovery "
+           "renders=%lu pages=%lu physical_bytes=%lu budget=%lu\n",
+           (unsigned long)render->commits,
+           (unsigned long)render->pages_written,
+           (unsigned long)render->physical_bytes,
+           (unsigned long)RECOVERY_FRAMEBUFFER_WRITE_BUDGET);
 
     /* A small primitive makes the metric definitions exact without pinning a
      * brittle whole-screen write count. */
@@ -1700,7 +3718,39 @@ static int run_profile_tests(void) {
                     bird_profile.navigation_batches == 0U,
                 "empty view left a profile event active for a later barrier");
 
-    /* Crossing row seven changes the current scrolling viewport. */
+    /* Record the current cost of moving within the second logical page. The
+     * Phase 3B fixed-page assertion is applied after the production policy is
+     * changed, so this same scenario gives a directly comparable baseline. */
+    bird_profile_reset();
+    setup_test_framebuffer(1U, fake_framebuffer);
+    view = VIEW_SYSTEMS;
+    selection = SYSTEM_ROWS;
+    selected_status = "CATALOG READY FROM FIRMWARE";
+    reset_fake_file(FAKE_FD, 0, 0);
+    BIRD_PROFILE_BEGIN_EVENT();
+    move_selection(1, 1U);
+    BIRD_PROFILE_FINISH_EVENT();
+    ok &= check(selection == SYSTEM_ROWS + 1U,
+                "second-page benchmark changed selection semantics");
+    ok &= check(
+        bird_profile.render[PROFILE_RENDER_SELECTION_MOVEMENT].commits == 1U &&
+            bird_profile.render[PROFILE_RENDER_SELECTION_MOVEMENT]
+                    .physical_bytes < 400000U &&
+            bird_profile.render[PROFILE_RENDER_VIEWPORT_CHANGE].commits == 0U,
+        "fixed second page did not retain the dirty selection path");
+    printf("launcher profile benchmark scenario=second-page-movement "
+           "selection_commits=%lu selection_physical_bytes=%lu "
+           "viewport_commits=%lu viewport_physical_bytes=%lu\n",
+           (unsigned long)bird_profile
+               .render[PROFILE_RENDER_SELECTION_MOVEMENT].commits,
+           (unsigned long)bird_profile
+               .render[PROFILE_RENDER_SELECTION_MOVEMENT].physical_bytes,
+           (unsigned long)bird_profile
+               .render[PROFILE_RENDER_VIEWPORT_CHANGE].commits,
+           (unsigned long)bird_profile
+               .render[PROFILE_RENDER_VIEWPORT_CHANGE].physical_bytes);
+
+    /* Crossing row seven changes the current viewport. */
     bird_profile_reset();
     setup_test_framebuffer(1U, fake_framebuffer);
     view = VIEW_SYSTEMS;
@@ -1716,7 +3766,7 @@ static int run_profile_tests(void) {
                     render->logical_pixels < 350000U &&
                     render->physical_bytes < 1400000U &&
                     render->pages_written == 1U,
-                "scroll-boundary movement was not classified as viewport change");
+                "fixed-page boundary was not classified as viewport change");
     printf("launcher profile benchmark scenario=viewport-change "
            "logical_pixels=%lu visible_bytes=%lu pages=%lu physical_bytes=%lu\n",
            (unsigned long)render->logical_pixels,
@@ -1820,6 +3870,32 @@ static int run_profile_tests(void) {
            (unsigned long)render->pages_written,
            (unsigned long)render->physical_bytes);
 
+    setup_test_framebuffer(1U, fake_framebuffer);
+    setup_main_view();
+    view = VIEW_GAMES;
+    active_system = 0U;
+    selection = 0U;
+    fake_now_ms = 1000;
+    draw_screen();
+    bird_profile_reset();
+    fake_now_ms = 3500;
+    BIRD_PROFILE_BEGIN_EVENT();
+    ok &= check(service_selected_text_scroll(),
+                "overflow scroll deadline produced no render");
+    BIRD_PROFILE_FINISH_EVENT();
+    render = &bird_profile.render[PROFILE_RENDER_TEXT_SCROLL];
+    ok &= check(render->commits == 1U && render->pages_written == 1U &&
+                    render->physical_bytes < 200000U &&
+                    bird_profile.event_pre_barrier_filesystem_ops == 0U &&
+                    bird_profile.event_pre_barrier_diagnostic_writes == 0U,
+                "text scroll exceeded its row-only render contract");
+    printf("launcher profile benchmark scenario=text-scroll "
+           "logical_pixels=%lu visible_bytes=%lu pages=%lu physical_bytes=%lu\n",
+           (unsigned long)render->logical_pixels,
+           (unsigned long)render->visible_bytes,
+           (unsigned long)render->pages_written,
+           (unsigned long)render->physical_bytes);
+
     bird_profile_reset();
     setup_test_framebuffer(1U, fake_framebuffer);
     clear_favorites();
@@ -1853,10 +3929,11 @@ static int run_profile_tests(void) {
     next_favorites_retry = (u64)fake_now_ms + 100U;
     reset_fake_file(FAKE_FD, 0, 0);
     receive_storage_handoff_signal();
+    load_favorites_and_update_view();
     ok &= check(
-        bird_profile.render[PROFILE_RENDER_STATUS].commits == 1U &&
+        bird_profile.render[PROFILE_RENDER_STATUS].commits == 0U &&
             bird_profile.render[PROFILE_RENDER_FAVORITES_COMPLETION].commits == 0U,
-        "deferred Favorites retry was mislabeled as completion");
+        "deferred Favorites retry rendered before publication");
 
     bird_profile_reset();
     setup_test_framebuffer(1U, fake_framebuffer);
@@ -1868,6 +3945,7 @@ static int run_profile_tests(void) {
     next_favorites_retry = 0;
     reset_fake_file(FAKE_FD, 0, 0);
     receive_storage_handoff_signal();
+    load_favorites_and_update_view();
     ok &= check(favorites_loaded &&
                     bird_profile.render[
                         PROFILE_RENDER_FAVORITES_COMPLETION].commits == 1U,
@@ -1987,16 +4065,102 @@ static int run_profile_tests(void) {
                 "failed pending dispatch retained a stale selection interval");
 
 #ifdef BIRD_PROFILE_DEEP
+    {
+        char favorites_file[1024];
+        const char *first_path = catalog_entry_path(0U);
+        const char *middle_path =
+            catalog_entry_path(CATALOG_ENTRY_COUNT / 2U);
+        const char *last_path = catalog_entry_path(CATALOG_ENTRY_COUNT - 1U);
+        u64 lookup_iterations;
+        u64 load_iterations;
+        u64 save_iterations;
+        u64 load_string_bytes;
+        u32 lookup_bound = 1U;
+        u32 span = CATALOG_ENTRY_COUNT;
+        int file_bytes;
+
+        while (span > 1U) {
+            span = (span + 1U) / 2U;
+            lookup_bound++;
+        }
+
+        bird_profile_reset();
+        ok &= check(catalog_find_entry_by_path(
+                        last_path, (u32)strlen(last_path)) ==
+                        CATALOG_ENTRY_COUNT - 1U,
+                    "binary catalog path lookup missed an exact path");
+        lookup_iterations = bird_profile_deep.catalog_iterations;
+        ok &= check(lookup_iterations > 0U &&
+                        lookup_iterations <= lookup_bound,
+                    "binary catalog path lookup exceeded its logarithmic bound");
+
+        clear_favorites();
+        set_favorite(CATALOG_ENTRY_COUNT - 1U, 1);
+        set_favorite(10U, 1);
+        bird_profile_zero(&bird_profile_deep, sizeof(bird_profile_deep));
+        ok &= check(favorite_catalog_index(0U) == 10U &&
+                        favorite_catalog_index(1U) ==
+                            CATALOG_ENTRY_COUNT - 1U &&
+                        bird_profile_deep.catalog_iterations == 0U,
+                    "Favorites ordinal lookup still scanned the catalog");
+
+        file_bytes = snprintf(favorites_file, sizeof(favorites_file),
+                              "%s\n%s\n%s\n%s\n", last_path, first_path,
+                              middle_path, first_path);
+        ok &= check(file_bytes > 0 &&
+                        (u32)file_bytes < (u32)sizeof(favorites_file),
+                    "Favorites benchmark paths exceeded its host buffer");
+        reset_favorites();
+        bird_profile_reset();
+        reset_fake_file(FAKE_FD, favorites_file, 0);
+        load_favorites();
+        load_iterations = bird_profile_deep.catalog_iterations;
+        load_string_bytes = bird_profile_deep.string_bytes;
+        ok &= check(favorites_loaded && favorite_count == 3U &&
+                        favorite_catalog_index(0U) == 0U &&
+                        favorite_catalog_index(1U) ==
+                            CATALOG_ENTRY_COUNT / 2U &&
+                        favorite_catalog_index(2U) ==
+                            CATALOG_ENTRY_COUNT - 1U &&
+                        load_iterations <=
+                            CATALOG_ENTRY_COUNT + 4U * lookup_bound,
+                    "Favorites load exceeded one bounded index rebuild plus path lookups");
+
+        bird_profile_zero(&bird_profile_deep, sizeof(bird_profile_deep));
+        reset_fake_file(FAKE_FD, 0, 0);
+        ok &= check(save_favorites() == 0,
+                    "indexed Favorites benchmark failed to save");
+        save_iterations = bird_profile_deep.catalog_iterations;
+        ok &= check(save_iterations <= favorite_count,
+                    "Favorites save scanned beyond indexed members");
+        printf("launcher profile_deep benchmark scenario=favorites-index "
+               "lookup_iterations=%lu lookup_bound=%u "
+               "load_iterations=%lu load_bound=%u string_bytes=%lu "
+               "save_iterations=%lu favorite_count=%u "
+               "prior_linear_load_iterations=%u "
+               "prior_linear_save_iterations=%u\n",
+               (unsigned long)lookup_iterations, lookup_bound,
+               (unsigned long)load_iterations,
+               CATALOG_ENTRY_COUNT + 4U * lookup_bound,
+               (unsigned long)load_string_bytes,
+               (unsigned long)save_iterations, favorite_count,
+               CATALOG_ENTRY_COUNT + CATALOG_ENTRY_COUNT / 2U + 3U,
+               CATALOG_ENTRY_COUNT);
+    }
+
     bird_profile_reset();
     (void)catalog_path_supported("/mnt/mmc/a");
-    (void)path_matches("/mnt/mmc/a", 10U, "/mnt/mmc/a");
+    (void)catalog_find_entry_by_path(
+        catalog_entry_path(0U),
+        (u32)strlen(catalog_entry_path(0U)));
     ok &= check(bird_profile_deep.string_bytes > 20U,
-                "deep profiling missed path-validation string scans");
+                "deep profiling missed active path-lookup string scans");
     clear_favorites();
     set_favorite(10U, 1);
+    bird_profile_zero(&bird_profile_deep, sizeof(bird_profile_deep));
     (void)favorite_catalog_index(0U);
-    ok &= check(bird_profile_deep.catalog_iterations > 0U,
-                "deep profiling did not count favorite catalog iterations");
+    ok &= check(bird_profile_deep.catalog_iterations == 0U,
+                "deep profiling found a catalog scan in indexed lookup");
 #endif
 
     return ok;
@@ -2012,9 +4176,16 @@ int main(void) {
     int ok = 1;
 
     ok &= run_framebuffer_primitive_tests();
+    ok &= run_phase7_catalog_and_favorites_tests();
+    ok &= run_preferred_input_probe_tests();
+    ok &= run_phase5_startup_tests();
+    ok &= run_phase6_background_tests();
     ok &= run_full_render_golden_tests();
+    ok &= run_selected_text_scroll_tests();
     ok &= run_dirty_region_render_tests();
     ok &= run_navigation_batch_tests();
+    ok &= run_phase9_menu_hierarchy_tests();
+    ok &= run_user_reload_handoff_tests();
     ok &= run_storage_handoff_tests();
 
     /* ENOENT alone establishes a new, successfully loaded empty collection. */
@@ -2028,7 +4199,6 @@ int main(void) {
     /* Any other open failure remains fail-closed and schedules a timed retry. */
     reset_favorites();
     set_favorite(0, 1);
-    favorite_count = 1;
     fake_now_ms = 2000;
     reset_fake_file(-EIO_LINUX, 0, 0);
     load_favorites();
@@ -2045,7 +4215,7 @@ int main(void) {
     /* A complete line followed by an I/O error must not leak its partial bit. */
     reset_favorites();
     fake_now_ms = 3000;
-    snprintf(partial, sizeof(partial), "%s\n", catalog_entries[0].path);
+    snprintf(partial, sizeof(partial), "%s\n", catalog_entry_path(0U));
     reset_fake_file(FAKE_FD, partial, -EIO_LINUX);
     load_favorites();
     due = next_favorites_retry;
@@ -2060,7 +4230,8 @@ int main(void) {
 
     /* The first successful retry consumes the full file and publishes at EOF. */
     snprintf(complete, sizeof(complete), "%s\n%s\n",
-             catalog_entries[0].path, catalog_entries[1].path);
+             catalog_entry_path(CATALOG_ENTRY_COUNT - 1U),
+             catalog_entry_path(0U));
     fake_now_ms = (long)due - 1;
     reset_fake_file(FAKE_FD, complete, 0);
     load_favorites();
@@ -2069,7 +4240,11 @@ int main(void) {
     fake_now_ms = (long)due;
     load_favorites();
     ok &= check(favorites_loaded && favorite_count == 2 &&
-                    is_favorite(0) && is_favorite(1),
+                    is_favorite(0) &&
+                    is_favorite(CATALOG_ENTRY_COUNT - 1U) &&
+                    favorite_catalog_index(0U) == 0U &&
+                    favorite_catalog_index(1U) ==
+                        CATALOG_ENTRY_COUNT - 1U,
                 "successful later retry did not publish the full bitmap");
     ok &= check(next_favorites_retry == 0 &&
                     favorites_retry_ms == FAVORITES_RETRY_INITIAL_MS,

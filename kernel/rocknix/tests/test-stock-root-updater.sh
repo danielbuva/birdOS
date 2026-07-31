@@ -51,6 +51,41 @@ mode() {
 	stat -f '%Lp' "$1"
 }
 
+write_portmaster_provider_manifest() {
+	{
+		printf 'schema\tbird-portmaster-provider-v1\n'
+		printf 'revision\t2026.07.28-1212\n'
+		printf 'source-url\thttps://github.com/PortsMaster/PortMaster-GUI/releases/download/2026.07.28-1212/PortMaster.zip\n'
+		printf 'archive\t1\t%s\t%s\n' \
+			aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+			bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+		for MANAGED_PATH in PortMaster.sh funcs.txt harbourmaster \
+			mod_ROCKNIX.txt pugwash; do
+			MANAGED_FILE=$DATA/ROMS/Ports/PortMaster/$MANAGED_PATH
+			printf 'file\t%s\t%s\t%s\n' "$MANAGED_PATH" \
+				"$(bytes "$MANAGED_FILE")" "$(sha256 "$MANAGED_FILE")"
+		done
+		printf 'optional-file\tpylibs.zip\t%s\t%s\n' \
+			"$(bytes "$PORTMASTER_PYLIBS_FIXTURE")" \
+			"$(sha256 "$PORTMASTER_PYLIBS_FIXTURE")"
+	} >"$PORTMASTER_PROVIDER_MANIFEST"
+}
+
+portmaster_provider_marker_value() {
+	printf 'bird-portmaster-v3:2026.07.28-1212:%s\n' \
+		"$(sha256 "$PORTMASTER_PROVIDER_MANIFEST")"
+}
+
+portmaster_fixture_provider_value() {
+	{
+		for PROVIDER_PATH in PortMaster.sh control.txt funcs.txt harbourmaster \
+			mod_ROCKNIX.txt oga_controls pugwash; do
+			printf '%s\t%s\n' "$PROVIDER_PATH" \
+				"$(sha256 "$DATA/ROMS/Ports/PortMaster/$PROVIDER_PATH")"
+		done
+	} | shasum -a 256 | awk '{print $1}'
+}
+
 CARD=$TMP/build/card
 MANIFEST=$TMP/build/deploy-manifest.tsv
 DATA=$TMP/BIRD-DATA
@@ -105,10 +140,13 @@ OFFICIAL_INIT_SHA=22222222222222222222222222222222222222222222222222222222222222
 JOYPAD_SHA=3333333333333333333333333333333333333333333333333333333333333333
 INIT_BUSYBOX_SHA=4444444444444444444444444444444444444444444444444444444444444444
 PORTMASTER_ARCHIVE_SHA=5555555555555555555555555555555555555555555555555555555555555555
+PORTMASTER_PROVIDER_MANIFEST=$TMP/portmaster-provider.manifest.tsv
+PORTMASTER_PYLIBS_FIXTURE=$TMP/pylibs.fixture.zip
 for NAME in pugwash PortMaster.sh control.txt mod_ROCKNIX.txt funcs.txt \
 	oga_controls harbourmaster; do
 	printf 'test provider %s\n' "$NAME" >"$DATA/ROMS/Ports/PortMaster/$NAME"
 done
+printf 'fixture optional pylibs bytes\n' >"$PORTMASTER_PYLIBS_FIXTURE"
 chmod 0755 "$DATA/ROMS/Ports/PortMaster/pugwash" \
 	"$DATA/ROMS/Ports/PortMaster/PortMaster.sh" \
 	"$DATA/ROMS/Ports/PortMaster/harbourmaster"
@@ -117,6 +155,8 @@ PORTMASTER_SH_SHA=$(sha256 "$DATA/ROMS/Ports/PortMaster/PortMaster.sh")
 PORTMASTER_MOD_SHA=$(sha256 "$DATA/ROMS/Ports/PortMaster/mod_ROCKNIX.txt")
 PORTMASTER_FUNCS_SHA=$(sha256 "$DATA/ROMS/Ports/PortMaster/funcs.txt")
 PORTMASTER_HARBOURMASTER_SHA=$(sha256 "$DATA/ROMS/Ports/PortMaster/harbourmaster")
+write_portmaster_provider_manifest
+PORTMASTER_EXPECTED_MARKER=$(portmaster_provider_marker_value)
 
 FILE_LIST=$TMP/file-list
 find "$CARD" -type f -print | LC_ALL=C sort >"$FILE_LIST"
@@ -196,6 +236,7 @@ run_updater() {
 	BIRD_TEST_FAILPOINT=$FAILPOINT \
 	BIRD_TEST_LOCK_GATE=${LOCK_GATE:-} \
 	BIRD_TEST_MANIFEST_GATE=${MANIFEST_GATE:-} \
+	BIRD_TEST_PORTMASTER_PROVIDER_MANIFEST="$PORTMASTER_PROVIDER_MANIFEST" \
 	"$UPDATER"
 }
 
@@ -217,6 +258,86 @@ grep -q 'legacy /ports data must be migrated separately' "$TMP/legacy.err"
 [ -d "$DATA/ports/LegacyGame" ]
 [ "$(sha256 "$BIRD/extlinux/extlinux.conf")" = "$ACTIVE_BEFORE" ]
 rm -rf "$DATA/ports"
+
+# Exact provider verification precedes every destructive deployment action.
+# A rejected managed revision must not remove an interrupted stage, create a
+# fallback/storage copy, publish a marker, stage a release or switch selectors.
+PROVIDER_REJECT_STAGE=$BIRD/bird-releases/.v6.23.new.provider-reject
+mkdir -p "$PROVIDER_REJECT_STAGE"
+printf 'must survive provider rejection\n' >"$PROVIDER_REJECT_STAGE/sentinel"
+cp "$DATA/ROMS/Ports/PortMaster/funcs.txt" "$TMP/provider-funcs.original"
+printf 'managed mutation\n' >>"$DATA/ROMS/Ports/PortMaster/funcs.txt"
+PROVIDER_REJECT_SELECTOR_SHA=$(sha256 "$BIRD/extlinux/extlinux.conf")
+PROVIDER_REJECT_KERNEL_SHA=$(sha256 "$BIRD/KERNEL")
+PROVIDER_REJECT_MARKER_SHA=$(sha256 \
+	"$DATA/ROMS/Ports/PortMaster/.bird-release-complete")
+if run_updater none >"$TMP/provider-reject.out" 2>"$TMP/provider-reject.err"; then
+	printf '%s\n' 'mutated managed PortMaster provider unexpectedly succeeded' >&2
+	exit 1
+fi
+grep -q 'managed file size changed: funcs.txt' "$TMP/provider-reject.err"
+grep -q 'installed PortMaster provider is not a pinned complete revision' \
+	"$TMP/provider-reject.err"
+[ -f "$PROVIDER_REJECT_STAGE/sentinel" ]
+[ ! -e "$BIRD/KERNEL.fallback" ]
+[ ! -e "$DATA/MUOS/runtime/ROCKNIX-STORAGE" ]
+[ ! -e "$BIRD/bird-releases/v6.23" ]
+[ "$(sha256 "$BIRD/extlinux/extlinux.conf")" = "$PROVIDER_REJECT_SELECTOR_SHA" ]
+[ "$(sha256 "$BIRD/KERNEL")" = "$PROVIDER_REJECT_KERNEL_SHA" ]
+[ "$(sha256 "$DATA/ROMS/Ports/PortMaster/.bird-release-complete")" = \
+	"$PROVIDER_REJECT_MARKER_SHA" ]
+mv "$TMP/provider-funcs.original" "$DATA/ROMS/Ports/PortMaster/funcs.txt"
+rm -rf "$PROVIDER_REJECT_STAGE"
+
+# A syntactically valid v3 checkpoint is immutable evidence, not a migratable
+# legacy marker.  If it names any other manifest, reject before stale-stage
+# cleanup or publication and leave every provider/card byte untouched.
+PORTMASTER_MARKER=$DATA/ROMS/Ports/PortMaster/.bird-release-complete
+PROVIDER_V3_REJECT_STAGE=$BIRD/bird-releases/.v6.23.new.v3-marker-reject
+mkdir -p "$PROVIDER_V3_REJECT_STAGE"
+printf 'must survive v3 marker rejection\n' \
+	>"$PROVIDER_V3_REJECT_STAGE/sentinel"
+PROVIDER_MISMATCHED_V3=bird-portmaster-v3:2026.07.28-1212:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+printf '%s\n' "$PROVIDER_MISMATCHED_V3" >"$PORTMASTER_MARKER"
+PROVIDER_V3_SELECTOR_SHA=$(sha256 "$BIRD/extlinux/extlinux.conf")
+PROVIDER_V3_KERNEL_SHA=$(sha256 "$BIRD/KERNEL")
+PROVIDER_V3_PUGWASH_SHA=$(sha256 "$DATA/ROMS/Ports/PortMaster/pugwash")
+PROVIDER_V3_SCRIPT_SHA=$(sha256 "$DATA/ROMS/Ports/PortMaster/PortMaster.sh")
+PROVIDER_V3_MOD_SHA=$(sha256 "$DATA/ROMS/Ports/PortMaster/mod_ROCKNIX.txt")
+PROVIDER_V3_FUNCS_SHA=$(sha256 "$DATA/ROMS/Ports/PortMaster/funcs.txt")
+PROVIDER_V3_HARBOURMASTER_SHA=$(sha256 \
+	"$DATA/ROMS/Ports/PortMaster/harbourmaster")
+PROVIDER_V3_CONTROL_SHA=$(sha256 "$DATA/ROMS/Ports/PortMaster/control.txt")
+PROVIDER_V3_OGA_SHA=$(sha256 "$DATA/ROMS/Ports/PortMaster/oga_controls")
+if run_updater none >"$TMP/v3-marker-reject.out" \
+		2>"$TMP/v3-marker-reject.err"; then
+	printf '%s\n' 'mismatched PortMaster v3 marker unexpectedly migrated' >&2
+	exit 1
+fi
+grep -q 'PortMaster' "$TMP/v3-marker-reject.err"
+[ -f "$PROVIDER_V3_REJECT_STAGE/sentinel" ]
+[ ! -e "$BIRD/KERNEL.fallback" ]
+[ ! -e "$DATA/MUOS/runtime/ROCKNIX-STORAGE" ]
+[ ! -e "$BIRD/bird-releases/v6.23" ]
+[ "$(cat "$PORTMASTER_MARKER")" = "$PROVIDER_MISMATCHED_V3" ]
+[ "$(sha256 "$BIRD/extlinux/extlinux.conf")" = "$PROVIDER_V3_SELECTOR_SHA" ]
+[ "$(sha256 "$BIRD/KERNEL")" = "$PROVIDER_V3_KERNEL_SHA" ]
+[ "$(sha256 "$DATA/ROMS/Ports/PortMaster/pugwash")" = \
+	"$PROVIDER_V3_PUGWASH_SHA" ]
+[ "$(sha256 "$DATA/ROMS/Ports/PortMaster/PortMaster.sh")" = \
+	"$PROVIDER_V3_SCRIPT_SHA" ]
+[ "$(sha256 "$DATA/ROMS/Ports/PortMaster/mod_ROCKNIX.txt")" = \
+	"$PROVIDER_V3_MOD_SHA" ]
+[ "$(sha256 "$DATA/ROMS/Ports/PortMaster/funcs.txt")" = \
+	"$PROVIDER_V3_FUNCS_SHA" ]
+[ "$(sha256 "$DATA/ROMS/Ports/PortMaster/harbourmaster")" = \
+	"$PROVIDER_V3_HARBOURMASTER_SHA" ]
+[ "$(sha256 "$DATA/ROMS/Ports/PortMaster/control.txt")" = \
+	"$PROVIDER_V3_CONTROL_SHA" ]
+[ "$(sha256 "$DATA/ROMS/Ports/PortMaster/oga_controls")" = \
+	"$PROVIDER_V3_OGA_SHA" ]
+: >"$PORTMASTER_MARKER"
+rm -rf "$PROVIDER_V3_REJECT_STAGE"
 
 # Replacing the caller-owned manifest after its complete preflight must not
 # affect any later field lookup or staging loop. The injected replacement
@@ -402,10 +523,213 @@ cmp "$MANIFEST" "$RELEASE/deploy-manifest.tsv"
 cmp "$CARD/extlinux/extlinux.conf" "$BIRD/extlinux/extlinux.conf"
 [ "$(sha256 "$BIRD/post-flash.sh")" = "$LEGACY_HOOK_SHA" ]
 [ -s "$DATA/ROMS/Ports/PortMaster/.bird-release-complete" ]
+[ "$(cat "$DATA/ROMS/Ports/PortMaster/.bird-release-complete")" = \
+	"$PORTMASTER_EXPECTED_MARKER" ]
 PREVIOUS_SHA=$(sha256 "$BIRD/extlinux/extlinux.previous.conf")
 
 run_updater none >"$TMP/idempotent.out"
 [ "$(sha256 "$BIRD/extlinux/extlinux.previous.conf")" = "$PREVIOUS_SHA" ]
+
+# SIGKILL after publishing the same-filesystem marker temporary must leave the
+# legacy marker authoritative. The only .new artifact is the external sibling;
+# a later locked invocation removes it, migrates the marker and succeeds.
+PORTMASTER_MARKER=$DATA/ROMS/Ports/PortMaster/.bird-release-complete
+PORTMASTER_INTERRUPTED_LEGACY=bird-portmaster-v2:interrupted-marker-stage
+printf '%s\n' "$PORTMASTER_INTERRUPTED_LEGACY" >"$PORTMASTER_MARKER"
+PORTMASTER_INTERRUPTED_PROVIDER_SHA=$(portmaster_fixture_provider_value)
+PORTMASTER_INTERRUPTED_SELECTOR_SHA=$(sha256 "$BIRD/extlinux/extlinux.conf")
+if run_updater kill-during-portmaster-marker-stage \
+		>"$TMP/portmaster-marker-kill.out" \
+		2>"$TMP/portmaster-marker-kill.err"; then
+	printf '%s\n' 'PortMaster marker-stage SIGKILL unexpectedly succeeded' >&2
+	exit 1
+fi
+[ "$(cat "$PORTMASTER_MARKER")" = "$PORTMASTER_INTERRUPTED_LEGACY" ]
+[ "$(portmaster_fixture_provider_value)" = \
+	"$PORTMASTER_INTERRUPTED_PROVIDER_SHA" ]
+[ "$(sha256 "$BIRD/extlinux/extlinux.conf")" = \
+	"$PORTMASTER_INTERRUPTED_SELECTOR_SHA" ]
+PORTMASTER_STALE_LIST=$TMP/portmaster-stale-markers
+find "$DATA/ROMS/Ports" -name '*.new.*' -print | \
+	LC_ALL=C sort >"$PORTMASTER_STALE_LIST"
+[ "$(wc -l <"$PORTMASTER_STALE_LIST" | tr -d '[:space:]')" = 1 ]
+PORTMASTER_STALE_MARKER=$(cat "$PORTMASTER_STALE_LIST")
+case "$PORTMASTER_STALE_MARKER" in
+	"$DATA"/ROMS/Ports/.bird-portmaster-marker.new.*) ;;
+	*) printf '%s\n' 'marker-stage interruption left an unsafe temporary' >&2; exit 1 ;;
+esac
+[ -f "$PORTMASTER_STALE_MARKER" ] && [ ! -L "$PORTMASTER_STALE_MARKER" ]
+[ "$(cat "$PORTMASTER_STALE_MARKER")" = "$PORTMASTER_EXPECTED_MARKER" ]
+if find "$BIRD/bird-releases" -maxdepth 1 -name '.v6.23.new.*' | grep -q .; then
+	printf '%s\n' 'marker-stage interruption left a release stage' >&2
+	exit 1
+fi
+run_updater none >"$TMP/portmaster-marker-recovery.out"
+[ "$(cat "$PORTMASTER_MARKER")" = "$PORTMASTER_EXPECTED_MARKER" ]
+[ "$(portmaster_fixture_provider_value)" = \
+	"$PORTMASTER_INTERRUPTED_PROVIDER_SHA" ]
+[ "$(sha256 "$BIRD/extlinux/extlinux.conf")" = \
+	"$PORTMASTER_INTERRUPTED_SELECTOR_SHA" ]
+if find "$DATA/ROMS/Ports" -name '*.new.*' -print | grep -q .; then
+	printf '%s\n' 'recovered updater left a PortMaster marker temporary' >&2
+	exit 1
+fi
+
+# Stale empty/v1/v2 markers are migratable only after the exact managed tree
+# verifies. Marker migration never rewrites provider or mutable adapter bytes.
+PORTMASTER_MARKER=$DATA/ROMS/Ports/PortMaster/.bird-release-complete
+PORTMASTER_MANAGED_SHA=$(sha256 "$DATA/ROMS/Ports/PortMaster/pugwash")
+PORTMASTER_CONTROL_SHA=$(sha256 "$DATA/ROMS/Ports/PortMaster/control.txt")
+for PORTMASTER_LEGACY_KIND in empty v1 v2; do
+	case "$PORTMASTER_LEGACY_KIND" in
+		empty) : >"$PORTMASTER_MARKER" ;;
+		v1) printf 'bird-portmaster-v1:stale-checkpoint\n' >"$PORTMASTER_MARKER" ;;
+		v2) printf 'bird-portmaster-v2:stale-checkpoint\n' >"$PORTMASTER_MARKER" ;;
+	esac
+	run_updater none >"$TMP/stale-portmaster-$PORTMASTER_LEGACY_KIND.out"
+	[ "$(cat "$PORTMASTER_MARKER")" = "$PORTMASTER_EXPECTED_MARKER" ]
+	[ "$(sha256 "$DATA/ROMS/Ports/PortMaster/pugwash")" = \
+		"$PORTMASTER_MANAGED_SHA" ]
+	[ "$(sha256 "$DATA/ROMS/Ports/PortMaster/control.txt")" = \
+		"$PORTMASTER_CONTROL_SHA" ]
+done
+
+# The single optional pylibs.zip record permits absence or the exact pinned
+# bytes, but never an arbitrary network-provided archive.
+cp "$PORTMASTER_PYLIBS_FIXTURE" \
+	"$DATA/ROMS/Ports/PortMaster/pylibs.zip"
+run_updater none >"$TMP/portmaster-pylibs-exact.out"
+[ "$(sha256 "$DATA/ROMS/Ports/PortMaster/pylibs.zip")" = \
+	"$(sha256 "$PORTMASTER_PYLIBS_FIXTURE")" ]
+printf X | dd of="$DATA/ROMS/Ports/PortMaster/pylibs.zip" \
+	bs=1 seek=0 conv=notrunc 2>/dev/null
+PORTMASTER_PYLIBS_BAD_SHA=$(sha256 \
+	"$DATA/ROMS/Ports/PortMaster/pylibs.zip")
+PORTMASTER_PYLIBS_SELECTOR_SHA=$(sha256 "$BIRD/extlinux/extlinux.conf")
+PORTMASTER_PYLIBS_MARKER_SHA=$(sha256 "$PORTMASTER_MARKER")
+if run_updater none >"$TMP/portmaster-pylibs-arbitrary.out" \
+		2>"$TMP/portmaster-pylibs-arbitrary.err"; then
+	printf '%s\n' 'arbitrary present PortMaster pylibs.zip unexpectedly succeeded' >&2
+	exit 1
+fi
+grep -q 'managed file digest changed: pylibs.zip' \
+	"$TMP/portmaster-pylibs-arbitrary.err"
+[ "$(sha256 "$DATA/ROMS/Ports/PortMaster/pylibs.zip")" = \
+	"$PORTMASTER_PYLIBS_BAD_SHA" ]
+[ "$(sha256 "$BIRD/extlinux/extlinux.conf")" = \
+	"$PORTMASTER_PYLIBS_SELECTOR_SHA" ]
+[ "$(sha256 "$PORTMASTER_MARKER")" = "$PORTMASTER_PYLIBS_MARKER_SHA" ]
+rm -f "$DATA/ROMS/Ports/PortMaster/pylibs.zip"
+run_updater none >"$TMP/portmaster-pylibs-absent.out"
+
+# Managed byte mutation, an unlisted managed file and a managed symlink all
+# fail closed without moving the selector or rewriting the last good marker.
+cp "$DATA/ROMS/Ports/PortMaster/pugwash" "$TMP/portmaster-pugwash.saved"
+printf 'network mutation\n' >>"$DATA/ROMS/Ports/PortMaster/pugwash"
+PORTMASTER_FAILURE_SELECTOR_SHA=$(sha256 "$BIRD/extlinux/extlinux.conf")
+PORTMASTER_FAILURE_MARKER_SHA=$(sha256 "$PORTMASTER_MARKER")
+if run_updater none >"$TMP/mutated-portmaster.out" \
+		2>"$TMP/mutated-portmaster.err"; then
+	printf '%s\n' 'mutated managed PortMaster provider unexpectedly succeeded' >&2
+	exit 1
+fi
+grep -q 'managed file size changed: pugwash' "$TMP/mutated-portmaster.err"
+[ "$(sha256 "$BIRD/extlinux/extlinux.conf")" = "$PORTMASTER_FAILURE_SELECTOR_SHA" ]
+[ "$(sha256 "$PORTMASTER_MARKER")" = "$PORTMASTER_FAILURE_MARKER_SHA" ]
+mv "$TMP/portmaster-pugwash.saved" "$DATA/ROMS/Ports/PortMaster/pugwash"
+
+printf 'extra managed byte\n' >"$DATA/ROMS/Ports/PortMaster/unlisted-managed-file"
+if run_updater none >"$TMP/extra-portmaster.out" \
+		2>"$TMP/extra-portmaster.err"; then
+	printf '%s\n' 'extra managed PortMaster file unexpectedly succeeded' >&2
+	exit 1
+fi
+grep -q 'managed provider file set differs from the pinned revision' \
+	"$TMP/extra-portmaster.err"
+[ "$(sha256 "$BIRD/extlinux/extlinux.conf")" = "$PORTMASTER_FAILURE_SELECTOR_SHA" ]
+[ "$(sha256 "$PORTMASTER_MARKER")" = "$PORTMASTER_FAILURE_MARKER_SHA" ]
+rm -f "$DATA/ROMS/Ports/PortMaster/unlisted-managed-file"
+
+cp "$DATA/ROMS/Ports/PortMaster/funcs.txt" "$TMP/portmaster-funcs.saved"
+rm -f "$DATA/ROMS/Ports/PortMaster/funcs.txt"
+ln -s "$TMP/portmaster-funcs.saved" \
+	"$DATA/ROMS/Ports/PortMaster/funcs.txt"
+if run_updater none >"$TMP/symlink-portmaster.out" \
+		2>"$TMP/symlink-portmaster.err"; then
+	printf '%s\n' 'managed PortMaster symlink unexpectedly succeeded' >&2
+	exit 1
+fi
+if ! grep -Eq \
+		'managed provider file set differs|managed provider contains a symlink' \
+		"$TMP/symlink-portmaster.err"; then
+	cat "$TMP/symlink-portmaster.err" >&2
+	printf '%s\n' 'managed PortMaster symlink failed for the wrong reason' >&2
+	exit 1
+fi
+[ "$(sha256 "$BIRD/extlinux/extlinux.conf")" = "$PORTMASTER_FAILURE_SELECTOR_SHA" ]
+[ "$(sha256 "$PORTMASTER_MARKER")" = "$PORTMASTER_FAILURE_MARKER_SHA" ]
+rm -f "$DATA/ROMS/Ports/PortMaster/funcs.txt"
+mv "$TMP/portmaster-funcs.saved" "$DATA/ROMS/Ports/PortMaster/funcs.txt"
+
+# Runtime adapters, downloaded runtimes, settings and logs are deliberately
+# excluded. They may vary and must remain byte-identical through deployment.
+printf 'custom controls\n' >"$DATA/ROMS/Ports/PortMaster/control.txt"
+printf 'custom oga mapping\n' >"$DATA/ROMS/Ports/PortMaster/oga_controls"
+mkdir -p "$DATA/ROMS/Ports/PortMaster/config" \
+	"$DATA/ROMS/Ports/PortMaster/runtimes/custom"
+printf 'mutable settings\n' >"$DATA/ROMS/Ports/PortMaster/config/user.ini"
+printf 'downloaded runtime\n' \
+	>"$DATA/ROMS/Ports/PortMaster/runtimes/custom/runtime.bin"
+printf 'session log\n' >"$DATA/ROMS/Ports/PortMaster/log.txt"
+PORTMASTER_CONTROL_SHA=$(sha256 "$DATA/ROMS/Ports/PortMaster/control.txt")
+PORTMASTER_OGA_SHA=$(sha256 "$DATA/ROMS/Ports/PortMaster/oga_controls")
+PORTMASTER_CONFIG_SHA=$(sha256 "$DATA/ROMS/Ports/PortMaster/config/user.ini")
+PORTMASTER_RUNTIME_SHA=$(sha256 \
+	"$DATA/ROMS/Ports/PortMaster/runtimes/custom/runtime.bin")
+run_updater none >"$TMP/mutable-portmaster.out"
+[ "$(sha256 "$DATA/ROMS/Ports/PortMaster/control.txt")" = \
+	"$PORTMASTER_CONTROL_SHA" ]
+[ "$(sha256 "$DATA/ROMS/Ports/PortMaster/oga_controls")" = \
+	"$PORTMASTER_OGA_SHA" ]
+[ "$(sha256 "$DATA/ROMS/Ports/PortMaster/config/user.ini")" = \
+	"$PORTMASTER_CONFIG_SHA" ]
+[ "$(sha256 "$DATA/ROMS/Ports/PortMaster/runtimes/custom/runtime.bin")" = \
+	"$PORTMASTER_RUNTIME_SHA" ]
+[ "$(cat "$PORTMASTER_MARKER")" = "$PORTMASTER_EXPECTED_MARKER" ]
+
+# Once an immutable release is authoritative, the pre-versioned root KERNEL is
+# redundant. Its absence must remain a supported steady state; the selected
+# release, selector and fallback are still independently verified.
+ABSENT_KERNEL_SELECTOR_SHA=$(sha256 "$BIRD/extlinux/extlinux.conf")
+ABSENT_KERNEL_RELEASE_SHA=$(sha256 "$RELEASE/KERNEL")
+ABSENT_KERNEL_FALLBACK_SHA=$(sha256 "$BIRD/KERNEL.fallback")
+rm -f "$BIRD/KERNEL"
+run_updater none >"$TMP/absent-root-kernel.out"
+[ ! -e "$BIRD/KERNEL" ] && [ ! -L "$BIRD/KERNEL" ]
+[ "$(sha256 "$BIRD/extlinux/extlinux.conf")" = "$ABSENT_KERNEL_SELECTOR_SHA" ]
+[ "$(sha256 "$RELEASE/KERNEL")" = "$ABSENT_KERNEL_RELEASE_SHA" ]
+[ "$(sha256 "$BIRD/KERNEL.fallback")" = "$ABSENT_KERNEL_FALLBACK_SHA" ]
+
+ln -s "$TMP/missing-kernel-target" "$BIRD/KERNEL"
+if run_updater none >"$TMP/dangling-root-kernel.out" \
+		2>"$TMP/dangling-root-kernel.err"; then
+	printf '%s\n' 'dangling legacy root KERNEL unexpectedly succeeded' >&2
+	exit 1
+fi
+grep -q 'legacy top-level KERNEL is a symlink or special node' \
+	"$TMP/dangling-root-kernel.err"
+[ "$(sha256 "$BIRD/extlinux/extlinux.conf")" = "$ABSENT_KERNEL_SELECTOR_SHA" ]
+rm -f "$BIRD/KERNEL"
+
+mv "$BIRD/KERNEL.fallback" "$TMP/KERNEL.fallback.saved"
+if run_updater none >"$TMP/missing-fallback.out" 2>"$TMP/missing-fallback.err"; then
+	printf '%s\n' 'missing fallback with no root KERNEL unexpectedly succeeded' >&2
+	exit 1
+fi
+grep -q 'v5.4 fallback KERNEL is missing' "$TMP/missing-fallback.err"
+[ "$(sha256 "$BIRD/extlinux/extlinux.conf")" = "$ABSENT_KERNEL_SELECTOR_SHA" ]
+mv "$TMP/KERNEL.fallback.saved" "$BIRD/KERNEL.fallback"
+[ "$(sha256 "$BIRD/KERNEL.fallback")" = "$ABSENT_KERNEL_FALLBACK_SHA" ]
 
 # Prove lock ordering, not only exclusion: a contender waiting on the lifetime
 # transaction lock must not hold the short serial mutex needed by the owner to

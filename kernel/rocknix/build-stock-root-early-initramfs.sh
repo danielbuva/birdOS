@@ -37,15 +37,54 @@ fail() {
 	exit 1
 }
 
+validate_early_launcher_static_assets() {
+	EARLY_BASE=$PAYLOAD/opt/bird/launcher-base.xrgb
+	if [ "$EARLY_STATIC_ASSET_BYTES" -eq 1382400 ]; then
+		[ -f "$EARLY_BASE" ] && [ ! -L "$EARLY_BASE" ] || \
+			fail 'early launcher fallback base is missing or unsafe'
+		[ "$(stat -f %z "$EARLY_BASE" 2>/dev/null || stat -c %s "$EARLY_BASE")" \
+			-eq 1382400 ] || fail 'early launcher fallback base size changed'
+		[ "$(sha256 "$EARLY_BASE")" = \
+			6f9daae758675bd8bb805a851b30f1d64b06ec6e8367a17749707ac61824843a ] || \
+			fail 'early launcher fallback base digest changed'
+	elif [ -e "$EARLY_BASE" ] || [ -L "$EARLY_BASE" ]; then
+		fail 'verified U-Boot reuse retained a duplicate early wallpaper'
+	fi
+	if find "$PAYLOAD" -type f ! -path "$EARLY_BASE" \
+		\( -iname '*.bmp' -o -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' \
+			-o -iname '*.rgb' -o -iname '*.rgba' -o -iname '*.xrgb' -o -iname '*.raw' \) \
+		-print -quit | grep -q .; then
+		fail 'early launcher payload contains an unbudgeted static image'
+	fi
+}
+
 case "$RELEASE_ID" in
 	''|[![:alnum:]]*|*[![:alnum:]._-]*) fail "unsafe Bird release ID: $RELEASE_ID" ;;
 esac
 [ "${#RELEASE_ID}" -le 64 ] || fail 'Bird release ID is longer than 64 bytes'
 
 LAUNCHER_PROFILE_FLAGS=
+BOOT_FRAME_REUSE_FLAGS=
+EARLY_STATIC_BASE_FLAGS=
+EARLY_STATIC_ASSET_BYTES=1382400
+EARLY_LAUNCHER_BINARY_MAX_BYTES=610000
+EARLY_INITRAMFS_GZIP_MAX_BYTES=786432
+case "${BIRD_REUSE_UBOOT_FRAME:-0}" in
+	0|'')
+		EARLY_STATIC_BASE_FLAGS='-DBIRD_STATIC_BASE_PATH="/opt/bird/launcher-base.xrgb"'
+		;;
+	1)
+		EARLY_STATIC_ASSET_BYTES=0
+		EARLY_INITRAMFS_GZIP_MAX_BYTES=262144
+		;;
+	*) fail 'invalid BIRD_REUSE_UBOOT_FRAME mode' ;;
+esac
 case "${BIRD_LAUNCHER_PROFILE:-none}" in
 	none|0|'') ;;
-	profile|1) LAUNCHER_PROFILE_FLAGS=-DBIRD_PROFILE ;;
+	profile|1)
+		LAUNCHER_PROFILE_FLAGS=-DBIRD_PROFILE
+		EARLY_LAUNCHER_BINARY_MAX_BYTES=670000
+		;;
 	deep) fail 'BIRD_PROFILE_DEEP is host-test-only' ;;
 	*) fail "unknown BIRD_LAUNCHER_PROFILE mode: $BIRD_LAUNCHER_PROFILE" ;;
 esac
@@ -54,6 +93,49 @@ sha256() {
 	BIRD_SHA256_LINE=$(shasum -a 256 "$1") || return 1
 	printf '%s\n' "$BIRD_SHA256_LINE" | awk '{print $1}'
 }
+
+# The BMP remains a build-only verification artifact. The contract always
+# enters the early overlay. Until verified U-Boot reuse is enabled, the overlay
+# also carries the exact native XRGB fallback; final-root recovery owns its own
+# copy in either mode.
+BOOT_FRAME_WORK=$OUTPUT/build/boot-frame
+BOOT_FRAME_BMP=$BOOT_FRAME_WORK/bird-frame-zero.bmp
+BOOT_FRAME_XRGB=$BOOT_FRAME_WORK/launcher-base.xrgb
+BOOT_FRAME_CONTRACT=$OUTPUT/card/bird/boot-frame.contract
+mkdir -p "$BOOT_FRAME_WORK" "$OUTPUT/card/bird"
+python3 "$ROOT/firmware/generate-launcher-bootlogo.py" "$BOOT_FRAME_BMP" \
+	--contract "$BOOT_FRAME_CONTRACT" \
+	--xrgb-output "$BOOT_FRAME_XRGB" \
+	--early-static-asset-bytes "$EARLY_STATIC_ASSET_BYTES"
+[ "$(sha256 "$BOOT_FRAME_BMP")" = \
+	fca1176e4247c5b358df495cf062e88ff53c3aa781c54325545a02b26a9fcb15 ] || \
+	fail 'generated boot-frame asset digest changed'
+chmod 0644 "$BOOT_FRAME_CONTRACT"
+[ -f "$BOOT_FRAME_CONTRACT" ] && [ ! -L "$BOOT_FRAME_CONTRACT" ] || \
+	fail 'generated boot-frame contract missing or unsafe'
+BOOT_FRAME_ASSET_SHA=$(awk -F '\t' '$1 == "asset-sha256" {print $2}' \
+	"$BOOT_FRAME_CONTRACT")
+BOOT_FRAME_VISIBLE_HASH_A=$(awk -F '\t' '$1 == "visible-hash-a" {print $2}' \
+	"$BOOT_FRAME_CONTRACT")
+BOOT_FRAME_VISIBLE_HASH_B=$(awk -F '\t' '$1 == "visible-hash-b" {print $2}' \
+	"$BOOT_FRAME_CONTRACT")
+case "$BOOT_FRAME_ASSET_SHA:$BOOT_FRAME_VISIBLE_HASH_A:$BOOT_FRAME_VISIBLE_HASH_B" in
+	fca1176e4247c5b358df495cf062e88ff53c3aa781c54325545a02b26a9fcb15:849df1c7262d2e3e:754469f5749caa71) ;;
+	*) fail 'generated boot-frame contract identity changed' ;;
+esac
+case "${BIRD_REUSE_UBOOT_FRAME:-0}" in
+	0|'') ;;
+	1)
+		VERIFIED_CONTRACT=${BIRD_BOOT_FRAME_VERIFIED_CONTRACT:-}
+		[ -n "$VERIFIED_CONTRACT" ] && [ -f "$VERIFIED_CONTRACT" ] && \
+			[ ! -L "$VERIFIED_CONTRACT" ] || \
+			fail 'U-Boot frame reuse requires a hardware-verified contract'
+		cmp "$BOOT_FRAME_CONTRACT" "$VERIFIED_CONTRACT" >/dev/null || \
+			fail 'hardware-verified boot frame does not match this build contract'
+		BOOT_FRAME_REUSE_FLAGS='-DBIRD_REUSE_UBOOT_FRAME -DBIRD_BOOT_FRAME_MANIFEST_VERIFIED -DBIRD_BOOT_FRAME_VISIBLE_HASH_A=0x849df1c7262d2e3eUL -DBIRD_BOOT_FRAME_VISIBLE_HASH_B=0x754469f5749caa71UL -DBIRD_BOOT_FRAME_ASSET_ID=0xfca1176e4247c5b3UL'
+		;;
+	*) fail 'invalid BIRD_REUSE_UBOOT_FRAME mode' ;;
+esac
 
 [ -f "$OFFICIAL_INIT" ] || fail 'exact ROCKNIX init missing'
 [ "$(sha256 "$OFFICIAL_INIT")" = "$OFFICIAL_INIT_SHA" ] || \
@@ -93,6 +175,10 @@ LAUNCHER=$PAYLOAD/opt/bird/bird-launcher
 
 [ ! -e "$WORK" ] || fail "early initramfs work already exists: $WORK"
 mkdir -p "$PAYLOAD/opt/bird" "$VERIFY"
+if [ "$EARLY_STATIC_ASSET_BYTES" -eq 1382400 ]; then
+	cp -fp "$BOOT_FRAME_XRGB" "$PAYLOAD/opt/bird/launcher-base.xrgb"
+	chmod 0644 "$PAYLOAD/opt/bird/launcher-base.xrgb"
+fi
 
 "$CLANG" --target=aarch64-linux-gnu -mcpu=cortex-a53 -O2 \
 	-ffreestanding -ffunction-sections -fdata-sections \
@@ -111,6 +197,8 @@ mkdir -p "$PAYLOAD/opt/bird" "$VERIFY"
 	-DPERSIST_UI_STATE \
 	-DDEVICE_WAIT_MS=20000UL \
 	$LAUNCHER_PROFILE_FLAGS \
+	$BOOT_FRAME_REUSE_FLAGS \
+	$EARLY_STATIC_BASE_FLAGS \
 	-c "$ROOT/launcher/bird-launcher.c" -o "$OBJECT"
 "$LLD" -static --gc-sections --build-id=none -z noexecstack -s \
 	-e _start -o "$LAUNCHER" "$OBJECT"
@@ -120,6 +208,9 @@ file "$LAUNCHER" | grep -q 'ARM aarch64.*statically linked' || \
 if "$READELF" -l "$LAUNCHER" | grep -q ' INTERP '; then
 	fail 'early launcher unexpectedly has an interpreter'
 fi
+[ "$(stat -f %z "$LAUNCHER" 2>/dev/null || stat -c %s "$LAUNCHER")" -le \
+	"$EARLY_LAUNCHER_BINARY_MAX_BYTES" ] || \
+	fail 'early launcher exceeded its binary budget'
 
 # Inject three fixed calls into the pinned upstream init. Bird starts after the
 # special filesystems exist. After prepare_sysroot moves the complete storage
@@ -134,7 +225,20 @@ awk '
 		next
 	}
 	$0 == "  ${BOOT_STEP}" {
-		print
+		print "  if [ \"${BOOT_STEP}\" = \"mount_storage\" ]; then"
+		print "    if ! mount_storage; then"
+		print "      printf \"bird mount_storage failed closed\\n\" >/dev/kmsg"
+		print "      for BIRD_STORAGE_LOG_ROOT in /run/bird-data /birddata; do"
+		print "        if [ -d \"${BIRD_STORAGE_LOG_ROOT}/MUOS/Bird/log\" ]; then"
+		print "          printf \"status=failed step=mount_storage\\n\" >\"${BIRD_STORAGE_LOG_ROOT}/MUOS/Bird/log/mount-storage-latest.log\""
+		print "          break"
+		print "        fi"
+		print "      done"
+		print "      while :; do sleep 3600; done"
+		print "    fi"
+		print "  else"
+		print "    ${BOOT_STEP}"
+		print "  fi"
 		print "  [ \"${BOOT_STEP}\" != \"prepare_sysroot\" ] || /bird-early.sh root-ready"
 		next
 	}
@@ -159,6 +263,12 @@ awk '
 	fail 'early start injection count changed'
 [ "$(grep -c '^  \[ "${BOOT_STEP}" != "prepare_sysroot" \] || /bird-early.sh root-ready$' "$PAYLOAD/init")" = 1 ] || \
 	fail 'storage anchor injection count changed'
+[ "$(grep -c '^  if \[ "${BOOT_STEP}" = "mount_storage" \]; then$' "$PAYLOAD/init")" = 1 ] || \
+	fail 'storage integration failure boundary missing'
+[ "$(grep -c '^      while :; do sleep 3600; done$' "$PAYLOAD/init")" = 2 ] || \
+	fail 'fatal initramfs boundary count changed'
+[ "$(grep -c 'mount-storage-latest.log' "$PAYLOAD/init")" = 1 ] || \
+	fail 'storage integration failure log missing'
 [ "$(grep -c '^/bird-early.sh handoff$' "$PAYLOAD/init")" = 1 ] || \
 	fail 'handoff injection count changed'
 [ "$(grep -c '^/bird-early.sh resume$' "$PAYLOAD/init")" = 0 ] || \
@@ -167,8 +277,8 @@ awk '
 	fail 'splash suppression injection count changed'
 [ "$(grep -c '^    if ! \. /bird-release-loader.sh; then$' "$PAYLOAD/init")" = 1 ] || \
 	fail 'versioned release-loader injection count changed'
-[ "$(grep -c '^      while :; do sleep 3600; done$' "$PAYLOAD/init")" = 1 ] || \
-	fail 'versioned release-loader fatal boundary changed'
+[ "$(grep -c '^    if ! mount_storage; then$' "$PAYLOAD/init")" = 1 ] || \
+	fail 'storage integration status is not checked'
 [ "$(grep -c '/flash/post-flash.sh' "$PAYLOAD/init")" = 0 ] || \
 	fail 'mutable top-level boot hook remained in versioned init'
 
@@ -198,6 +308,13 @@ find "$PAYLOAD" -exec touch -t 202601010000.00 {} +
 )
 "$ROOT/firmware/normalize-newc.py" "$CPIO"
 gzip -n -9 -c "$CPIO" >"$GZIP"
+[ "$(stat -f %z "$GZIP" 2>/dev/null || stat -c %s "$GZIP")" -le \
+	"$EARLY_INITRAMFS_GZIP_MAX_BYTES" ] || \
+	fail 'early overlay exceeded its compressed-initramfs budget'
+# Before the physical U-Boot asset is verified, the early overlay carries one
+# native fallback base so the requested UI is complete without runtime decode.
+# A verified Phase 5B build must drop it and return to the smaller budget.
+validate_early_launcher_static_assets
 
 gzip -dc "$GZIP" | (cd "$VERIFY" && cpio -idm 2>"$WORK/verify.log")
 cmp "$PAYLOAD/init" "$VERIFY/init" || fail 'verified init changed'
@@ -207,6 +324,13 @@ cmp "$PAYLOAD/bird-release-loader.sh" "$VERIFY/bird-release-loader.sh" || \
 	fail 'verified release loader changed'
 cmp "$LAUNCHER" "$VERIFY/opt/bird/bird-launcher" || \
 	fail 'verified early launcher changed'
+if [ "$EARLY_STATIC_ASSET_BYTES" -eq 1382400 ]; then
+	cmp "$PAYLOAD/opt/bird/launcher-base.xrgb" \
+		"$VERIFY/opt/bird/launcher-base.xrgb" || \
+		fail 'verified early launcher fallback base changed'
+elif [ -e "$VERIFY/opt/bird/launcher-base.xrgb" ]; then
+	fail 'verified U-Boot reuse unpacked a duplicate early wallpaper'
+fi
 cmp "$JOYPAD" "$VERIFY/opt/bird/rocknix-singleadc-joypad.ko" || \
 	fail 'verified H700 input module changed'
 

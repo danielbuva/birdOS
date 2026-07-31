@@ -5,6 +5,7 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
 BASE_RELEASE_ID=v6.23
+VERIFIED_FALLBACK_SELECTOR_SHA=f6434463ef51f752b6871186497a9d96888b89e9b2d158c3ea75bcbef9a58776
 MODE=
 REQUESTED_RELEASE_ID=
 DRY_RUN=0
@@ -13,6 +14,19 @@ ARCHIVE_REPOSITORY=${BIRD_RELEASE_ARCHIVE_REPOSITORY:-danielbuva/birdOS-release-
 RUN_TEMP=
 BIRD_WRITE_PROBE=
 DATA_WRITE_PROBE=
+BIRD_CARD_LOCK_SCRIPT_LOADED=0
+BIRD_CARD_LOCK_OWNED=0
+LEGACY_KERNEL_RETIRE=0
+LEGACY_KERNEL_RECLAIM_BYTES=0
+PINNED_SOURCE_KERNEL_SHA=
+PINNED_SOURCE_DTB_SHA=
+PINNED_FALLBACK_KERNEL_SHA=
+PINNED_IMMUTABLE_SOURCE_ID=
+KOREADER_CATEGORY_COUNT=0
+KOREADER_EXTRACTION_RESERVE=0
+KOREADER_EXTRACTION_STATE=not-required
+PORTMASTER_PROVIDER_MARKER_VALUE=
+PORTMASTER_PROVIDER_MARKER_STATE=
 
 usage() {
 	cat <<'EOF'
@@ -34,9 +48,12 @@ Options:
 
 The command requires the exact BIRD and BIRD-DATA volumes on the supported
 RG34XX-SP card. It never scans or modifies ROMs, BIOS, media, saves, or other
-card data. When BIRD lacks staging space, it may retire one inactive completed
-release only after archiving and verifying it in the configured private,
-immutable GitHub release repository.
+card data. When BIRD lacks staging space, it may retire the minimum ordered set
+of inactive completed releases needed only after archiving and verifying each
+one in the configured private, immutable GitHub release repository. When the
+active selector already uses a verified immutable release, the command may also
+retire the byte-identical, unreferenced pre-versioned top-level KERNEL while
+preserving both the selected release and KERNEL.fallback.
 EOF
 }
 
@@ -46,6 +63,9 @@ fail() {
 }
 
 cleanup() {
+	if [ "$BIRD_CARD_LOCK_SCRIPT_LOADED" -eq 1 ]; then
+		bird_card_lock_release
+	fi
 	[ -z "$BIRD_WRITE_PROBE" ] || rm -f "$BIRD_WRITE_PROBE"
 	[ -z "$DATA_WRITE_PROBE" ] || rm -f "$DATA_WRITE_PROBE"
 	if [ -n "$RUN_TEMP" ]; then
@@ -106,11 +126,22 @@ GIT_ROOT_REAL=$(CDPATH= cd -- "$GIT_ROOT" && pwd -P)
 for REQUIRED_SOURCE in ACTIVE_PATH.md \
 	kernel/rocknix/build-stock-root-compat.sh \
 	kernel/rocknix/build-stock-root-early-initramfs.sh \
+	firmware/generate-launcher-bootlogo.py \
+	firmware/assets/bird-launcher-backdrop.png \
 	firmware/mac-update-rocknix-stock-root-v6.sh \
-	firmware/mac-stock-root-card-identity.sh; do
+	firmware/mac-bird-card-lock.sh \
+	firmware/mac-stock-root-card-identity.sh \
+	launcher/catalog.generated.h \
+	kernel/rocknix/stock-root/run-content.sh \
+	kernel/rocknix/stock-root/portmaster-provider.manifest.tsv \
+	kernel/rocknix/stock-root/verify-portmaster-provider.sh; do
 	[ -f "$ROOT/$REQUIRED_SOURCE" ] && [ ! -L "$ROOT/$REQUIRED_SOURCE" ] || \
 		fail "required repository source missing or unsafe: $REQUIRED_SOURCE"
 done
+
+# shellcheck source=firmware/mac-bird-card-lock.sh
+. "$ROOT/firmware/mac-bird-card-lock.sh"
+BIRD_CARD_LOCK_SCRIPT_LOADED=1
 
 case "$HOST_TEST_MODE" in
 	0)
@@ -170,6 +201,28 @@ OFFICIAL_INIT=${OFFICIAL_INIT:-$ROOT/kernel/work/rocknix-official-initramfs-2026
 JOYPAD=${JOYPAD:-$ROOT/kernel/work/rocknix-system-exact-20260701/usr/lib/kernel-overlays/base/lib/modules/7.0.11/rocknix-joypad/rocknix-singleadc-joypad.ko}
 INIT_BUSYBOX=${INIT_BUSYBOX:-$ROOT/kernel/work/rocknix-official-initramfs-20260701/ramdisk/usr/bin/busybox}
 PORTMASTER_ARCHIVE=${PORTMASTER_ARCHIVE:-$SYSTEM_TREE/usr/config/PortMaster/release/PortMaster.zip}
+KOREADER_CATALOG_HEADER=$ROOT/launcher/catalog.generated.h
+KOREADER_CONTRACT=$ROOT/kernel/rocknix/stock-root/run-content.sh
+PORTMASTER_PROVIDER_MANIFEST=$ROOT/kernel/rocknix/stock-root/portmaster-provider.manifest.tsv
+PORTMASTER_PROVIDER_VERIFIER=$ROOT/kernel/rocknix/stock-root/verify-portmaster-provider.sh
+if [ "$HOST_TEST_MODE" -eq 0 ]; then
+	[ -z "${BIRD_TEST_KOREADER_CATALOG_HEADER:-}${BIRD_TEST_KOREADER_SOURCE_SHA:-}${BIRD_TEST_KOREADER_ARCHIVE_SHA:-}${BIRD_TEST_KOREADER_ARCHIVE_BYTES:-}${BIRD_TEST_KOREADER_EXPANDED_BYTES:-}${BIRD_TEST_KOREADER_ARCHIVE_ENTRIES:-}${BIRD_TEST_PORTMASTER_PROVIDER_MANIFEST:-}" ] || \
+		fail 'KOReader preflight overrides require host-test mode'
+elif [ -n "${BIRD_TEST_KOREADER_CATALOG_HEADER:-}" ]; then
+	KOREADER_CATALOG_HEADER=$BIRD_TEST_KOREADER_CATALOG_HEADER
+	case "$KOREADER_CATALOG_HEADER" in
+		/var/folders/*|/private/tmp/*|/tmp/*) ;;
+		*) fail 'host-test KOReader catalog header must be a temporary fixture' ;;
+	esac
+fi
+if [ "$HOST_TEST_MODE" -eq 1 ] && \
+	[ -n "${BIRD_TEST_PORTMASTER_PROVIDER_MANIFEST:-}" ]; then
+	PORTMASTER_PROVIDER_MANIFEST=$BIRD_TEST_PORTMASTER_PROVIDER_MANIFEST
+	case "$PORTMASTER_PROVIDER_MANIFEST" in
+		/var/folders/*|/private/tmp/*|/tmp/*) ;;
+		*) fail 'host-test PortMaster provider manifest must be a temporary fixture' ;;
+	esac
+fi
 
 RUN_TEMP=$(mktemp -d "${TMPDIR:-/tmp}/bird-build-deploy.XXXXXX") || \
 	fail 'could not create private host workspace'
@@ -216,6 +269,263 @@ is_regular_file() {
 	[ -f "$1" ] && [ ! -L "$1" ]
 }
 
+file_bytes() {
+	stat -f '%z' "$1" 2>/dev/null || stat -c '%s' "$1"
+}
+
+file_mode() {
+	stat -f '%Lp' "$1" 2>/dev/null || stat -c '%a' "$1"
+}
+
+sha256() {
+	shasum -a 256 "$1" | awk '{print $1}'
+}
+
+verify_installed_mode() {
+	TARGET_PATH=$1
+	EXPECTED_MODE=$2
+	if [ "$BIRD_SYNTHETIC_MODES" -eq 0 ]; then
+		[ "$(file_mode "$TARGET_PATH")" = "$EXPECTED_MODE" ]
+		return
+	fi
+
+	# FAT does not retain Unix mode bits. Match the canonical updater's
+	# fat-capability policy and verify the effective owner capabilities that the
+	# manifest requires instead of comparing macOS's synthetic stat value.
+	OWNER_MODE=$(printf '%s' "$EXPECTED_MODE" | cut -c1)
+	[ -r "$TARGET_PATH" ] || return 1
+	case "$OWNER_MODE" in 2|3|6|7) [ -w "$TARGET_PATH" ] || return 1 ;; esac
+	case "$OWNER_MODE" in 1|3|5|7) [ -x "$TARGET_PATH" ] || return 1 ;; esac
+	return 0
+}
+
+validate_completed_release() {
+	VALIDATED_DIR=$1
+	VALIDATED_ID=$2
+	VALIDATED_PURPOSE=$3
+	case "$VALIDATED_ID" in
+		''|[![:alnum:]]*|*[![:alnum:]._-]*) fail "$VALIDATED_PURPOSE has an unsafe release ID" ;;
+	esac
+	[ -d "$VALIDATED_DIR" ] && [ ! -L "$VALIDATED_DIR" ] || \
+		fail "$VALIDATED_PURPOSE is not a safe directory: $VALIDATED_DIR"
+	[ "$VALIDATED_DIR" = "$BIRD/bird-releases/$VALIDATED_ID" ] || \
+		fail "$VALIDATED_PURPOSE path does not match its release ID"
+	is_regular_file "$VALIDATED_DIR/deploy-manifest.tsv" || \
+		fail "$VALIDATED_PURPOSE manifest is missing or unsafe: $VALIDATED_ID"
+	is_regular_file "$VALIDATED_DIR/.complete" || \
+		fail "$VALIDATED_PURPOSE completion marker is missing or unsafe: $VALIDATED_ID"
+	VALIDATED_MANIFEST_SHA=$(sha256 "$VALIDATED_DIR/deploy-manifest.tsv")
+	[ "$(cat "$VALIDATED_DIR/.complete")" = "$VALIDATED_MANIFEST_SHA" ] || \
+		fail "$VALIDATED_PURPOSE completion marker changed: $VALIDATED_ID"
+
+	VALIDATED_RECORDS=$RUN_TEMP/validated-release-records
+	VALIDATED_EXPECTED_FILES=$RUN_TEMP/validated-release-expected-files
+	VALIDATED_ACTUAL_FILES=$RUN_TEMP/validated-release-actual-files
+	VALIDATED_EXPECTED_DIRS=$RUN_TEMP/validated-release-expected-dirs
+	VALIDATED_ACTUAL_DIRS=$RUN_TEMP/validated-release-actual-dirs
+	VALIDATED_DUPLICATES=$RUN_TEMP/validated-release-duplicates
+	awk -F '\t' -v expected_release="$VALIDATED_ID" '
+		function safe_path(path) {
+			return path ~ /^[A-Za-z0-9._\/-]+$/ && path !~ /(^|\/)\.\.?($|\/)/
+		}
+		$1 == "schema" {if (NF != 2 || $2 != "bird-deploy-v1" || schema++) exit 1; next}
+		$1 == "release" {if (NF != 2 || $2 != expected_release || release++) exit 1; next}
+		$1 == "target-mode-policy" {if (NF != 2 || $2 != "fat-capability" || policy++) exit 1; next}
+		$1 == "source-commit" {if (NF != 3 || source++) exit 1; next}
+		$1 == "input" {
+			if (NF != 6 || !safe_path($2) || $3 !~ /^[0-7][0-7][0-7]$/ ||
+			    $4 !~ /^[0-9]+$/ || length($5) != 64 || $5 ~ /[^0-9a-f]/ || $6 == "") exit 1
+			inputs++; next
+		}
+		$1 == "dir" {
+			if (NF != 3 || !safe_path($2) || $3 !~ /^[0-7][0-7][0-7]$/) exit 1
+			print "dir\t" $2; next
+		}
+		$1 == "file" {
+			if (NF != 5 || !safe_path($2) || $3 !~ /^[0-7][0-7][0-7]$/ ||
+			    $4 !~ /^[0-9]+$/ || length($5) != 64 || $5 ~ /[^0-9a-f]/) exit 1
+			print "file\t" $2 "\t" $3 "\t" $4 "\t" $5; files++; next
+		}
+		{exit 1}
+		END {if (schema != 1 || release != 1 || policy != 1 || source != 1 || inputs != 15 || files < 1) exit 1}
+	' "$VALIDATED_DIR/deploy-manifest.tsv" >"$VALIDATED_RECORDS" || \
+		fail "$VALIDATED_PURPOSE manifest is malformed: $VALIDATED_ID"
+	awk -F '\t' '$1 == "file" || $1 == "dir" {print $2}' "$VALIDATED_RECORDS" | \
+		LC_ALL=C sort | uniq -d >"$VALIDATED_DUPLICATES"
+	[ ! -s "$VALIDATED_DUPLICATES" ] || \
+		fail "$VALIDATED_PURPOSE manifest has duplicate paths: $VALIDATED_ID"
+	find "$VALIDATED_DIR" -mindepth 1 ! -type f ! -type d -print | grep -q . && \
+		fail "$VALIDATED_PURPOSE contains a symlink or special node: $VALIDATED_ID"
+	{
+		printf '%s\n' .complete deploy-manifest.tsv
+		awk -F '\t' '$1 == "file" {print $2}' "$VALIDATED_RECORDS"
+	} | LC_ALL=C sort >"$VALIDATED_EXPECTED_FILES"
+	find "$VALIDATED_DIR" -type f -print | while IFS= read -r VALIDATED_FILE; do
+		printf '%s\n' "${VALIDATED_FILE#"$VALIDATED_DIR"/}"
+	done | LC_ALL=C sort >"$VALIDATED_ACTUAL_FILES"
+	cmp "$VALIDATED_EXPECTED_FILES" "$VALIDATED_ACTUAL_FILES" >/dev/null || \
+		fail "$VALIDATED_PURPOSE file set differs from its manifest: $VALIDATED_ID"
+	awk -F '\t' '$1 == "dir" {print $2}' "$VALIDATED_RECORDS" | \
+		LC_ALL=C sort >"$VALIDATED_EXPECTED_DIRS"
+	find "$VALIDATED_DIR" -mindepth 1 -type d -empty -print | while IFS= read -r VALIDATED_DIRECTORY; do
+		printf '%s\n' "${VALIDATED_DIRECTORY#"$VALIDATED_DIR"/}"
+	done | LC_ALL=C sort >"$VALIDATED_ACTUAL_DIRS"
+	cmp "$VALIDATED_EXPECTED_DIRS" "$VALIDATED_ACTUAL_DIRS" >/dev/null || \
+		fail "$VALIDATED_PURPOSE empty-directory set differs from its manifest: $VALIDATED_ID"
+	VALIDATED_TAB=$(printf '\t')
+	while IFS="$VALIDATED_TAB" read -r KIND RELATIVE MODE_VALUE BYTES_VALUE HASH_VALUE; do
+		case "$KIND" in
+			dir)
+				[ -d "$VALIDATED_DIR/$RELATIVE" ] && [ ! -L "$VALIDATED_DIR/$RELATIVE" ] || \
+					fail "$VALIDATED_PURPOSE directory is missing or unsafe: $VALIDATED_ID/$RELATIVE"
+				verify_installed_mode "$VALIDATED_DIR/$RELATIVE" "$MODE_VALUE" || \
+					fail "$VALIDATED_PURPOSE directory capabilities changed: $VALIDATED_ID/$RELATIVE"
+				;;
+			file)
+				is_regular_file "$VALIDATED_DIR/$RELATIVE" || \
+					fail "$VALIDATED_PURPOSE file is missing or unsafe: $VALIDATED_ID/$RELATIVE"
+				verify_installed_mode "$VALIDATED_DIR/$RELATIVE" "$MODE_VALUE" || \
+					fail "$VALIDATED_PURPOSE capabilities changed: $VALIDATED_ID/$RELATIVE"
+				[ "$(file_bytes "$VALIDATED_DIR/$RELATIVE")" = "$BYTES_VALUE" ] || \
+					fail "$VALIDATED_PURPOSE size changed: $VALIDATED_ID/$RELATIVE"
+				[ "$(sha256 "$VALIDATED_DIR/$RELATIVE")" = "$HASH_VALUE" ] || \
+					fail "$VALIDATED_PURPOSE digest changed: $VALIDATED_ID/$RELATIVE"
+				;;
+		esac
+	done <"$VALIDATED_RECORDS"
+}
+
+selector_release_id() {
+	awk '
+		$1 == "APPEND" {
+			for (field = 2; field <= NF; field++)
+				if ($field ~ /^bird_release=/) {
+					value = $field
+					sub(/^bird_release=/, "", value)
+					print value
+					found++
+				}
+		}
+		END {if (found != 1) exit 1}
+	' "$1"
+}
+
+read_active_selector() {
+	ACTIVE_SELECTOR=$BIRD/extlinux/extlinux.conf
+	is_regular_file "$ACTIVE_SELECTOR" || fail 'active extlinux selector is missing or unsafe'
+	ACTIVE_SELECTOR_SHA=$(sha256 "$ACTIVE_SELECTOR")
+	ACTIVE_SELECTOR_KIND=release
+	ACTIVE_RELEASE_ID=
+	if [ "$ACTIVE_SELECTOR_SHA" = "$VERIFIED_FALLBACK_SELECTOR_SHA" ]; then
+		ACTIVE_SELECTOR_KIND=fallback
+		return
+	fi
+	ACTIVE_RELEASE_ID=$(selector_release_id "$ACTIVE_SELECTOR") || \
+		fail 'active selector does not contain exactly one Bird release ID'
+	case "$ACTIVE_RELEASE_ID" in
+		''|[![:alnum:]]*|*[![:alnum:]._-]*) fail 'active selector contains an unsafe release ID' ;;
+	esac
+}
+
+latest_installed_release_id() {
+	INSTALLED_RELEASE_ROOT=$BIRD/bird-releases
+	[ -d "$INSTALLED_RELEASE_ROOT" ] && [ ! -L "$INSTALLED_RELEASE_ROOT" ] || \
+		fail 'fallback selector has no safe immutable installed release root'
+	INSTALLED_RELEASE_CANDIDATES=$RUN_TEMP/installed-release-candidates
+	find "$INSTALLED_RELEASE_ROOT" -mindepth 1 -maxdepth 1 -type d \
+		! -name '.*' -print | LC_ALL=C sort >"$INSTALLED_RELEASE_CANDIDATES"
+	[ -s "$INSTALLED_RELEASE_CANDIDATES" ] || \
+		fail 'fallback selector has no immutable installed release build source'
+	INSTALLED_RELEASE_PATH=$(awk 'END {print}' "$INSTALLED_RELEASE_CANDIDATES")
+	INSTALLED_RELEASE_ID=${INSTALLED_RELEASE_PATH##*/}
+	case "$INSTALLED_RELEASE_ID" in
+		''|[![:alnum:]]*|*[![:alnum:]._-]*) \
+			fail 'deterministic fallback build source has an unsafe release ID' ;;
+	esac
+	[ "$INSTALLED_RELEASE_PATH" = \
+		"$INSTALLED_RELEASE_ROOT/$INSTALLED_RELEASE_ID" ] || \
+		fail 'deterministic fallback build-source path is unsafe'
+	printf '%s\n' "$INSTALLED_RELEASE_ID"
+}
+
+prepare_versioned_build_source() {
+	if [ -e "$BIRD/KERNEL" ] || [ -L "$BIRD/KERNEL" ]; then
+		is_regular_file "$BIRD/KERNEL" || \
+			fail 'legacy top-level KERNEL is a symlink or special node'
+		return 0
+	fi
+	read_active_selector
+	IMMUTABLE_SOURCE_SELECTOR=$ACTIVE_SELECTOR
+	IMMUTABLE_SOURCE_ID=$ACTIVE_RELEASE_ID
+	IMMUTABLE_SOURCE_PURPOSE='active immutable build source'
+	IMMUTABLE_SOURCE_SELECTOR_PURPOSE='active selector'
+	if [ "$ACTIVE_SELECTOR_KIND" = fallback ]; then
+		IMMUTABLE_SOURCE_SELECTOR=$BIRD/extlinux/extlinux.previous.conf
+		is_regular_file "$IMMUTABLE_SOURCE_SELECTOR" || \
+			fail 'legacy top-level KERNEL is absent and fallback previous selector is missing or unsafe'
+		IMMUTABLE_SOURCE_SELECTOR_SHA=$(sha256 "$IMMUTABLE_SOURCE_SELECTOR")
+		if [ "$IMMUTABLE_SOURCE_SELECTOR_SHA" = \
+			"$VERIFIED_FALLBACK_SELECTOR_SHA" ]; then
+			IMMUTABLE_SOURCE_ID=$(latest_installed_release_id)
+			IMMUTABLE_SOURCE_SELECTOR=$BIRD/bird-releases/$IMMUTABLE_SOURCE_ID/extlinux/extlinux.conf
+			IMMUTABLE_SOURCE_PURPOSE='deterministic fallback immutable build source'
+			IMMUTABLE_SOURCE_SELECTOR_PURPOSE='deterministic fallback release selector'
+		else
+			IMMUTABLE_SOURCE_ID=$(selector_release_id "$IMMUTABLE_SOURCE_SELECTOR") || \
+				fail 'fallback previous selector does not contain exactly one Bird release ID'
+			case "$IMMUTABLE_SOURCE_ID" in
+				''|[![:alnum:]]*|*[![:alnum:]._-]*) \
+					fail 'fallback previous selector contains an unsafe release ID' ;;
+			esac
+			IMMUTABLE_SOURCE_PURPOSE='fallback previous immutable build source'
+			IMMUTABLE_SOURCE_SELECTOR_PURPOSE='fallback previous selector'
+		fi
+	fi
+	ACTIVE_SOURCE=$BIRD/bird-releases/$IMMUTABLE_SOURCE_ID
+	validate_completed_release "$ACTIVE_SOURCE" "$IMMUTABLE_SOURCE_ID" \
+		"$IMMUTABLE_SOURCE_PURPOSE"
+	PINNED_IMMUTABLE_SOURCE_ID=$IMMUTABLE_SOURCE_ID
+	ACTIVE_KERNEL_RECORD=$RUN_TEMP/active-kernel-record
+	awk -F '\t' '
+		$1 == "file" && $2 == "KERNEL" {
+			print $4 "\t" $5
+			found++
+		}
+		END {if (found != 1) exit 1}
+	' "$VALIDATED_RECORDS" >"$ACTIVE_KERNEL_RECORD" || \
+		fail "$IMMUTABLE_SOURCE_PURPOSE manifest has no unique valid KERNEL record"
+	ACTIVE_KERNEL_BYTES=$(awk -F '\t' '{print $1}' "$ACTIVE_KERNEL_RECORD")
+	ACTIVE_KERNEL_SHA=$(awk -F '\t' '{print $2}' "$ACTIVE_KERNEL_RECORD")
+	is_regular_file "$ACTIVE_SOURCE/extlinux/extlinux.conf" || \
+		fail "$IMMUTABLE_SOURCE_PURPOSE selector is missing or unsafe"
+	IMMUTABLE_SELECTOR_RELEASE_ID=$(selector_release_id \
+		"$ACTIVE_SOURCE/extlinux/extlinux.conf") || \
+		fail "$IMMUTABLE_SOURCE_PURPOSE selector does not contain exactly one Bird release ID"
+	[ "$IMMUTABLE_SELECTOR_RELEASE_ID" = "$IMMUTABLE_SOURCE_ID" ] || \
+		fail "$IMMUTABLE_SOURCE_PURPOSE selector release ID does not match its immutable directory"
+	[ "$(sha256 "$IMMUTABLE_SOURCE_SELECTOR")" = \
+		"$(sha256 "$ACTIVE_SOURCE/extlinux/extlinux.conf")" ] || \
+		fail "$IMMUTABLE_SOURCE_SELECTOR_PURPOSE differs from its verified immutable release selector"
+	[ "$(grep -Fxc "  LINUX /bird-releases/$IMMUTABLE_SOURCE_ID/KERNEL" \
+		"$IMMUTABLE_SOURCE_SELECTOR")" -eq 1 ] || \
+		fail "$IMMUTABLE_SOURCE_SELECTOR_PURPOSE does not reference its immutable KERNEL exactly once"
+	is_regular_file "$BIRD/dtb.img" && is_regular_file "$BIRD/KERNEL.fallback" || \
+		fail 'versioned build source requires the verified root DTB and fallback KERNEL'
+
+	SOURCE=$RUN_TEMP/pinned-card-source
+	FALLBACK_KERNEL=$SOURCE/KERNEL.fallback
+	mkdir -p "$SOURCE"
+	COPYFILE_DISABLE=1 cp -p "$ACTIVE_SOURCE/KERNEL" "$SOURCE/KERNEL"
+	COPYFILE_DISABLE=1 cp -p "$BIRD/dtb.img" "$SOURCE/dtb.img"
+	COPYFILE_DISABLE=1 cp -p "$BIRD/KERNEL.fallback" "$FALLBACK_KERNEL"
+	[ "$(sha256 "$SOURCE/KERNEL")" = "$ACTIVE_KERNEL_SHA" ] && \
+	[ "$(sha256 "$SOURCE/dtb.img")" = "$(sha256 "$BIRD/dtb.img")" ] && \
+	[ "$(sha256 "$FALLBACK_KERNEL")" = "$(sha256 "$BIRD/KERNEL.fallback")" ] || \
+		fail 'versioned host build-source snapshot verification failed'
+}
+
+prepare_versioned_build_source
+
 for PINNED_FILE in "$SOURCE/KERNEL" "$SOURCE/dtb.img" "$SYSTEM_SOURCE" \
 	"$STORAGE_SOURCE" "$SYSTEM_TREE/usr/bin/autostart" "$OFFICIAL_INIT" \
 	"$JOYPAD" "$INIT_BUSYBOX" "$PORTMASTER_ARCHIVE"; do
@@ -230,6 +540,265 @@ elif [ ! -e "$SOURCE/KERNEL.fallback" ]; then
 else
 	fail 'fallback KERNEL is a symlink or special node'
 fi
+BUILD_SOURCE=$SOURCE
+BUILD_FALLBACK_KERNEL=$FALLBACK_KERNEL
+PINNED_SOURCE_KERNEL_SHA=$(sha256 "$SOURCE/KERNEL")
+PINNED_SOURCE_DTB_SHA=$(sha256 "$SOURCE/dtb.img")
+PINNED_FALLBACK_KERNEL_SHA=$(sha256 "$FALLBACK_KERNEL")
+
+catalog_koreader_category_count() {
+	awk '
+		$0 == "#define CATALOG_LAUNCH_KOREADER 7" {defines++; next}
+		$0 == "static const u8 catalog_media_category_launch_kinds[CATALOG_MEDIA_CATEGORY_COUNT] = {" {
+			if (inside) exit 1
+			arrays++
+			inside=1
+			next
+		}
+		inside && $0 == "};" {inside=0; closed++; next}
+		inside && $0 == "    CATALOG_LAUNCH_KOREADER," {count++}
+		END {
+			if (defines != 1 || arrays != 1 || closed != 1 || inside) exit 1
+			print count + 0
+		}
+	' "$1"
+}
+
+contract_literal() {
+	CONTRACT_NAME=$1
+	awk -v name="$CONTRACT_NAME" '
+		index($0, name "=") == 1 {
+			print substr($0, length(name) + 2)
+			found++
+		}
+		END {if (found != 1) exit 1}
+	' "$KOREADER_CONTRACT"
+}
+
+require_plain_directory() {
+	[ -d "$1" ] && [ ! -L "$1" ] || \
+		fail "KOReader directory is missing or unsafe: $1"
+}
+
+preflight_koreader() {
+	is_regular_file "$KOREADER_CATALOG_HEADER" || \
+		fail 'generated launcher catalog is missing or unsafe for KOReader preflight'
+	is_regular_file "$KOREADER_CONTRACT" || \
+		fail 'content runner is missing or unsafe for KOReader preflight'
+	KOREADER_CATEGORY_COUNT=$(catalog_koreader_category_count \
+		"$KOREADER_CATALOG_HEADER") || \
+		fail 'generated catalog has a malformed KOReader launch-kind contract'
+	case "$KOREADER_CATEGORY_COUNT" in
+		''|*[!0-9]*) fail 'generated catalog returned an invalid KOReader category count' ;;
+	esac
+	[ "$KOREADER_CATEGORY_COUNT" -gt 0 ] || return 0
+
+	[ "$(grep -Fxc 'KOREADER_PORT_SOURCE=${BIRD_KOREADER_PORT_SOURCE:-/storage/roms/ports/KOReader.sh}' \
+		"$KOREADER_CONTRACT")" -eq 1 ] || \
+		fail 'KOReader runtime source path contract changed'
+	KOREADER_SOURCE_SHA=$(contract_literal KOREADER_PORT_SOURCE_SHA) || \
+		fail 'KOReader source digest contract is missing or duplicated'
+	KOREADER_ARCHIVE_SHA=$(contract_literal KOREADER_ARCHIVE_SHA) || \
+		fail 'KOReader archive digest contract is missing or duplicated'
+	KOREADER_ARCHIVE_BYTES=$(contract_literal KOREADER_ARCHIVE_BYTES) || \
+		fail 'KOReader archive-size contract is missing or duplicated'
+	KOREADER_EXPANDED_BYTES=$(contract_literal KOREADER_EXPANDED_BYTES) || \
+		fail 'KOReader extraction-size contract is missing or duplicated'
+	KOREADER_ARCHIVE_ENTRIES=$(contract_literal KOREADER_ARCHIVE_ENTRIES) || \
+		fail 'KOReader archive-entry contract is missing or duplicated'
+	if [ "$HOST_TEST_MODE" -eq 1 ]; then
+		[ -z "${BIRD_TEST_KOREADER_SOURCE_SHA:-}" ] || \
+			KOREADER_SOURCE_SHA=$BIRD_TEST_KOREADER_SOURCE_SHA
+		[ -z "${BIRD_TEST_KOREADER_ARCHIVE_SHA:-}" ] || \
+			KOREADER_ARCHIVE_SHA=$BIRD_TEST_KOREADER_ARCHIVE_SHA
+		[ -z "${BIRD_TEST_KOREADER_ARCHIVE_BYTES:-}" ] || \
+			KOREADER_ARCHIVE_BYTES=$BIRD_TEST_KOREADER_ARCHIVE_BYTES
+		[ -z "${BIRD_TEST_KOREADER_EXPANDED_BYTES:-}" ] || \
+			KOREADER_EXPANDED_BYTES=$BIRD_TEST_KOREADER_EXPANDED_BYTES
+		[ -z "${BIRD_TEST_KOREADER_ARCHIVE_ENTRIES:-}" ] || \
+			KOREADER_ARCHIVE_ENTRIES=$BIRD_TEST_KOREADER_ARCHIVE_ENTRIES
+	fi
+	case "$KOREADER_SOURCE_SHA" in
+		''|*[!0-9a-f]*) fail 'KOReader source digest contract is malformed' ;;
+	esac
+	case "$KOREADER_ARCHIVE_SHA" in
+		''|*[!0-9a-f]*) fail 'KOReader archive digest contract is malformed' ;;
+	esac
+	[ "${#KOREADER_SOURCE_SHA}" -eq 64 ] && \
+	[ "${#KOREADER_ARCHIVE_SHA}" -eq 64 ] || \
+		fail 'KOReader digest contract has the wrong length'
+	for KOREADER_NUMBER in "$KOREADER_ARCHIVE_BYTES" "$KOREADER_EXPANDED_BYTES" \
+		"$KOREADER_ARCHIVE_ENTRIES"; do
+		case "$KOREADER_NUMBER" in
+			''|*[!0-9]*) fail 'KOReader archive budget contract is malformed' ;;
+		esac
+	done
+
+	KOREADER_PORTS=$DATA/ROMS/Ports
+	KOREADER_SOURCE=$KOREADER_PORTS/KOReader.sh
+	KOREADER_ARCHIVE_ROOT=$KOREADER_PORTS/koreader
+	KOREADER_ARCHIVE=$KOREADER_ARCHIVE_ROOT/koreader.zip
+	for KOREADER_DIR in "$DATA/ROMS" "$KOREADER_PORTS" "$KOREADER_ARCHIVE_ROOT"; do
+		require_plain_directory "$KOREADER_DIR"
+	done
+	is_regular_file "$KOREADER_SOURCE" || \
+		fail 'cataloged KOReader source launcher is missing or unsafe on BIRD-DATA'
+	is_regular_file "$KOREADER_ARCHIVE" || \
+		fail 'cataloged KOReader archive is missing or unsafe on BIRD-DATA'
+	[ "$(file_bytes "$KOREADER_SOURCE")" -gt 0 ] || \
+		fail 'cataloged KOReader source launcher is empty'
+	[ "$(sha256 "$KOREADER_SOURCE")" = "$KOREADER_SOURCE_SHA" ] || \
+		fail 'cataloged KOReader source launcher digest changed'
+	[ "$(file_bytes "$KOREADER_ARCHIVE")" = "$KOREADER_ARCHIVE_BYTES" ] || \
+		fail 'cataloged KOReader archive size changed'
+	[ "$(sha256 "$KOREADER_ARCHIVE")" = "$KOREADER_ARCHIVE_SHA" ] || \
+		fail 'cataloged KOReader archive digest changed'
+	unzip -tq "$KOREADER_ARCHIVE" >/dev/null || \
+		fail 'cataloged KOReader archive failed integrity verification'
+	KOREADER_ARCHIVE_PATHS=$RUN_TEMP/koreader-archive-paths
+	unzip -Z -1 "$KOREADER_ARCHIVE" >"$KOREADER_ARCHIVE_PATHS" || \
+		fail 'cataloged KOReader archive inventory failed'
+	awk '
+		$0 == "" || substr($0, 1, 1) == "/" || index($0, "\\") {exit 1}
+		{
+			parts=split($0, component, "/")
+			for (i=1; i<=parts; i++)
+				if (component[i] == "." || component[i] == "..") exit 1
+		}
+	' "$KOREADER_ARCHIVE_PATHS" || \
+		fail 'cataloged KOReader archive contains an unsafe path'
+	KOREADER_LIST_SUMMARY=$RUN_TEMP/koreader-list-summary
+	unzip -l "$KOREADER_ARCHIVE" | awk 'END {print $1 "\t" $2 "\t" $3}' \
+		>"$KOREADER_LIST_SUMMARY" || \
+		fail 'cataloged KOReader archive size inventory failed'
+	KOREADER_LIST_BYTES=$(awk -F '\t' '{print $1}' "$KOREADER_LIST_SUMMARY")
+	KOREADER_LIST_ENTRIES=$(awk -F '\t' '{print $2}' "$KOREADER_LIST_SUMMARY")
+	KOREADER_LIST_LABEL=$(awk -F '\t' '{print $3}' "$KOREADER_LIST_SUMMARY")
+	case "$KOREADER_LIST_LABEL" in file|files) ;; *) KOREADER_LIST_LABEL=invalid ;; esac
+	[ "$KOREADER_LIST_LABEL" != invalid ] && \
+	[ "$KOREADER_LIST_BYTES" = "$KOREADER_EXPANDED_BYTES" ] && \
+	[ "$KOREADER_LIST_ENTRIES" = "$KOREADER_ARCHIVE_ENTRIES" ] || \
+		fail 'cataloged KOReader archive differs from its expanded-size budget'
+
+	KOREADER_COMPLETE=1
+	KOREADER_STATE_ROOT=$DATA/.config/bird/koreader-extraction
+	for KOREADER_DIR in "$DATA/.config" "$DATA/.config/bird" \
+		"$KOREADER_STATE_ROOT" "$KOREADER_ARCHIVE_ROOT/koreader" \
+		"$KOREADER_ARCHIVE_ROOT/koreader/frontend" \
+		"$KOREADER_ARCHIVE_ROOT/koreader/frontend/apps" \
+		"$KOREADER_ARCHIVE_ROOT/koreader/frontend/apps/reader" \
+		"$KOREADER_ARCHIVE_ROOT/koreader/libs"; do
+		if [ -e "$KOREADER_DIR" ] || [ -L "$KOREADER_DIR" ]; then
+			[ -d "$KOREADER_DIR" ] && [ ! -L "$KOREADER_DIR" ] || \
+				fail "KOReader extraction directory is unsafe: $KOREADER_DIR"
+		else
+			KOREADER_COMPLETE=0
+		fi
+	done
+	KOREADER_MARKER=$KOREADER_STATE_ROOT/$KOREADER_ARCHIVE_SHA.complete
+	if [ -e "$KOREADER_MARKER" ] || [ -L "$KOREADER_MARKER" ]; then
+		is_regular_file "$KOREADER_MARKER" || \
+			fail 'KOReader extraction completion marker is unsafe'
+		[ "$(file_bytes "$KOREADER_MARKER")" = 65 ] && \
+		[ "$(cat "$KOREADER_MARKER")" = "$KOREADER_ARCHIVE_SHA" ] || \
+			KOREADER_COMPLETE=0
+	else
+		KOREADER_COMPLETE=0
+	fi
+	for KOREADER_SENTINEL in luajit reader.lua \
+		frontend/apps/reader/readerui.lua libs/libkoreader-cre.so \
+		libs/libwrap-mupdf.so defaults.custom.lua; do
+		KOREADER_SENTINEL_PATH=$KOREADER_ARCHIVE_ROOT/koreader/$KOREADER_SENTINEL
+		if [ -e "$KOREADER_SENTINEL_PATH" ] || [ -L "$KOREADER_SENTINEL_PATH" ]; then
+			is_regular_file "$KOREADER_SENTINEL_PATH" || \
+				fail "KOReader extraction sentinel is unsafe: $KOREADER_SENTINEL"
+		else
+			KOREADER_COMPLETE=0
+		fi
+	done
+	if [ "$KOREADER_COMPLETE" -eq 1 ]; then
+		KOREADER_EXTRACTION_STATE=complete
+		KOREADER_EXTRACTION_RESERVE=0
+	else
+		KOREADER_EXTRACTION_STATE=pending
+		KOREADER_EXTRACTION_RESERVE=$KOREADER_EXPANDED_BYTES
+	fi
+}
+
+preflight_koreader
+
+preflight_portmaster_provider() {
+	PORTMASTER_PROVIDER=$DATA/ROMS/Ports/PortMaster
+	for PORTMASTER_DIR in "$DATA/ROMS" "$DATA/ROMS/Ports" \
+		"$PORTMASTER_PROVIDER"; do
+		require_plain_directory "$PORTMASTER_DIR"
+	done
+	is_regular_file "$PORTMASTER_PROVIDER_MANIFEST" || \
+		fail 'pinned PortMaster provider manifest is missing or unsafe'
+	is_regular_file "$PORTMASTER_PROVIDER_VERIFIER" || \
+		fail 'PortMaster provider verifier is missing or unsafe'
+	for PORTMASTER_ADAPTER in control.txt oga_controls; do
+		PORTMASTER_PATH=$PORTMASTER_PROVIDER/$PORTMASTER_ADAPTER
+		is_regular_file "$PORTMASTER_PATH" && [ -s "$PORTMASTER_PATH" ] || \
+			fail "PortMaster runtime adapter is incomplete or unsafe: $PORTMASTER_ADAPTER"
+	done
+	PORTMASTER_PROVIDER_MARKER_VALUE=$(
+		# Provider-local cache bytes are inert under run-content.sh's required
+		# fresh /run PYTHONPYCACHEPREFIX boundary.
+		"$PORTMASTER_PROVIDER_VERIFIER" --allow-isolated-python-cache \
+			"$PORTMASTER_PROVIDER_MANIFEST" "$PORTMASTER_PROVIDER"
+	) || fail 'installed PortMaster provider is not a pinned complete revision'
+	PORTMASTER_PROVIDER_MARKER_STATE=$(portmaster_provider_marker_state)
+}
+
+portmaster_provider_marker_state() {
+	PORTMASTER_MARKER=$PORTMASTER_PROVIDER/.bird-release-complete
+	if [ ! -e "$PORTMASTER_MARKER" ] && [ ! -L "$PORTMASTER_MARKER" ]; then
+		printf 'absent:0:-\n'
+		return 0
+	fi
+	is_regular_file "$PORTMASTER_MARKER" || \
+		fail 'PortMaster completion marker is a symlink or special node'
+	PORTMASTER_MARKER_BYTES=$(file_bytes "$PORTMASTER_MARKER")
+	case "$PORTMASTER_MARKER_BYTES" in
+		''|*[!0-9]*) fail 'PortMaster completion marker size is malformed' ;;
+	esac
+	[ "$PORTMASTER_MARKER_BYTES" -le 1024 ] || \
+		fail 'PortMaster completion marker is unexpectedly large'
+	PORTMASTER_MARKER_SHA=$(sha256 "$PORTMASTER_MARKER")
+	if [ "$PORTMASTER_MARKER_BYTES" -eq 0 ]; then
+		printf 'legacy:0:%s\n' "$PORTMASTER_MARKER_SHA"
+		return 0
+	fi
+	[ "$(wc -l <"$PORTMASTER_MARKER" | tr -d '[:space:]')" = 1 ] || \
+		fail 'PortMaster completion marker must contain one newline-terminated record'
+	if grep -Fqx "$PORTMASTER_PROVIDER_MARKER_VALUE" "$PORTMASTER_MARKER"; then
+		printf 'exact:%s:%s\n' "$PORTMASTER_MARKER_BYTES" \
+			"$PORTMASTER_MARKER_SHA"
+	elif grep -Eq '^bird-portmaster-v(1|2):[A-Za-z0-9:._/-]+$' \
+		"$PORTMASTER_MARKER"; then
+		printf 'legacy:%s:%s\n' "$PORTMASTER_MARKER_BYTES" \
+			"$PORTMASTER_MARKER_SHA"
+	elif grep -Eq '^bird-portmaster-v3:' "$PORTMASTER_MARKER"; then
+		fail 'PortMaster v3 completion marker does not match the pinned revision'
+	else
+		fail 'PortMaster completion marker has an unrecognized format'
+	fi
+}
+
+verify_portmaster_provider_unchanged() {
+	[ -n "$PORTMASTER_PROVIDER_MARKER_VALUE" ] || \
+		fail 'PortMaster provider preflight checkpoint is missing'
+	[ "$("$PORTMASTER_PROVIDER_VERIFIER" --allow-isolated-python-cache \
+		"$PORTMASTER_PROVIDER_MANIFEST" "$PORTMASTER_PROVIDER")" = \
+		"$PORTMASTER_PROVIDER_MARKER_VALUE" ] || \
+		fail 'PortMaster provider changed after deployment preflight'
+	[ "$(portmaster_provider_marker_state)" = \
+		"$PORTMASTER_PROVIDER_MARKER_STATE" ] || \
+		fail 'PortMaster completion marker changed after deployment preflight'
+}
+
+preflight_portmaster_provider
 
 [ -d "$WORK_ROOT" ] && [ ! -L "$WORK_ROOT" ] || \
 	fail "kernel work directory missing or unsafe: $WORK_ROOT"
@@ -293,151 +862,103 @@ case "$OUTPUT" in
 	*) fail "unsafe generated output path: $OUTPUT" ;;
 esac
 
-file_bytes() {
-	stat -f '%z' "$1" 2>/dev/null || stat -c '%s' "$1"
-}
-
-file_mode() {
-	stat -f '%Lp' "$1" 2>/dev/null || stat -c '%a' "$1"
-}
-
-sha256() {
-	shasum -a 256 "$1" | awk '{print $1}'
-}
-
-verify_installed_mode() {
-	TARGET_PATH=$1
-	EXPECTED_MODE=$2
-	if [ "$BIRD_SYNTHETIC_MODES" -eq 0 ]; then
-		[ "$(file_mode "$TARGET_PATH")" = "$EXPECTED_MODE" ]
-		return
-	fi
-
-	# FAT does not retain Unix mode bits. Match the canonical updater's
-	# fat-capability policy and verify the effective owner capabilities that the
-	# manifest requires instead of comparing macOS's synthetic stat value.
-	OWNER_MODE=$(printf '%s' "$EXPECTED_MODE" | cut -c1)
-	[ -r "$TARGET_PATH" ] || return 1
-	case "$OWNER_MODE" in 2|3|6|7) [ -w "$TARGET_PATH" ] || return 1 ;; esac
-	case "$OWNER_MODE" in 1|3|5|7) [ -x "$TARGET_PATH" ] || return 1 ;; esac
-	return 0
-}
-
-read_active_release_id() {
-	ACTIVE_SELECTOR=$BIRD/extlinux/extlinux.conf
-	is_regular_file "$ACTIVE_SELECTOR" || fail 'active extlinux selector is missing or unsafe'
-	ACTIVE_RELEASE_ID=$(awk '
-		$1 == "APPEND" {
-			for (field = 2; field <= NF; field++)
-				if ($field ~ /^bird_release=/) {
-					value = $field
-					sub(/^bird_release=/, "", value)
-					print value
-					found++
-				}
-		}
-		END {if (found != 1) exit 1}
-	' "$ACTIVE_SELECTOR") || fail 'active selector does not contain exactly one Bird release ID'
-	case "$ACTIVE_RELEASE_ID" in
-		''|[![:alnum:]]*|*[![:alnum:]._-]*) fail 'active selector contains an unsafe release ID' ;;
-	esac
-}
-
 validate_retired_release() {
 	RETIRED_DIR=$1
 	RETIRED_ID=$2
-	case "$RETIRED_ID" in
-		''|[![:alnum:]]*|*[![:alnum:]._-]*) fail 'retirement candidate has an unsafe release ID' ;;
-	esac
-	[ -d "$RETIRED_DIR" ] && [ ! -L "$RETIRED_DIR" ] || \
-		fail "retirement candidate is not a safe directory: $RETIRED_DIR"
-	[ "$RETIRED_DIR" = "$BIRD/bird-releases/$RETIRED_ID" ] || \
-		fail 'retirement candidate path does not match its release ID'
-	[ "$RETIRED_ID" != "$ACTIVE_RELEASE_ID" ] || \
+	ALLOW_ACTIVE_RELEASE=${3:-0}
+	if [ "$ACTIVE_SELECTOR_KIND" = release ] && \
+		[ "$RETIRED_ID" = "$ACTIVE_RELEASE_ID" ] && \
+		[ "$ALLOW_ACTIVE_RELEASE" -ne 1 ]; then
 		fail 'refusing to archive or remove the active release'
-	is_regular_file "$RETIRED_DIR/deploy-manifest.tsv" || \
-		fail "retirement candidate manifest is missing or unsafe: $RETIRED_ID"
-	is_regular_file "$RETIRED_DIR/.complete" || \
-		fail "retirement candidate completion marker is missing or unsafe: $RETIRED_ID"
-	RETIRED_MANIFEST_SHA=$(sha256 "$RETIRED_DIR/deploy-manifest.tsv")
-	[ "$(cat "$RETIRED_DIR/.complete")" = "$RETIRED_MANIFEST_SHA" ] || \
-		fail "retirement candidate completion marker changed: $RETIRED_ID"
+	fi
+	validate_completed_release "$RETIRED_DIR" "$RETIRED_ID" \
+		'retirement candidate'
+	RETIRED_MANIFEST_SHA=$VALIDATED_MANIFEST_SHA
+}
 
-	RETIRED_RECORDS=$RUN_TEMP/retired-records
-	RETIRED_EXPECTED_FILES=$RUN_TEMP/retired-expected-files
-	RETIRED_ACTUAL_FILES=$RUN_TEMP/retired-actual-files
-	RETIRED_EXPECTED_DIRS=$RUN_TEMP/retired-expected-dirs
-	RETIRED_ACTUAL_DIRS=$RUN_TEMP/retired-actual-dirs
-	RETIRED_DUPLICATES=$RUN_TEMP/retired-duplicates
-	awk -F '\t' -v expected_release="$RETIRED_ID" '
-		function safe_path(path) {
-			return path ~ /^[A-Za-z0-9._\/-]+$/ && path !~ /(^|\/)\.\.?($|\/)/
-		}
-		$1 == "schema" {if (NF != 2 || $2 != "bird-deploy-v1" || schema++) exit 1; next}
-		$1 == "release" {if (NF != 2 || $2 != expected_release || release++) exit 1; next}
-		$1 == "target-mode-policy" {if (NF != 2 || $2 != "fat-capability" || policy++) exit 1; next}
-		$1 == "source-commit" {if (NF != 3 || source++) exit 1; next}
-		$1 == "input" {
-			if (NF != 6 || !safe_path($2) || $3 !~ /^[0-7][0-7][0-7]$/ ||
-			    $4 !~ /^[0-9]+$/ || length($5) != 64 || $5 ~ /[^0-9a-f]/ || $6 == "") exit 1
-			inputs++; next
-		}
-		$1 == "dir" {
-			if (NF != 3 || !safe_path($2) || $3 !~ /^[0-7][0-7][0-7]$/) exit 1
-			print "dir\t" $2; next
-		}
-		$1 == "file" {
-			if (NF != 5 || !safe_path($2) || $3 !~ /^[0-7][0-7][0-7]$/ ||
-			    $4 !~ /^[0-9]+$/ || length($5) != 64 || $5 ~ /[^0-9a-f]/) exit 1
-			print "file\t" $2 "\t" $3 "\t" $4 "\t" $5; files++; next
-		}
-		{exit 1}
-		END {if (schema != 1 || release != 1 || policy != 1 || source != 1 || inputs != 15 || files < 1) exit 1}
-	' "$RETIRED_DIR/deploy-manifest.tsv" >"$RETIRED_RECORDS" || \
-		fail "retirement candidate manifest is malformed: $RETIRED_ID"
-	awk -F '\t' '$1 == "file" || $1 == "dir" {print $2}' "$RETIRED_RECORDS" | \
-		LC_ALL=C sort | uniq -d >"$RETIRED_DUPLICATES"
-	[ ! -s "$RETIRED_DUPLICATES" ] || \
-		fail "retirement candidate manifest has duplicate paths: $RETIRED_ID"
-	find "$RETIRED_DIR" -mindepth 1 ! -type f ! -type d -print | grep -q . && \
-		fail "retirement candidate contains a symlink or special node: $RETIRED_ID"
-	{
-		printf '%s\n' .complete deploy-manifest.tsv
-		awk -F '\t' '$1 == "file" {print $2}' "$RETIRED_RECORDS"
-	} | LC_ALL=C sort >"$RETIRED_EXPECTED_FILES"
-	find "$RETIRED_DIR" -type f -print | while IFS= read -r RETIRED_FILE; do
-		printf '%s\n' "${RETIRED_FILE#"$RETIRED_DIR"/}"
-	done | LC_ALL=C sort >"$RETIRED_ACTUAL_FILES"
-	cmp "$RETIRED_EXPECTED_FILES" "$RETIRED_ACTUAL_FILES" >/dev/null || \
-		fail "retirement candidate file set differs from its manifest: $RETIRED_ID"
-	awk -F '\t' '$1 == "dir" {print $2}' "$RETIRED_RECORDS" | \
-		LC_ALL=C sort >"$RETIRED_EXPECTED_DIRS"
-	find "$RETIRED_DIR" -mindepth 1 -type d -empty -print | while IFS= read -r RETIRED_DIRECTORY; do
-		printf '%s\n' "${RETIRED_DIRECTORY#"$RETIRED_DIR"/}"
-	done | LC_ALL=C sort >"$RETIRED_ACTUAL_DIRS"
-	cmp "$RETIRED_EXPECTED_DIRS" "$RETIRED_ACTUAL_DIRS" >/dev/null || \
-		fail "retirement candidate empty-directory set differs from its manifest: $RETIRED_ID"
-	TAB=$(printf '\t')
-	while IFS="$TAB" read -r KIND RELATIVE MODE_VALUE BYTES_VALUE HASH_VALUE; do
-		case "$KIND" in
-			dir)
-				[ -d "$RETIRED_DIR/$RELATIVE" ] && [ ! -L "$RETIRED_DIR/$RELATIVE" ] || \
-					fail "retirement candidate directory is missing or unsafe: $RETIRED_ID/$RELATIVE"
-				verify_installed_mode "$RETIRED_DIR/$RELATIVE" "$MODE_VALUE" || \
-					fail "retirement candidate directory capabilities changed: $RETIRED_ID/$RELATIVE"
-				;;
-			file)
-				is_regular_file "$RETIRED_DIR/$RELATIVE" || \
-					fail "retirement candidate file is missing or unsafe: $RETIRED_ID/$RELATIVE"
-				verify_installed_mode "$RETIRED_DIR/$RELATIVE" "$MODE_VALUE" || \
-					fail "retirement candidate capabilities changed: $RETIRED_ID/$RELATIVE"
-				[ "$(file_bytes "$RETIRED_DIR/$RELATIVE")" = "$BYTES_VALUE" ] || \
-					fail "retirement candidate size changed: $RETIRED_ID/$RELATIVE"
-				[ "$(sha256 "$RETIRED_DIR/$RELATIVE")" = "$HASH_VALUE" ] || \
-					fail "retirement candidate digest changed: $RETIRED_ID/$RELATIVE"
-				;;
-		esac
-	done <"$RETIRED_RECORDS"
+plan_legacy_kernel_retirement() {
+	LEGACY_KERNEL_RETIRE=0
+	LEGACY_KERNEL_RECLAIM_BYTES=0
+	[ "$ACTIVE_SELECTOR_KIND" = release ] || return 0
+	if [ ! -e "$BIRD/KERNEL" ] && [ ! -L "$BIRD/KERNEL" ]; then
+		return 0
+	fi
+	is_regular_file "$BIRD/KERNEL" || \
+		fail 'legacy top-level KERNEL is a symlink or special node'
+	ACTIVE_RELEASE_DIR=$BIRD/bird-releases/$ACTIVE_RELEASE_ID
+	validate_retired_release "$ACTIVE_RELEASE_DIR" "$ACTIVE_RELEASE_ID" 1
+	[ "$(grep -Fxc "  LINUX /bird-releases/$ACTIVE_RELEASE_ID/KERNEL" \
+		"$BIRD/extlinux/extlinux.conf")" -eq 1 ] || \
+		fail 'active selector does not reference its immutable release KERNEL exactly once'
+	is_regular_file "$ACTIVE_RELEASE_DIR/extlinux/extlinux.conf" || \
+		fail 'active immutable release selector is missing or unsafe'
+	[ "$(sha256 "$BIRD/extlinux/extlinux.conf")" = \
+		"$(sha256 "$ACTIVE_RELEASE_DIR/extlinux/extlinux.conf")" ] || \
+		fail 'active selector differs from the verified immutable release selector'
+	is_regular_file "$ACTIVE_RELEASE_DIR/KERNEL" || \
+		fail 'active immutable release KERNEL is missing or unsafe'
+	[ "$(file_bytes "$BIRD/KERNEL")" = \
+		"$(file_bytes "$ACTIVE_RELEASE_DIR/KERNEL")" ] && \
+	[ "$(sha256 "$BIRD/KERNEL")" = \
+		"$(sha256 "$ACTIVE_RELEASE_DIR/KERNEL")" ] || \
+		fail 'legacy top-level KERNEL is not byte-identical to the active release'
+	[ "$(sha256 "$BIRD/KERNEL")" = "$PINNED_SOURCE_KERNEL_SHA" ] || \
+		fail 'legacy top-level KERNEL changed after pinned-input preflight'
+	is_regular_file "$BIRD/dtb.img" && \
+	[ "$(sha256 "$BIRD/dtb.img")" = "$PINNED_SOURCE_DTB_SHA" ] || \
+		fail 'root DTB changed after pinned-input preflight'
+	is_regular_file "$BIRD/KERNEL.fallback" || \
+		fail 'fallback KERNEL is missing or unsafe'
+	[ "$(sha256 "$BIRD/KERNEL.fallback")" = "$PINNED_FALLBACK_KERNEL_SHA" ] || \
+		fail 'fallback KERNEL changed before legacy-kernel retirement'
+	is_regular_file "$BIRD/extlinux/extlinux.fallback.conf" || \
+		fail 'fallback selector is missing or unsafe'
+	[ "$(sha256 "$BIRD/extlinux/extlinux.fallback.conf")" = \
+		"$VERIFIED_FALLBACK_SELECTOR_SHA" ] || \
+		fail 'fallback selector changed before legacy-kernel retirement'
+	LEGACY_KERNEL_RECLAIM_BYTES=$(file_bytes "$BIRD/KERNEL")
+	case "$LEGACY_KERNEL_RECLAIM_BYTES" in
+		''|*[!0-9]*) fail 'could not size redundant top-level KERNEL' ;;
+	esac
+	LEGACY_KERNEL_RETIRE=1
+}
+
+snapshot_legacy_kernel_build_inputs() {
+	[ "$LEGACY_KERNEL_RETIRE" -eq 1 ] || return 0
+	plan_legacy_kernel_retirement
+	[ "$LEGACY_KERNEL_RETIRE" -eq 1 ] || \
+		fail 'planned legacy top-level KERNEL retirement is no longer valid'
+	BUILD_SOURCE=$RUN_TEMP/pinned-card-source
+	BUILD_FALLBACK_KERNEL=$BUILD_SOURCE/KERNEL.fallback
+	mkdir -p "$BUILD_SOURCE"
+	COPYFILE_DISABLE=1 cp -p "$SOURCE/KERNEL" "$BUILD_SOURCE/KERNEL"
+	COPYFILE_DISABLE=1 cp -p "$SOURCE/dtb.img" "$BUILD_SOURCE/dtb.img"
+	COPYFILE_DISABLE=1 cp -p "$FALLBACK_KERNEL" "$BUILD_FALLBACK_KERNEL"
+	for SNAPSHOT_NAME in KERNEL dtb.img KERNEL.fallback; do
+		is_regular_file "$BUILD_SOURCE/$SNAPSHOT_NAME" || \
+			fail "host input snapshot is missing or unsafe: $SNAPSHOT_NAME"
+	done
+	[ "$(sha256 "$BUILD_SOURCE/KERNEL")" = "$PINNED_SOURCE_KERNEL_SHA" ] && \
+	[ "$(sha256 "$BUILD_SOURCE/dtb.img")" = "$PINNED_SOURCE_DTB_SHA" ] && \
+	[ "$(sha256 "$BUILD_FALLBACK_KERNEL")" = "$PINNED_FALLBACK_KERNEL_SHA" ] || \
+		fail 'host input snapshot verification failed'
+}
+
+retire_legacy_root_kernel() {
+	[ "$LEGACY_KERNEL_RETIRE" -eq 1 ] || return 0
+	verify_archive_selector_unchanged
+	plan_legacy_kernel_retirement
+	[ "$LEGACY_KERNEL_RETIRE" -eq 1 ] || \
+		fail 'planned legacy top-level KERNEL retirement is no longer valid'
+	[ "$BIRD/KERNEL" = /Volumes/BIRD/KERNEL ] || \
+		[ "$HOST_TEST_MODE" -eq 1 ] || \
+		fail 'refusing unsafe legacy top-level KERNEL path'
+	rm -f "$BIRD/KERNEL"
+	[ ! -e "$BIRD/KERNEL" ] && [ ! -L "$BIRD/KERNEL" ] || \
+		fail 'redundant top-level KERNEL could not be retired'
+	sync
+	printf 'Reclaimed redundant top-level KERNEL: %s bytes (active release and fallback preserved).\n' \
+		"$LEGACY_KERNEL_RECLAIM_BYTES"
 }
 
 available_bytes() {
@@ -463,7 +984,7 @@ require_free_space() {
 
 HOST_REQUIRED_BYTES=134217728
 BIRD_REQUIRED_BYTES=$(( $(file_bytes "$SOURCE/KERNEL") + $(file_bytes "$SOURCE/dtb.img") + 4194304 ))
-DATA_REQUIRED_BYTES=16777216
+DATA_REQUIRED_BYTES=$((16777216 + KOREADER_EXTRACTION_RESERVE))
 if ! is_regular_file "$DATA/MUOS/runtime/ROCKNIX-STORAGE"; then
 	DATA_REQUIRED_BYTES=$(( $(file_bytes "$STORAGE_SOURCE") + DATA_REQUIRED_BYTES ))
 fi
@@ -485,38 +1006,64 @@ check_archive_repository() {
 		fail "GitHub release immutability is not enabled: $ARCHIVE_REPOSITORY"
 }
 
-select_retirement_candidate() {
-	read_active_release_id
-	ARCHIVE_ACTIVE_RELEASE_ID=$ACTIVE_RELEASE_ID
-	ACTIVE_RELEASE_DIR=$BIRD/bird-releases/$ACTIVE_RELEASE_ID
-	[ -d "$ACTIVE_RELEASE_DIR" ] && [ ! -L "$ACTIVE_RELEASE_DIR" ] || \
-		fail 'active selector does not name a safe installed release directory'
+select_retirement_candidates() {
+	read_active_selector
+	ARCHIVE_ACTIVE_SELECTOR_KIND=$ACTIVE_SELECTOR_KIND
+	ARCHIVE_ACTIVE_SELECTOR_SHA=$ACTIVE_SELECTOR_SHA
+	if [ "$ACTIVE_SELECTOR_KIND" = release ]; then
+		ACTIVE_RELEASE_DIR=$BIRD/bird-releases/$ACTIVE_RELEASE_ID
+		[ -d "$ACTIVE_RELEASE_DIR" ] && [ ! -L "$ACTIVE_RELEASE_DIR" ] || \
+			fail 'active selector does not name a safe installed release directory'
+	fi
 	RETIREMENT_CANDIDATES=$RUN_TEMP/retirement-candidates
+	RETIREMENT_SELECTED=$RUN_TEMP/retirement-selected
+	RETIREMENT_TAB=$(printf '\t')
 	find "$BIRD/bird-releases" -mindepth 1 -maxdepth 1 -type d ! -name '.*' -print | \
 		LC_ALL=C sort >"$RETIREMENT_CANDIDATES"
-	RETIRED_DIR=
-	RETIRED_ID=
+	: >"$RETIREMENT_SELECTED"
 	RETIRED_BYTES=0
+	RETIREMENT_EFFECTIVE_BYTES=$BIRD_EFFECTIVE_BYTES
 	while IFS= read -r POSSIBLE_DIR; do
 		POSSIBLE_ID=${POSSIBLE_DIR##*/}
-		[ "$POSSIBLE_ID" != "$ACTIVE_RELEASE_ID" ] || continue
+		if [ "$ACTIVE_SELECTOR_KIND" = release ] && \
+			[ "$POSSIBLE_ID" = "$ACTIVE_RELEASE_ID" ]; then
+			continue
+		fi
+		if [ -n "$PINNED_IMMUTABLE_SOURCE_ID" ] && \
+			[ "$POSSIBLE_ID" = "$PINNED_IMMUTABLE_SOURCE_ID" ]; then
+			continue
+		fi
 		[ "$POSSIBLE_ID" != "$RELEASE_ID" ] || continue
+		validate_retired_release "$POSSIBLE_DIR" "$POSSIBLE_ID"
 		POSSIBLE_KIB=$(du -sk "$POSSIBLE_DIR" | awk '{print $1}')
 		case "$POSSIBLE_KIB" in
 			''|*[!0-9]*) fail 'could not size inactive release candidate' ;;
 		esac
 		POSSIBLE_BYTES=$((POSSIBLE_KIB * 1024))
-		if [ $((BIRD_EFFECTIVE_BYTES + POSSIBLE_BYTES)) -ge "$BIRD_REQUIRED_BYTES" ]; then
-			RETIRED_DIR=$POSSIBLE_DIR
-			RETIRED_ID=$POSSIBLE_ID
-			RETIRED_BYTES=$POSSIBLE_BYTES
+		printf '%s\t%s\t%s\n' "$POSSIBLE_ID" "$POSSIBLE_DIR" \
+			"$POSSIBLE_BYTES" >>"$RETIREMENT_SELECTED"
+		RETIRED_BYTES=$((RETIRED_BYTES + POSSIBLE_BYTES))
+		RETIREMENT_EFFECTIVE_BYTES=$((RETIREMENT_EFFECTIVE_BYTES + POSSIBLE_BYTES))
+		if [ "$RETIREMENT_EFFECTIVE_BYTES" -ge "$BIRD_REQUIRED_BYTES" ]; then
 			break
 		fi
 	done <"$RETIREMENT_CANDIDATES"
-	[ -n "$RETIRED_DIR" ] || \
-		fail "BIRD has insufficient staging space and no single inactive release can safely provide it: need $BIRD_REQUIRED_BYTES bytes, have $BIRD_AVAILABLE_BYTES plus $((STALE_RECLAIM_KIB * 1024)) stale bytes"
-	validate_retired_release "$RETIRED_DIR" "$RETIRED_ID"
-	check_archive_repository
+	if [ "$RETIREMENT_EFFECTIVE_BYTES" -lt "$BIRD_REQUIRED_BYTES" ]; then
+		plan_legacy_kernel_retirement
+		if [ "$LEGACY_KERNEL_RETIRE" -eq 1 ]; then
+			RETIREMENT_EFFECTIVE_BYTES=$((RETIREMENT_EFFECTIVE_BYTES + LEGACY_KERNEL_RECLAIM_BYTES))
+		fi
+	fi
+	[ "$RETIREMENT_EFFECTIVE_BYTES" -ge "$BIRD_REQUIRED_BYTES" ] || \
+		fail "BIRD has insufficient staging space and verified retirement cannot safely provide it: need $BIRD_REQUIRED_BYTES bytes, have $BIRD_AVAILABLE_BYTES plus $((STALE_RECLAIM_KIB * 1024)) stale bytes, $RETIRED_BYTES inactive release bytes, and $LEGACY_KERNEL_RECLAIM_BYTES redundant root-kernel bytes"
+	[ "$RETIRED_BYTES" -eq 0 ] || check_archive_repository
+}
+
+verify_archive_selector_unchanged() {
+	read_active_selector
+	[ "$ACTIVE_SELECTOR_KIND" = "$ARCHIVE_ACTIVE_SELECTOR_KIND" ] && \
+		[ "$ACTIVE_SELECTOR_SHA" = "$ARCHIVE_ACTIVE_SELECTOR_SHA" ] || \
+		fail 'active selector changed during GitHub archival; inactive release retained'
 }
 
 verify_published_archive() {
@@ -525,6 +1072,7 @@ verify_published_archive() {
 	VERIFY_MANIFEST_ASSET=$3
 	VERIFY_CHECKSUM_ASSET=$4
 	VERIFY_LOCAL_MANIFEST=$5
+	VERIFY_LOCAL_ARCHIVE=$6
 	VERIFY_ASSETS=$RUN_TEMP/archive-assets
 	"$GH" release verify "$VERIFY_TAG" --repo "$ARCHIVE_REPOSITORY" >/dev/null || \
 		fail "GitHub release attestation verification failed: $VERIFY_TAG"
@@ -536,6 +1084,9 @@ verify_published_archive() {
 		grep -Fqx "$REQUIRED_ASSET" "$VERIFY_ASSETS" || \
 			fail "archived release is missing required asset: $REQUIRED_ASSET"
 	done
+	"$GH" release verify-asset "$VERIFY_TAG" "$VERIFY_LOCAL_ARCHIVE" \
+		--repo "$ARCHIVE_REPOSITORY" >/dev/null || \
+		fail "published archive differs from the verified card release: $VERIFY_TAG"
 	VERIFY_DOWNLOAD=$RUN_TEMP/archive-download
 	mkdir -p "$VERIFY_DOWNLOAD"
 	"$GH" release download "$VERIFY_TAG" --repo "$ARCHIVE_REPOSITORY" \
@@ -546,6 +1097,9 @@ verify_published_archive() {
 }
 
 archive_and_remove_retired_release() {
+	RETIRED_ID=$1
+	RETIRED_DIR=$2
+	verify_archive_selector_unchanged
 	validate_retired_release "$RETIRED_DIR" "$RETIRED_ID"
 	ARCHIVE_TAG=card-$RETIRED_ID
 	ARCHIVE_ASSET=birdOS-RG34XX-SP-$RETIRED_ID.tar
@@ -578,7 +1132,7 @@ archive_and_remove_retired_release() {
 			false)
 				verify_published_archive "$ARCHIVE_TAG" "$ARCHIVE_ASSET" \
 					"$ARCHIVE_MANIFEST_ASSET" "$ARCHIVE_CHECKSUM_ASSET" \
-					"$ARCHIVE_MANIFEST"
+					"$ARCHIVE_MANIFEST" "$ARCHIVE_FILE"
 				;;
 			true)
 				"$GH" release upload "$ARCHIVE_TAG" "$ARCHIVE_FILE" \
@@ -614,17 +1168,12 @@ archive_and_remove_retired_release() {
 				fail "published GitHub archive did not produce a valid attestation: $ARCHIVE_TAG"
 			sleep 1
 		done
-		"$GH" release verify-asset "$ARCHIVE_TAG" "$ARCHIVE_FILE" \
-			--repo "$ARCHIVE_REPOSITORY" >/dev/null || \
-			fail "uploaded archive asset differs from the verified local archive: $ARCHIVE_TAG"
 		verify_published_archive "$ARCHIVE_TAG" "$ARCHIVE_ASSET" \
 			"$ARCHIVE_MANIFEST_ASSET" "$ARCHIVE_CHECKSUM_ASSET" \
-			"$ARCHIVE_MANIFEST"
+			"$ARCHIVE_MANIFEST" "$ARCHIVE_FILE"
 	fi
 
-	read_active_release_id
-	[ "$ACTIVE_RELEASE_ID" = "$ARCHIVE_ACTIVE_RELEASE_ID" ] || \
-		fail 'active selector changed during GitHub archival; inactive release retained'
+	verify_archive_selector_unchanged
 	validate_retired_release "$RETIRED_DIR" "$RETIRED_ID"
 	case "$RETIRED_DIR" in
 		"$BIRD"/bird-releases/"$RETIRED_ID") ;;
@@ -655,7 +1204,7 @@ BIRD_EFFECTIVE_BYTES=$((BIRD_AVAILABLE_BYTES + STALE_RECLAIM_KIB * 1024))
 ARCHIVE_NEEDED=0
 if [ "$BIRD_EFFECTIVE_BYTES" -lt "$BIRD_REQUIRED_BYTES" ]; then
 	ARCHIVE_NEEDED=1
-	select_retirement_candidate
+	select_retirement_candidates
 fi
 require_free_space "$WORK_ROOT_REAL" "$HOST_REQUIRED_BYTES" 'kernel/work'
 require_free_space "$DATA" "$DATA_REQUIRED_BYTES" 'BIRD-DATA'
@@ -664,9 +1213,27 @@ printf 'Selected release ID: %s\n' "$RELEASE_ID"
 printf 'Build mode: %s\n' "$MODE"
 printf 'Output directory: %s\n' "$OUTPUT"
 printf 'Card identity: /dev/%s (p1 BIRD, p6 BIRD-DATA)\n' "$WHOLE"
+printf 'PortMaster preflight: pinned installed provider %s; checkpoint state %s.\n' \
+	"$PORTMASTER_PROVIDER_MARKER_VALUE" \
+	"${PORTMASTER_PROVIDER_MARKER_STATE%%:*}"
+if [ "$KOREADER_CATEGORY_COUNT" -gt 0 ]; then
+	printf 'KOReader preflight: %s catalog category, archive %s (%s bytes), extraction %s (%s-byte reserve).\n' \
+		"$KOREADER_CATEGORY_COUNT" "$KOREADER_ARCHIVE_SHA" \
+		"$KOREADER_ARCHIVE_BYTES" "$KOREADER_EXTRACTION_STATE" \
+		"$KOREADER_EXTRACTION_RESERVE"
+fi
 if [ "$ARCHIVE_NEEDED" -eq 1 ]; then
-	printf 'Retirement plan: archive inactive %s to %s, then reclaim %s bytes.\n' \
-		"$RETIRED_ID" "$ARCHIVE_REPOSITORY" "$RETIRED_BYTES"
+	if [ "$RETIRED_BYTES" -gt 0 ]; then
+		printf 'Retirement plan: archive the following inactive releases to %s and reclaim %s bytes:\n' \
+			"$ARCHIVE_REPOSITORY" "$RETIRED_BYTES"
+		while IFS="$RETIREMENT_TAB" read -r PLANNED_ID PLANNED_DIR PLANNED_BYTES; do
+			printf '  %s (%s bytes)\n' "$PLANNED_ID" "$PLANNED_BYTES"
+		done <"$RETIREMENT_SELECTED"
+	fi
+	if [ "$LEGACY_KERNEL_RETIRE" -eq 1 ]; then
+		printf 'Retirement plan: remove verified redundant top-level KERNEL (%s bytes); active immutable release and fallback remain.\n' \
+			"$LEGACY_KERNEL_RECLAIM_BYTES"
+	fi
 fi
 
 run_builder_preflight() {
@@ -694,8 +1261,13 @@ run_builder_preflight || fail 'canonical pinned-input preflight failed; no build
 
 if [ "$DRY_RUN" -eq 1 ]; then
 	if [ "$ARCHIVE_NEEDED" -eq 1 ]; then
-		printf 'Dry run: would archive and verify inactive release %s before reclaiming it.\n' \
-			"$RETIRED_ID"
+		while IFS="$RETIREMENT_TAB" read -r PLANNED_ID PLANNED_DIR PLANNED_BYTES; do
+			printf 'Dry run: would archive and verify inactive release %s before reclaiming it.\n' \
+				"$PLANNED_ID"
+		done <"$RETIREMENT_SELECTED"
+		if [ "$LEGACY_KERNEL_RETIRE" -eq 1 ]; then
+			printf 'Dry run: would remove the verified redundant top-level KERNEL after snapshotting its build inputs.\n'
+		fi
 	fi
 	if [ -e "$OUTPUT" ] || [ -L "$OUTPUT" ]; then
 		printf 'Dry run: would validate and remove matching stale output: %s\n' "$OUTPUT"
@@ -706,6 +1278,16 @@ if [ "$DRY_RUN" -eq 1 ]; then
 	printf 'Manifest SHA-256: not built (dry run)\n'
 	printf 'Deployment result: not run (dry run)\n'
 	exit 0
+fi
+
+if [ "$ARCHIVE_NEEDED" -eq 1 ]; then
+	# Serialize every release retirement with the updater and migration tools.
+	# Planning is read-only; the selector is re-read only after the shared lock
+	# is held, before any card or GitHub mutation can begin.
+	bird_card_lock_acquire
+	verify_archive_selector_unchanged
+	verify_portmaster_provider_unchanged
+	snapshot_legacy_kernel_build_inputs
 fi
 
 probe_writable_volume() {
@@ -728,9 +1310,15 @@ BIRD_WRITE_PROBE=
 DATA_WRITE_PROBE=
 
 if [ "$ARCHIVE_NEEDED" -eq 1 ]; then
-	archive_and_remove_retired_release
+	while IFS="$RETIREMENT_TAB" read -r PLANNED_ID PLANNED_DIR PLANNED_BYTES; do
+		archive_and_remove_retired_release "$PLANNED_ID" "$PLANNED_DIR"
+	done <"$RETIREMENT_SELECTED"
+	retire_legacy_root_kernel
+	# The canonical updater acquires this same transaction lock itself. Release
+	# the retirement transaction before entering that independently guarded path.
+	bird_card_lock_release
 	if [ "$HOST_TEST_MODE" -eq 1 ]; then
-		BIRD_POST_ARCHIVE_BYTES=$((BIRD_EFFECTIVE_BYTES + RETIRED_BYTES))
+		BIRD_POST_ARCHIVE_BYTES=$((BIRD_EFFECTIVE_BYTES + RETIRED_BYTES + LEGACY_KERNEL_RECLAIM_BYTES))
 	else
 		BIRD_POST_ARCHIVE_BYTES=$(( $(available_bytes "$BIRD") + STALE_RECLAIM_KIB * 1024 ))
 	fi
@@ -754,19 +1342,19 @@ fi
 run_builder() {
 	if [ "$MODE" = profile ]; then
 		BIRD_LAUNCHER_PROFILE=profile BIRD_RELEASE_ID="$RELEASE_ID" \
-		SOURCE="$SOURCE" SYSTEM_SOURCE="$SYSTEM_SOURCE" STORAGE="$STORAGE_SOURCE" \
+		SOURCE="$BUILD_SOURCE" SYSTEM_SOURCE="$SYSTEM_SOURCE" STORAGE="$STORAGE_SOURCE" \
 		SYSTEM_TREE="$SYSTEM_TREE" OUTPUT="$OUTPUT" CLANG="$CLANG" LLD="$LLD" \
-		READELF="$READELF" FALLBACK_KERNEL="$FALLBACK_KERNEL" \
+		READELF="$READELF" FALLBACK_KERNEL="$BUILD_FALLBACK_KERNEL" \
 		OFFICIAL_INIT="$OFFICIAL_INIT" JOYPAD="$JOYPAD" INIT_BUSYBOX="$INIT_BUSYBOX" \
 		PORTMASTER_ARCHIVE="$PORTMASTER_ARCHIVE" "$BUILDER"
 		return
 	fi
 	(
 		unset BIRD_LAUNCHER_PROFILE
-		BIRD_RELEASE_ID="$RELEASE_ID" SOURCE="$SOURCE" SYSTEM_SOURCE="$SYSTEM_SOURCE" \
+		BIRD_RELEASE_ID="$RELEASE_ID" SOURCE="$BUILD_SOURCE" SYSTEM_SOURCE="$SYSTEM_SOURCE" \
 		STORAGE="$STORAGE_SOURCE" SYSTEM_TREE="$SYSTEM_TREE" OUTPUT="$OUTPUT" \
 		CLANG="$CLANG" LLD="$LLD" READELF="$READELF" \
-		FALLBACK_KERNEL="$FALLBACK_KERNEL" OFFICIAL_INIT="$OFFICIAL_INIT" \
+		FALLBACK_KERNEL="$BUILD_FALLBACK_KERNEL" OFFICIAL_INIT="$OFFICIAL_INIT" \
 		JOYPAD="$JOYPAD" INIT_BUSYBOX="$INIT_BUSYBOX" \
 		PORTMASTER_ARCHIVE="$PORTMASTER_ARCHIVE" "$BUILDER"
 	)

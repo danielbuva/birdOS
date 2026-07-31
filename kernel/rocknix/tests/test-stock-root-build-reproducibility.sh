@@ -4,6 +4,7 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../../.." && pwd)
 BUILDER=$ROOT/kernel/rocknix/build-stock-root-compat.sh
 EARLY_BUILDER=$ROOT/kernel/rocknix/build-stock-root-early-initramfs.sh
+ACTIVE_SELECTOR=$ROOT/kernel/rocknix/stock-root/extlinux.conf
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/bird-build-reproducibility.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT INT TERM HUP
 
@@ -27,6 +28,19 @@ MANIFEST_LINE=$(line_number '^MANIFEST=' "$BUILDER")
 [ "$VERIFY_LINE" -lt "$MANIFEST_LINE" ] || fail 'source identity is verified too late'
 grep -Fq 'chmod 0644 "$OUTPUT/card/SYSTEM"' "$BUILDER" ||
 	fail 'SYSTEM mode is not explicit'
+grep -Fq 'SYSTEM_BUSYBOX_SHA=b90f5f58dd5c39348f7be9bbef79b349f51e6ac0117b217691e2701d73714b38' \
+	"$BUILDER" || fail 'SYSTEM BusyBox identity is not pinned'
+grep -Fq 'exact SYSTEM BusyBox lacks required chmod applet' "$BUILDER" ||
+	fail 'SYSTEM chmod capability is not verified during preflight'
+grep -Fq "grep -Fq '/sysroot/usr/bin/busybox chmod 0755'" "$BUILDER" ||
+	fail 'generated mount hook executable modes are not validated'
+grep -Fq "grep -Fq '/sysroot/usr/bin/busybox chmod 0644'" "$BUILDER" ||
+	fail 'generated mount hook data modes are not validated'
+grep -Fq 'print "  if [ \"${BOOT_STEP}\" = \"mount_storage\" ]; then"' \
+	"$EARLY_BUILDER" ||
+	fail 'generated init does not isolate mount-storage failure'
+grep -Fq 'status=failed step=mount_storage' "$EARLY_BUILDER" ||
+	fail 'generated init does not persist mount-storage failure evidence'
 grep -Fq '*) OUTPUT=$PWD/$OUTPUT ;;' "$BUILDER" ||
 	fail 'relative OUTPUT is not canonicalized before inventory generation'
 grep -Fq "sed 's#^\\./##'" "$BUILDER" || fail 'deploy inventories are not relative'
@@ -38,6 +52,91 @@ for SCRIPT in "$BUILDER" "$EARLY_BUILDER"; do
 	grep -Fq 'umask 022' "$SCRIPT" || fail "fixed umask missing from $SCRIPT"
 	grep -Fq 'TZ=UTC' "$SCRIPT" || fail "fixed timezone missing from $SCRIPT"
 done
+grep -Fq "grep -q '^#define ACTION_RELOAD 13$'" "$BUILDER" ||
+	fail 'production builder does not validate the reload action'
+grep -Fq "grep -Fq '13) consume_handoff_action ;;'" "$BUILDER" ||
+	fail 'production builder does not validate reload dispatch'
+grep -Fq 'start_portmaster_network start' "$BUILDER" ||
+	fail 'production builder does not validate direct PortMaster networking'
+if grep -Fq "grep -q '^#define ACTION_ROCKNIX 13$'" "$BUILDER" ||
+	grep -Fq "grep -Fq 'run_content --rocknix'" "$BUILDER" ||
+	grep -Fq "grep -Fq 'run_managed /usr/bin/start_es.sh'" "$BUILDER"; then
+	fail 'production builder still requires the removed stock frontend'
+fi
+for TOKEN in fbcon=map:1 vt.global_cursor_default=0; do
+	[ "$(awk -v token="$TOKEN" '
+		{ for (field = 1; field <= NF; field++) if ($field == token) {
+			count++
+			if ($1 == "APPEND") append++
+		} }
+		END { print (count + 0) ":" (append + 0) }
+	' "$ACTIVE_SELECTOR")" = 1:1 ] ||
+		fail "active selector must place $TOKEN on APPEND exactly once"
+done
+grep -Fq 'console=ttyS0,115200' "$ACTIVE_SELECTOR" ||
+	fail 'active selector lost the serial recovery console'
+FINAL_ASSET_LINE=$(line_number '^validate_final_launcher_static_assets$' "$BUILDER")
+FINAL_COPY_LINE=$(line_number 'mpv-input.conf' "$BUILDER")
+FINAL_MANIFEST_LINE=$(line_number '^MANIFEST=' "$BUILDER")
+[ "$FINAL_ASSET_LINE" -gt "$FINAL_COPY_LINE" ] ||
+	fail 'final static-asset budget runs before payload assembly completes'
+[ "$FINAL_ASSET_LINE" -lt "$FINAL_MANIFEST_LINE" ] ||
+	fail 'final static-asset budget runs after manifest publication begins'
+
+# Exercise the exact production validators with safe and forbidden fixtures.
+ASSET_FUNCTIONS=$TMP/static-asset-functions.sh
+awk '
+	/^validate_(final|early)_launcher_static_assets\(\) \{$/ { copying = 1 }
+	copying { print }
+	copying && /^}$/ { copying = 0; found++ }
+	END { if (found != 2) exit 1 }
+' "$BUILDER" "$EARLY_BUILDER" >"$ASSET_FUNCTIONS" ||
+	fail 'could not extract production static-asset validators'
+ASSET_ROOT=$TMP/static-assets
+mkdir -p "$ASSET_ROOT/final/card/bird"
+python3 "$ROOT/firmware/generate-launcher-bootlogo.py" \
+	"$ASSET_ROOT/frame.bmp" \
+	--xrgb-output "$ASSET_ROOT/final/card/bird/launcher-base.xrgb" >/dev/null
+(
+	OUTPUT=$ASSET_ROOT/final
+	PAYLOAD=$ASSET_ROOT/early
+	EARLY_STATIC_ASSET_BYTES=0
+	mkdir -p "$OUTPUT/card/bird" "$PAYLOAD/opt/bird"
+	printf 'configuration\n' >"$OUTPUT/card/bird/allowed.conf"
+	printf 'module\n' >"$PAYLOAD/opt/bird/allowed.ko"
+	fail() { printf 'asset validation failure: %s\n' "$*" >&2; exit 1; }
+	file_bytes() { stat -f '%z' "$1" 2>/dev/null || stat -c '%s' "$1"; }
+	sha256() { shasum -a 256 "$1" | awk '{print $1}'; }
+	. "$ASSET_FUNCTIONS"
+	validate_final_launcher_static_assets
+	validate_early_launcher_static_assets
+	cp "$OUTPUT/card/bird/launcher-base.xrgb" \
+		"$PAYLOAD/opt/bird/launcher-base.xrgb"
+	EARLY_STATIC_ASSET_BYTES=1382400
+	validate_early_launcher_static_assets
+	EARLY_STATIC_ASSET_BYTES=0
+	if (validate_early_launcher_static_assets) \
+		2>"$TMP/early-duplicate.err"; then
+		fail 'verified-reuse validator accepted a duplicate early wallpaper'
+	fi
+	grep -Fq 'duplicate early wallpaper' "$TMP/early-duplicate.err" ||
+		fail 'duplicate early wallpaper rejection was not diagnostic'
+	rm -f "$PAYLOAD/opt/bird/launcher-base.xrgb"
+	printf 'pixels\n' >"$OUTPUT/card/bird/forbidden.raw"
+	if (validate_final_launcher_static_assets) \
+		2>"$TMP/final-asset.err"; then
+		fail 'final static-asset validator accepted a raw framebuffer'
+	fi
+	grep -Fq 'unbudgeted static image' "$TMP/final-asset.err" ||
+		fail 'final static-asset rejection was not diagnostic'
+	printf 'pixels\n' >"$PAYLOAD/forbidden.bmp"
+	if (validate_early_launcher_static_assets) \
+		2>"$TMP/early-asset.err"; then
+		fail 'early static-asset validator accepted an overlay bitmap'
+	fi
+	grep -Fq 'unbudgeted static image' "$TMP/early-asset.err" ||
+		fail 'early static-asset rejection was not diagnostic'
+)
 if grep -Eq 'rev-parse.*unknown|status.*unknown' "$BUILDER"; then
 	fail 'source provenance still has a permissive unknown fallback'
 fi

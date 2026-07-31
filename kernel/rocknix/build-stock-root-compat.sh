@@ -35,6 +35,7 @@ AUTOSTART_SHA=7f8671aa1bb9239a193f84e667d55e169f983bcb015d98c345b60d0b80a77639
 OFFICIAL_INIT_SHA=3473415af0cf5df44e70259c3392817b1df421a12a617ec083ec018ff51dbc48
 JOYPAD_SHA=a8ac6cacfa89672fa08dec7fa02179bb108a4a2303fd5c1eb5834f916089b79b
 INIT_BUSYBOX_SHA=5ee3d20d8ea5fd9b3ba5109da80599eaf46a5a337d9e40d4c67d28eef44d5dc8
+SYSTEM_BUSYBOX_SHA=b90f5f58dd5c39348f7be9bbef79b349f51e6ac0117b217691e2701d73714b38
 PORTMASTER_ARCHIVE_SHA=9d6f25d461afced95569923a57c6a9c42df225190c043d74fe2ec0edcf40a477
 FALLBACK_SELECTOR_SHA=f6434463ef51f752b6871186497a9d96888b89e9b2d158c3ea75bcbef9a58776
 FALLBACK_KERNEL_SHA=a53a3483731d28d2e96e53def0fba347fa53607aa9fbda8bfb82db677126daef
@@ -47,6 +48,7 @@ FALLBACK_KERNEL=${FALLBACK_KERNEL:-$SOURCE/KERNEL.fallback}
 OFFICIAL_INIT=${OFFICIAL_INIT:-$ROOT/kernel/work/rocknix-official-initramfs-20260701/ramdisk/init}
 JOYPAD=${JOYPAD:-$ROOT/kernel/work/rocknix-system-exact-20260701/usr/lib/kernel-overlays/base/lib/modules/7.0.11/rocknix-joypad/rocknix-singleadc-joypad.ko}
 INIT_BUSYBOX=${INIT_BUSYBOX:-$ROOT/kernel/work/rocknix-official-initramfs-20260701/ramdisk/usr/bin/busybox}
+SYSTEM_BUSYBOX=${SYSTEM_BUSYBOX:-$SYSTEM_TREE/usr/bin/busybox}
 PORTMASTER_ARCHIVE=${PORTMASTER_ARCHIVE:-$SYSTEM_TREE/usr/config/PortMaster/release/PortMaster.zip}
 
 case "$OUTPUT" in
@@ -59,6 +61,23 @@ fail() {
 	exit 1
 }
 
+validate_final_launcher_static_assets() {
+	FINAL_BASE=$OUTPUT/card/bird/launcher-base.xrgb
+	[ -f "$FINAL_BASE" ] && [ ! -L "$FINAL_BASE" ] || \
+		fail 'final-root launcher static base is missing or unsafe'
+	[ "$(file_bytes "$FINAL_BASE")" -eq 1382400 ] || \
+		fail 'final-root launcher static base size changed'
+	[ "$(sha256 "$FINAL_BASE")" = \
+		6f9daae758675bd8bb805a851b30f1d64b06ec6e8367a17749707ac61824843a ] || \
+		fail 'final-root launcher static base digest changed'
+	if find "$OUTPUT/card/bird" -type f ! -path "$FINAL_BASE" \
+		\( -iname '*.bmp' -o -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' \
+			-o -iname '*.rgb' -o -iname '*.rgba' -o -iname '*.xrgb' -o -iname '*.raw' \) \
+		-print -quit | grep -q .; then
+		fail 'final-root launcher payload contains an unbudgeted static image'
+	fi
+}
+
 case "$RELEASE_ID" in
 	''|[![:alnum:]]*|*[![:alnum:]._-]*) fail "unsafe Bird release ID: $RELEASE_ID" ;;
 esac
@@ -66,9 +85,13 @@ esac
 export BIRD_RELEASE_ID="$RELEASE_ID"
 
 LAUNCHER_PROFILE_FLAGS=
+LAUNCHER_BINARY_MAX_BYTES=600000
 case "${BIRD_LAUNCHER_PROFILE:-none}" in
 	none|0|'') ;;
-	profile|1) LAUNCHER_PROFILE_FLAGS=-DBIRD_PROFILE ;;
+	profile|1)
+		LAUNCHER_PROFILE_FLAGS=-DBIRD_PROFILE
+		LAUNCHER_BINARY_MAX_BYTES=660000
+		;;
 	deep) fail 'BIRD_PROFILE_DEEP is host-test-only' ;;
 	*) fail "unknown BIRD_LAUNCHER_PROFILE mode: $BIRD_LAUNCHER_PROFILE" ;;
 esac
@@ -162,6 +185,7 @@ is_regular_file "$SYSTEM_TREE/usr/bin/autostart" || fail 'extracted exact autost
 is_regular_file "$OFFICIAL_INIT" || fail 'exact initramfs init missing or not regular'
 is_regular_file "$JOYPAD" || fail 'exact H700 input module missing or not regular'
 is_regular_file "$INIT_BUSYBOX" || fail 'exact initramfs BusyBox missing or not regular'
+is_regular_file "$SYSTEM_BUSYBOX" || fail 'extracted exact SYSTEM BusyBox missing or not regular'
 is_regular_file "$PORTMASTER_ARCHIVE" || fail 'exact PortMaster archive missing or not regular'
 [ "$(sha256 "$SOURCE/KERNEL")" = "$KERNEL_SHA" ] || fail 'release KERNEL changed'
 [ "$(sha256 "$SOURCE/dtb.img")" = "$DTB_SHA" ] || fail 'release DTB changed'
@@ -173,6 +197,9 @@ is_regular_file "$PORTMASTER_ARCHIVE" || fail 'exact PortMaster archive missing 
 [ "$(sha256 "$OFFICIAL_INIT")" = "$OFFICIAL_INIT_SHA" ] || fail 'exact initramfs init changed'
 [ "$(sha256 "$JOYPAD")" = "$JOYPAD_SHA" ] || fail 'exact H700 input module changed'
 [ "$(sha256 "$INIT_BUSYBOX")" = "$INIT_BUSYBOX_SHA" ] || fail 'exact initramfs BusyBox changed'
+[ "$(sha256 "$SYSTEM_BUSYBOX")" = "$SYSTEM_BUSYBOX_SHA" ] || fail 'extracted exact SYSTEM BusyBox changed'
+strings -a -n 2 "$SYSTEM_BUSYBOX" | grep -Fqx chmod || \
+	fail 'exact SYSTEM BusyBox lacks required chmod applet'
 [ "$(sha256 "$PORTMASTER_ARCHIVE")" = "$PORTMASTER_ARCHIVE_SHA" ] || fail 'exact PortMaster archive changed'
 [ "$(sha256 "$FALLBACK_KERNEL")" = "$FALLBACK_KERNEL_SHA" ] || fail 'preserved v5.4 fallback KERNEL changed'
 [ "$(file_bytes "$FALLBACK_KERNEL")" = 29939720 ] || fail 'preserved v5.4 fallback KERNEL size changed'
@@ -189,6 +216,15 @@ mkdir -p "$OUTPUT/card/bird" "$OUTPUT/card/extlinux" "$OUTPUT/build"
 chmod 0755 "$OUTPUT" "$OUTPUT/card" "$OUTPUT/card/bird" \
 	"$OUTPUT/card/extlinux" "$OUTPUT/build"
 record_source_identity
+
+BOOT_FRAME_WORK=$OUTPUT/build/boot-frame
+mkdir -p "$BOOT_FRAME_WORK"
+python3 "$ROOT/firmware/generate-launcher-bootlogo.py" \
+	"$BOOT_FRAME_WORK/bird-frame-zero.bmp" \
+	--contract "$OUTPUT/card/bird/boot-frame.contract" \
+	--xrgb-output "$OUTPUT/card/bird/launcher-base.xrgb"
+chmod 0644 "$OUTPUT/card/bird/boot-frame.contract" \
+	"$OUTPUT/card/bird/launcher-base.xrgb"
 
 [ "$(sha256 "$ROOT/kernel/rocknix/stock-root/extlinux.fallback.conf")" = \
 	"$FALLBACK_SELECTOR_SHA" ] || fail 'fallback selector digest changed'
@@ -245,6 +281,7 @@ awk '
 	'-DFAVORITES_TEMP="/storage/.config/bird/favorites.tmp"' \
 	'-DRECENT_PATH="/storage/.config/bird/recent.txt"' \
 	'-DRECENT_TEMP="/storage/.config/bird/recent.tmp"' \
+	'-DBIRD_STATIC_BASE_PATH="/flash/bird/launcher-base.xrgb"' \
 	-DPERSIST_UI_STATE \
 	$LAUNCHER_PROFILE_FLAGS \
 	-c "$ROOT/launcher/bird-launcher.c" \
@@ -258,6 +295,8 @@ file "$OUTPUT/card/bird/bird-launcher" | \
 if "$READELF" -l "$OUTPUT/card/bird/bird-launcher" | grep -q ' INTERP '; then
 	fail 'launcher unexpectedly has an interpreter'
 fi
+[ "$(file_bytes "$OUTPUT/card/bird/bird-launcher")" -le \
+	"$LAUNCHER_BINARY_MAX_BYTES" ] || fail 'final-root launcher exceeded its binary budget'
 
 "$CLANG" --target=aarch64-linux-gnu -mcpu=cortex-a53 -Os \
 	-ffreestanding -ffunction-sections -fdata-sections \
@@ -327,7 +366,8 @@ for FILE in 090-ui_service 999-export essway.service rocknix.target \
 	systemd-timesyncd.service systemd-rfkill.service \
 	bird-fixed-controls.service \
 	bird-powerstate.service supervisor.sh run-content.sh \
-	prepare-ports.sh fixed-storage.sh first-frame-prep.sh \
+	prepare-ports.sh verify-portmaster-provider.sh \
+	portmaster-provider.manifest.tsv fixed-storage.sh first-frame-prep.sh \
 	capture-boot-state.sh bird-network.sh bird-fixed-control-exit.sh \
 	bird-save-config.sh bird-save-config.service bird-suspend.sh bird-volume.sh bird-control-osd.sh bird-autostart-noop \
 	bird-fixed-sway.sh bird-fixed-platform.sh \
@@ -357,6 +397,7 @@ chmod 0755 "$OUTPUT/card/post-flash.sh" "$OUTPUT/card/mount-storage.sh" \
 	"$OUTPUT/card/bird/999-export" \
 	"$OUTPUT/card/bird/supervisor.sh" "$OUTPUT/card/bird/run-content.sh" \
 	"$OUTPUT/card/bird/prepare-ports.sh" \
+	"$OUTPUT/card/bird/verify-portmaster-provider.sh" \
 	"$OUTPUT/card/bird/fixed-storage.sh" \
 	"$OUTPUT/card/bird/first-frame-prep.sh" \
 	"$OUTPUT/card/bird/capture-boot-state.sh" \
@@ -378,6 +419,7 @@ for SCRIPT in "$OUTPUT/card/post-flash.sh" \
 	"$OUTPUT/card/bird/supervisor.sh" \
 	"$OUTPUT/card/bird/run-content.sh" \
 	"$OUTPUT/card/bird/prepare-ports.sh" \
+	"$OUTPUT/card/bird/verify-portmaster-provider.sh" \
 	"$OUTPUT/card/bird/fixed-storage.sh" \
 	"$OUTPUT/card/bird/first-frame-prep.sh" \
 	"$OUTPUT/card/bird/capture-boot-state.sh" \
@@ -393,11 +435,36 @@ for SCRIPT in "$OUTPUT/card/post-flash.sh" \
 	"$OUTPUT/card/bird/bird-fixed-platform.sh"; do
 	bash -n "$SCRIPT" || fail "shell syntax failed: $SCRIPT"
 done
+chmod 0644 "$OUTPUT/card/bird/portmaster-provider.manifest.tsv"
+[ "$(file_mode "$OUTPUT/card/bird/verify-portmaster-provider.sh")" = 755 ] || \
+	fail 'PortMaster provider verifier mode changed'
+[ "$(file_mode "$OUTPUT/card/bird/portmaster-provider.manifest.tsv")" = 644 ] || \
+	fail 'PortMaster provider manifest mode changed'
 
 [ "$(sha256 "$OUTPUT/card/KERNEL")" = "$KERNEL_SHA" ] || fail 'copied KERNEL changed'
 [ "$(sha256 "$OUTPUT/card/dtb.img")" = "$DTB_SHA" ] || fail 'copied DTB changed'
 grep -q 'runemu.sh' "$OUTPUT/card/bird/run-content.sh" || fail 'ROCKNIX dispatcher missing'
 grep -q 'PortMaster.zip' "$OUTPUT/card/bird/prepare-ports.sh" || fail 'exact PortMaster bootstrap missing'
+grep -Fq '/storage/.config/bird/verify-portmaster-provider.sh' \
+	"$OUTPUT/card/bird/prepare-ports.sh" || \
+	fail 'exact PortMaster provider verifier integration missing'
+grep -Fq 'schema	bird-portmaster-provider-v1' \
+	"$OUTPUT/card/bird/portmaster-provider.manifest.tsv" || \
+	fail 'exact PortMaster provider manifest missing'
+grep -Fq 'provider_install_checkpoint_valid' \
+	"$OUTPUT/card/bird/prepare-ports.sh" || \
+	fail 'PortMaster transactional installation checkpoint missing'
+if grep -Fq 'provider_checkpoint "$PORTMASTER"' \
+	"$OUTPUT/card/bird/prepare-ports.sh"; then
+	fail 'PortMaster provider verification returned to a launch path'
+fi
+grep -Fq 'preserving it without replacement' \
+	"$OUTPUT/card/bird/prepare-ports.sh" || \
+	fail 'PortMaster unverified-provider preservation gate missing'
+if grep -Fq 'rm -rf "$PORTMASTER"' \
+	"$OUTPUT/card/bird/prepare-ports.sh"; then
+	fail 'PortMaster runtime still deletes an installed provider'
+fi
 grep -q '^VOLUME_UP ignore$' "$OUTPUT/card/bird/mpv-input.conf" || fail 'MPV volume policy missing'
 grep -q "RESUME='save-position-on-quit=yes'" \
 	"$OUTPUT/card/bird/run-content.sh" || fail 'MPV resume policy missing'
@@ -459,6 +526,12 @@ grep -q "^  FDT /bird-releases/$RELEASE_ID/dtb.img$" \
 	"$OUTPUT/card/extlinux/extlinux.conf" || fail 'versioned DTB selector missing'
 grep -Fq "bird_release=$RELEASE_ID" \
 	"$OUTPUT/card/extlinux/extlinux.conf" || fail 'release identity missing from kernel command line'
+[ "$(awk '{ for (field = 1; field <= NF; field++) if ($field == "fbcon=map:1") { count++; if ($1 == "APPEND") append++ } } END { print (count + 0) ":" (append + 0) }' \
+	"$OUTPUT/card/extlinux/extlinux.conf")" = 1:1 ] || \
+	fail 'active selector must map fbcon away from the fixed panel exactly once'
+[ "$(awk '{ for (field = 1; field <= NF; field++) if ($field == "vt.global_cursor_default=0") { count++; if ($1 == "APPEND") append++ } } END { print (count + 0) ":" (append + 0) }' \
+	"$OUTPUT/card/extlinux/extlinux.conf")" = 1:1 ] || \
+	fail 'active selector must disable the VT cursor exactly once'
 grep -q 'BIRD_LOADER_SELECTOR_SHA=f6434463ef51f752' \
 	"$OUTPUT/build/early-initramfs/payload/bird-release-loader.sh" || \
 	fail 'pinned fallback selector missing from release loader'
@@ -489,6 +562,12 @@ grep -Fq '[ "$(cat "$TEMP" 2>/dev/null)" = "$VALUE" ]' \
 	"$OUTPUT/card/post-flash.sh" || fail 'verified boot-attempt temporary missing'
 grep -Fq 'case "$ATTEMPTS" in 0|1|2) ;; *) ATTEMPTS=2 ;; esac' \
 	"$OUTPUT/card/post-flash.sh" || fail 'corrupt boot attempts fail-safe policy missing'
+grep -Fq 'BIRD_FIRST_FRAME=/run/muos/bird-first-frame-ready' \
+	"$OUTPUT/card/post-flash.sh" || fail 'honest first-frame health path missing'
+grep -Fq 'commit_first_usable_frame || FIRST_FRAME_COMMIT_RESULT=$?' \
+	"$OUTPUT/card/post-flash.sh" || fail 'usable-frame boot-health commit missing'
+grep -Fq 'write_attempts 0' \
+	"$OUTPUT/card/post-flash.sh" || fail 'usable-frame attempt reset missing'
 grep -q 'persistent-owner' \
 	"$OUTPUT/build/early-initramfs/payload/bird-early.sh" || \
 	fail 'persistent early owner missing'
@@ -504,6 +583,41 @@ grep -q 'final-root timeout retired' \
 grep -q '/sysroot/storage/bird-data' \
 	"$ROOT/launcher/bird-launcher.c" || \
 	fail 'post-prepare_sysroot storage path missing'
+grep -Fq 'mount --move /birddata /run/bird-data' \
+	"$OUTPUT/card/mount-storage.sh" || \
+	fail 'acyclic real data mount missing'
+grep -Fq 'mount --bind /run/bird-data /storage/bird-data' \
+	"$OUTPUT/card/mount-storage.sh" || \
+	fail 'published data bind missing'
+if grep -Eq '^mount --move /birddata /storage(/|[[:space:]])' \
+	"$OUTPUT/card/mount-storage.sh"; then
+	fail 'real data mount moved beneath its loop-backed filesystem'
+fi
+if grep -Eq '^[[:space:]]*chmod[[:space:]]' \
+	"$OUTPUT/card/mount-storage.sh"; then
+	fail 'mount-storage depends on unavailable initramfs chmod'
+fi
+grep -Fq '/sysroot/usr/bin/busybox chmod 0755' \
+	"$OUTPUT/card/mount-storage.sh" || \
+	fail 'SYSTEM BusyBox executable-mode transaction missing'
+grep -Fq '/sysroot/usr/bin/busybox chmod 0644' \
+	"$OUTPUT/card/mount-storage.sh" || \
+	fail 'SYSTEM BusyBox data-mode transaction missing'
+grep -Fq '[ -x "/storage/.config/bird/$FILE" ] || return 1' \
+	"$OUTPUT/card/mount-storage.sh" || \
+	fail 'copied final-root executable capabilities are not verified'
+grep -Fq 'if [ "${BOOT_STEP}" = "mount_storage" ]; then' \
+	"$OUTPUT/build/early-initramfs/payload/init" || \
+	fail 'mount-storage failure boundary missing'
+grep -Fq 'status=failed step=mount_storage' \
+	"$OUTPUT/build/early-initramfs/payload/init" || \
+	fail 'mount-storage failure evidence missing'
+grep -Fq 'mount-storage-latest.log' \
+	"$OUTPUT/build/early-initramfs/payload/init" || \
+	fail 'mount-storage failure log path missing'
+grep -Fq '/usr/bin/busybox mount --move /run /sysroot/run' \
+	"$OUTPUT/build/early-initramfs/payload/init" || \
+	fail 'final-root /run mount-tree handoff missing'
 grep -q 'mknod -m 0600.*STORAGE_SIGNAL.* p' \
 	"$OUTPUT/build/early-initramfs/payload/bird-early.sh" || \
 	fail 'supported FIFO creation applet missing'
@@ -670,10 +784,35 @@ grep -Fq 'exit_action == ACTION_RECOVER)' \
 	"$ROOT/launcher/bird-launcher.c" || fail 'launcher recover return contract missing'
 grep -q '^#define ACTION_RELOAD 13$' \
 	"$ROOT/launcher/bird-launcher.c" || fail 'launcher reload action missing'
-grep -Eq '^[[:space:]]*13\)' \
+grep -Fq '13) consume_handoff_action ;;' \
+	"$OUTPUT/card/bird/supervisor.sh" || fail 'supervisor reload handoff missing'
+grep -Fq 'bird launcher user-requested reload' \
 	"$OUTPUT/card/bird/supervisor.sh" || fail 'supervisor reload result missing'
-grep -q 'bird launcher user-requested reload' \
-	"$OUTPUT/card/bird/supervisor.sh" || fail 'supervisor explicit reload path missing'
+grep -q '^#define ACTION_REBOOT 14$' \
+	"$ROOT/launcher/bird-launcher.c" || fail 'launcher reboot action missing'
+grep -Fq '14) consume_handoff_action && request_reboot ;;' \
+	"$OUTPUT/card/bird/supervisor.sh" || fail 'supervisor reboot handoff missing'
+grep -Fq 'static const char *play_item[2] = {"SYSTEMS", "FAVORITES"};' \
+	"$ROOT/launcher/bird-launcher.c" || fail 'Play hierarchy changed'
+grep -Fq 'static const char *tools_item[1] = {"PORTMASTER"};' \
+	"$ROOT/launcher/bird-launcher.c" || fail 'Tools hierarchy changed'
+grep -Fq 'static const char *quit_item[3] = {"RELOAD", "REBOOT", "SHUTDOWN"};' \
+	"$ROOT/launcher/bird-launcher.c" || fail 'Quit hierarchy changed'
+grep -Fq 'start_portmaster_network start' \
+	"$OUTPUT/card/bird/run-content.sh" || fail 'direct PortMaster network session missing'
+grep -Fq 'export PYTHONPYCACHEPREFIX="$PORTMASTER_PYCACHE"' \
+	"$OUTPUT/card/bird/run-content.sh" || fail 'PortMaster Python cache isolation missing'
+grep -Fq 'export PYTHONDONTWRITEBYTECODE=1' \
+	"$OUTPUT/card/bird/run-content.sh" || fail 'PortMaster Python bytecode-write isolation missing'
+[ "$(grep -Fc 'prepare_portmaster_python_cache || return 1' \
+	"$OUTPUT/card/bird/run-content.sh")" -eq 3 ] || \
+	fail 'PortMaster Python isolation does not cover every provider execution path'
+grep -Fq 'run_managed env XCOMPOSEFILE=/dev/null /usr/bin/start_portmaster.sh' \
+	"$OUTPUT/card/bird/run-content.sh" || fail 'direct PortMaster provider missing'
+if grep -Eq -- '--rocknix|start_es[.]sh|start-interactive|stock_rocknix_diagnostics|write_shareable_stock_diagnostics' \
+	"$OUTPUT/card/bird/supervisor.sh" "$OUTPUT/card/bird/run-content.sh"; then
+	fail 'temporary stock frontend path returned'
+fi
 grep -q 'SUSPEND_PROGRAM "/storage/.config/bird/bird-suspend.sh"' \
 	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'fixed suspend wrapper missing'
 grep -q 'brightness_raw_target(75, 2499, -1) == 25' \
@@ -686,6 +825,16 @@ grep -q 'bird-pre-suspend-brightness' \
 	"$OUTPUT/card/bird/bird-suspend.sh" || fail 'suspend brightness preservation missing'
 grep -q 'suspend-latest.log' \
 	"$OUTPUT/card/bird/bird-suspend.sh" || fail 'suspend brightness evidence missing'
+grep -Fq 'STRIKE=$(((MAX * 10 + 50) / 100))' \
+	"$OUTPUT/build/early-initramfs/payload/bird-early.sh" || \
+	fail 'early measured ten-percent wake strike missing'
+grep -Fq '$BUSYBOX usleep 50000' \
+	"$OUTPUT/build/early-initramfs/payload/bird-early.sh" || \
+	fail 'early bounded wake strike missing'
+grep -Fq 'systemctl stop --no-block sway.service' \
+	"$OUTPUT/card/bird/run-content.sh" || fail 'nonblocking Sway stop missing'
+grep -Fq '"$TIMEOUT_PROGRAM" --signal=TERM --kill-after=1s 3s' \
+	"$OUTPUT/card/bird/run-content.sh" || fail 'bounded systemd client wrapper missing'
 grep -q 'NETLINK_KOBJECT_UEVENT' \
 	"$ROOT/launcher/bird-powerstate.c" || fail 'event-driven power source missing'
 grep -q '^KSM_ENABLE="disable"$' \
@@ -720,6 +869,10 @@ if grep -q 'output_monitor\|DP-1\|HDMI' \
 fi
 grep -q '/flash/bird/bird-save-config.service' \
 	"$OUTPUT/card/mount-storage.sh" || fail 'fixed shutdown checkpoint missing'
+if grep -q '/flash/bird/bird-poweroff.target' \
+	"$OUTPUT/card/mount-storage.sh"; then
+	fail 'shutdown timeout target returned'
+fi
 grep -q 'set -C' "$OUTPUT/card/bird/bird-save-config.sh" || \
 	fail 'shutdown exclusive temporary creation missing'
 grep -Fq 'while [ "$TEMP_SUFFIX" -lt 32 ]; do' \
@@ -735,6 +888,14 @@ if grep -E 'cp .*\$BACKUP' "$OUTPUT/card/bird/bird-save-config.sh"; then
 fi
 grep -q 'systemctl --no-block poweroff' \
 	"$OUTPUT/card/bird/supervisor.sh" || fail 'nonblocking poweroff request missing'
+grep -q 'systemctl --no-block reboot' \
+	"$OUTPUT/card/bird/supervisor.sh" || fail 'nonblocking reboot request missing'
+grep -Fq '/usr/bin/timeout --signal=TERM --kill-after=1s 3s' \
+	"$OUTPUT/card/bird/supervisor.sh" || fail 'bounded poweroff client missing'
+if grep -q 'systemctl .*--force.*poweroff' \
+	"$OUTPUT/card/bird/supervisor.sh"; then
+	fail 'forced poweroff bypass returned'
+fi
 grep -q '^TimeoutStartSec=15s$' \
 	"$OUTPUT/card/bird/bird-save-config.service" || fail 'bounded shutdown checkpoint missing'
 grep -q 'for PROPERTY in run pages_to_scan' \
@@ -764,6 +925,17 @@ grep -Fq 'mv -f "$ATTEMPTS_TMP" "$ATTEMPTS"' \
 	"$OUTPUT/card/bird/supervisor.sh" || fail 'atomic boot-attempt commit missing'
 grep -Fq 'sync "${ATTEMPTS%/*}"' \
 	"$OUTPUT/card/bird/supervisor.sh" || fail 'boot-attempt directory durability missing'
+grep -Fq 'read_completed_handoff_action || return 0' \
+	"$OUTPUT/card/bird/supervisor.sh" || fail 'completed early action validation missing'
+grep -Fq 'accept_completed_early_action || return 1' \
+	"$OUTPUT/card/bird/supervisor.sh" || fail 'pre-dispatch boot-health transaction missing'
+grep -Fq 'if ! service_handoff_action; then' \
+	"$OUTPUT/card/bird/supervisor.sh" || fail 'failed early health retry gate missing'
+
+# Recovery keeps one complete native XRGB base outside the launcher binary.
+# Validate the exact budgeted file after every copy and generated file so the
+# canonical manifest cannot admit a late or unverified image.
+validate_final_launcher_static_assets
 
 # This is the only deploy inventory.  It records every regular candidate file
 # with its intended Unix mode, size and digest, plus every pinned external byte

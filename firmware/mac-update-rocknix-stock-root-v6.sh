@@ -19,6 +19,8 @@ BIRD_DEVICE_INFO=${BIRD_DEVICE_INFO:-}
 BIRD_TEST_FAILPOINT=${BIRD_TEST_FAILPOINT:-}
 BIRD_TEST_LOCK_GATE=${BIRD_TEST_LOCK_GATE:-}
 BIRD_TEST_MANIFEST_GATE=${BIRD_TEST_MANIFEST_GATE:-}
+PORTMASTER_PROVIDER_MANIFEST=${BIRD_TEST_PORTMASTER_PROVIDER_MANIFEST:-$ROOT/kernel/rocknix/stock-root/portmaster-provider.manifest.tsv}
+PORTMASTER_PROVIDER_VERIFIER=$ROOT/kernel/rocknix/stock-root/verify-portmaster-provider.sh
 RUNTIME=$DATA/MUOS/runtime/ROCKNIX-SYSTEM
 STORAGE_TARGET=$DATA/MUOS/runtime/ROCKNIX-STORAGE
 
@@ -40,6 +42,8 @@ case "$BIRD_HOST_TEST_MODE" in
 		[ -z "$BIRD_TEST_FAILPOINT" ] || fail 'failure injection requires host-test mode'
 		[ -z "$BIRD_TEST_LOCK_GATE" ] || fail 'lock gate requires host-test mode'
 		[ -z "$BIRD_TEST_MANIFEST_GATE" ] || fail 'manifest gate requires host-test mode'
+		[ -z "${BIRD_TEST_PORTMASTER_PROVIDER_MANIFEST:-}" ] || \
+			fail 'PortMaster provider manifest override requires host-test mode'
 		;;
 	1)
 		[ -n "$BIRD_DEVICE_INFO" ] || fail 'host-test device metadata is required'
@@ -61,6 +65,12 @@ case "$BIRD_HOST_TEST_MODE" in
 			case "$BIRD_TEST_MANIFEST_GATE" in
 				/var/folders/*|/private/tmp/*|/tmp/*) ;;
 				*) fail 'host-test manifest gate must be a temporary fixture' ;;
+			esac
+		fi
+		if [ -n "${BIRD_TEST_PORTMASTER_PROVIDER_MANIFEST:-}" ]; then
+			case "$PORTMASTER_PROVIDER_MANIFEST" in
+				/var/folders/*|/private/tmp/*|/tmp/*) ;;
+				*) fail 'host-test PortMaster provider manifest must be a temporary fixture' ;;
 			esac
 		fi
 		;;
@@ -109,6 +119,7 @@ is_regular_file "$RUNTIME" || fail 'exact ROCKNIX runtime missing or unsafe on c
 VERIFY_WORK=$(mktemp -d "${TMPDIR:-/tmp}/bird-deploy.XXXXXX") || \
 	fail 'could not create manifest verification directory'
 RELEASE_STAGE=
+PORTMASTER_MARKER_TEMP=
 BIRD_CARD_LOCK_OWNED=0
 # shellcheck source=mac-bird-card-lock.sh
 . "$ROOT/firmware/mac-bird-card-lock.sh"
@@ -117,6 +128,13 @@ cleanup() {
 	if [ -n "$RELEASE_STAGE" ]; then
 		case "$RELEASE_STAGE" in
 			"$BIRD"/bird-releases/.*.new.*) rm -rf "$RELEASE_STAGE" ;;
+		esac
+	fi
+	if [ -n "$PORTMASTER_MARKER_TEMP" ]; then
+		case "$PORTMASTER_MARKER_TEMP" in
+			"$DATA"/ROMS/Ports/.bird-portmaster-marker.new.*)
+				rm -f "$PORTMASTER_MARKER_TEMP" 2>/dev/null || :
+				;;
 		esac
 	fi
 	bird_card_lock_release
@@ -312,6 +330,74 @@ if test_failpoint_active orphan-child-after-lock; then
 	while :; do sleep 1; done
 fi
 
+# Refuse an unknown network-updated provider before cleaning a stale candidate
+# stage or performing any other deployment mutation. The transaction lock makes
+# this exact verified inventory authoritative until the updater exits.
+LEGACY_PORTS=$DATA/ports
+NATIVE_PORTS=$DATA/ROMS/Ports
+if [ -d "$LEGACY_PORTS" ] &&
+	find "$LEGACY_PORTS" -mindepth 1 -maxdepth 1 -print | grep -q .; then
+	fail 'legacy /ports data must be migrated separately before runtime deployment'
+fi
+PORTMASTER=$NATIVE_PORTS/PortMaster
+is_regular_file "$PORTMASTER_PROVIDER_MANIFEST" || \
+	fail 'pinned PortMaster provider manifest is missing or unsafe'
+is_regular_file "$PORTMASTER_PROVIDER_VERIFIER" || \
+	fail 'PortMaster provider verifier is missing or unsafe'
+for PORTMASTER_ADAPTER in control.txt oga_controls; do
+	is_regular_file "$PORTMASTER/$PORTMASTER_ADAPTER" && \
+		[ -s "$PORTMASTER/$PORTMASTER_ADAPTER" ] || \
+		fail "PortMaster runtime adapter is incomplete or unsafe: $PORTMASTER_ADAPTER"
+done
+PORTMASTER_MARKER_VALUE=$(
+	# The staged runtime redirects every provider execution to a fresh tmpfs
+	# PYTHONPYCACHEPREFIX, so generated provider-local caches are never loaded.
+	"$PORTMASTER_PROVIDER_VERIFIER" --allow-isolated-python-cache \
+		"$PORTMASTER_PROVIDER_MANIFEST" "$PORTMASTER"
+) || fail 'installed PortMaster provider is not a pinned complete revision'
+PORTMASTER_MARKER=$PORTMASTER/.bird-release-complete
+PORTMASTER_MARKER_STATE=legacy
+if [ -e "$PORTMASTER_MARKER" ] || [ -L "$PORTMASTER_MARKER" ]; then
+	is_regular_file "$PORTMASTER_MARKER" || \
+		fail 'PortMaster completion marker is a symlink or special node'
+	PORTMASTER_MARKER_BYTES=$(file_bytes "$PORTMASTER_MARKER")
+	case "$PORTMASTER_MARKER_BYTES" in
+		''|*[!0-9]*) fail 'PortMaster completion marker size is malformed' ;;
+	esac
+	[ "$PORTMASTER_MARKER_BYTES" -le 1024 ] || \
+		fail 'PortMaster completion marker is unexpectedly large'
+	if [ "$PORTMASTER_MARKER_BYTES" -gt 0 ]; then
+		[ "$(wc -l <"$PORTMASTER_MARKER" | tr -d '[:space:]')" = 1 ] || \
+			fail 'PortMaster completion marker must contain one newline-terminated record'
+		if grep -Fqx "$PORTMASTER_MARKER_VALUE" "$PORTMASTER_MARKER"; then
+			PORTMASTER_MARKER_STATE=exact
+		elif grep -Eq '^bird-portmaster-v(1|2):[A-Za-z0-9:._/-]+$' \
+			"$PORTMASTER_MARKER"; then
+			PORTMASTER_MARKER_STATE=legacy
+		elif grep -Eq '^bird-portmaster-v3:' "$PORTMASTER_MARKER"; then
+			fail 'PortMaster v3 completion marker does not match the pinned revision'
+		else
+			fail 'PortMaster completion marker has an unrecognized format'
+		fi
+	fi
+fi
+
+# A SIGKILL between temporary publication and marker commit may leave this
+# same-filesystem sibling behind. It is outside the provider inventory, and a
+# later locked invocation removes only this exact validated temporary pattern.
+for STALE_PORTMASTER_MARKER in \
+	"$NATIVE_PORTS"/.bird-portmaster-marker.new.*; do
+	[ -e "$STALE_PORTMASTER_MARKER" ] || [ -L "$STALE_PORTMASTER_MARKER" ] || break
+	case "$STALE_PORTMASTER_MARKER" in
+		"$NATIVE_PORTS"/.bird-portmaster-marker.new.*) ;;
+		*) fail 'unsafe stale PortMaster marker path' ;;
+	esac
+	is_regular_file "$STALE_PORTMASTER_MARKER" || \
+		fail 'stale PortMaster marker temporary is unsafe'
+	rm -f "$STALE_PORTMASTER_MARKER" || \
+		fail 'could not remove stale PortMaster marker temporary'
+done
+
 RELEASES=$BIRD/bird-releases
 mkdir -p "$RELEASES"
 for STALE_STAGE in "$RELEASES"/.$RELEASE_ID.new.*; do
@@ -364,69 +450,45 @@ apply_target_metadata() {
 is_regular_file "$BIRD/dtb.img" && [ "$(sha256 "$BIRD/dtb.img")" = "$DTB_SHA" ] || \
 	fail 'fallback DTB changed, missing, or unsafe'
 
-# Data-layout conversion is deliberately outside this runtime transaction.
-# Refuse the legacy tree rather than moving user content entry-by-entry while
-# either the prior selector or fallback runtime remains active.
-LEGACY_PORTS=$DATA/ports
-NATIVE_PORTS=$DATA/ROMS/Ports
-if [ -d "$LEGACY_PORTS" ] &&
-	find "$LEGACY_PORTS" -mindepth 1 -maxdepth 1 -print | grep -q .; then
-	fail 'legacy /ports data must be migrated separately before runtime deployment'
-fi
-
-portmaster_payload_valid() {
-	PORTMASTER=$NATIVE_PORTS/PortMaster
-	[ -d "$PORTMASTER" ] && [ ! -L "$PORTMASTER" ] &&
-	is_regular_file "$PORTMASTER/pugwash" &&
-	is_regular_file "$PORTMASTER/PortMaster.sh" &&
-	is_regular_file "$PORTMASTER/control.txt" && [ -s "$PORTMASTER/control.txt" ] &&
-	is_regular_file "$PORTMASTER/mod_ROCKNIX.txt" &&
-	is_regular_file "$PORTMASTER/funcs.txt" &&
-	is_regular_file "$PORTMASTER/oga_controls" && [ -s "$PORTMASTER/oga_controls" ] &&
-	is_regular_file "$PORTMASTER/harbourmaster" &&
-	[ "$(file_bytes "$PORTMASTER/pugwash")" = "$PORTMASTER_PUGWASH_BYTES" ] &&
-	[ "$(file_bytes "$PORTMASTER/PortMaster.sh")" = "$PORTMASTER_SH_BYTES" ] &&
-	[ "$(file_bytes "$PORTMASTER/mod_ROCKNIX.txt")" = "$PORTMASTER_MOD_BYTES" ] &&
-	[ "$(file_bytes "$PORTMASTER/funcs.txt")" = "$PORTMASTER_FUNCS_BYTES" ] &&
-	[ "$(file_bytes "$PORTMASTER/harbourmaster")" = "$PORTMASTER_HARBOURMASTER_BYTES" ] &&
-	[ "$(sha256 "$PORTMASTER/pugwash")" = "$PORTMASTER_PUGWASH_SHA" ] &&
-	[ "$(sha256 "$PORTMASTER/PortMaster.sh")" = "$PORTMASTER_SH_SHA" ] &&
-	[ "$(sha256 "$PORTMASTER/mod_ROCKNIX.txt")" = "$PORTMASTER_MOD_SHA" ] &&
-	[ "$(sha256 "$PORTMASTER/funcs.txt")" = "$PORTMASTER_FUNCS_SHA" ] &&
-	[ "$(sha256 "$PORTMASTER/harbourmaster")" = \
-		"$PORTMASTER_HARBOURMASTER_SHA" ]
-}
-
-portmaster_payload_valid || \
-	fail 'PortMaster provider must be prepared and verified before runtime deployment'
-
-# Earlier Bird versions published an empty completion marker. Upgrade that
-# valid installed provider in place without replacing mutable control.txt or
-# oga_controls state. The marker content-addresses the five immutable files.
-PORTMASTER_MARKER_VALUE=bird-portmaster-v1:$PORTMASTER_PUGWASH_SHA:$PORTMASTER_SH_SHA:$PORTMASTER_MOD_SHA:$PORTMASTER_FUNCS_SHA:$PORTMASTER_HARBOURMASTER_SHA
-PORTMASTER_MARKER=$NATIVE_PORTS/PortMaster/.bird-release-complete
-if [ -e "$PORTMASTER_MARKER" ] && ! is_regular_file "$PORTMASTER_MARKER"; then
-	fail 'PortMaster completion marker is a symlink or special node'
-fi
-if [ "$(cat "$PORTMASTER_MARKER" 2>/dev/null || :)" != \
-	"$PORTMASTER_MARKER_VALUE" ]; then
-	PORTMASTER_MARKER_TEMP=$NATIVE_PORTS/PortMaster/.bird-release-complete.new.$$
-	printf '%s\n' "$PORTMASTER_MARKER_VALUE" >"$PORTMASTER_MARKER_TEMP"
+# PortMaster may update itself over the network, but an offline birdOS
+# deployment accepts only a revision whose complete managed inventory has been
+# imported into the repository manifest. Migrate stale empty/v1/v2 checkpoints
+# only after that exact verification; never rewrite or replace provider bytes.
+if [ "$PORTMASTER_MARKER_STATE" = legacy ]; then
+	PORTMASTER_MARKER_TEMP=$NATIVE_PORTS/.bird-portmaster-marker.new.$$
+	[ ! -e "$PORTMASTER_MARKER_TEMP" ] && [ ! -L "$PORTMASTER_MARKER_TEMP" ] || \
+		fail 'PortMaster marker temporary path is occupied'
+	(umask 077; set -C; printf '%s\n' "$PORTMASTER_MARKER_VALUE" \
+		>"$PORTMASTER_MARKER_TEMP") 2>/dev/null || \
+		fail 'PortMaster marker temporary publication failed'
 	[ "$(cat "$PORTMASTER_MARKER_TEMP")" = "$PORTMASTER_MARKER_VALUE" ] || \
 		fail 'PortMaster marker temporary verification failed'
+	if test_failpoint_active kill-during-portmaster-marker-stage; then
+		kill -KILL $$
+	fi
+	test_failpoint before-portmaster-marker-commit
 	sync
 	mv -f "$PORTMASTER_MARKER_TEMP" "$PORTMASTER_MARKER"
+	PORTMASTER_MARKER_TEMP=
 	sync
 	[ "$(cat "$PORTMASTER_MARKER")" = "$PORTMASTER_MARKER_VALUE" ] || \
 		fail 'PortMaster marker commit failed'
 fi
+[ "$("$PORTMASTER_PROVIDER_VERIFIER" --allow-isolated-python-cache \
+	"$PORTMASTER_PROVIDER_MANIFEST" "$PORTMASTER")" = \
+	"$PORTMASTER_MARKER_VALUE" ] || \
+	fail 'PortMaster provider changed after marker publication'
 
-is_regular_file "$BIRD/KERNEL" || fail 'active KERNEL is missing or unsafe'
-CURRENT=$(sha256 "$BIRD/KERNEL")
-case "$CURRENT" in
-	"$V54_KERNEL_SHA"|"$ROCKNIX_KERNEL_SHA") ;;
-	*) fail "unexpected active KERNEL: $CURRENT" ;;
-esac
+CURRENT=missing
+if is_regular_file "$BIRD/KERNEL"; then
+	CURRENT=$(sha256 "$BIRD/KERNEL")
+	case "$CURRENT" in
+		"$V54_KERNEL_SHA"|"$ROCKNIX_KERNEL_SHA") ;;
+		*) fail "unexpected legacy top-level KERNEL: $CURRENT" ;;
+	esac
+elif [ -e "$BIRD/KERNEL" ] || [ -L "$BIRD/KERNEL" ]; then
+	fail 'legacy top-level KERNEL is a symlink or special node'
+fi
 
 if is_regular_file "$BIRD/KERNEL.fallback"; then
 	[ "$(sha256 "$BIRD/KERNEL.fallback")" = "$V54_KERNEL_SHA" ] || fail 'fallback KERNEL changed'
@@ -631,9 +693,17 @@ fi
 # release or recovery byte is mutated after the selector transaction starts.
 if [ "$BIRD_SYNTHETIC_MODES" -eq 0 ]; then
 	xattr -cr "$RELEASE" 2>/dev/null || :
-	xattr -c "$BIRD/KERNEL" "$BIRD/KERNEL.fallback" \
-		"$BIRD/extlinux/extlinux.fallback.conf" \
-		"$BIRD/extlinux/extlinux.previous.conf" "$STORAGE_TARGET" 2>/dev/null || :
+	if is_regular_file "$BIRD/KERNEL"; then
+		xattr -c "$BIRD/KERNEL" "$BIRD/KERNEL.fallback" \
+			"$BIRD/extlinux/extlinux.fallback.conf" \
+			"$BIRD/extlinux/extlinux.previous.conf" "$STORAGE_TARGET" \
+			2>/dev/null || :
+	else
+		xattr -c "$BIRD/KERNEL.fallback" \
+			"$BIRD/extlinux/extlinux.fallback.conf" \
+			"$BIRD/extlinux/extlinux.previous.conf" "$STORAGE_TARGET" \
+			2>/dev/null || :
+	fi
 fi
 find "$RELEASE" "$BIRD/extlinux" -name '._*' -delete
 find "$BIRD" -maxdepth 1 -name '._KERNEL*' -delete

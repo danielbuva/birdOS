@@ -145,12 +145,17 @@ These items are intentional backlog, not discarded features:
   techniques;
 - tune RetroArch, standalone emulators and first-game cold loading;
 - optimize PortMaster startup and finish its network experience;
+- package the pinned KOReader runtime as an RG34XX-SP-native on-demand app so
+  books no longer cross PortMaster preparation hooks;
+- add build-time game collections and optional post-first-frame user playlist
+  indexes without adding a boot-time ROM scan;
 - make music, video, reading, Ports and emulator interfaces bespoke;
 - finish media controls, playlists and reader formats;
 - optimize suspend/wake battery behavior;
 - calibrate charging percentage and final LED behavior; and
-- add the final embedded wallpaper, animation and sound only when they do not
-  delay usable input.
+- retain the accepted static cat-and-stairway wallpaper; keep boot animation
+  and sound as future ideas unless they can be introduced without delaying
+  usable input.
 
 Independent items may share one physical card cycle only when their outcomes
 remain distinguishable. Larger performance work comes before cosmetic

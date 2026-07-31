@@ -28,6 +28,7 @@ HEALTH_REASON=
 LAUNCHER_RESULT=0
 EARLY_LAUNCHER_PID=
 EARLY_ACCEPT_REASON=
+EARLY_HEALTH_COMMITTED=0
 
 mkdir -p /run/muos "$LOG_DIR" "${ATTEMPTS%/*}"
 BOOT_ID=$(cut -c1-8 /proc/sys/kernel/random/boot_id 2>/dev/null || :)
@@ -42,13 +43,20 @@ if [ "$OLD_BOOT_ID" != "$BOOT_ID" ]; then
 				"$LOG_DIR/early-initramfs-$OLD_BOOT_ID.log"
 			[ -s "$BOOT_STATE_LATEST" ] && cp -f "$BOOT_STATE_LATEST" \
 				"$LOG_DIR/stock-root-boot-state-$OLD_BOOT_ID.log"
+			if [ -s "$SHUTDOWN_LOG" ] && cp -f "$SHUTDOWN_LOG" \
+				"$LOG_DIR/shutdown-$OLD_BOOT_ID.log"; then
+				# A later forced reset must not attribute this older trace to
+				# the boot that is starting now.
+				: >"$SHUTDOWN_LOG"
+			fi
 			;;
 	esac
 	: >"$LOG"
 	printf '%s\n' "$BOOT_ID" >"$LOG_BOOT_ID"
 fi
 exec >>"$LOG" 2>&1
-printf 'bird supervisor boot_id=%s start uptime=' "$BOOT_ID"
+printf 'bird supervisor boot_id=%s release_id=%s start uptime=' \
+	"$BOOT_ID" "$RELEASE_ID"
 cut -d ' ' -f 1 /proc/uptime
 
 supervisor_signal() {
@@ -61,13 +69,53 @@ trap 'supervisor_signal TERM' TERM
 trap 'supervisor_signal HUP' HUP
 trap 'supervisor_signal INT' INT
 
+poweroff_client() {
+	/usr/bin/timeout --signal=TERM --kill-after=1s 3s \
+		systemctl --no-block poweroff
+}
+
+reboot_client() {
+	/usr/bin/timeout --signal=TERM --kill-after=1s 3s \
+		systemctl --no-block reboot
+}
+
+request_reboot() {
+	local result
+	if reboot_client; then
+		printf 'bird reboot dispatch ready uptime='
+		cut -d ' ' -f 1 /proc/uptime
+		exit 0
+	else
+		result=$?
+	fi
+	printf 'bird reboot dispatch failed result=%s; resuming launcher uptime=' \
+		"$result"
+	cut -d ' ' -f 1 /proc/uptime
+	return "$result"
+}
+
 request_poweroff() {
+	local result
 	{
 		printf 'Bird shutdown requested boot_id=%s uptime=' "$BOOT_ID"
 		cut -d ' ' -f 1 /proc/uptime
 	} >"$SHUTDOWN_LOG"
-	systemctl --no-block poweroff
-	exit 0
+	if poweroff_client; then
+		{
+			printf 'Bird shutdown dispatch ready boot_id=%s uptime=' "$BOOT_ID"
+			cut -d ' ' -f 1 /proc/uptime
+		} >>"$SHUTDOWN_LOG"
+		exit 0
+	else
+		result=$?
+	fi
+	printf 'Bird shutdown dispatch failed boot_id=%s exit=%s uptime=' \
+		"$BOOT_ID" "$result" >>"$SHUTDOWN_LOG"
+	cut -d ' ' -f 1 /proc/uptime >>"$SHUTDOWN_LOG"
+	printf 'bird shutdown dispatch failed result=%s; resuming launcher uptime=' \
+		"$result"
+	cut -d ' ' -f 1 /proc/uptime
+	return "$result"
 }
 
 reset_boot_attempts() {
@@ -157,8 +205,62 @@ dispatch_handoff_action() {
 		10) consume_handoff_action && run_content "$REQUEST" ;;
 		11) consume_handoff_action && request_poweroff ;;
 		12) consume_handoff_action && run_content --portmaster ;;
+		13) consume_handoff_action ;;
+		14) consume_handoff_action && request_reboot ;;
 		*) rm -f "$HANDOFF_ACTION" ;;
 	esac
+}
+
+read_completed_handoff_action() {
+	local bytes trailing=
+	ACTION=
+	[ -s "$HANDOFF_ACTION" ] || return 1
+	bytes=$(wc -c <"$HANDOFF_ACTION" 2>/dev/null) || return 1
+	[ "$bytes" -eq 3 ] || return 1
+	{
+		# The early launcher publishes exactly two digits and one newline with
+		# an atomic rename. Reject partial, extended and multi-line files rather
+		# than treating a prefix as proof that a usable launcher completed.
+		IFS= read -r ACTION || return 1
+		if IFS= read -r trailing; then
+			return 1
+		fi
+		[ -z "$trailing" ] || return 1
+	} <"$HANDOFF_ACTION"
+	case "$ACTION" in
+		10|11|12|13|14) return 0 ;;
+		*) return 1 ;;
+	esac
+}
+
+accept_completed_early_action() {
+	# A fast user action can make the initramfs launcher exit before this
+	# supervisor is started. In that case process adoption is impossible, but
+	# the interactive marker plus the launcher's atomically published action is
+	# durable proof that the boot reached a usable frame. Neither file alone is
+	# sufficient: a stale marker cannot forgive a crash and a partial handoff
+	# cannot forgive an unready boot.
+	[ "$EARLY_HEALTH_COMMITTED" -eq 0 ] || return 0
+	[ -e "$FIRST_FRAME" ] || return 0
+	read_completed_handoff_action || return 0
+	if ! reset_boot_attempts; then
+		report_boot_attempt_reset_failure
+		return 1
+	fi
+	printf 'bird accepted completed initramfs action=%s uptime=' "$ACTION"
+	cut -d ' ' -f 1 /proc/uptime
+	return 0
+}
+
+service_handoff_action() {
+	# Boot health must be durable before the authoritative action can be
+	# consumed. On reset failure, leave the action intact so a systemd restart
+	# can retry the transaction without losing or duplicating the request.
+	accept_completed_early_action || return 1
+	dispatch_handoff_action
+	# Preserve the existing behavior for a runner or poweroff-client failure:
+	# those results resume the launcher rather than becoming health failures.
+	return 0
 }
 
 archive_early_launcher() {
@@ -399,6 +501,7 @@ wait_content_cleanup
 
 if load_early_launcher; then
 	if accept_early_frame "$EARLY_LAUNCHER_PID"; then
+		EARLY_HEALTH_COMMITTED=1
 		if ! adopt_early_launcher "$EARLY_LAUNCHER_PID"; then
 			archive_early_launcher
 		fi
@@ -420,7 +523,11 @@ if load_early_launcher; then
 else
 	archive_early_launcher
 fi
-dispatch_handoff_action
+if ! service_handoff_action; then
+	printf 'bird completed early action not accepted; supervisor retry required uptime='
+	cut -d ' ' -f 1 /proc/uptime
+	exit 1
+fi
 
 STARTUP_FAILURES=0
 RUNTIME_FAILURES=0
@@ -465,6 +572,7 @@ while :; do
 			RUNTIME_FAILURES=0
 			printf 'bird launcher user-requested reload\n'
 			;;
+		14) RUNTIME_FAILURES=0; request_reboot ;;
 		*)
 			RUNTIME_FAILURES=$((RUNTIME_FAILURES + 1))
 			printf 'bird launcher unexpected post-frame exit streak=%s\n' \

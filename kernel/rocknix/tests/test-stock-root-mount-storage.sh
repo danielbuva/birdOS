@@ -1,0 +1,357 @@
+#!/bin/bash
+# Host-only regression coverage for the stock-root storage mount topology.
+# The executable setup prefix is sourced with every mount operation mocked;
+# this test cannot address a block device or write outside its temporary log.
+
+set -eu
+
+ROOT=$(CDPATH= cd -- "$(dirname "$0")/../../.." && pwd)
+MOUNT_STORAGE=$ROOT/kernel/rocknix/stock-root/mount-storage.sh
+EARLY_BUILDER=$ROOT/kernel/rocknix/build-stock-root-early-initramfs.sh
+INIT_BUSYBOX=$ROOT/kernel/work/rocknix-official-initramfs-20260701/ramdisk/usr/bin/busybox
+TMP=$(mktemp -d "${TMPDIR:-/tmp}/bird-mount-storage.XXXXXX")
+trap 'rm -rf "$TMP"' EXIT INT TERM HUP
+
+PREFIX=$TMP/mount-storage-prefix.sh
+awk '
+	/^# These are deliberately copied after \/storage exists\./ { exit }
+	{ print }
+' "$MOUNT_STORAGE" >"$PREFIX"
+
+grep -q '^STORAGE_IMAGE=/birddata/MUOS/runtime/ROCKNIX-STORAGE$' "$PREFIX"
+grep -q '^mount --move /birddata /run/bird-data || {$' "$PREFIX"
+grep -q '^mount --bind /run/bird-data /storage/bird-data || {$' "$PREFIX"
+if grep -Eq '^mount --move [^ ]+ /storage(/|[[:space:]])' "$PREFIX"; then
+	printf '%s\n' 'real data mount is still moved beneath /storage' >&2
+	exit 1
+fi
+
+# The pinned initramfs has no chmod applet. Runtime installation must use the
+# pinned final-root BusyBox already mounted below /sysroot, and the generated
+# init must stop before stock UI startup if that transaction fails.
+[ -f "$INIT_BUSYBOX" ]
+if strings -a -n 2 "$INIT_BUSYBOX" | grep -Fqx chmod; then
+	printf '%s\n' 'pinned initramfs unexpectedly gained chmod' >&2
+	exit 1
+fi
+if grep -Eq '^[[:space:]]*chmod[[:space:]]' "$MOUNT_STORAGE"; then
+	printf '%s\n' 'mount-storage still invokes unavailable chmod' >&2
+	exit 1
+fi
+grep -Fq '/sysroot/usr/bin/busybox chmod 0755' "$MOUNT_STORAGE"
+grep -Fq '/sysroot/usr/bin/busybox chmod 0644' "$MOUNT_STORAGE"
+grep -Fq '[ -x "/storage/.config/bird/$FILE" ] || return 1' \
+	"$MOUNT_STORAGE"
+grep -Fq 'print "  if [ \"${BOOT_STEP}\" = \"mount_storage\" ]; then"' \
+	"$EARLY_BUILDER"
+grep -Fq 'mount-storage-latest.log' "$EARLY_BUILDER"
+
+EVENTS=$TMP/events
+FAIL_OPERATION=
+
+mkdir() {
+	printf 'mkdir|%s\n' "$*" >>"$EVENTS"
+}
+
+mount_part() {
+	printf 'loop|%s|%s|%s\n' "$1" "$2" "$3" >>"$EVENTS"
+	[ "$FAIL_OPERATION" != loop ]
+}
+
+mount() {
+	printf 'mount|%s\n' "$*" >>"$EVENTS"
+	case "$*" in
+		'--move /birddata /run/bird-data')
+			[ "$FAIL_OPERATION" != move ]
+			;;
+		'--bind /run/bird-data /storage/bird-data')
+			[ "$FAIL_OPERATION" != data-bind ]
+			;;
+		*) return 0 ;;
+	esac
+}
+
+error() {
+	printf 'error|%s|%s\n' "$1" "$2" >>"$EVENTS"
+}
+
+run_prefix() {
+	: >"$EVENTS"
+	set +e
+	# shellcheck source=/dev/null
+	. "$PREFIX"
+	STATUS=$?
+	set -e
+}
+
+# The loop image must be opened while its backing filesystem still has the
+# initramfs name. The real p6 mount then moves outside /storage, its bind alias
+# is published below /storage, and only then may ROM and BIOS aliases appear.
+FAIL_OPERATION=
+run_prefix
+[ "$STATUS" -eq 0 ]
+cat >"$TMP/expected-success" <<'EOF'
+loop|/birddata/MUOS/runtime/ROCKNIX-STORAGE|/storage|loop,rw,noatime
+mkdir|-p /run/bird-data /storage/bird-data /storage/roms /storage/.config/bird
+mount|--move /birddata /run/bird-data
+mount|--bind /run/bird-data /storage/bird-data
+mount|--bind /storage/bird-data/ROMS /storage/roms
+mkdir|-p /storage/roms/bios
+mount|--bind /storage/bird-data/MUOS/bios /storage/roms/bios
+EOF
+cmp "$TMP/expected-success" "$EVENTS"
+
+# A failed move must stop before any data, ROM, or BIOS bind is attempted.
+FAIL_OPERATION=move
+run_prefix
+[ "$STATUS" -eq 1 ]
+cat >"$TMP/expected-move-failure" <<'EOF'
+loop|/birddata/MUOS/runtime/ROCKNIX-STORAGE|/storage|loop,rw,noatime
+mkdir|-p /run/bird-data /storage/bird-data /storage/roms /storage/.config/bird
+mount|--move /birddata /run/bird-data
+error|bird-data-move|Could not move large Bird data volume to its final mount
+EOF
+cmp "$TMP/expected-move-failure" "$EVENTS"
+
+# A failed publication bind must stop with the real filesystem still at its
+# safe /run mount, without attempting either nested library bind.
+FAIL_OPERATION=data-bind
+run_prefix
+[ "$STATUS" -eq 1 ]
+cat >"$TMP/expected-bind-failure" <<'EOF'
+loop|/birddata/MUOS/runtime/ROCKNIX-STORAGE|/storage|loop,rw,noatime
+mkdir|-p /run/bird-data /storage/bird-data /storage/roms /storage/.config/bird
+mount|--move /birddata /run/bird-data
+mount|--bind /run/bird-data /storage/bird-data
+error|bird-data-bind|Could not publish the large Bird data volume
+EOF
+cmp "$TMP/expected-bind-failure" "$EVENTS"
+
+# Execute the exact runtime-copy block against a temporary ext4-like tree.
+# A hostile chmod function proves the block has no hidden dependency on the
+# applet missing from the device initramfs. Every program must remain
+# executable, while static data needs only to be readable.
+COPY_BLOCK_RAW=$TMP/runtime-copy-raw.sh
+COPY_BLOCK=$TMP/runtime-copy.sh
+awk '
+	/^# These are deliberately copied after \/storage exists\./ { copy=1 }
+	/^# Replace the generic partition scanner/ { exit }
+	copy { print }
+' "$MOUNT_STORAGE" >"$COPY_BLOCK_RAW"
+sed -e 's#/flash/bird#$SOURCE_BIRD#g' \
+	-e 's#/storage/\.config/bird#$DEST_BIRD#g' \
+	-e 's#/storage/\.config/swap\.conf#$DEST_SWAP#g' \
+	-e 's#/sysroot/usr/bin/busybox#$SYSTEM_BUSYBOX#g' \
+	"$COPY_BLOCK_RAW" >"$COPY_BLOCK"
+
+SOURCE_BIRD=$TMP/source-bird
+DEST_BIRD=$TMP/dest-bird
+DEST_SWAP=$TMP/dest-swap.conf
+SYSTEM_BUSYBOX=$TMP/system-busybox
+MODE_EVENTS=$TMP/mode-events
+/bin/mkdir -p "$SOURCE_BIRD" "$DEST_BIRD"
+EXECUTABLE_FILES='bird-launcher bird-pidwait bird-fixed-controls bird-powerstate bird-fixed-control-exit.sh bird-save-config.sh supervisor.sh run-content.sh prepare-ports.sh verify-portmaster-provider.sh fixed-storage.sh first-frame-prep.sh capture-boot-state.sh bird-network.sh bird-suspend.sh bird-volume.sh bird-control-osd.sh'
+MODE_EXECUTABLE_FILES='bird-launcher bird-pidwait bird-fixed-controls bird-powerstate bird-fixed-control-exit.sh bird-save-config.sh bird-suspend.sh bird-volume.sh bird-control-osd.sh supervisor.sh run-content.sh prepare-ports.sh verify-portmaster-provider.sh fixed-storage.sh first-frame-prep.sh capture-boot-state.sh bird-network.sh'
+for FILE in $EXECUTABLE_FILES portmaster-provider.manifest.tsv; do
+	printf 'fixture %s\n' "$FILE" >"$SOURCE_BIRD/$FILE"
+done
+printf '%s\n' 'fixture swap' >"$SOURCE_BIRD/bird-swap.conf"
+/bin/chmod 0644 "$SOURCE_BIRD"/*
+cat >"$SYSTEM_BUSYBOX" <<'EOF'
+#!/bin/bash
+printf '%s\n' "$*" >>"$MODE_EVENTS"
+[ "$1" = chmod ] || exit 2
+shift
+case "${CHMOD_BEHAVIOR:-apply}" in
+	apply) exec /bin/chmod "$@" ;;
+	fail) exit 1 ;;
+	noop) exit 0 ;;
+	*) exit 2 ;;
+esac
+EOF
+/bin/chmod 0755 "$SYSTEM_BUSYBOX"
+export MODE_EVENTS CHMOD_BEHAVIOR
+CHMOD_CALLED=$TMP/chmod-called
+chmod() {
+	printf '%s\n' "$*" >>"$CHMOD_CALLED"
+	return 127
+}
+: >"$MODE_EVENTS"
+CHMOD_BEHAVIOR=apply
+set +e
+# shellcheck source=/dev/null
+. "$COPY_BLOCK"
+STATUS=$?
+set -e
+[ "$STATUS" -eq 0 ]
+[ ! -e "$CHMOD_CALLED" ]
+EXPECTED_MODE_EVENTS=$TMP/expected-mode-events
+{
+	printf 'chmod 0755'
+	for FILE in $MODE_EXECUTABLE_FILES; do
+		printf ' %s/%s' "$DEST_BIRD" "$FILE"
+	done
+	printf '\nchmod 0644 %s %s\n' \
+		"$DEST_BIRD/portmaster-provider.manifest.tsv" "$DEST_SWAP"
+} >"$EXPECTED_MODE_EVENTS"
+cmp "$EXPECTED_MODE_EVENTS" "$MODE_EVENTS"
+
+file_mode() {
+	stat -f '%Lp' "$1" 2>/dev/null || stat -c '%a' "$1"
+}
+for FILE in $EXECUTABLE_FILES; do
+	[ -x "$DEST_BIRD/$FILE" ]
+	[ "$(file_mode "$DEST_BIRD/$FILE")" = 755 ]
+	cmp "$SOURCE_BIRD/$FILE" "$DEST_BIRD/$FILE"
+done
+[ -r "$DEST_BIRD/portmaster-provider.manifest.tsv" ]
+[ -r "$DEST_SWAP" ]
+[ "$(file_mode "$DEST_BIRD/portmaster-provider.manifest.tsv")" = 644 ]
+[ "$(file_mode "$DEST_SWAP")" = 644 ]
+
+# A failed final-root chmod must fail the transaction immediately. A defective
+# chmod that reports success without changing mode must also be rejected by
+# the executable-capability postcondition.
+/bin/rm -rf "$DEST_BIRD" "$DEST_SWAP"
+/bin/mkdir -p "$DEST_BIRD"
+: >"$MODE_EVENTS"
+CHMOD_BEHAVIOR=fail
+set +e
+# shellcheck source=/dev/null
+. "$COPY_BLOCK"
+STATUS=$?
+set -e
+[ "$STATUS" -eq 1 ]
+[ "$(wc -l <"$MODE_EVENTS" | tr -d ' ')" -eq 1 ]
+[ ! -x "$DEST_BIRD/bird-launcher" ]
+
+/bin/rm -rf "$DEST_BIRD" "$DEST_SWAP"
+/bin/mkdir -p "$DEST_BIRD"
+: >"$MODE_EVENTS"
+CHMOD_BEHAVIOR=noop
+set +e
+# shellcheck source=/dev/null
+. "$COPY_BLOCK"
+STATUS=$?
+set -e
+[ "$STATUS" -eq 1 ]
+cmp "$EXPECTED_MODE_EVENTS" "$MODE_EVENTS"
+[ ! -x "$DEST_BIRD/bird-launcher" ]
+[ ! -e "$CHMOD_CALLED" ]
+
+# Exercise the exact init-rewrite AWK program against a minimal pinned-init
+# fixture. A failed storage step must enter the fatal wait before any later
+# boot step, root-ready notification, final handoff, or stock startup marker.
+INIT_REWRITE=$TMP/init-rewrite.awk
+awk '
+	BEGIN { quote = sprintf("%c", 39) }
+	$0 == "awk " quote { copy = 1; next }
+	copy && index($0, quote " \"$OFFICIAL_INIT\" >") == 1 { exit }
+	copy { print }
+' "$EARLY_BUILDER" >"$INIT_REWRITE"
+grep -Fq 'print "  if [ \"${BOOT_STEP}\" = \"mount_storage\" ]; then"' \
+	"$INIT_REWRITE"
+grep -Fq 'while :; do sleep 3600; done' "$INIT_REWRITE"
+
+OFFICIAL_INIT_FIXTURE=$TMP/official-init-fixture.sh
+GENERATED_INIT_RAW=$TMP/generated-init-raw.sh
+GENERATED_INIT=$TMP/generated-init.sh
+cat >"$OFFICIAL_INIT_FIXTURE" <<'EOF'
+#!/bin/sh
+hidecursor
+for BOOT_STEP in \
+    load_modules \
+    mount_storage \
+    check_update \
+    prepare_sysroot
+do
+  ${BOOT_STEP}
+done
+# move some special filesystems
+printf '%s\n' stock-handoff >>"$INIT_EVENTS"
+EOF
+awk -f "$INIT_REWRITE" "$OFFICIAL_INIT_FIXTURE" >"$GENERATED_INIT_RAW"
+sed -e 's#/bird-early\.sh#"$BIRD_EARLY"#g' \
+	-e 's#>/dev/kmsg#>"$KMSG"#g' \
+	-e 's#in /run/bird-data /birddata#in "$LOG_ROOT_A" "$LOG_ROOT_B"#g' \
+	"$GENERATED_INIT_RAW" >"$GENERATED_INIT"
+
+INIT_EVENTS=$TMP/init-events
+KMSG=$TMP/init-kmsg
+LOG_ROOT_A=$TMP/init-log-a
+LOG_ROOT_B=$TMP/init-log-b
+BIRD_EARLY=$TMP/bird-early-mock
+/bin/mkdir -p "$LOG_ROOT_A/MUOS/Bird/log"
+cat >"$BIRD_EARLY" <<'EOF'
+#!/bin/bash
+printf 'bird-early:%s\n' "$1" >>"$INIT_EVENTS"
+EOF
+/bin/chmod 0755 "$BIRD_EARLY"
+export INIT_EVENTS
+
+hidecursor() { printf '%s\n' hidecursor >>"$INIT_EVENTS"; }
+load_modules() { printf '%s\n' load_modules >>"$INIT_EVENTS"; }
+mount_storage() {
+	printf '%s\n' mount_storage >>"$INIT_EVENTS"
+	return "$MOUNT_RESULT"
+}
+check_update() { printf '%s\n' check_update >>"$INIT_EVENTS"; }
+prepare_sysroot() { printf '%s\n' prepare_sysroot >>"$INIT_EVENTS"; }
+error() { printf 'error:%s:%s\n' "$1" "$2" >>"$INIT_EVENTS"; }
+sleep() {
+	printf 'fatal-sleep:%s\n' "$1" >>"$INIT_EVENTS"
+	exit 73
+}
+
+: >"$INIT_EVENTS"
+: >"$KMSG"
+MOUNT_RESULT=1
+set +e
+(
+	# shellcheck source=/dev/null
+	. "$GENERATED_INIT"
+)
+STATUS=$?
+set -e
+[ "$STATUS" -eq 73 ]
+cat >"$TMP/expected-init-failure" <<'EOF'
+hidecursor
+bird-early:start
+load_modules
+mount_storage
+fatal-sleep:3600
+EOF
+cmp "$TMP/expected-init-failure" "$INIT_EVENTS"
+grep -Fqx 'bird mount_storage failed closed' "$KMSG"
+grep -Fqx 'status=failed step=mount_storage' \
+	"$LOG_ROOT_A/MUOS/Bird/log/mount-storage-latest.log"
+if grep -Eq 'check_update|prepare_sysroot|root-ready|handoff|stock' "$INIT_EVENTS"; then
+	printf '%s\n' 'failed storage integration continued into later boot work' >&2
+	exit 1
+fi
+
+# The same exact generated branch must remain transparent on success.
+: >"$INIT_EVENTS"
+: >"$KMSG"
+/bin/rm -f "$LOG_ROOT_A/MUOS/Bird/log/mount-storage-latest.log"
+MOUNT_RESULT=0
+(
+	# shellcheck source=/dev/null
+	. "$GENERATED_INIT"
+)
+cat >"$TMP/expected-init-success" <<'EOF'
+hidecursor
+bird-early:start
+load_modules
+mount_storage
+check_update
+prepare_sysroot
+bird-early:root-ready
+bird-early:handoff
+stock-handoff
+EOF
+cmp "$TMP/expected-init-success" "$INIT_EVENTS"
+[ ! -s "$KMSG" ]
+[ ! -e "$LOG_ROOT_A/MUOS/Bird/log/mount-storage-latest.log" ]
+
+printf '%s\n' 'stock-root mount-storage topology tests: PASS'

@@ -183,12 +183,22 @@ PLAY	CAPCOM CPS III	SFIII2	ROMS/CPS3/sfiii2.zip	RETROARCH	km_fbneo_xtreme_amped_
 PLAY	CAPCOM CPS III	SFIII3	ROMS/CPS3/sfiii3.zip	RETROARCH	km_fbneo_xtreme_amped_libretro.so
 PLAY	DOS	ANOTHER WORLD (1991)(U.S. GOLD LTD.)	ROMS/DOS/Another World (1991)(U.S. Gold Ltd.).zip	RETROARCH	dosbox_pure_libretro.so
 PLAY	DREAMCAST	COSMIC SMASH (JAPAN)	ROMS/DREAMCAST/Cosmic Smash (Japan).chd	RETROARCH	flycastvl_libretro.so
+PLAY	DREAMCAST	CRAZY TAXI (USA)	ROMS/DREAMCAST/Crazy Taxi (USA).chd	RETROARCH	flycastvl_libretro.so
 PLAY	DREAMCAST	GAUNTLET LEGENDS (USA)	ROMS/DREAMCAST/Gauntlet Legends (USA).chd	RETROARCH	flycastvl_libretro.so
 PLAY	DREAMCAST	HOUSE OF THE DEAD 2, THE (USA)	ROMS/DREAMCAST/House of the Dead 2, The (USA).chd	RETROARCH	flycastvl_libretro.so
 PLAY	DREAMCAST	IKARUGA (JAPAN)	ROMS/DREAMCAST/Ikaruga (Japan).chd	RETROARCH	flycastvl_libretro.so
+PLAY	DREAMCAST	ILLBLEED (USA)	ROMS/DREAMCAST/Illbleed (USA).chd	RETROARCH	flycastvl_libretro.so
+PLAY	DREAMCAST	JET SET RADIO (EUROPE) (EN,FR,DE,ES)	ROMS/DREAMCAST/Jet Set Radio (Europe) (En,Fr,De,Es).chd	RETROARCH	flycastvl_libretro.so
+PLAY	DREAMCAST	L.O.L. - LACK OF LOVE (JAPAN)	ROMS/DREAMCAST/L.O.L. - Lack of Love (Japan).chd	RETROARCH	flycastvl_libretro.so
 PLAY	DREAMCAST	MARVEL VS. CAPCOM 2 - NEW AGE OF HEROES (USA)	ROMS/DREAMCAST/Marvel vs. Capcom 2 - New Age of Heroes (USA).chd	RETROARCH	flycastvl_libretro.so
+PLAY	DREAMCAST	NAPPLE TALE - ARSIA IN DAYDREAM (JAPAN)	ROMS/DREAMCAST/Napple Tale - Arsia in Daydream (Japan).chd	RETROARCH	flycastvl_libretro.so
 PLAY	DREAMCAST	POWER STONE (USA)	ROMS/DREAMCAST/Power Stone (USA).chd	RETROARCH	flycastvl_libretro.so
 PLAY	DREAMCAST	POWER STONE 2 (USA)	ROMS/DREAMCAST/Power Stone 2 (USA).chd	RETROARCH	flycastvl_libretro.so
+PLAY	DREAMCAST	SEAMAN (USA)	ROMS/DREAMCAST/Seaman (USA).chd	RETROARCH	flycastvl_libretro.so
+PLAY	DREAMCAST	SGGG - SEGAGAGA (JAPAN) (REV A)	ROMS/DREAMCAST/SGGG - Segagaga (Japan) (Rev A).chd	RETROARCH	flycastvl_libretro.so
+PLAY	DREAMCAST	SHENMUE (USA) (DISC 1)	ROMS/DREAMCAST/Shenmue (USA) (Disc 1).chd	RETROARCH	flycastvl_libretro.so
+PLAY	DREAMCAST	SHENMUE (USA) (DISC 2)	ROMS/DREAMCAST/Shenmue (USA) (Disc 2).chd	RETROARCH	flycastvl_libretro.so
+PLAY	DREAMCAST	SHENMUE (USA) (DISC 3)	ROMS/DREAMCAST/Shenmue (USA) (Disc 3).chd	RETROARCH	flycastvl_libretro.so
 PLAY	DREAMCAST	SILENT SCOPE (USA)	ROMS/DREAMCAST/Silent Scope (USA).chd	RETROARCH	flycastvl_libretro.so
 PLAY	DREAMCAST	SOULCALIBUR (USA)	ROMS/DREAMCAST/SoulCalibur (USA).chd	RETROARCH	flycastvl_libretro.so
 PLAY	DREAMCAST	VIRTUA TENNIS - SEGA PROFESSIONAL TENNIS (USA)	ROMS/DREAMCAST/Virtua Tennis - Sega Professional Tennis (USA).chd	RETROARCH	flycastvl_libretro.so
@@ -1381,6 +1391,7 @@ PLAY	GAME BOY ADVANCE	BATMAN - VENGEANCE (USA) (EN,FR,ES)	ROMS/GBA/Batman - Veng
 PLAY	GAME BOY ADVANCE	BATMAN BEGINS (USA, EUROPE) (EN,FR,DE,ES,IT,NL)	ROMS/GBA/Batman Begins (USA, Europe) (En,Fr,De,Es,It,Nl).zip	RETROARCH	mgba_libretro.so
 PLAY	GAME BOY ADVANCE	BIG MUTHA TRUCKERS (USA)	ROMS/GBA/Big Mutha Truckers (USA).zip	RETROARCH	mgba_libretro.so
 PLAY	GAME BOY ADVANCE	BLADES OF THUNDER (USA)	ROMS/GBA/Blades of Thunder (USA).zip	RETROARCH	mgba_libretro.so
+PLAY	GAME BOY ADVANCE	BOKTAI - THE SUN IS IN YOUR HAND	ROMS/GBA/Boktai - The Sun is in Your Hand.zip	RETROARCH	mgba_libretro.so
 PLAY	GAME BOY ADVANCE	BOULDER DASH EX (USA)	ROMS/GBA/Boulder Dash EX (USA).zip	RETROARCH	mgba_libretro.so
 PLAY	GAME BOY ADVANCE	BRUCE LEE - RETURN OF THE LEGEND (USA)	ROMS/GBA/Bruce Lee - Return of the Legend (USA).zip	RETROARCH	mgba_libretro.so
 PLAY	GAME BOY ADVANCE	CAPCOM CLASSICS MINI MIX (USA)	ROMS/GBA/Capcom Classics Mini Mix (USA).zip	RETROARCH	mgba_libretro.so
@@ -1401,6 +1412,7 @@ PLAY	GAME BOY ADVANCE	CRUIS'N VELOCITY (USA, EUROPE)	ROMS/GBA/Cruis'n Velocity (
 PLAY	GAME BOY ADVANCE	DEAD TO RIGHTS (USA)	ROMS/GBA/Dead to Rights (USA).zip	RETROARCH	mgba_libretro.so
 PLAY	GAME BOY ADVANCE	DEFENDER (USA)	ROMS/GBA/Defender (USA).zip	RETROARCH	mgba_libretro.so
 PLAY	GAME BOY ADVANCE	DEFENDER OF THE CROWN (USA)	ROMS/GBA/Defender of the Crown (USA).zip	RETROARCH	mgba_libretro.so
+PLAY	GAME BOY ADVANCE	DRILL DOZER	ROMS/GBA/Drill Dozer.zip	RETROARCH	mgba_libretro.so
 PLAY	GAME BOY ADVANCE	DRILL DOZER (USA)	ROMS/GBA/Drill Dozer (USA).zip	RETROARCH	mgba_libretro.so
 PLAY	GAME BOY ADVANCE	F-ZERO - GP LEGEND (USA)	ROMS/GBA/F-Zero - GP Legend (USA).zip	RETROARCH	mgba_libretro.so
 PLAY	GAME BOY ADVANCE	F-ZERO - MAXIMUM VELOCITY (USA, EUROPE)	ROMS/GBA/F-Zero - Maximum Velocity (USA, Europe).zip	RETROARCH	mgba_libretro.so
@@ -1469,6 +1481,7 @@ PLAY	GAME BOY ADVANCE	METROID - ZERO MISSION (USA)	ROMS/GBA/Metroid - Zero Missi
 PLAY	GAME BOY ADVANCE	METROID FUSION (USA, AUSTRALIA)	ROMS/GBA/Metroid Fusion (USA, Australia).zip	RETROARCH	mgba_libretro.so
 PLAY	GAME BOY ADVANCE	MORTAL KOMBAT - DEADLY ALLIANCE (USA) (EN,FR,DE,ES,IT)	ROMS/GBA/Mortal Kombat - Deadly Alliance (USA) (En,Fr,De,Es,It).zip	RETROARCH	mgba_libretro.so
 PLAY	GAME BOY ADVANCE	MORTAL KOMBAT - TOURNAMENT EDITION (USA) (EN,FR,DE,ES,IT)	ROMS/GBA/Mortal Kombat - Tournament Edition (USA) (En,Fr,De,Es,It).zip	RETROARCH	mgba_libretro.so
+PLAY	GAME BOY ADVANCE	MOTHER 1+2	ROMS/GBA/Mother 1+2.zip	RETROARCH	mgba_libretro.so
 PLAY	GAME BOY ADVANCE	MOTHER 3 (ENGLISH V1.3) (JAPAN)	ROMS/GBA/Mother 3 (English v1.3) (Japan).zip	RETROARCH	mgba_libretro.so
 PLAY	GAME BOY ADVANCE	MR. DRILLER 2 (USA)	ROMS/GBA/Mr. Driller 2 (USA).zip	RETROARCH	mgba_libretro.so
 PLAY	GAME BOY ADVANCE	MS. PAC-MAN - MAZE MADNESS (USA)	ROMS/GBA/Ms. Pac-Man - Maze Madness (USA).zip	RETROARCH	mgba_libretro.so
@@ -1516,6 +1529,7 @@ PLAY	GAME BOY ADVANCE	ROCKY (USA) (EN,FR,DE,ES,IT)	ROMS/GBA/Rocky (USA) (En,Fr,D
 PLAY	GAME BOY ADVANCE	SHINING FORCE - RESURRECTION OF THE DARK DRAGON (USA)	ROMS/GBA/Shining Force - Resurrection of the Dark Dragon (USA).zip	RETROARCH	mgba_libretro.so
 PLAY	GAME BOY ADVANCE	SHINING SOUL (USA)	ROMS/GBA/Shining Soul (USA).zip	RETROARCH	mgba_libretro.so
 PLAY	GAME BOY ADVANCE	SHINING SOUL II (USA)	ROMS/GBA/Shining Soul II (USA).zip	RETROARCH	mgba_libretro.so
+PLAY	GAME BOY ADVANCE	SIGMA STAR SAGA	ROMS/GBA/Sigma Star Saga.zip	RETROARCH	mgba_libretro.so
 PLAY	GAME BOY ADVANCE	SIM CITY 2000 (USA)	ROMS/GBA/Sim City 2000 (USA).zip	RETROARCH	mgba_libretro.so
 PLAY	GAME BOY ADVANCE	SIMPSONS, THE - ROAD RAGE (USA, EUROPE)	ROMS/GBA/Simpsons, The - Road Rage (USA, Europe).zip	RETROARCH	mgba_libretro.so
 PLAY	GAME BOY ADVANCE	SK8 - TONY HAWK'S PRO SKATER 2 (JAPAN)	ROMS/GBA/SK8 - Tony Hawk's Pro Skater 2 (Japan).zip	RETROARCH	mgba_libretro.so
@@ -3940,8 +3954,10 @@ PLAY	PSP	WIPEOUT PURE (USA)	ROMS/PSP/Wipeout Pure (USA).cso	PPSSPP	ext-ppsspp
 PLAY	PORTS	A META DATA GAME	ROMS/Ports/A Meta Data Game.sh	PORTMASTER	external
 PLAY	PORTS	ARX	ROMS/Ports/Arx.sh	PORTMASTER	external
 PLAY	PORTS	BALATRO	ROMS/Ports/Balatro.sh	PORTMASTER	external
+PLAY	PORTS	BATTLE FOR WESNOTH	ROMS/Ports/Battle for Wesnoth.sh	PORTMASTER	external
 PLAY	PORTS	BEN WAS ASSIMILATED	ROMS/Ports/Ben Was Assimilated.sh	PORTMASTER	external
 PLAY	PORTS	BINDING OF ISAAC REBIRTH	ROMS/Ports/Binding Of Isaac Rebirth.sh	PORTMASTER	external
+PLAY	PORTS	BLACKOUT	ROMS/Ports/Blackout.sh	PORTMASTER	external
 PLAY	PORTS	BOOTLEG BOX	ROMS/Ports/Bootleg Box.sh	PORTMASTER	external
 PLAY	PORTS	BOWLING CROSS	ROMS/Ports/Bowling Cross.sh	PORTMASTER	external
 PLAY	PORTS	CAIDEN'S QUEST	ROMS/Ports/Caiden's Quest.sh	PORTMASTER	external
@@ -3950,6 +3966,7 @@ PLAY	PORTS	CAVE STORY	ROMS/Ports/Cave Story.sh	PORTMASTER	external
 PLAY	PORTS	CELESTE	ROMS/Ports/Celeste.sh	PORTMASTER	external
 PLAY	PORTS	CELESTE CLASSIC	ROMS/Ports/Celeste Classic.sh	PORTMASTER	external
 PLAY	PORTS	CHARGE KID	ROMS/Ports/Charge Kid.sh	PORTMASTER	external
+PLAY	PORTS	CURSE OF THE ARROW	ROMS/Ports/Curse of the Arrow.sh	PORTMASTER	external
 PLAY	PORTS	DARKPLACES - AFTERSHOCK	ROMS/Ports/DarkPlaces - Aftershock.sh	PORTMASTER	external
 PLAY	PORTS	DARKPLACES - DIMENSION OF THE PAST	ROMS/Ports/DarkPlaces - Dimension of the Past.sh	PORTMASTER	external
 PLAY	PORTS	DARKPLACES - DISSOLUTION OF ETERNITY	ROMS/Ports/DarkPlaces - Dissolution of Eternity.sh	PORTMASTER	external
@@ -3958,22 +3975,33 @@ PLAY	PORTS	DARKPLACES - QUAKE	ROMS/Ports/DarkPlaces - Quake.sh	PORTMASTER	extern
 PLAY	PORTS	DARKPLACES - QZONE	ROMS/Ports/DarkPlaces - QZone.sh	PORTMASTER	external
 PLAY	PORTS	DARKPLACES - SCOURGE OF ARMAGON	ROMS/Ports/DarkPlaces - Scourge of Armagon.sh	PORTMASTER	external
 PLAY	PORTS	DEAD CELLS	ROMS/Ports/Dead Cells.sh	PORTMASTER	external
+PLAY	PORTS	DEIRDRE	ROMS/Ports/Deirdre.sh	PORTMASTER	external
 PLAY	PORTS	DEMON OF SAKURA PASS	ROMS/Ports/Demon of Sakura Pass.sh	PORTMASTER	external
 PLAY	PORTS	DEVIL SPIRE	ROMS/Ports/Devil Spire.sh	PORTMASTER	external
+PLAY	PORTS	DEVILUTIONX	ROMS/Ports/Devilutionx.sh	PORTMASTER	external
 PLAY	PORTS	DO NOT TAKE THIS CAT HOME	ROMS/Ports/Do Not Take This Cat Home.sh	PORTMASTER	external
+PLAY	PORTS	DOUKUTSU-RS	ROMS/Ports/Doukutsu-rs.sh	PORTMASTER	external
 PLAY	PORTS	DUELING DRAGONS	ROMS/Ports/Dueling Dragons.sh	PORTMASTER	external
+PLAY	PORTS	DUNGEON CRAWL STONE SOUP	ROMS/Ports/Dungeon Crawl Stone Soup.sh	PORTMASTER	external
+PLAY	PORTS	ECHO CHAMBER	ROMS/Ports/Echo Chamber.sh	PORTMASTER	external
 PLAY	PORTS	FAITH DEMON SIEGE	ROMS/Ports/FAITH Demon Siege.sh	PORTMASTER	external
 PLAY	PORTS	FAITH THE UNHOLY TRINITY	ROMS/Ports/FAITH The Unholy Trinity.sh	PORTMASTER	external
 PLAY	PORTS	FEATHER PARK	ROMS/Ports/Feather Park.sh	PORTMASTER	external
 PLAY	PORTS	FOR A VAST FUTURE	ROMS/Ports/For a Vast Future.sh	PORTMASTER	external
 PLAY	PORTS	FORGODDEN	ROMS/Ports/Forgodden.sh	PORTMASTER	external
 PLAY	PORTS	FRIDAY NIGHT FUNKIN	ROMS/Ports/Friday Night Funkin.sh	PORTMASTER	external
+PLAY	PORTS	FROGFALL	ROMS/Ports/Frogfall.sh	PORTMASTER	external
 PLAY	PORTS	FULL MOON RUSH	ROMS/Ports/Full Moon Rush.sh	PORTMASTER	external
+PLAY	PORTS	GATO ROBOTO	ROMS/Ports/Gato Roboto.sh	PORTMASTER	external
+PLAY	PORTS	GLOBEBA	ROMS/Ports/Globeba.sh	PORTMASTER	external
+PLAY	PORTS	HELP! NO BRAKE	ROMS/Ports/HELP! NO BRAKE.sh	PORTMASTER	external
 PLAY	PORTS	III	ROMS/Ports/iii.sh	PORTMASTER	external
 PLAY	PORTS	ITTA	ROMS/Ports/ITTA.sh	PORTMASTER	external
+PLAY	PORTS	KOREADER	ROMS/Ports/KOReader.sh	PORTMASTER	external
 PLAY	PORTS	KUDAMONO MERGE	ROMS/Ports/Kudamono Merge.sh	PORTMASTER	external
 PLAY	PORTS	LOVE	ROMS/Ports/LOVE.sh	PORTMASTER	external
 PLAY	PORTS	LOVE 3	ROMS/Ports/LOVE 3.sh	PORTMASTER	external
+PLAY	PORTS	MALDITA CASTILLA	ROMS/Ports/Maldita Castilla.sh	PORTMASTER	external
 PLAY	PORTS	MAX PAYNE	ROMS/Ports/Max Payne.sh	PORTMASTER	external
 PLAY	PORTS	MINIT	ROMS/Ports/Minit.sh	PORTMASTER	external
 PLAY	PORTS	MOONLEAP	ROMS/Ports/Moonleap.sh	PORTMASTER	external
@@ -3986,6 +4014,7 @@ PLAY	PORTS	PLANTS VS ZOMBIES NEIGHBORHOOD DEFENSE	ROMS/Ports/Plants vs Zombies N
 PLAY	PORTS	PULLYWOG	ROMS/Ports/Pullywog.sh	PORTMASTER	external
 PLAY	PORTS	ROTA	ROMS/Ports/ROTA.sh	PORTMASTER	external
 PLAY	PORTS	SHOVEL KNIGHT	ROMS/Ports/Shovel Knight.sh	PORTMASTER	external
+PLAY	PORTS	SIMPLE SOKOBAN	ROMS/Ports/Simple Sokoban.sh	PORTMASTER	external
 PLAY	PORTS	SLAY THE SPIRE	ROMS/Ports/Slay the Spire.sh	PORTMASTER	external
 PLAY	PORTS	SPELL TOWER	ROMS/Ports/Spell Tower.sh	PORTMASTER	external
 PLAY	PORTS	SPELUNKY	ROMS/Ports/Spelunky.sh	PORTMASTER	external
@@ -3994,7 +4023,9 @@ PLAY	PORTS	STAR WARS JEDI KNIGHT - JEDI ACADEMY	ROMS/Ports/Star Wars Jedi Knight
 PLAY	PORTS	STAR WARS JEDI KNIGHT II - JEDI OUTCAST	ROMS/Ports/Star Wars Jedi Knight II - Jedi Outcast.sh	PORTMASTER	external
 PLAY	PORTS	STARDEWVALLEY	ROMS/Ports/StardewValley.sh	PORTMASTER	external
 PLAY	PORTS	SUDOKUL	ROMS/Ports/SuDokuL.sh	PORTMASTER	external
+PLAY	PORTS	SUPER CRATE BOX	ROMS/Ports/Super Crate Box.sh	PORTMASTER	external
 PLAY	PORTS	SUPER MEAT BOY	ROMS/Ports/Super Meat Boy.sh	PORTMASTER	external
+PLAY	PORTS	TINY CRATE	ROMS/Ports/Tiny Crate.sh	PORTMASTER	external
 PLAY	PORTS	U R 4 GUYS	ROMS/Ports/U R 4 GUYS.sh	PORTMASTER	external
 PLAY	PORTS	UNDERTALE	ROMS/Ports/Undertale.sh	PORTMASTER	external
 PLAY	PORTS	VOID STRANGER	ROMS/Ports/Void Stranger.sh	PORTMASTER	external
@@ -5955,9 +5986,64 @@ PLAY	SNES	ZOOTTO MAHJONG! (JAPAN) (REV 1) (NP)	ROMS/SNES/Zootto Mahjong! (Japan)
 LISTEN	AW	OUT OF YOUR MIND 1	MEDIA/LISTEN/aw/out of your mind 1.mp3	MPV	ext-mpv-general
 LISTEN	AW	OUT OF YOUR MIND 2	MEDIA/LISTEN/aw/out of your mind 2.mp3	MPV	ext-mpv-general
 LISTEN	AW	OUT OF YOUR MIND 3	MEDIA/LISTEN/aw/out of your mind 3.mp3	MPV	ext-mpv-general
+LISTEN	MUSIC	(IN MY) SOLITUDE - FATS WALLER	MEDIA/LISTEN/music/long car ride/(In My) Solitude - Fats Waller.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	ALMOST BLUE - CHET BAKER	MEDIA/LISTEN/music/long car ride/Almost Blue - Chet Baker.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	BIG IRON - MARTY ROBBINS	MEDIA/LISTEN/music/long car ride/Big Iron - Marty Robbins.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	BLUE HORIZON - SIDNEY BECHET	MEDIA/LISTEN/music/long car ride/Blue Horizon - Sidney Bechet.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	DARK IS THE NIGHT - RY COODER	MEDIA/LISTEN/music/long car ride/Dark Is the Night - Ry Cooder.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	FRAGMENTED - UP DHARMA DOWN	MEDIA/LISTEN/music/long car ride/Fragmented - Up Dharma Down.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	GREENFIELDS - THE BROTHERS FOUR	MEDIA/LISTEN/music/long car ride/Greenfields - The Brothers Four.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	HOW LONG BLUES - COUNT BASIE	MEDIA/LISTEN/music/long car ride/How Long Blues - Count Basie.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	I FALL IN LOVE TOO EASILY - CHET BAKER	MEDIA/LISTEN/music/long car ride/I Fall In Love Too Easily - Chet Baker.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	I'LL BE SEEING YOU - BING CROSBY	MEDIA/LISTEN/music/long car ride/I'll Be Seeing You - Bing Crosby.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	I'M GLAD THERE IS YOU - STAN GETZ, OSCAR PETERSON TRIO	MEDIA/LISTEN/music/long car ride/I'm Glad There Is You - Stan Getz, Oscar Peterson Trio.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	I'M IN THE MARKET FOR YOU - ARCHIE SEMPLE, FRED HUNT, DICKIE HAWDON	MEDIA/LISTEN/music/long car ride/I'm in the Market for You - Archie Semple, Fred Hunt, Dickie Hawdon.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	IN A MIST - BIX BEIDERBECKE	MEDIA/LISTEN/music/long car ride/In a Mist - Bix Beiderbecke.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	IT NEVER ENTERED MY MIND - MILES DAVIS QUINTET	MEDIA/LISTEN/music/long car ride/It Never Entered My Mind - Miles Davis Quintet.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	J'ATTENDRAI - JEAN SABLON	MEDIA/LISTEN/music/long car ride/J'Attendrai - Jean Sablon.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	LA FOULE - EDITH PIAF	MEDIA/LISTEN/music/long car ride/La Foule - Édith Piaf.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	LA MANO DE DIOS - ANTONIO AGUILAR	MEDIA/LISTEN/music/long car ride/La Mano De Dios - Antonio Aguilar.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	LA MER - CHARLES TRENET	MEDIA/LISTEN/music/long car ride/La mer - Charles Trenet.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	LA VIE EN ROSE - LOUIS ARMSTRONG	MEDIA/LISTEN/music/long car ride/La vie en rose - Louis Armstrong.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	MARGIE - JIM REEVES	MEDIA/LISTEN/music/long car ride/Margie - Jim Reeves.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	MAYBE - THE INK SPOTS	MEDIA/LISTEN/music/long car ride/Maybe - The Ink Spots.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	MIDNIGHT, THE STARS AND YOU - AL BOWLLY, RAY NOBLE & HIS ORCHESTRA	MEDIA/LISTEN/music/long car ride/Midnight, The Stars and You - Al Bowlly, Ray Noble & His Orchestra.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	MIST OF A DREAM - BIRDLEGS & PAULINE	MEDIA/LISTEN/music/long car ride/Mist Of A Dream - Birdlegs & Pauline.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	MISTER SANDMAN - CHET ATKINS	MEDIA/LISTEN/music/long car ride/Mister Sandman - Chet Atkins.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	MOONLIGHT IN VERMONT - ELLA FITZGERALD, LOUIS ARMSTRONG	MEDIA/LISTEN/music/long car ride/Moonlight In Vermont - Ella Fitzgerald, Louis Armstrong.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	MOONLIGHT SERENADE - GLENN MILLER	MEDIA/LISTEN/music/long car ride/Moonlight Serenade - Glenn Miller.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	MR. SANDMAN - THE CHORDETTES	MEDIA/LISTEN/music/long car ride/Mr. Sandman - The Chordettes.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	MY BLUE HEAVEN - GENE AUSTIN	MEDIA/LISTEN/music/long car ride/My Blue Heaven - Gene Austin.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	MY LAST DATE (WITH YOU) - SKEETER DAVIS	MEDIA/LISTEN/music/long car ride/My Last Date (With You) - Skeeter Davis.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	MY ONE AND ONLY LOVE - JOHN COLTRANE, JOHNNY HARTMAN	MEDIA/LISTEN/music/long car ride/My One And Only Love - John Coltrane, Johnny Hartman.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	NON TI SCORDAR DI ME - 1935 - CARLO BUTI	MEDIA/LISTEN/music/long car ride/Non ti scordar di me - 1935 - Carlo Buti.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	PEACE PIECE - BILL EVANS	MEDIA/LISTEN/music/long car ride/Peace Piece - Bill Evans.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	PERFIDIA - LOS PANCHOS	MEDIA/LISTEN/music/long car ride/Perfidia - Los Panchos.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	PETITE FLEUR - SIDNEY BECHET	MEDIA/LISTEN/music/long car ride/Petite Fleur - Sidney Bechet.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	PIPELINE - THE VENTURES	MEDIA/LISTEN/music/long car ride/Pipeline - The Ventures.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	PRETTY BABY - AL JOLSON	MEDIA/LISTEN/music/long car ride/Pretty Baby - Al Jolson.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	REBEL ROUSER - DUANE EDDY	MEDIA/LISTEN/music/long car ride/Rebel Rouser - Duane Eddy.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	RUMBLE - LINK WRAY & THE WRAYMEN	MEDIA/LISTEN/music/long car ride/Rumble - Link Wray & The Wraymen.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	SIN TI - LOS PANCHOS	MEDIA/LISTEN/music/long car ride/Sin Ti - Los Panchos.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	SOLITUDE - BILLIE HOLIDAY	MEDIA/LISTEN/music/long car ride/Solitude - Billie Holiday.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	SOLITUDE - ELLA FITZGERALD	MEDIA/LISTEN/music/long car ride/Solitude - Ella Fitzgerald.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	STARDUST - HOAGY CARMICHAEL	MEDIA/LISTEN/music/long car ride/Stardust - Hoagy Carmichael.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	SUMMERTIME - SIDNEY BECHET	MEDIA/LISTEN/music/long car ride/Summertime - Sidney Bechet.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	THE JAPANESE FAREWELL SONG - BERT KAEMPFERT	MEDIA/LISTEN/music/long car ride/The Japanese Farewell Song - Bert Kaempfert.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	THE SINGLE PETAL OF A ROSE - THE QUEEN'S SUITE - DUKE ELLINGTON	MEDIA/LISTEN/music/long car ride/The Single Petal Of A Rose - The Queen's Suite - Duke Ellington.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	WALK, DON'T RUN - STEREO - THE VENTURES	MEDIA/LISTEN/music/long car ride/Walk, Don't Run - Stereo - The Ventures.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	WAYFARING STRANGER - BURL IVES	MEDIA/LISTEN/music/long car ride/Wayfaring Stranger - Burl Ives.opus	MPV	ext-mpv-general
+LISTEN	MUSIC	WINDS OF SIRIUS - LES BAXTER	MEDIA/LISTEN/music/long car ride/Winds Of Sirius - Les Baxter.opus	MPV	ext-mpv-general
+READ	ALL	THE DIVING BELL AND THE BUTTERFLY	MEDIA/READ/The diving bell and the butterfly.epub	KOREADER	ext-koreader
+READ	ALL	THE PROPHET KHALIL GIBRAN 2019	MEDIA/READ/The Prophet Khalil Gibran 2019.epub	KOREADER	ext-koreader
+READ	ALL	THE QUANTUM UNIVERSE 1987	MEDIA/READ/The Quantum Universe 1987.pdf	KOREADER	ext-koreader
+READ	ALL	THE STRANGE THEORY OF LIGHT AND MATTER FEYNMAN 1985	MEDIA/READ/The Strange Theory of Light and Matter Feynman 1985.pdf	KOREADER	ext-koreader
+READ	ALL	WHO _ THE A METHOD FOR HIRING	MEDIA/READ/Who _ The A Method for Hiring.epub	KOREADER	ext-koreader
 WATCH	MOVIES	12 ANGRY MEN	MEDIA/WATCH/movies/12 Angry Men.mp4	MPV	ext-mpv-general
+WATCH	MOVIES	AKIRA (1988)	MEDIA/WATCH/movies/Akira (1988).mp4	MPV	ext-mpv-general
 WATCH	MOVIES	ANGEL'S EGG	MEDIA/WATCH/movies/Angel's Egg.mkv	MPV	ext-mpv-general
 WATCH	MOVIES	GHOST IN THE SHELL	MEDIA/WATCH/movies/Ghost in the Shell.mkv	MPV	ext-mpv-general
 WATCH	MOVIES	MARY AND MAX	MEDIA/WATCH/movies/Mary and Max.mp4	MPV	ext-mpv-general
 WATCH	MOVIES	THE GODFATHER	MEDIA/WATCH/movies/The Godfather.mp4	MPV	ext-mpv-general
 WATCH	MOVIES	THE THING 1987	MEDIA/WATCH/movies/THE THING 1987.mp4	MPV	ext-mpv-general
+WATCH	MOVIES	WATCHMEN	MEDIA/WATCH/movies/Watchmen.mkv	MPV	ext-mpv-general

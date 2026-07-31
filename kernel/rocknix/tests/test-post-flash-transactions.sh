@@ -26,6 +26,9 @@ case "$APPLET" in
 		;;
 	sha256sum) shasum -a 256 "$@" ;;
 	awk) exec awk "$@" ;;
+	usleep)
+		printf 'usleep %s\n' "$1" >>"$BIRD_TEST_STATE/usleep.log"
+		;;
 	*) exit 64 ;;
 esac
 EOF
@@ -36,6 +39,8 @@ chmod 0755 "$BUSYBOX_MOCK"
 # this fatal wait instead of falling through to normal init processing.
 grep -Fq 'print "    if ! . /bird-release-loader.sh; then"' "$EARLY_BUILDER"
 grep -Fq 'print "      while :; do sleep 3600; done"' "$EARLY_BUILDER"
+grep -Fq 'BIRD_FIRST_FRAME_WAIT_TICKS=1000' "$HOOK"
+grep -Fq '"$BIRD_LOADER_BUSYBOX" usleep 20000' "$HOOK"
 
 sha256() {
 	shasum -a 256 "$1" | awk '{print $1}'
@@ -59,6 +64,7 @@ reset_case() {
 		"$DATA/MUOS/runtime" \
 		"$DATA/MUOS/Bird/boot-state/releases/v6.23" "$STATE"
 	ATTEMPTS_FILE=$DATA/MUOS/Bird/boot-state/releases/v6.23/attempts
+	FIRST_FRAME=$TMP/$CASE/bird-first-frame-ready
 	PRIOR_ATTEMPTS=$DATA/MUOS/Bird/boot-state/releases/v6.22/attempts
 	mkdir -p "${PRIOR_ATTEMPTS%/*}"
 	touch "$FLASH/mount-storage.sh" "$FLASH/SYSTEM" \
@@ -81,6 +87,7 @@ reset_case() {
 	: >"$STATE/error.log"
 	: >"$STATE/umount.log"
 	: >"$STATE/event.log"
+	: >"$STATE/usleep.log"
 	enable_release
 }
 
@@ -123,6 +130,8 @@ run_hook() {
 	BIRD_CMDLINE_FILE=$TMP/$CASE/cmdline \
 	BIRD_DATA_MOUNT=$DATA \
 	BIRD_DATA_DEVICE=/dev/bird-test \
+	BIRD_FIRST_FRAME=$FIRST_FRAME \
+	BIRD_FIRST_FRAME_WAIT_TICKS=2 \
 	BIRD_LOADER_FLASH=$FLASH \
 	BIRD_LOADER_CMDLINE=$TMP/$CASE/cmdline \
 	BIRD_LOADER_REBOOT=reboot \
@@ -135,6 +144,13 @@ run_hook() {
 	BIRD_TEST_STATE=$STATE \
 	BIRD_TEST_LOADER=$LOADER \
 	sh -c '
+		printf() {
+			if [ "$BIRD_TEST_FAILURE" = health-reset-write ] &&
+			    [ "$#" -eq 2 ] && [ "$1" = "%s\\n" ] && [ "$2" = 0 ]; then
+				return 1
+			fi
+			command printf "$@"
+		}
 		stat() {
 			[ "$1" = -c ] && return 64
 			command stat "$@"
@@ -142,6 +158,13 @@ run_hook() {
 		cat() {
 			case "$BIRD_TEST_FAILURE:$1" in
 				attempts-verify:*/.attempts.*) printf "%s\n" malformed; return 0 ;;
+				health-reset-verify:*/attempts)
+					VALUE=$(command cat "$1" 2>/dev/null) || return 1
+					if [ "$VALUE" = 0 ]; then
+						printf "%s\n" malformed
+						return 0
+					fi
+					;;
 			esac
 			command cat "$@"
 		}
@@ -172,6 +195,8 @@ run_hook() {
 			[ "$BIRD_TEST_FAILURE" = fallback-selector-sync ] && \
 				[ "$COUNT" -eq 5 ] && return 1
 			[ "$BIRD_TEST_FAILURE" = attempts-sync ] && [ "$COUNT" -eq 1 ] && return 1
+			[ "$BIRD_TEST_FAILURE" = health-reset-sync ] &&
+				[ "$COUNT" -eq 3 ] && return 1
 			return 0
 		}
 		cp() {
@@ -184,6 +209,8 @@ run_hook() {
 			printf "%s\n" "$COUNT" >"$BIRD_TEST_STATE/mv-count"
 			[ "$BIRD_TEST_FAILURE" = fallback-rename ] && [ "$COUNT" -eq 2 ] && return 1
 			[ "$BIRD_TEST_FAILURE" = attempts-rename ] && [ "$COUNT" -eq 1 ] && return 1
+			[ "$BIRD_TEST_FAILURE" = health-reset-rename ] &&
+				[ "$COUNT" -eq 2 ] && return 1
 			command mv "$@"
 		}
 		reboot() {
@@ -247,6 +274,40 @@ cmp "$FLASH/extlinux/extlinux.conf" "$FLASH/extlinux/extlinux.fallback.conf"
 [ "$(cat "$ATTEMPTS_FILE")" = 3 ]
 [ "$(cat "$PRIOR_ATTEMPTS")" = 1 ]
 grep -qx -- '-f' "$STATE/reboot.log"
+[ "$(wc -l <"$STATE/usleep.log" | tr -d " ")" = 2 ]
+[ "$(sort -u "$STATE/usleep.log")" = 'usleep 20000' ]
+
+# A current honest frame wins even when two older boots did not reach their
+# commit point. The third boot resets its release state instead of selecting
+# recovery from stale history.
+reset_case third-attempt-usable
+: >"$FIRST_FRAME"
+run_hook none
+grep -qx 'candidate-selector' "$FLASH/extlinux/extlinux.conf"
+[ "$(cat "$ATTEMPTS_FILE")" = 0 ]
+[ ! -s "$STATE/reboot.log" ]
+
+# Once the launcher publishes the honest input-open barrier, failure to persist
+# the health reset must never turn that usable third start into recovery. The
+# supervisor can retry the same release-scoped transaction after final-root.
+for FAILURE in health-reset-write health-reset-sync health-reset-rename \
+	health-reset-verify; do
+	reset_case "$FAILURE"
+	: >"$FIRST_FRAME"
+	run_hook "$FAILURE"
+	grep -qx 'candidate-selector' "$FLASH/extlinux/extlinux.conf"
+	[ ! -s "$STATE/reboot.log" ]
+	[ ! -e "$FLASH/bird-loader-failure.txt" ]
+	if find "$DATA/MUOS/Bird/boot-state" -name '.attempts.*' | grep -q .; then
+		printf 'case %s left a health-reset transaction temporary\n' \
+			"$FAILURE" >&2
+		exit 1
+	fi
+	case "$FAILURE" in
+		health-reset-verify) [ "$(cat "$ATTEMPTS_FILE")" = 0 ] ;;
+		*) [ "$(cat "$ATTEMPTS_FILE")" = 3 ] ;;
+	esac
+done
 
 reset_case missing-attempts
 rm -f "$ATTEMPTS_FILE"
@@ -312,11 +373,22 @@ done
 
 reset_case release-valid
 printf '0\n' >"$ATTEMPTS_FILE"
+: >"$FIRST_FRAME"
 run_hook none
 grep -q 'bird-releases/v6.23/bird' "$STATE/mount.log"
 grep -q 'bird-releases/v6.23/mount-storage.sh' "$STATE/mount.log"
-[ "$(cat "$ATTEMPTS_FILE")" = 1 ]
+[ "$(cat "$ATTEMPTS_FILE")" = 0 ]
 [ "$(cat "$PRIOR_ATTEMPTS")" = 1 ]
+
+# Reaching the honest interactive barrier commits boot health before the later
+# graphical supervisor. Without that marker the attempt stays charged for the
+# supervisor's existing health race; it must not immediately select recovery.
+reset_case first-frame-missing
+printf '0\n' >"$ATTEMPTS_FILE"
+run_hook none
+[ "$(cat "$ATTEMPTS_FILE")" = 1 ]
+grep -qx 'candidate-selector' "$FLASH/extlinux/extlinux.conf"
+[ ! -s "$STATE/reboot.log" ]
 
 reset_case release-corrupt
 printf '0\n' >"$ATTEMPTS_FILE"

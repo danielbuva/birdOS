@@ -75,8 +75,9 @@ SYSTEMS = (
 )
 
 # Media is indexed on the Mac alongside games and compiled into the launcher.
-# The active dispatcher routes LISTEN and WATCH through the pinned ROCKNIX MPV
-# provider; the stored labels remain inventory metadata, not launch authority.
+# The active dispatcher routes LISTEN/WATCH through the pinned ROCKNIX MPV
+# provider and EPUB/PDF through the installed fixed KOReader PortMaster app;
+# stored labels remain inventory metadata, not launch authority.
 MEDIA_KINDS = (
     MediaKind(
         "LISTEN",
@@ -84,9 +85,7 @@ MEDIA_KINDS = (
         "MPV",
         "ext-mpv-general",
     ),
-    # READ stays visible as a first-class empty destination until its bespoke
-    # reader and final supported-format policy are selected.
-    MediaKind("READ", (), "PENDING", "pending"),
+    MediaKind("READ", (".epub", ".pdf"), "KOREADER", "ext-koreader"),
     MediaKind(
         "WATCH",
         (".avi", ".m2ts", ".m4v", ".mkv", ".mov", ".mp4", ".mpeg", ".mpg", ".ts", ".webm"),
@@ -103,6 +102,10 @@ IGNORED_DIRECTORY_NAMES = frozenset(("imgs", "images"))
 # This value is emitted into catalog.generated.h and is therefore also the
 # launch-request and favorites-file contract used by the freestanding launcher.
 CATALOG_PATH_MAX_BYTES = 4085
+CATALOG_ENTRY_INDEX_CAPACITY = 1 << 16
+CATALOG_U8_INDEX_CAPACITY = 1 << 8
+CATALOG_U32_MAX = (1 << 32) - 1
+CATALOG_STRING_POOL_MAX_BYTES = (1 << 32) - 1
 
 
 def checked_catalog_path(value: str, source: str) -> str:
@@ -128,22 +131,139 @@ def checked_catalog_path(value: str, source: str) -> str:
     return value
 
 
-def c_string(value: str) -> str:
-    encoded = value.encode("utf-8")
+def checked_game_entry_count(count: int) -> int:
+    """Return *count* when every game entry can be named by a u16 index."""
+
+    if count > CATALOG_ENTRY_INDEX_CAPACITY:
+        raise SystemExit(
+            f"catalog contains {count} game entries; maximum for the u16 "
+            f"path lookup index is {CATALOG_ENTRY_INDEX_CAPACITY}"
+        )
+    return count
+
+
+def checked_u8_index_count(count: int, label: str) -> int:
+    """Return *count* when its zero-based indexes fit in generated u8 data."""
+
+    if count > CATALOG_U8_INDEX_CAPACITY:
+        raise SystemExit(
+            f"catalog contains {count} {label}; maximum for a u8 index is "
+            f"{CATALOG_U8_INDEX_CAPACITY}"
+        )
+    return count
+
+
+def checked_u32_count(count: int, label: str) -> int:
+    """Return *count* when it fits in a generated u32 range field."""
+
+    if count > CATALOG_U32_MAX:
+        raise SystemExit(
+            f"catalog contains {count} {label}; maximum for a u32 count is "
+            f"{CATALOG_U32_MAX}"
+        )
+    return count
+
+
+def checked_string_pool_size(size: int) -> int:
+    """Return *size* when every generated string offset fits in a u32."""
+
+    if size > CATALOG_STRING_POOL_MAX_BYTES:
+        raise SystemExit(
+            f"catalog string pool is {size} bytes; maximum for u32 offsets is "
+            f"{CATALOG_STRING_POOL_MAX_BYTES}"
+        )
+    return size
+
+
+class CatalogStringPool:
+    """Deterministic exact-string interning for generated static catalogue data."""
+
+    def __init__(self) -> None:
+        self.data = bytearray()
+        self.offsets: dict[bytes, int] = {}
+        self.values: list[bytes] = []
+
+    def intern(self, value: str, source: str) -> int:
+        encoded = value.encode("utf-8")
+        if b"\0" in encoded:
+            raise SystemExit(f"{source}: catalog string contains an embedded NUL")
+        existing = self.offsets.get(encoded)
+        if existing is not None:
+            return existing
+        offset = len(self.data)
+        checked_string_pool_size(offset + len(encoded) + 1)
+        self.offsets[encoded] = offset
+        self.values.append(encoded)
+        self.data.extend(encoded)
+        self.data.append(0)
+        return offset
+
+    @property
+    def size(self) -> int:
+        # Empty synthetic catalogues still emit one addressable NUL byte so
+        # the generated C array remains valid on every supported compiler.
+        return max(1, len(self.data))
+
+
+def build_catalog_entry_path_order(
+    systems: list[tuple[System, list[tuple[str, str, str]]]],
+    media_categories: list[MediaCategory],
+) -> list[int]:
+    """Validate canonical path identity and return game indexes in byte order."""
+
+    game_paths = [
+        path
+        for _system, entries in systems
+        for _name, path, _relative in entries
+    ]
+    checked_game_entry_count(len(game_paths))
+
+    seen: dict[str, str] = {}
+    for game_index, path in enumerate(game_paths):
+        source = f"game catalog entry {game_index}"
+        checked_catalog_path(path, source)
+        previous = seen.get(path)
+        if previous is not None:
+            raise SystemExit(
+                f"duplicate canonical catalog path {path!r}: {previous} and {source}"
+            )
+        seen[path] = source
+
+    for category_index, category in enumerate(media_categories):
+        for entry_index, entry in enumerate(category.entries):
+            source = f"media catalog entry {category_index}:{entry_index}"
+            checked_catalog_path(entry.path, source)
+            previous = seen.get(entry.path)
+            if previous is not None:
+                raise SystemExit(
+                    f"duplicate canonical catalog path {entry.path!r}: "
+                    f"{previous} and {source}"
+                )
+            seen[entry.path] = source
+
+    return sorted(
+        range(len(game_paths)),
+        key=lambda index: game_paths[index].encode("utf-8"),
+    )
+
+
+def c_bytes(encoded: bytes) -> str:
     output: list[str] = ['"']
     for byte in encoded:
         if byte == 34:
             output.append(r'\"')
         elif byte == 92:
             output.append(r"\\")
+        elif byte == 63:
+            # Escaping every question mark prevents any valid filename from
+            # forming a C trigraph across generated source characters.
+            output.append(r"\077")
         elif 32 <= byte <= 126:
             output.append(chr(byte))
         else:
             output.append(f"\\{byte:03o}")
     output.append('"')
     return "".join(output)
-
-
 def display_name(path: pathlib.Path) -> str:
     normalized = unicodedata.normalize("NFKD", path.stem)
     ascii_name = normalized.encode("ascii", "ignore").decode("ascii").upper()
@@ -216,8 +336,12 @@ def render(
     systems: list[tuple[System, list[tuple[str, str, str]]]],
     media_categories: list[MediaCategory],
 ) -> str:
-    total = sum(len(entries) for _system, entries in systems)
+    path_order = build_catalog_entry_path_order(systems, media_categories)
+    total = len(path_order)
     media_total = sum(len(category.entries) for category in media_categories)
+    checked_u8_index_count(len(systems), "systems")
+    checked_u8_index_count(len(media_categories), "media categories")
+    checked_u32_count(media_total, "media entries")
     section_ranges: dict[str, tuple[int, int]] = {}
     section_cursor = 0
     for kind in MEDIA_KINDS:
@@ -228,6 +352,123 @@ def render(
         )
         section_ranges[kind.directory] = (section_cursor, count)
         section_cursor += count
+
+    launch_constants = {
+        "RETROARCH": "CATALOG_LAUNCH_RETROARCH",
+        "PPSSPP": "CATALOG_LAUNCH_PPSSPP",
+        "PORTMASTER": "CATALOG_LAUNCH_PORTMASTER",
+        "DRASTIC": "CATALOG_LAUNCH_DRASTIC",
+        "OPENBOR": "CATALOG_LAUNCH_OPENBOR",
+    }
+    media_launch_constants = {
+        "MPV": "CATALOG_LAUNCH_MPV",
+        "KOREADER": "CATALOG_LAUNCH_KOREADER",
+    }
+
+    pool = CatalogStringPool()
+    system_name_offsets: list[int] = []
+    system_core_offsets: list[int] = []
+    system_firsts: list[int] = []
+    system_counts: list[int] = []
+    system_launch_kinds: list[str] = []
+    entry_name_offsets: list[int] = []
+    entry_path_offsets: list[int] = []
+    entry_systems: list[int] = []
+    media_category_name_offsets: list[int] = []
+    media_category_core_offsets: list[int] = []
+    media_category_firsts: list[int] = []
+    media_category_counts: list[int] = []
+    media_category_sections: list[str] = []
+    media_category_launch_kinds: list[str] = []
+    media_entry_name_offsets: list[int] = []
+    media_entry_path_offsets: list[int] = []
+    media_entry_categories: list[int] = []
+
+    first = 0
+    for system_index, (system, entries) in enumerate(systems):
+        system_name_offsets.append(
+            pool.intern(system.name, f"system {system_index} name")
+        )
+        system_core_offsets.append(
+            pool.intern(system.core, f"system {system_index} core")
+        )
+        system_firsts.append(first)
+        system_counts.append(len(entries))
+        system_launch_kinds.append(launch_constants[system.launcher])
+        first += len(entries)
+
+    # Keep each system's records in presentation order. In particular, all
+    # system labels precede the much larger game corpus, avoiding first-menu
+    # page scattering while retaining name/path proximity for launch handoff.
+    for system_index, (_system, entries) in enumerate(systems):
+        for entry_index, (name, path, _relative) in enumerate(entries):
+            entry_name_offsets.append(
+                pool.intern(name, f"game entry {system_index}:{entry_index} name")
+            )
+            entry_path_offsets.append(
+                pool.intern(path, f"game entry {system_index}:{entry_index} path")
+            )
+            entry_systems.append(system_index)
+
+    media_first = 0
+    for category_index, category in enumerate(media_categories):
+        media_category_name_offsets.append(
+            pool.intern(category.name, f"media category {category_index} name")
+        )
+        media_category_core_offsets.append(
+            pool.intern(category.kind.core, f"media category {category_index} core")
+        )
+        media_category_firsts.append(media_first)
+        media_category_counts.append(len(category.entries))
+        media_category_sections.append(
+            f"CATALOG_MEDIA_SECTION_{category.kind.directory}"
+        )
+        media_category_launch_kinds.append(
+            media_launch_constants[category.kind.launcher]
+        )
+        media_first += len(category.entries)
+
+    for category_index, category in enumerate(media_categories):
+        for entry_index, entry in enumerate(category.entries):
+            media_entry_name_offsets.append(
+                pool.intern(
+                    entry.name,
+                    f"media entry {category_index}:{entry_index} name",
+                )
+            )
+            media_entry_path_offsets.append(
+                pool.intern(
+                    entry.path,
+                    f"media entry {category_index}:{entry_index} path",
+                )
+            )
+            media_entry_categories.append(category_index)
+
+    # These are the exact bytes emitted by the fixed-width arrays below. The
+    # pool is reported separately because it is immutable string data, while
+    # the path-order table remains a distinct binary-search index budget.
+    record_bytes = (
+        len(system_name_offsets) * 4
+        + len(system_core_offsets) * 4
+        + len(system_firsts) * 4
+        + len(system_counts) * 4
+        + len(system_launch_kinds)
+        + len(entry_name_offsets) * 4
+        + len(entry_path_offsets) * 4
+        + len(entry_systems)
+        + len(media_category_name_offsets) * 4
+        + len(media_category_core_offsets) * 4
+        + len(media_category_firsts) * 4
+        + len(media_category_counts) * 4
+        + len(media_category_sections)
+        + len(media_category_launch_kinds)
+        + len(media_entry_name_offsets) * 4
+        + len(media_entry_path_offsets) * 4
+        + len(media_entry_categories)
+    )
+    path_order_bytes = len(path_order) * 2
+    metadata_bytes = record_bytes + path_order_bytes
+
     lines = [
         "/* Generated by generate-launcher-catalog.py; do not edit manually. */",
         "#ifndef BIRD_CATALOG_GENERATED_H",
@@ -240,6 +481,7 @@ def render(
         "#define CATALOG_LAUNCH_DRASTIC 4",
         "#define CATALOG_LAUNCH_OPENBOR 5",
         "#define CATALOG_LAUNCH_MPV 6",
+        "#define CATALOG_LAUNCH_KOREADER 7",
         "#define CATALOG_MEDIA_SECTION_LISTEN 1",
         "#define CATALOG_MEDIA_SECTION_READ 2",
         "#define CATALOG_MEDIA_SECTION_WATCH 3",
@@ -248,6 +490,12 @@ def render(
         f"#define CATALOG_MEDIA_CATEGORY_COUNT {len(media_categories)}U",
         f"#define CATALOG_MEDIA_ENTRY_COUNT {media_total}U",
         f"#define CATALOG_PATH_MAX_BYTES {CATALOG_PATH_MAX_BYTES}U",
+        f"#define CATALOG_STRING_POOL_BYTES {pool.size}UL",
+        f"#define CATALOG_RECORD_BYTES {record_bytes}UL",
+        f"#define CATALOG_PATH_ORDER_BYTES {path_order_bytes}UL",
+        f"#define CATALOG_METADATA_BYTES {metadata_bytes}UL",
+        "#define CATALOG_STATIC_BYTES \\",
+        "    (0UL + CATALOG_STRING_POOL_BYTES + CATALOG_METADATA_BYTES)",
         f"#define CATALOG_LISTEN_CATEGORY_FIRST {section_ranges['LISTEN'][0]}U",
         f"#define CATALOG_LISTEN_CATEGORY_COUNT {section_ranges['LISTEN'][1]}U",
         f"#define CATALOG_READ_CATEGORY_FIRST {section_ranges['READ'][0]}U",
@@ -255,101 +503,123 @@ def render(
         f"#define CATALOG_WATCH_CATEGORY_FIRST {section_ranges['WATCH'][0]}U",
         f"#define CATALOG_WATCH_CATEGORY_COUNT {section_ranges['WATCH'][1]}U",
         "",
-        "struct catalog_system {",
-        "    const char *name;",
-        "    const char *core;",
-        "    u32 first;",
-        "    u32 count;",
-        "    u8 launch_kind;",
-        "};",
-        "",
-        "struct catalog_entry {",
-        "    const char *name;",
-        "    const char *path;",
-        "    u16 system;",
-        "};",
-        "",
-        "struct catalog_media_category {",
-        "    const char *name;",
-        "    const char *core;",
-        "    u32 first;",
-        "    u32 count;",
-        "    u8 section;",
-        "    u8 launch_kind;",
-        "};",
-        "",
-        "struct catalog_media_entry {",
-        "    const char *name;",
-        "    const char *path;",
-        "    u16 category;",
-        "};",
-        "",
-        "static const struct catalog_system catalog_systems[CATALOG_SYSTEM_COUNT] = {",
+        "/* Exact UTF-8 strings are interned once. Accessors return stable",
+        " * pointers directly into this immutable, NUL-terminated pool. */",
+        "static const char catalog_string_pool[CATALOG_STRING_POOL_BYTES] =",
     ]
 
-    first = 0
-    launch_constants = {
-        "RETROARCH": "CATALOG_LAUNCH_RETROARCH",
-        "PPSSPP": "CATALOG_LAUNCH_PPSSPP",
-        "PORTMASTER": "CATALOG_LAUNCH_PORTMASTER",
-        "DRASTIC": "CATALOG_LAUNCH_DRASTIC",
-        "OPENBOR": "CATALOG_LAUNCH_OPENBOR",
-    }
-    for system, entries in systems:
-        lines.append(
-            f"    {{{c_string(system.name)}, {c_string(system.core)}, {first}U, "
-            f"{len(entries)}U, {launch_constants[system.launcher]}}},"
-        )
-        first += len(entries)
+    if pool.values:
+        for index, value in enumerate(pool.values):
+            # Interior literals carry an explicit terminator. The final C
+            # literal supplies its implicit terminator, making sizeof(pool)
+            # exactly CATALOG_STRING_POOL_BYTES without a spare byte.
+            encoded = value if index + 1 == len(pool.values) else value + b"\0"
+            suffix = ";" if index + 1 == len(pool.values) else ""
+            lines.append(f"    {c_bytes(encoded)}{suffix}")
+    else:
+        lines.append(f"    {c_bytes(bytes((0,)))};")
+
+    def append_array(
+        c_type: str,
+        name: str,
+        bound: str,
+        values: list[int] | list[str],
+    ) -> None:
+        lines.extend(["", f"static const {c_type} {name}[{bound}] = {{"])
+        for value in values:
+            lines.append(f"    {value}U," if isinstance(value, int) else f"    {value},")
+        lines.append("};")
+
+    append_array(
+        "u32", "catalog_system_name_offsets", "CATALOG_SYSTEM_COUNT", system_name_offsets
+    )
+    append_array(
+        "u32", "catalog_system_core_offsets", "CATALOG_SYSTEM_COUNT", system_core_offsets
+    )
+    append_array("u32", "catalog_system_firsts", "CATALOG_SYSTEM_COUNT", system_firsts)
+    append_array("u32", "catalog_system_counts", "CATALOG_SYSTEM_COUNT", system_counts)
+    append_array(
+        "u8", "catalog_system_launch_kinds", "CATALOG_SYSTEM_COUNT", system_launch_kinds
+    )
+    append_array(
+        "u32", "catalog_entry_name_offsets", "CATALOG_ENTRY_COUNT", entry_name_offsets
+    )
+    append_array(
+        "u32", "catalog_entry_path_offsets", "CATALOG_ENTRY_COUNT", entry_path_offsets
+    )
+    append_array("u8", "catalog_entry_systems", "CATALOG_ENTRY_COUNT", entry_systems)
 
     lines.extend(
         [
-            "};",
             "",
-            "static const struct catalog_entry catalog_entries[CATALOG_ENTRY_COUNT] = {",
+            "/* XOR with the ordinal to recover the path-sorted game index. "
+            "The permutation is mostly identity, so this keeps the fixed u16 "
+            "table while making the early initramfs substantially more "
+            "compressible. */",
         ]
     )
-    for system_index, (_system, entries) in enumerate(systems):
-        for name, path, _relative in entries:
-            lines.append(f"    {{{c_string(name)}, {c_string(path)}, {system_index}U}},")
-
-    lines.extend(
-        [
-            "};",
-            "",
-            "static const struct catalog_media_category "
-            "catalog_media_categories[CATALOG_MEDIA_CATEGORY_COUNT] = {",
-        ]
+    append_array(
+        "u16",
+        "catalog_entry_path_order_xor",
+        "CATALOG_ENTRY_COUNT",
+        [entry_index ^ ordinal for ordinal, entry_index in enumerate(path_order)],
     )
-    media_first = 0
-    media_launch_constants = {
-        "MPV": "CATALOG_LAUNCH_MPV",
-        "PENDING": "CATALOG_LAUNCH_NONE",
-    }
-    for category in media_categories:
-        lines.append(
-            f"    {{{c_string(category.name)}, {c_string(category.kind.core)}, "
-            f"{media_first}U, {len(category.entries)}U, "
-            f"CATALOG_MEDIA_SECTION_{category.kind.directory}, "
-            f"{media_launch_constants[category.kind.launcher]}}},"
-        )
-        media_first += len(category.entries)
-
-    lines.extend(
-        [
-            "};",
-            "",
-            "static const struct catalog_media_entry "
-            "catalog_media_entries[CATALOG_MEDIA_ENTRY_COUNT] = {",
-        ]
+    append_array(
+        "u32",
+        "catalog_media_category_name_offsets",
+        "CATALOG_MEDIA_CATEGORY_COUNT",
+        media_category_name_offsets,
     )
-    for category_index, category in enumerate(media_categories):
-        for entry in category.entries:
-            lines.append(
-                f"    {{{c_string(entry.name)}, {c_string(entry.path)}, {category_index}U}},"
-            )
+    append_array(
+        "u32",
+        "catalog_media_category_core_offsets",
+        "CATALOG_MEDIA_CATEGORY_COUNT",
+        media_category_core_offsets,
+    )
+    append_array(
+        "u32",
+        "catalog_media_category_firsts",
+        "CATALOG_MEDIA_CATEGORY_COUNT",
+        media_category_firsts,
+    )
+    append_array(
+        "u32",
+        "catalog_media_category_counts",
+        "CATALOG_MEDIA_CATEGORY_COUNT",
+        media_category_counts,
+    )
+    append_array(
+        "u8",
+        "catalog_media_category_sections",
+        "CATALOG_MEDIA_CATEGORY_COUNT",
+        media_category_sections,
+    )
+    append_array(
+        "u8",
+        "catalog_media_category_launch_kinds",
+        "CATALOG_MEDIA_CATEGORY_COUNT",
+        media_category_launch_kinds,
+    )
+    append_array(
+        "u32",
+        "catalog_media_entry_name_offsets",
+        "CATALOG_MEDIA_ENTRY_COUNT",
+        media_entry_name_offsets,
+    )
+    append_array(
+        "u32",
+        "catalog_media_entry_path_offsets",
+        "CATALOG_MEDIA_ENTRY_COUNT",
+        media_entry_path_offsets,
+    )
+    append_array(
+        "u8",
+        "catalog_media_entry_categories",
+        "CATALOG_MEDIA_ENTRY_COUNT",
+        media_entry_categories,
+    )
 
-    lines.extend(["};", "", "#endif", ""])
+    lines.extend(["", "#endif", ""])
     return "\n".join(lines)
 
 

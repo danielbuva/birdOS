@@ -4,18 +4,37 @@
 from __future__ import annotations
 
 import argparse
+import binascii
+import hashlib
+import os
 import struct
+import tempfile
+import zlib
 from pathlib import Path
 
 
 WIDTH = 720
 HEIGHT = 480
 
-BACKGROUND = (10, 14, 20)
-PANEL = (19, 26, 36)
-ACCENT_IDLE = (48, 58, 70)
-PRIMARY = (244, 246, 248)
-MUTED = (139, 151, 166)
+TOP_BAR_X = 160
+TOP_BAR_Y = 36
+TOP_BAR_WIDTH = 400
+TOP_BAR_HEIGHT = 40
+SIDEBAR_X = 160
+SIDEBAR_Y = 104
+SIDEBAR_WIDTH = 32
+CONTENT_X = SIDEBAR_X + SIDEBAR_WIDTH
+CONTENT_Y = SIDEBAR_Y
+CONTENT_WIDTH = 368
+CONTENT_HEIGHT = 288
+DIVIDER_WIDTH = 10
+
+CREAM = (239, 226, 217)
+BURGUNDY = (36, 10, 18)
+BURGUNDY_EDGE = (55, 18, 29)
+SHADOW = (15, 8, 12)
+MASK64 = (1 << 64) - 1
+BACKDROP_SHA256 = "3fdea84fe0c149378db32d1849e55b3fede22c74a613544810be880f48fdb9d3"
 
 FONT = {
     " ": (0, 0, 0, 0, 0, 0, 0),
@@ -60,6 +79,31 @@ FONT = {
 }
 
 
+def atomic_write(path: Path, payload: bytes) -> None:
+    """Replace one generated output without following an existing leaf symlink."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", dir=path.parent
+    )
+    try:
+        os.fchmod(descriptor, 0o644)
+        temporary = os.fdopen(descriptor, "wb")
+        descriptor = -1
+        with temporary:
+            temporary.write(payload)
+            temporary.flush()
+            os.fsync(temporary.fileno())
+        os.replace(temporary_name, path)
+    except BaseException:
+        if descriptor >= 0:
+            os.close(descriptor)
+        try:
+            os.unlink(temporary_name)
+        except FileNotFoundError:
+            pass
+        raise
+
+
 def rectangle(
     pixels: bytearray, x: int, y: int, width: int, height: int, colour: tuple[int, int, int]
 ) -> None:
@@ -70,6 +114,125 @@ def rectangle(
             continue
         start = screen_y * WIDTH * 3 + x * 3
         pixels[start : start + len(row)] = row
+
+
+def paeth(left: int, above: int, upper_left: int) -> int:
+    estimate = left + above - upper_left
+    left_distance = abs(estimate - left)
+    above_distance = abs(estimate - above)
+    corner_distance = abs(estimate - upper_left)
+    if left_distance <= above_distance and left_distance <= corner_distance:
+        return left
+    if above_distance <= corner_distance:
+        return above
+    return upper_left
+
+
+def load_png_bgr(path: Path) -> bytearray:
+    """Decode the pinned build-time RGB PNG without a runtime image dependency."""
+    encoded = path.read_bytes()
+    if hashlib.sha256(encoded).hexdigest() != BACKDROP_SHA256:
+        raise SystemExit("error: launcher backdrop digest changed")
+    if not encoded.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise SystemExit("error: launcher backdrop is not PNG")
+
+    offset = 8
+    compressed = bytearray()
+    width = height = bit_depth = colour_type = interlace = -1
+    while offset < len(encoded):
+        if offset + 12 > len(encoded):
+            raise SystemExit("error: truncated launcher backdrop chunk")
+        length = struct.unpack_from(">I", encoded, offset)[0]
+        chunk_type = encoded[offset + 4 : offset + 8]
+        start = offset + 8
+        end = start + length
+        if end + 4 > len(encoded):
+            raise SystemExit("error: truncated launcher backdrop payload")
+        payload = encoded[start:end]
+        expected_crc = struct.unpack_from(">I", encoded, end)[0]
+        if binascii.crc32(chunk_type + payload) & 0xFFFFFFFF != expected_crc:
+            raise SystemExit("error: launcher backdrop PNG checksum failed")
+        if chunk_type == b"IHDR":
+            width, height, bit_depth, colour_type, compression, filtering, interlace = (
+                struct.unpack(">IIBBBBB", payload)
+            )
+            if compression or filtering:
+                raise SystemExit("error: unsupported launcher backdrop PNG method")
+        elif chunk_type == b"IDAT":
+            compressed.extend(payload)
+        elif chunk_type == b"IEND":
+            break
+        offset = end + 4
+
+    if (width, height, bit_depth, colour_type, interlace) != (
+        WIDTH, HEIGHT, 8, 2, 0
+    ):
+        raise SystemExit("error: launcher backdrop must be 720x480 RGB8 non-interlaced")
+    try:
+        filtered = zlib.decompress(bytes(compressed))
+    except zlib.error as error:
+        raise SystemExit(f"error: launcher backdrop decompression failed: {error}")
+
+    bytes_per_pixel = 3
+    row_bytes = width * bytes_per_pixel
+    if len(filtered) != height * (row_bytes + 1):
+        raise SystemExit("error: launcher backdrop scanline size changed")
+    prior = bytearray(row_bytes)
+    rgb = bytearray(width * height * bytes_per_pixel)
+    source = 0
+    target = 0
+    for _ in range(height):
+        filter_type = filtered[source]
+        source += 1
+        row = bytearray(filtered[source : source + row_bytes])
+        source += row_bytes
+        for index in range(row_bytes):
+            left = row[index - bytes_per_pixel] if index >= bytes_per_pixel else 0
+            above = prior[index]
+            upper_left = prior[index - bytes_per_pixel] if index >= bytes_per_pixel else 0
+            if filter_type == 1:
+                row[index] = (row[index] + left) & 0xFF
+            elif filter_type == 2:
+                row[index] = (row[index] + above) & 0xFF
+            elif filter_type == 3:
+                row[index] = (row[index] + ((left + above) >> 1)) & 0xFF
+            elif filter_type == 4:
+                row[index] = (row[index] + paeth(left, above, upper_left)) & 0xFF
+            elif filter_type != 0:
+                raise SystemExit("error: unsupported launcher backdrop PNG filter")
+        rgb[target : target + row_bytes] = row
+        target += row_bytes
+        prior = row
+
+    bgr = bytearray(len(rgb))
+    for index in range(0, len(rgb), 3):
+        bgr[index] = rgb[index + 2]
+        bgr[index + 1] = rgb[index + 1]
+        bgr[index + 2] = rgb[index]
+    return bgr
+
+
+def draw_menu_chrome(pixels: bytearray) -> None:
+    rectangle(pixels, SIDEBAR_X + 3, SIDEBAR_Y + CONTENT_HEIGHT,
+              SIDEBAR_WIDTH + CONTENT_WIDTH - 3, 3, SHADOW)
+    rectangle(pixels, TOP_BAR_X, TOP_BAR_Y, TOP_BAR_WIDTH,
+              TOP_BAR_HEIGHT, CREAM)
+    rectangle(pixels, SIDEBAR_X, SIDEBAR_Y, SIDEBAR_WIDTH,
+              CONTENT_HEIGHT, CREAM)
+    rectangle(pixels, CONTENT_X, CONTENT_Y, CONTENT_WIDTH,
+              CONTENT_HEIGHT, BURGUNDY)
+    rectangle(pixels, CONTENT_X, CONTENT_Y, DIVIDER_WIDTH, CONTENT_HEIGHT,
+              BURGUNDY_EDGE)
+
+
+def subtract_menu_chrome(pixels: bytearray) -> None:
+    """Zero wallpaper pixels that are always replaced by opaque launcher UI."""
+    rectangle(pixels, TOP_BAR_X, TOP_BAR_Y, TOP_BAR_WIDTH,
+              TOP_BAR_HEIGHT, (0, 0, 0))
+    rectangle(pixels, SIDEBAR_X, SIDEBAR_Y,
+              SIDEBAR_WIDTH + CONTENT_WIDTH, CONTENT_HEIGHT, (0, 0, 0))
+    rectangle(pixels, SIDEBAR_X + 3, SIDEBAR_Y + CONTENT_HEIGHT,
+              SIDEBAR_WIDTH + CONTENT_WIDTH - 3, 3, (0, 0, 0))
 
 
 def draw_text(
@@ -119,16 +282,78 @@ def bitmap_header(pixel_size: int) -> bytes:
     return file_header + dib
 
 
+def framebuffer_visible_fingerprint(pixels: bytes) -> tuple[int, int]:
+    """Match bird-launcher's visible-RGB fingerprint for one XRGB page."""
+    xrgb = bytearray()
+    for offset in range(0, len(pixels), 3):
+        xrgb.extend(pixels[offset : offset + 3])
+        xrgb.append(0)
+
+    visible_a = 1469598103934665603
+    visible_b = 0x9E3779B97F4A7C15
+    pair_offset = 0
+    region_lines = (95, HEIGHT - 95 - 66, 66)
+    region_seeds = (
+        (0x243F6A8885A308D3, 0x082EFA98EC4E6C89),
+        (0x13198A2E03707344, 0x452821E638D01377),
+        (0xA4093822299F31D0, 0xBE5466CF34E90C6C),
+    )
+    for lines, (region_a, region_b) in zip(region_lines, region_seeds):
+        for _ in range(lines * (WIDTH // 2)):
+            physical = int.from_bytes(xrgb[pair_offset : pair_offset + 8], "little")
+            pair_offset += 8
+            visible = physical & 0x00FFFFFF00FFFFFF
+            region_a = ((region_a ^ visible) * 1099511628211) & MASK64
+            region_b = (region_b + visible) & MASK64
+            region_b = (region_b + (region_b << 10)) & MASK64
+            region_b ^= region_b >> 6
+        region_b = (region_b + (region_b << 3)) & MASK64
+        region_b ^= region_b >> 11
+        region_b = (region_b + (region_b << 15)) & MASK64
+        visible_a = ((visible_a ^ region_a) * 1099511628211) & MASK64
+        visible_a = ((visible_a ^ region_b) * 1099511628211) & MASK64
+        visible_b = (visible_b + region_a) & MASK64
+        visible_b = (visible_b + (visible_b << 10)) & MASK64
+        visible_b ^= visible_b >> 6
+        visible_b = (visible_b + region_b) & MASK64
+        visible_b = (visible_b + (visible_b << 10)) & MASK64
+        visible_b ^= visible_b >> 6
+    visible_b = (visible_b + (visible_b << 3)) & MASK64
+    visible_b ^= visible_b >> 11
+    visible_b = (visible_b + (visible_b << 15)) & MASK64
+    return visible_a, visible_b
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("output", type=Path)
+    parser.add_argument("--contract", type=Path)
+    parser.add_argument("--xrgb-output", type=Path)
+    parser.add_argument(
+        "--early-static-asset-bytes",
+        type=int,
+        choices=(0, WIDTH * HEIGHT * 4),
+        default=0,
+    )
+    parser.add_argument(
+        "--backdrop",
+        type=Path,
+        default=Path(__file__).resolve().parent / "assets/bird-launcher-backdrop.png",
+    )
     arguments = parser.parse_args()
 
-    pixels = bytearray(bytes((BACKGROUND[2], BACKGROUND[1], BACKGROUND[0])) * WIDTH * HEIGHT)
-    rectangle(pixels, 0, 0, WIDTH, 92, PANEL)
-    rectangle(pixels, 32, 86, 656, 3, ACCENT_IDLE)
-    draw_text(pixels, 32, 22, "BIRDOS // RG34-SP", 4, PRIMARY)
-    draw_text(pixels, 34, 62, "BESPOKE CONSOLE", 2, MUTED)
+    wallpaper = load_png_bgr(arguments.backdrop)
+    pixels = bytearray(wallpaper)
+    draw_menu_chrome(pixels)
+
+    raw_wallpaper = bytearray(wallpaper)
+    subtract_menu_chrome(raw_wallpaper)
+    xrgb = bytearray(WIDTH * HEIGHT * 4)
+    for source in range(0, len(raw_wallpaper), 3):
+        target = (source // 3) * 4
+        xrgb[target : target + 3] = raw_wallpaper[source : source + 3]
+    if arguments.xrgb_output:
+        atomic_write(arguments.xrgb_output, bytes(xrgb))
 
     # BMP stores positive-height images bottom-up. Each 720x24-bit row is
     # already a multiple of four bytes, so no row padding is required.
@@ -139,8 +364,33 @@ def main() -> None:
     output = bitmap_header(len(bottom_up)) + bottom_up
     if len(output) != 1_036_938:
         raise SystemExit(f"error: unexpected BMP size {len(output)}")
-    arguments.output.parent.mkdir(parents=True, exist_ok=True)
-    arguments.output.write_bytes(output)
+    atomic_write(arguments.output, output)
+    if arguments.contract:
+        visible_a, visible_b = framebuffer_visible_fingerprint(bytes(pixels))
+        asset_sha = hashlib.sha256(output).hexdigest()
+        contract = (
+            "schema\tbird-boot-frame-v3\n"
+            f"backdrop-sha256\t{BACKDROP_SHA256}\n"
+            f"asset-sha256\t{asset_sha}\n"
+            f"asset-bytes\t{len(output)}\n"
+            f"logical-pixels\t{WIDTH * HEIGHT}\n"
+            f"visible-framebuffer-bytes\t{WIDTH * HEIGHT * 3}\n"
+            "framebuffer-pages\t1\n"
+            f"physical-framebuffer-bytes\t{WIDTH * HEIGHT * 4}\n"
+            f"raw-resolution\t{WIDTH}x{HEIGHT}\n"
+            "raw-pixel-format\tXRGB8888\n"
+            "raw-memory-channel-order\tB,G,R,X\n"
+            f"raw-stride\t{WIDTH * 4}\n"
+            "raw-orientation\ttop-down\n"
+            "raw-page-offset\t0:0\n"
+            "raw-subtracted-regions\ttop-bar,menu-container,menu-shadow\n"
+            f"visible-hash-a\t{visible_a:016x}\n"
+            f"visible-hash-b\t{visible_b:016x}\n"
+            f"early-static-asset-bytes\t{arguments.early_static_asset_bytes}\n"
+            f"final-root-static-asset-bytes\t{len(xrgb)}\n"
+            f"final-root-static-asset-sha256\t{hashlib.sha256(xrgb).hexdigest()}\n"
+        )
+        atomic_write(arguments.contract, contract.encode("ascii"))
     print(f"generated {arguments.output}: {len(output)} bytes")
 
 

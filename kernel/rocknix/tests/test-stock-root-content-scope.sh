@@ -7,6 +7,7 @@ ROOT=$(CDPATH= cd -- "$(dirname "$0")/../../.." && pwd)
 RUNNER=$ROOT/kernel/rocknix/stock-root/run-content.sh
 EXIT_HELPER=$ROOT/kernel/rocknix/stock-root/bird-fixed-control-exit.sh
 CONTRACT_PRODUCER=$ROOT/kernel/rocknix/stock-root/999-export
+TIMEOUT_PROGRAM=$(command -v timeout)
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/bird-content-scope.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT INT TERM HUP
 
@@ -241,8 +242,11 @@ GUARD_TEST_BODY=$TMP/embedded-content-guard-host.sh
 GUARD_RELEASE=$TMP/guard-release
 CRASH_STATE=$TMP/content-runner-crash.state
 CRASH_TOKEN=crash-token
+CRASH_KOREADER_WRAPPER=$TMP/KOReader-$CRASH_TOKEN.sh
 cp "$GUARD_BODY" "$GUARD_TEST_BODY"
 sh -n "$GUARD_TEST_BODY"
+: >"$CRASH_KOREADER_WRAPPER"
+: >"$CRASH_KOREADER_WRAPPER.tmp"
 cat >"$TMP/pidwait-gate" <<'EOF'
 #!/bin/sh
 COUNT=0
@@ -275,7 +279,8 @@ PATH="$TMP/bin:$PATH" BIRD_TEST_GUARD_RELEASE="$GUARD_RELEASE" \
 	"$CRASH_TOKEN" "$TMP/crash-resource.lock" "$TMP/crash-sway.owner" \
 	"$TMP/crash-network.owner" "$TMP/crash-sway.sock" \
 	"$TMP/crash-scope.start" "$TMP/crash-scope.ready" \
-	"$TMP/crash-scope.cancel" "$GUARD_PROC" &
+	"$TMP/crash-scope.cancel" "$GUARD_PROC" \
+	"$CRASH_KOREADER_WRAPPER" &
 CRASH_GUARD_PID=$!
 sleep 0.05
 CRASH_GUARD_PRECHECK=0
@@ -285,6 +290,8 @@ kill -0 "$CRASH_GUARD_PID" 2>/dev/null || CRASH_GUARD_PRECHECK=1
 wait_pid_bounded "$CRASH_GUARD_PID" 10 crash-guard
 [ "$CRASH_GUARD_PRECHECK" -eq 0 ]
 [ ! -e "$CRASH_STATE" ]
+[ ! -e "$CRASH_KOREADER_WRAPPER" ]
+[ ! -e "$CRASH_KOREADER_WRAPPER.tmp" ]
 
 # Kill the real gated-bootstrap control flow after its exact child identity is
 # atomically published but before the gate is released. The detached guard must
@@ -706,15 +713,16 @@ claim_owner() {
 	printf '%s\n' "$SESSION_TOKEN" >"$1"
 }
 publish_runner_state() { printf 'publish-%s\n' "$1" >>"$EVENTS"; }
+content_stage() { printf 'stage-%s\n' "$1" >>"$EVENTS"; }
 stop_sway() {
 	printf '%s\n' rollback >>"$EVENTS"
 	SWAY_OWNED=0
 	rm -f "$SWAY_OWNER"
 }
 systemctl() {
-	printf 'systemctl-%s-%s\n' "$1" "$2" >>"$EVENTS"
-	case "$MODE:$1:$2" in
-		seatd-fail:start:seatd.service|sway-fail:start:sway.service) return 1 ;;
+	printf 'systemctl-%s\n' "$*" >>"$EVENTS"
+	case "$MODE:$*" in
+		seatd-fail:'start seatd.service'|sway-fail:'start --no-block sway.service') return 1 ;;
 		*) return 0 ;;
 	esac
 }
@@ -765,6 +773,8 @@ case "$MODE" in
 		[ "$SWAY_OWNED" -eq 1 ]
 		[ -s "$SWAY_OWNER" ]
 		[ "$(grep -c '^rollback$' "$EVENTS" || :)" -eq 0 ]
+		grep -q '^systemctl-start --no-block sway.service$' "$EVENTS"
+		grep -q '^stage-sway-ready$' "$EVENTS"
 		;;
 esac
 EOF
@@ -778,6 +788,59 @@ for MODE in seatd-fail sway-fail socket-timeout success; do
 		cat "$CASE_DIR/harness.log" >&2
 		exit 1
 	fi
+done
+
+# Every systemd client call in the foreground runner passes through a bounded
+# wrapper. A timeout remains a failure; it is never treated as completed state.
+SYSTEMCTL_WRAPPER=$TMP/systemctl-wrapper.sh
+python3 - "$RUNNER" "$SYSTEMCTL_WRAPPER" <<'PY'
+from pathlib import Path
+import sys
+
+source = Path(sys.argv[1]).read_text()
+start = source.index("systemctl() {")
+end = source.index("\n}\n\ncontent_stage() {", start) + 2
+Path(sys.argv[2]).write_text(source[start:end] + "\n")
+PY
+sh -n "$SYSTEMCTL_WRAPPER"
+cat >"$TMP/systemctl-wrapper-harness.sh" <<'EOF'
+#!/bin/sh
+set -eu
+. "$1"
+CASE_DIR=$2
+TIMEOUT_PROGRAM=$CASE_DIR/timeout
+SYSTEMCTL_PROGRAM=$CASE_DIR/systemctl
+cat >"$TIMEOUT_PROGRAM" <<'SCRIPT'
+#!/bin/sh
+printf '%s\n' "$*" >"$BIRD_TEST_TIMEOUT_ARGS"
+exit 124
+SCRIPT
+cat >"$SYSTEMCTL_PROGRAM" <<'SCRIPT'
+#!/bin/sh
+exit 0
+SCRIPT
+chmod 0755 "$TIMEOUT_PROGRAM" "$SYSTEMCTL_PROGRAM"
+if BIRD_TEST_TIMEOUT_ARGS=$CASE_DIR/args systemctl start sway.service; then
+	printf '%s\n' 'bounded systemctl accepted timeout as success' >&2
+	exit 1
+else
+	STATUS=$?
+fi
+[ "$STATUS" -eq 124 ]
+grep -Fq -- '--signal=TERM --kill-after=1s 3s' "$CASE_DIR/args"
+grep -Fq "$SYSTEMCTL_PROGRAM start sway.service" "$CASE_DIR/args"
+EOF
+chmod 0755 "$TMP/systemctl-wrapper-harness.sh"
+SYSTEMCTL_CASE=$TMP/systemctl-wrapper
+mkdir -p "$SYSTEMCTL_CASE"
+"$TMP/systemctl-wrapper-harness.sh" "$SYSTEMCTL_WRAPPER" "$SYSTEMCTL_CASE"
+
+grep -Fq 'systemctl stop --no-block sway.service' "$RUNNER"
+grep -Fq '/usr/bin/timeout --signal=TERM --kill-after=1s 3s \' "$RUNNER"
+for STAGE in session-start guard-ready contract-ready sway-start-request \
+	sway-ready services-ready provider-start provider-returned cleanup-start \
+	cleanup-complete; do
+	grep -Fq "content_stage $STAGE" "$RUNNER"
 done
 
 SWAY_STOP_CONFIRM_BODY=$TMP/sway-stop-confirm-functions.sh
@@ -927,6 +990,86 @@ TRANSFER_CASE=$TMP/resource-transfer
 mkdir -p "$TRANSFER_CASE"
 "$TMP/resource-transfer-harness.sh" "$RECONCILE_BODY" "$TRANSFER_BODY" \
 	"$TRANSFER_CASE" >"$TRANSFER_CASE/harness.log" 2>&1
+
+# A failed helper stop must report its real status and retain both the local
+# cleanup bit and exact owner token. A later retry may release them only after
+# the helper itself confirms the fixed stack and radio are stopped.
+NETWORK_STOP_BODY=$TMP/network-stop-functions.sh
+python3 - "$RUNNER" "$NETWORK_STOP_BODY" <<'PY'
+from pathlib import Path
+import sys
+
+source = Path(sys.argv[1]).read_text()
+parts = []
+for start_marker, end_marker in (
+    ("owner_matches() {", "\nclaim_owner() {"),
+    ("remove_owned_token() {", "\nrollback_sway_start() {"),
+	    ("stop_portmaster_network() {", "\nrun_selected() {"),
+):
+    start = source.index(start_marker)
+    end = source.index(end_marker, start)
+    parts.append(source[start:end])
+Path(sys.argv[2]).write_text("\n\n".join(parts) + "\n")
+PY
+sh -n "$NETWORK_STOP_BODY"
+cat >"$TMP/network-stop-retry-harness.sh" <<'EOF'
+#!/bin/sh
+set -eu
+. "$1"
+CASE_DIR=$2
+SESSION_TOKEN=retry-owner
+NETWORK_OWNER=$CASE_DIR/network.owner
+PORTMASTER_NETWORK=1
+printf '%s\n' "$SESSION_TOKEN" >"$NETWORK_OWNER"
+printf '%s\n' 0 >"$CASE_DIR/count"
+resource_lock() { :; }
+resource_unlock() { :; }
+owner_relation() {
+	OWNER_RELATION=unknown
+	[ -s "$1" ] || return 0
+	IFS= read -r OWNER_TOKEN <"$1" || return 0
+	if [ "$OWNER_TOKEN" = "$SESSION_TOKEN" ]; then
+		OWNER_RELATION=ours
+	else
+		OWNER_RELATION=transferred
+	fi
+}
+publish_runner_state() { :; }
+run_network_helper() {
+	COUNT=$(cat "$CASE_DIR/count")
+	COUNT=$((COUNT + 1))
+	printf '%s\n' "$COUNT" >"$CASE_DIR/count"
+	[ "$COUNT" -ge 2 ] || return 7
+}
+if stop_portmaster_network >"$CASE_DIR/first.log" 2>&1; then
+	printf '%s\n' 'partial network stop unexpectedly succeeded' >&2
+	exit 1
+else
+	FIRST_STATUS=$?
+fi
+[ "$FIRST_STATUS" -eq 7 ]
+[ "$PORTMASTER_NETWORK" -eq 1 ]
+[ "$(cat "$NETWORK_OWNER")" = "$SESSION_TOKEN" ]
+grep -Fq 'Bird portmaster network stop status=7' "$CASE_DIR/first.log"
+if ! stop_portmaster_network >"$CASE_DIR/second.log" 2>&1; then
+	printf '%s\n' 'retry after confirmed stop failed' >&2
+	exit 1
+fi
+[ "$PORTMASTER_NETWORK" -eq 0 ]
+[ ! -e "$NETWORK_OWNER" ]
+grep -Fq 'Bird portmaster network stop status=ok' "$CASE_DIR/second.log"
+EOF
+chmod 0755 "$TMP/network-stop-retry-harness.sh"
+NETWORK_STOP_CASE=$TMP/network-stop-retry
+mkdir -p "$NETWORK_STOP_CASE"
+if ! "$TMP/network-stop-retry-harness.sh" "$NETWORK_STOP_BODY" \
+	"$NETWORK_STOP_CASE"; then
+	printf '%s\n' 'network stop retry fixture failed' >&2
+	for RETRY_LOG in "$NETWORK_STOP_CASE"/*.log; do
+		[ -e "$RETRY_LOG" ] && cat "$RETRY_LOG" >&2
+	done
+	exit 1
+fi
 
 BOOT_ID=11111111-2222-3333-4444-555555555555
 INVOCATION=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -1250,8 +1393,628 @@ grep -Fq 'scope_runner_pid=%s' "$RUNNER"
 grep -Fq 'scope_runner_start_ticks=%s' "$RUNNER"
 grep -Fq 'if ! : >"$SCOPE_START_GATE"; then' "$RUNNER"
 grep -Fq 'BIRD_STABLE_NOT_FOUND_COUNT=' "$RUNNER"
-grep -Fq '"$NETWORK" start 8>&- 9>&-' "$RUNNER"
+grep -Fq 'run_network_helper "$NETWORK_START_MODE"' "$RUNNER"
 grep -Fq '"$NETWORK_HELPER" stop 8>&- 9>&-' "$RUNNER"
+grep -Fq 'Bird portmaster prepare start' "$RUNNER"
+grep -Fq 'Bird portmaster prepare status=' "$RUNNER"
+grep -Fq 'Bird portmaster network-start status=' "$RUNNER"
+grep -Fq 'Bird portmaster launch start' "$RUNNER"
+grep -Fq 'Bird portmaster launch status=' "$RUNNER"
+grep -Fq 'Bird portmaster network start mode=' "$RUNNER"
+grep -Fq 'Bird portmaster network owner relation=' "$RUNNER"
+grep -Fq 'Bird network request flag present before start' "$RUNNER"
+grep -Fq 'Bird network request flag absent before stop' "$RUNNER"
+grep -Fq 'Bird portmaster network stop status=' "$RUNNER"
+grep -Fq 'network_unit_summary() {' \
+	"$ROOT/kernel/rocknix/stock-root/bird-network.sh"
+grep -Fq 'Bird network services active=' \
+	"$ROOT/kernel/rocknix/stock-root/bird-network.sh"
+grep -Fq 'Bird network step=systemctl-start-systemd-rfkill status=' \
+	"$ROOT/kernel/rocknix/stock-root/bird-network.sh"
+grep -Fq 'Bird network step=systemctl-start-networkmanager status=' \
+	"$ROOT/kernel/rocknix/stock-root/bird-network.sh"
+grep -Fq 'Bird network step=nm-online status=' \
+	"$ROOT/kernel/rocknix/stock-root/bird-network.sh"
+grep -Fq 'Bird network step=systemctl-stop-network-stack status=' \
+	"$ROOT/kernel/rocknix/stock-root/bird-network.sh"
+grep -Fq 'shareability=private-raw' "$RUNNER"
+if grep -Eq -- '--rocknix|start_es[.]sh|start-interactive|stock_rocknix_diagnostics|write_shareable_stock_diagnostics' \
+	"$RUNNER"; then
+	printf '%s\n' 'temporary stock frontend path remained in content runner' >&2
+	exit 1
+fi
+
+# Execute the installed network helper against fixed command fixtures. This
+# covers strict direct readiness and a partial stop whose request survives for
+# a safe retry.
+NETWORK_SCRIPT=$ROOT/kernel/rocknix/stock-root/bird-network.sh
+NETWORK_FIXTURE=$TMP/network-fixture
+mkdir -p "$NETWORK_FIXTURE/bin"
+cat >"$NETWORK_FIXTURE/bin/systemctl" <<'EOF'
+#!/bin/sh
+set -eu
+MODE=$BIRD_NETWORK_TEST_MODE
+STATE=$BIRD_NETWORK_TEST_STATE
+case "$1" in
+	start|stop) exit 0 ;;
+	is-active)
+		shift
+		STATUS=0
+		for UNIT in "$@"; do
+			UNIT_STATE=active
+			case "$MODE:$UNIT" in
+				manager-down:NetworkManager.service) UNIT_STATE=inactive ;;
+				stop-partial:*)
+					ATTEMPT=$(cat "$STATE/attempt" 2>/dev/null || printf 0)
+					if [ "$ATTEMPT" -ge 2 ]; then
+						UNIT_STATE=inactive
+					fi
+					;;
+			esac
+			printf '%s\n' "$UNIT_STATE"
+			[ "$UNIT_STATE" = active ] || STATUS=3
+		done
+		exit "$STATUS"
+		;;
+	*) exit 1 ;;
+esac
+EOF
+cat >"$NETWORK_FIXTURE/bin/nmcli" <<'EOF'
+#!/bin/sh
+set -eu
+trap 'exit 143' TERM
+[ "$BIRD_NETWORK_TEST_MODE" != hung-nmcli ] || sleep 20
+case " $* " in
+	*" connection show "*) printf '%s\n' 'saved-profile:wifi' ;;
+	*" connection up "*)
+		[ "$BIRD_NETWORK_TEST_MODE" != direct-activation-fail ]
+		;;
+	*) : ;;
+esac
+EOF
+cat >"$NETWORK_FIXTURE/bin/nm-online" <<'EOF'
+#!/bin/sh
+set -eu
+[ "$BIRD_NETWORK_TEST_MODE" != direct-offline ]
+EOF
+cat >"$NETWORK_FIXTURE/bin/iwctl" <<'EOF'
+#!/bin/sh
+printf '%s\n' wlan0
+EOF
+cat >"$NETWORK_FIXTURE/bin/rfkill" <<'EOF'
+#!/bin/sh
+set -eu
+STATE=$BIRD_NETWORK_TEST_STATE
+case "$1" in
+	block)
+		ATTEMPT=$(cat "$STATE/attempt" 2>/dev/null || printf 0)
+		printf '%s\n' $((ATTEMPT + 1)) >"$STATE/attempt"
+		;;
+	list)
+		ATTEMPT=$(cat "$STATE/attempt" 2>/dev/null || printf 0)
+		printf '%s\n' '0: phy0: Wireless LAN'
+		if [ "$BIRD_NETWORK_TEST_MODE" = stop-partial ] && \
+			[ "$ATTEMPT" -lt 2 ]; then
+			printf '%s\n' 'Soft blocked: no'
+		else
+			printf '%s\n' 'Soft blocked: yes'
+		fi
+		;;
+	unblock) : ;;
+	*) exit 1 ;;
+esac
+EOF
+cat >"$NETWORK_FIXTURE/bin/ip" <<'EOF'
+#!/bin/sh
+printf '%s\n' 'default dev wlan0'
+EOF
+cat >"$NETWORK_FIXTURE/bin/journalctl" <<'EOF'
+#!/bin/sh
+printf '%s\n' 'bounded journal fixture'
+EOF
+chmod 0755 "$NETWORK_FIXTURE/bin"/*
+
+run_network_fixture() {
+	NETWORK_CASE_MODE=$1
+	NETWORK_CASE_COMMAND=$2
+	NETWORK_EXPECTED_STATUS=$3
+	NETWORK_CASE=$NETWORK_FIXTURE/$NETWORK_CASE_MODE-$NETWORK_CASE_COMMAND
+	mkdir -p "$NETWORK_CASE/state" "$NETWORK_CASE/sys-net"
+	printf '%s\n' '1.00 0.00' >"$NETWORK_CASE/uptime"
+	[ "$NETWORK_CASE_MODE" = no-device ] || mkdir -p "$NETWORK_CASE/sys-net/wlan0"
+	NETWORK_CASE_STATUS=0
+	"$TIMEOUT_PROGRAM" 5s env \
+		BIRD_NETWORK_TEST_MODE="$NETWORK_CASE_MODE" \
+		BIRD_NETWORK_TEST_STATE="$NETWORK_CASE/state" \
+		BIRD_NETWORK_FLAG="$NETWORK_CASE/network-request" \
+		BIRD_NETWORK_LOG="$NETWORK_CASE/network.log" \
+		BIRD_UPTIME_PATH="$NETWORK_CASE/uptime" \
+		BIRD_SYS_CLASS_NET="$NETWORK_CASE/sys-net" \
+		BIRD_TIMEOUT_PROGRAM="$TIMEOUT_PROGRAM" \
+		BIRD_SYSTEMCTL_PROGRAM="$NETWORK_FIXTURE/bin/systemctl" \
+		BIRD_NMCLI_PROGRAM="$NETWORK_FIXTURE/bin/nmcli" \
+		BIRD_NM_ONLINE_PROGRAM="$NETWORK_FIXTURE/bin/nm-online" \
+		BIRD_IWCTL_PROGRAM="$NETWORK_FIXTURE/bin/iwctl" \
+		BIRD_RFKILL_PROGRAM="$NETWORK_FIXTURE/bin/rfkill" \
+		BIRD_IP_PROGRAM="$NETWORK_FIXTURE/bin/ip" \
+		BIRD_JOURNALCTL_PROGRAM="$NETWORK_FIXTURE/bin/journalctl" \
+		BIRD_LS_PROGRAM=/bin/ls BIRD_HEAD_PROGRAM=/usr/bin/head \
+		BIRD_USLEEP_PROGRAM=/usr/bin/true \
+		"$NETWORK_SCRIPT" "$NETWORK_CASE_COMMAND" || NETWORK_CASE_STATUS=$?
+	[ "$NETWORK_CASE_STATUS" -eq "$NETWORK_EXPECTED_STATUS" ] || {
+		printf 'network fixture %s/%s status=%s expected=%s\n' \
+			"$NETWORK_CASE_MODE" "$NETWORK_CASE_COMMAND" \
+			"$NETWORK_CASE_STATUS" "$NETWORK_EXPECTED_STATUS" >&2
+		cat "$NETWORK_CASE/network.log" >&2
+		exit 1
+	}
+}
+
+run_network_fixture ready start 0
+run_network_fixture direct-offline start 1
+grep -Fq 'request readiness=degraded mode=start' \
+	"$NETWORK_FIXTURE/direct-offline-start/network.log"
+
+STOP_RETRY_CASE=$NETWORK_FIXTURE/stop-partial-stop
+mkdir -p "$STOP_RETRY_CASE/state" "$STOP_RETRY_CASE/sys-net/wlan0"
+: >"$STOP_RETRY_CASE/network-request"
+run_network_fixture stop-partial stop 1
+[ -e "$STOP_RETRY_CASE/network-request" ]
+grep -Fq 'release unresolved request=retained' "$STOP_RETRY_CASE/network.log"
+run_network_fixture stop-partial stop 0
+[ ! -e "$STOP_RETRY_CASE/network-request" ]
+grep -Fq 'stop confirmation units=1 radio=1' "$STOP_RETRY_CASE/network.log"
+grep -Fq 'release ready request=removed' "$STOP_RETRY_CASE/network.log"
+
+# Exercise the active run-content deadline and provider gating, rather than
+# relying only on source ordering. A helper ignoring TERM is killed within the
+# direct bound, and PortMaster never starts after readiness failure.
+NETWORK_BOUND_BODY=$TMP/network-bound-function.sh
+python3 - "$RUNNER" "$NETWORK_BOUND_BODY" <<'PY'
+from pathlib import Path
+import sys
+
+source = Path(sys.argv[1]).read_text()
+start = source.index("run_network_helper() {")
+end = source.index("\n}\n\nstart_portmaster_network() {", start) + 2
+Path(sys.argv[2]).write_text(source[start:end] + "\n")
+PY
+sh -n "$NETWORK_BOUND_BODY"
+NETWORK_BOUND_CASE=$TMP/network-hard-bound
+mkdir -p "$NETWORK_BOUND_CASE"
+cat >"$NETWORK_BOUND_CASE/hung-helper" <<'EOF'
+#!/bin/sh
+trap 'exit 143' TERM
+sleep 20
+EOF
+chmod 0755 "$NETWORK_BOUND_CASE/hung-helper"
+cat >"$NETWORK_BOUND_CASE/harness.sh" <<'EOF'
+#!/bin/sh
+set -eu
+. "$1"
+TIMEOUT_PROGRAM=$2
+NETWORK=$3
+NETWORK_DIRECT_BOUND=0.2s
+NETWORK_DIRECT_HARD_BOUND=1.2s
+NETWORK_STOP_BOUND=2s
+NETWORK_STOP_HARD_BOUND=3s
+if run_network_helper start; then
+	printf '%s\n' 'hung direct helper unexpectedly succeeded' >&2
+	exit 1
+else
+	STATUS=$?
+fi
+[ "$STATUS" -eq 124 ]
+[ "$NETWORK_HELPER_HARD_BOUND" = 1.2s ]
+EOF
+chmod 0755 "$NETWORK_BOUND_CASE/harness.sh"
+"$TIMEOUT_PROGRAM" 3s "$NETWORK_BOUND_CASE/harness.sh" \
+	"$NETWORK_BOUND_BODY" "$TIMEOUT_PROGRAM" "$NETWORK_BOUND_CASE/hung-helper"
+
+RUN_SELECTED_BODY=$TMP/run-selected-function.sh
+python3 - "$RUNNER" "$RUN_SELECTED_BODY" <<'PY'
+from pathlib import Path
+import sys
+
+source = Path(sys.argv[1]).read_text()
+start = source.index("run_selected() {")
+end = source.index("\n}\n\npublish_runner_state() {", start) + 2
+Path(sys.argv[2]).write_text(source[start:end] + "\n")
+PY
+bash -n "$RUN_SELECTED_BODY"
+cat >"$TMP/run-selected-network-harness.sh" <<'EOF'
+#!/bin/bash
+set -eu
+. "$1"
+MODE=$2
+CASE_DIR=$3
+TIMEOUT_PROGRAM=$4
+PORT_PREP=/usr/bin/true
+cut() { printf '%s\n' 1.00; }
+start_portmaster_network() {
+	[ "$MODE" != direct-fail ] || return 7
+}
+prepare_portmaster_python_cache() { :; }
+run_managed() {
+	printf '%s\n' frontend >>"$CASE_DIR/events"
+	return 0
+}
+: >"$CASE_DIR/events"
+SESSION_MODE=portmaster
+if run_selected >"$CASE_DIR/output" 2>&1; then
+	printf '%s\n' 'direct readiness failure launched provider' >&2
+	exit 1
+else
+	STATUS=$?
+fi
+[ "$STATUS" -eq 7 ]
+[ ! -s "$CASE_DIR/events" ]
+EOF
+chmod 0755 "$TMP/run-selected-network-harness.sh"
+RUN_SELECTED_CASE=$TMP/run-selected-direct-fail
+mkdir -p "$RUN_SELECTED_CASE"
+"$TMP/run-selected-network-harness.sh" "$RUN_SELECTED_BODY" \
+	direct-fail "$RUN_SELECTED_CASE" "$TIMEOUT_PROGRAM"
+
+# Kind 7 keeps the downloaded PortMaster launcher, its archive and the selected
+# ebook immutable. Only a session-specific /run copy is transformed, and the
+# transform accepts exactly the audited upstream extraction block and launch
+# line. A Bird-owned atomic completion record plus the multi-file completeness
+# check safely resumes a partial first unzip.
+grep -Fq \
+	'KOREADER_ARCHIVE_SHA=be706d106d80063ec7471249011da6ee483ac18b77adb8d61571f272c88d3a57' \
+	"$RUNNER"
+KOREADER_FUNCTIONS=$TMP/koreader-functions.sh
+python3 - "$RUNNER" "$KOREADER_FUNCTIONS" <<'PY'
+from pathlib import Path
+import sys
+
+source = Path(sys.argv[1]).read_text()
+start = source.index("remove_koreader_port_script() {")
+end = source.index("\n\nrun_selected() {", start)
+Path(sys.argv[2]).write_text(source[start:end] + "\n")
+PY
+bash -n "$KOREADER_FUNCTIONS"
+KOREADER_CASE=$TMP/koreader-transform
+KOREADER_APP=$KOREADER_CASE/app
+KOREADER_SOURCE=$KOREADER_CASE/KOReader.sh
+KOREADER_SOURCE_REFERENCE=$KOREADER_CASE/KOReader.reference
+KOREADER_ARCHIVE_REFERENCE=$KOREADER_CASE/koreader.reference.zip
+KOREADER_SCRIPT=$KOREADER_CASE/run/KOReader-session.sh
+KOREADER_TEMP=$KOREADER_SCRIPT.tmp
+mkdir -p "$KOREADER_APP/koreader" "$KOREADER_CASE/bin"
+cat >"$KOREADER_SOURCE" <<'EOF'
+#!/bin/bash
+GAMEDIR="$BIRD_TEST_GAMEDIR/"
+cd "$GAMEDIR"
+ZIPFILE="koreader.zip"
+TARGET_DIR="./koreader"
+
+if [ -f "$ZIPFILE" ]; then
+    echo "Unzipping $ZIPFILE to $TARGET_DIR..."
+    unzip "$ZIPFILE" -d "$TARGET_DIR"
+elif [ -f "$GAMEDIR/koreader/luajit" ]; then
+    echo "ZIP IS ALREADY EXTRACTED"
+    rm $ZIPFILE
+else
+    echo "File $ZIPFILE does not exist 😢"
+fi
+
+cd koreader
+LD_PRELOAD=$GAMEDIR/libcrusty.so CRUSTY_BLOCK_INPUT=1 ./luajit reader.lua ../books
+EOF
+printf '%s\n' archive-must-remain >"$KOREADER_APP/koreader.zip"
+cp "$KOREADER_SOURCE" "$KOREADER_SOURCE_REFERENCE"
+cp "$KOREADER_APP/koreader.zip" "$KOREADER_ARCHIVE_REFERENCE"
+cat >"$KOREADER_CASE/bin/unzip" <<'EOF'
+#!/bin/sh
+set -eu
+[ "$1" = -o ]
+[ "$2" = koreader.zip ]
+[ "$3" = -d ]
+[ "$4" = ./koreader ]
+printf '%s\n' "$*" >>"$BIRD_TEST_UNZIP_LOG"
+TARGET=$BIRD_TEST_GAMEDIR/koreader
+mkdir -p "$TARGET/frontend/apps/reader" "$TARGET/libs"
+: >"$TARGET/reader.lua"
+: >"$TARGET/frontend/apps/reader/readerui.lua"
+: >"$TARGET/libs/libkoreader-cre.so"
+: >"$TARGET/libs/libwrap-mupdf.so"
+: >"$TARGET/defaults.custom.lua"
+cat >"$TARGET/luajit" <<'SCRIPT'
+#!/bin/sh
+printf '%s\n' "$@" >"$BIRD_TEST_LUA_ARGS"
+printf '%s\n' "$BIRD_EBOOK_PATH" >"$BIRD_TEST_LUA_PATH"
+SCRIPT
+chmod 0755 "$TARGET/luajit"
+exit "${BIRD_TEST_UNZIP_STATUS:-0}"
+EOF
+chmod 0755 "$KOREADER_CASE/bin/unzip"
+
+. "$KOREADER_FUNCTIONS"
+KOREADER_PORT_SOURCE=$KOREADER_SOURCE
+KOREADER_SHA256_PROGRAM=$(command -v sha256sum)
+KOREADER_ARCHIVE_SHA=$(
+	"$KOREADER_SHA256_PROGRAM" "$KOREADER_APP/koreader.zip" | awk '{print $1}'
+)
+KOREADER_EXTRACTION_STATE_DIR=$KOREADER_CASE/extraction-state
+KOREADER_PORT_SOURCE_SHA=$(
+	"$KOREADER_SHA256_PROGRAM" "$KOREADER_SOURCE" | awk '{print $1}'
+)
+KOREADER_PORT_SCRIPT=$KOREADER_SCRIPT
+KOREADER_PORT_TEMP=$KOREADER_TEMP
+prepare_koreader_port_script
+[ -f "$KOREADER_SCRIPT" ]
+[ ! -e "$KOREADER_TEMP" ]
+bash -n "$KOREADER_SCRIPT"
+cmp "$KOREADER_SOURCE" "$KOREADER_SOURCE_REFERENCE"
+cmp "$KOREADER_APP/koreader.zip" "$KOREADER_ARCHIVE_REFERENCE"
+grep -Fq 'unzip -o "$ZIPFILE" -d "$TARGET_DIR" || exit 1' \
+	"$KOREADER_SCRIPT"
+grep -Fq './luajit reader.lua "$BIRD_EBOOK_PATH"' "$KOREADER_SCRIPT"
+grep -Fq "BIRD_KOREADER_ARCHIVE_SHA=\"$KOREADER_ARCHIVE_SHA\"" \
+	"$KOREADER_SCRIPT"
+if grep -Fq 'rm $ZIPFILE' "$KOREADER_SCRIPT"; then
+	printf '%s\n' 'volatile KOReader wrapper still deletes its archive' >&2
+	exit 1
+fi
+
+KOREADER_EBOOK="$KOREADER_CASE/Book's exact title.epub"
+KOREADER_EBOOK_REFERENCE=$KOREADER_CASE/ebook.reference
+printf '%s\n' 'selected ebook must remain byte-identical' >"$KOREADER_EBOOK"
+cp "$KOREADER_EBOOK" "$KOREADER_EBOOK_REFERENCE"
+KOREADER_COMPLETE=$KOREADER_EXTRACTION_STATE_DIR/$KOREADER_ARCHIVE_SHA.complete
+KOREADER_COMPLETE_TEMP=$KOREADER_COMPLETE.tmp
+for KOREADER_RUN in first complete; do
+	PATH="$KOREADER_CASE/bin:$PATH" \
+		BIRD_TEST_GAMEDIR="$KOREADER_APP" \
+		BIRD_TEST_UNZIP_LOG="$KOREADER_CASE/unzip.log" \
+		BIRD_TEST_LUA_ARGS="$KOREADER_CASE/lua.args" \
+		BIRD_TEST_LUA_PATH="$KOREADER_CASE/lua.path" \
+		BIRD_EBOOK_PATH="$KOREADER_EBOOK" \
+		"$KOREADER_SCRIPT" >/dev/null 2>&1
+done
+[ "$(wc -l <"$KOREADER_CASE/unzip.log" | tr -d ' ')" -eq 1 ]
+[ "$(cat "$KOREADER_COMPLETE")" = "$KOREADER_ARCHIVE_SHA" ]
+[ ! -e "$KOREADER_COMPLETE_TEMP" ]
+[ "$(sed -n '1p' "$KOREADER_CASE/lua.args")" = reader.lua ]
+[ "$(sed -n '2p' "$KOREADER_CASE/lua.args")" = "$KOREADER_EBOOK" ]
+[ "$(cat "$KOREADER_CASE/lua.path")" = "$KOREADER_EBOOK" ]
+
+# A missing late sentinel models power loss after luajit was written. The next
+# invocation must rerun overwrite extraction once and then open the same path.
+rm -f "$KOREADER_APP/koreader/reader.lua"
+PATH="$KOREADER_CASE/bin:$PATH" \
+	BIRD_TEST_GAMEDIR="$KOREADER_APP" \
+	BIRD_TEST_UNZIP_LOG="$KOREADER_CASE/unzip.log" \
+	BIRD_TEST_LUA_ARGS="$KOREADER_CASE/lua.args" \
+	BIRD_TEST_LUA_PATH="$KOREADER_CASE/lua.path" \
+	BIRD_EBOOK_PATH="$KOREADER_EBOOK" \
+	"$KOREADER_SCRIPT" >/dev/null 2>&1
+[ "$(wc -l <"$KOREADER_CASE/unzip.log" | tr -d ' ')" -eq 2 ]
+[ "$(cat "$KOREADER_COMPLETE")" = "$KOREADER_ARCHIVE_SHA" ]
+cmp "$KOREADER_SOURCE" "$KOREADER_SOURCE_REFERENCE"
+cmp "$KOREADER_APP/koreader.zip" "$KOREADER_ARCHIVE_REFERENCE"
+cmp "$KOREADER_EBOOK" "$KOREADER_EBOOK_REFERENCE"
+
+# A failed unzip may have written every sentinel. Because it cannot publish
+# the atomic completion record, the next invocation must still unzip again.
+rm -f "$KOREADER_COMPLETE" "$KOREADER_COMPLETE_TEMP" \
+	"$KOREADER_CASE/lua.args" "$KOREADER_CASE/lua.path"
+KOREADER_UNZIP_BEFORE=$(wc -l <"$KOREADER_CASE/unzip.log" | tr -d ' ')
+if PATH="$KOREADER_CASE/bin:$PATH" \
+	BIRD_TEST_GAMEDIR="$KOREADER_APP" \
+	BIRD_TEST_UNZIP_LOG="$KOREADER_CASE/unzip.log" \
+	BIRD_TEST_UNZIP_STATUS=23 \
+	BIRD_TEST_LUA_ARGS="$KOREADER_CASE/lua.args" \
+	BIRD_TEST_LUA_PATH="$KOREADER_CASE/lua.path" \
+	BIRD_EBOOK_PATH="$KOREADER_EBOOK" \
+	"$KOREADER_SCRIPT" >/dev/null 2>&1; then
+	printf '%s\n' 'failed KOReader unzip unexpectedly launched the reader' >&2
+	exit 1
+fi
+[ "$(wc -l <"$KOREADER_CASE/unzip.log" | tr -d ' ')" -eq \
+	$((KOREADER_UNZIP_BEFORE + 1)) ]
+for KOREADER_REQUIRED in luajit reader.lua \
+	frontend/apps/reader/readerui.lua libs/libkoreader-cre.so \
+	libs/libwrap-mupdf.so defaults.custom.lua; do
+	[ -f "$KOREADER_APP/koreader/$KOREADER_REQUIRED" ]
+done
+[ ! -e "$KOREADER_COMPLETE" ]
+[ ! -e "$KOREADER_COMPLETE_TEMP" ]
+[ ! -e "$KOREADER_CASE/lua.args" ]
+cmp "$KOREADER_SOURCE" "$KOREADER_SOURCE_REFERENCE"
+cmp "$KOREADER_APP/koreader.zip" "$KOREADER_ARCHIVE_REFERENCE"
+cmp "$KOREADER_EBOOK" "$KOREADER_EBOOK_REFERENCE"
+
+PATH="$KOREADER_CASE/bin:$PATH" \
+	BIRD_TEST_GAMEDIR="$KOREADER_APP" \
+	BIRD_TEST_UNZIP_LOG="$KOREADER_CASE/unzip.log" \
+	BIRD_TEST_LUA_ARGS="$KOREADER_CASE/lua.args" \
+	BIRD_TEST_LUA_PATH="$KOREADER_CASE/lua.path" \
+	BIRD_EBOOK_PATH="$KOREADER_EBOOK" \
+	"$KOREADER_SCRIPT" >/dev/null 2>&1
+[ "$(wc -l <"$KOREADER_CASE/unzip.log" | tr -d ' ')" -eq \
+	$((KOREADER_UNZIP_BEFORE + 2)) ]
+[ "$(cat "$KOREADER_COMPLETE")" = "$KOREADER_ARCHIVE_SHA" ]
+[ "$(cat "$KOREADER_CASE/lua.path")" = "$KOREADER_EBOOK" ]
+cmp "$KOREADER_SOURCE" "$KOREADER_SOURCE_REFERENCE"
+cmp "$KOREADER_APP/koreader.zip" "$KOREADER_ARCHIVE_REFERENCE"
+cmp "$KOREADER_EBOOK" "$KOREADER_EBOOK_REFERENCE"
+
+# Extraction also fails before unzip when the archive does not match the
+# pinned identity. This deliberately corrupts and restores only the fixture.
+rm -f "$KOREADER_COMPLETE"
+printf '%s\n' tampered >>"$KOREADER_APP/koreader.zip"
+cp "$KOREADER_APP/koreader.zip" "$KOREADER_CASE/koreader.tampered.reference"
+KOREADER_UNZIP_BEFORE=$(wc -l <"$KOREADER_CASE/unzip.log" | tr -d ' ')
+if PATH="$KOREADER_CASE/bin:$PATH" \
+	BIRD_TEST_GAMEDIR="$KOREADER_APP" \
+	BIRD_TEST_UNZIP_LOG="$KOREADER_CASE/unzip.log" \
+	BIRD_TEST_LUA_ARGS="$KOREADER_CASE/lua.args" \
+	BIRD_TEST_LUA_PATH="$KOREADER_CASE/lua.path" \
+	BIRD_EBOOK_PATH="$KOREADER_EBOOK" \
+	"$KOREADER_SCRIPT" >/dev/null 2>&1; then
+	printf '%s\n' 'mismatched KOReader archive unexpectedly accepted' >&2
+	exit 1
+fi
+[ "$(wc -l <"$KOREADER_CASE/unzip.log" | tr -d ' ')" -eq \
+	"$KOREADER_UNZIP_BEFORE" ]
+[ ! -e "$KOREADER_COMPLETE" ]
+cmp "$KOREADER_APP/koreader.zip" \
+	"$KOREADER_CASE/koreader.tampered.reference"
+cmp "$KOREADER_SOURCE" "$KOREADER_SOURCE_REFERENCE"
+cmp "$KOREADER_EBOOK" "$KOREADER_EBOOK_REFERENCE"
+cp "$KOREADER_ARCHIVE_REFERENCE" "$KOREADER_APP/koreader.zip"
+
+# Even a one-line upstream structural change refuses publication and removes
+# both possible volatile artifacts.
+sed 's/^    rm \$ZIPFILE$/    :/' "$KOREADER_SOURCE_REFERENCE" \
+	>"$KOREADER_CASE/KOReader.changed.sh"
+KOREADER_PORT_SOURCE=$KOREADER_CASE/KOReader.changed.sh
+KOREADER_PORT_SOURCE_SHA=$(
+	"$KOREADER_SHA256_PROGRAM" "$KOREADER_PORT_SOURCE" | awk '{print $1}'
+)
+if prepare_koreader_port_script; then
+	printf '%s\n' 'changed KOReader source unexpectedly transformed' >&2
+	exit 1
+fi
+[ ! -e "$KOREADER_SCRIPT" ]
+[ ! -e "$KOREADER_TEMP" ]
+KOREADER_PORT_SOURCE=$KOREADER_SOURCE
+KOREADER_PORT_SOURCE_SHA=$(
+	"$KOREADER_SHA256_PROGRAM" "$KOREADER_PORT_SOURCE" | awk '{print $1}'
+)
+prepare_koreader_port_script
+remove_koreader_port_script
+[ ! -e "$KOREADER_SCRIPT" ]
+[ ! -e "$KOREADER_TEMP" ]
+
+# Exercise the exact kind-7 run_selected contract independently of the
+# transform. EPUB/PDF paths are restricted to MEDIA/READ, the selected path is
+# one environment argument, networking is untouched, and the wrapper is
+# removed after both provider success and failure.
+cat >"$TMP/run-selected-koreader-harness.sh" <<'EOF'
+#!/bin/bash
+set -eu
+. "$1"
+CASE_DIR=$2
+SESSION_MODE=content
+KIND=7
+HOST_PATH='/mnt/mmc/MEDIA/READ/Book With Space.EPUB'
+CONTENT="$CASE_DIR/Book's exact title.epub"
+KOREADER_PORT_SCRIPT=$CASE_DIR/KOReader-session.sh
+KOREADER_PORT_TEMP=$KOREADER_PORT_SCRIPT.tmp
+PORT_PREP=$CASE_DIR/port-prep
+: >"$CONTENT"
+cat >"$PORT_PREP" <<'SCRIPT'
+#!/bin/sh
+printf '%s\n' port-prep >>"$BIRD_TEST_EVENTS"
+exit "${BIRD_TEST_PREP_STATUS:-0}"
+SCRIPT
+chmod 0755 "$PORT_PREP"
+prepare_koreader_port_script() {
+	printf '%s\n' wrapper-prepare >>"$CASE_DIR/events"
+	: >"$KOREADER_PORT_SCRIPT"
+}
+remove_koreader_port_script() {
+	printf '%s\n' wrapper-remove >>"$CASE_DIR/events"
+	rm -f "$KOREADER_PORT_SCRIPT" "$KOREADER_PORT_TEMP"
+}
+run_managed() {
+	printf '%s\n' managed >>"$CASE_DIR/events"
+	: >"$CASE_DIR/args"
+	for ARG in "$@"; do printf '%s\n' "$ARG" >>"$CASE_DIR/args"; done
+	return "${BIRD_TEST_RUN_STATUS:-0}"
+}
+start_portmaster_network() {
+	printf '%s\n' network-called >>"$CASE_DIR/events"
+	return 99
+}
+prepare_portmaster_python_cache() { :; }
+
+: >"$CASE_DIR/events"
+BIRD_TEST_EVENTS=$CASE_DIR/events run_selected
+[ ! -e "$KOREADER_PORT_SCRIPT" ]
+[ "$(sed -n '1p' "$CASE_DIR/args")" = env ]
+[ "$(sed -n '2p' "$CASE_DIR/args")" = "BIRD_EBOOK_PATH=$CONTENT" ]
+[ "$(sed -n '3p' "$CASE_DIR/args")" = /usr/bin/runemu.sh ]
+[ "$(sed -n '4p' "$CASE_DIR/args")" = "$KOREADER_PORT_SCRIPT" ]
+[ "$(sed -n '5p' "$CASE_DIR/args")" = -Pports ]
+[ "$(grep -c '^network-called$' "$CASE_DIR/events" || :)" -eq 0 ]
+[ "$(sed -n '1p' "$CASE_DIR/events")" = port-prep ]
+[ "$(sed -n '2p' "$CASE_DIR/events")" = wrapper-prepare ]
+[ "$(sed -n '3p' "$CASE_DIR/events")" = managed ]
+[ "$(sed -n '4p' "$CASE_DIR/events")" = wrapper-remove ]
+
+: >"$CASE_DIR/events"
+if BIRD_TEST_EVENTS=$CASE_DIR/events BIRD_TEST_RUN_STATUS=7 run_selected; then
+	printf '%s\n' 'failed KOReader provider unexpectedly succeeded' >&2
+	exit 1
+else
+	STATUS=$?
+fi
+[ "$STATUS" -eq 7 ]
+[ ! -e "$KOREADER_PORT_SCRIPT" ]
+grep -q '^wrapper-remove$' "$CASE_DIR/events"
+
+for INVALID_HOST in \
+	'/mnt/mmc/MEDIA/READ/not-a-book.txt' \
+	'/mnt/mmc/MEDIA/WATCH/not-a-book.epub'; do
+	HOST_PATH=$INVALID_HOST
+	: >"$CASE_DIR/events"
+	if BIRD_TEST_EVENTS=$CASE_DIR/events run_selected; then
+		printf 'invalid KOReader host path accepted: %s\n' "$INVALID_HOST" >&2
+		exit 1
+	fi
+	[ ! -s "$CASE_DIR/events" ]
+done
+EOF
+chmod 0755 "$TMP/run-selected-koreader-harness.sh"
+RUN_SELECTED_KOREADER_CASE=$TMP/run-selected-koreader
+mkdir -p "$RUN_SELECTED_KOREADER_CASE"
+"$TMP/run-selected-koreader-harness.sh" "$RUN_SELECTED_BODY" \
+	"$RUN_SELECTED_KOREADER_CASE"
+
+# Foreground signal/exit cleanup removes a prepared wrapper after the managed
+# scope is gone. The embedded guard test above covers the SIGKILL edge.
+KOREADER_CLEANUP_BODY=$TMP/koreader-cleanup-function.sh
+python3 - "$RUNNER" "$KOREADER_CLEANUP_BODY" <<'PY'
+from pathlib import Path
+import sys
+
+source = Path(sys.argv[1]).read_text()
+start = source.index("cleanup_runtime() {")
+end = source.index("\n\ncleanup_on_exit() {", start)
+Path(sys.argv[2]).write_text(source[start:end] + "\n")
+PY
+bash -n "$KOREADER_CLEANUP_BODY"
+cat >"$TMP/koreader-cleanup-harness.sh" <<'EOF'
+#!/bin/bash
+set -eu
+. "$1"
+. "$2"
+CASE_DIR=$3
+CLEANUP_STATE=not-started
+SCOPE_RUNNER_PID=
+SCOPE_RUNNER_START_TICKS=
+KOREADER_PORT_SCRIPT=$CASE_DIR/KOReader-cleanup.sh
+KOREADER_PORT_TEMP=$KOREADER_PORT_SCRIPT.tmp
+: >"$KOREADER_PORT_SCRIPT"
+: >"$KOREADER_PORT_TEMP"
+terminate_scope_until_gone() { :; }
+release_owned_resources_until_done() { :; }
+cleanup_runtime
+[ "$CLEANUP_STATE" = succeeded ]
+[ ! -e "$KOREADER_PORT_SCRIPT" ]
+[ ! -e "$KOREADER_PORT_TEMP" ]
+EOF
+chmod 0755 "$TMP/koreader-cleanup-harness.sh"
+KOREADER_CLEANUP_CASE=$TMP/koreader-cleanup
+mkdir -p "$KOREADER_CLEANUP_CASE"
+"$TMP/koreader-cleanup-harness.sh" "$KOREADER_FUNCTIONS" \
+	"$KOREADER_CLEANUP_BODY" "$KOREADER_CLEANUP_CASE"
+
 grep -Fq '8>&- 9>&- </dev/null >/dev/null 2>&1' "$RUNNER"
 grep -Fq '"$UNIT_NAME" 8>&- 9>&- 2>/dev/null' "$EXIT_HELPER"
 if grep -Fq 'systemctl start --wait "$SCOPE_UNIT"' "$RUNNER"; then
@@ -1292,6 +2055,39 @@ if BIRD_TEST_VALIDATE_HOST_PATH=1 BIRD_TEST_EXTRA_LINE=1 \
 	printf '%s\n' 'newline-extended request unexpectedly accepted' >&2
 	exit 1
 fi
+
+[ "$(BIRD_TEST_SESSION_MODE=1 BIRD_TEST_SESSION_REQUEST=--rocknix \
+	"$RUNNER")" = content ]
+[ "$(BIRD_TEST_SESSION_MODE=1 BIRD_TEST_SESSION_REQUEST=--portmaster \
+	"$RUNNER")" = portmaster ]
+[ "$(BIRD_TEST_SESSION_MODE=1 \
+	BIRD_TEST_SESSION_REQUEST=/run/muos/bird-launch-request "$RUNNER")" = \
+	content ]
+
+# Direct PortMaster must prepare its provider, require confirmed network
+# readiness and only then enter its managed foreground scope.
+python3 - "$RUNNER" <<'PY'
+from pathlib import Path
+import sys
+
+source = Path(sys.argv[1]).read_text()
+cache_start = source.index('prepare_portmaster_python_cache() {')
+cache_end = source.index('\n}\n\nrun_selected() {', cache_start)
+cache_helper = source[cache_start:cache_end]
+assert 'PORTMASTER_PYCACHE=/run/bird/portmaster-pycache' in cache_helper
+assert 'export PYTHONPYCACHEPREFIX="$PORTMASTER_PYCACHE"' in cache_helper
+assert 'export PYTHONDONTWRITEBYTECODE=1' in cache_helper
+assert source.count('prepare_portmaster_python_cache || return 1') == 3
+port_start = source.index('if [ "$SESSION_MODE" = portmaster ]; then')
+port_end = source.index('\n\tcase "$KIND" in', port_start)
+port_branch = source[port_start:port_end]
+prepare = port_branch.index('"$PORT_PREP"')
+cache_call = port_branch.index('prepare_portmaster_python_cache || return 1')
+direct_network = port_branch.index('start_portmaster_network start')
+readiness_gate = port_branch.index('[ "$PORTMASTER_NETWORK_STATUS" -eq 0 ]')
+portmaster = port_branch.index('/usr/bin/start_portmaster.sh')
+assert cache_call < prepare < direct_network < readiness_gate < portmaster
+PY
 
 REQUEST_CASE=$TMP/request-record
 printf '1\nsnes9x\nGame\n/mnt/mmc/ROMS/SNES/game.sfc\n' >"$REQUEST_CASE"

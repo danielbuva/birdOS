@@ -9,9 +9,16 @@ mount_part "$STORAGE_IMAGE" /storage "loop,rw,noatime" || {
 	return 1
 }
 
-mkdir -p /storage/bird-data /storage/roms /storage/.config/bird
-mount --move /birddata /storage/bird-data || {
-	error bird-data-move "Could not attach large Bird data volume"
+# Keep the owning p6 mount outside the loop filesystem that its image backs.
+# Only a bind alias lives below /storage, so shutdown can unmount the aliases,
+# then the loop, then p6 without a mount/backing-filesystem dependency cycle.
+mkdir -p /run/bird-data /storage/bird-data /storage/roms /storage/.config/bird
+mount --move /birddata /run/bird-data || {
+	error bird-data-move "Could not move large Bird data volume to its final mount"
+	return 1
+}
+mount --bind /run/bird-data /storage/bird-data || {
+	error bird-data-bind "Could not publish the large Bird data volume"
 	return 1
 }
 mount --bind /storage/bird-data/ROMS /storage/roms || {
@@ -29,12 +36,19 @@ mount --bind /storage/bird-data/MUOS/bios /storage/roms/bios || {
 # by its supervisor, content sessions and fixed hardware workers.
 for FILE in bird-launcher bird-pidwait bird-fixed-controls bird-powerstate \
 	bird-fixed-control-exit.sh bird-save-config.sh supervisor.sh run-content.sh prepare-ports.sh \
+		verify-portmaster-provider.sh portmaster-provider.manifest.tsv \
 		fixed-storage.sh first-frame-prep.sh capture-boot-state.sh \
 		bird-network.sh bird-suspend.sh bird-volume.sh bird-control-osd.sh; do
 	cp -f "/flash/bird/$FILE" "/storage/.config/bird/$FILE" || return 1
 done
 cp -f /flash/bird/bird-swap.conf /storage/.config/swap.conf || return 1
-chmod 0755 /storage/.config/bird/bird-launcher \
+
+# The exact initramfs BusyBox has cp but no chmod applet. SYSTEM is already
+# mounted at /sysroot before this hook runs, and its pinned BusyBox does provide
+# chmod. Use that exact applet so an existing ext4 destination with stale mode
+# bits is repaired deterministically instead of inheriting its previous mode.
+/sysroot/usr/bin/busybox chmod 0755 \
+	/storage/.config/bird/bird-launcher \
 	/storage/.config/bird/bird-pidwait \
 	/storage/.config/bird/bird-fixed-controls \
 	/storage/.config/bird/bird-powerstate \
@@ -46,10 +60,28 @@ chmod 0755 /storage/.config/bird/bird-launcher \
 	/storage/.config/bird/supervisor.sh \
 	/storage/.config/bird/run-content.sh \
 	/storage/.config/bird/prepare-ports.sh \
+	/storage/.config/bird/verify-portmaster-provider.sh \
 	/storage/.config/bird/fixed-storage.sh \
 	/storage/.config/bird/first-frame-prep.sh \
 	/storage/.config/bird/capture-boot-state.sh \
-	/storage/.config/bird/bird-network.sh
+	/storage/.config/bird/bird-network.sh || return 1
+/sysroot/usr/bin/busybox chmod 0644 \
+	/storage/.config/bird/portmaster-provider.manifest.tsv \
+	/storage/.config/swap.conf || return 1
+
+# Verify the capabilities consumed in final root after the mode transaction.
+for FILE in bird-launcher bird-pidwait bird-fixed-controls bird-powerstate \
+	bird-fixed-control-exit.sh bird-save-config.sh bird-suspend.sh bird-volume.sh \
+	bird-control-osd.sh supervisor.sh run-content.sh prepare-ports.sh \
+	verify-portmaster-provider.sh fixed-storage.sh first-frame-prep.sh \
+	capture-boot-state.sh bird-network.sh; do
+	[ -f "/storage/.config/bird/$FILE" ] && \
+		[ -x "/storage/.config/bird/$FILE" ] || return 1
+done
+[ -f /storage/.config/bird/portmaster-provider.manifest.tsv ] && \
+	[ -r /storage/.config/bird/portmaster-provider.manifest.tsv ] || return 1
+[ -f /storage/.config/swap.conf ] && \
+	[ -r /storage/.config/swap.conf ] || return 1
 
 # Replace the generic partition scanner with this device's fixed storage view.
 # Its original service name preserves ROCKNIX's ordering contract while doing

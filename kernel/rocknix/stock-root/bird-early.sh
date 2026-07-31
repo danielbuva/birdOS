@@ -26,6 +26,28 @@ log_leds() {
 	done
 }
 
+set_early_brightness() {
+	MAX=$($BUSYBOX cat "$BACKLIGHT/max_brightness")
+	RAW=$((5 * MAX / 100))
+	[ "$RAW" -lt 1 ] && RAW=1
+	# This panel cannot reliably leave a powered-off state at the retained
+	# five-percent level. Use the same measured ten-percent, 50 ms wake strike
+	# as resume, then restore the exact low boot level before the launcher draws.
+	STRIKE=$(((MAX * 10 + 50) / 100))
+	[ "$STRIKE" -lt 1 ] && STRIKE=1
+	if [ -w "$BACKLIGHT/bl_power" ]; then
+		printf '%s\n' 0 >"$BACKLIGHT/bl_power"
+	fi
+	if [ "$RAW" -lt "$STRIKE" ]; then
+		printf '%s\n' "$STRIKE" >"$BACKLIGHT/brightness"
+		printf 'early_brightness stage=wake-strike raw=%s max=%s\n' \
+			"$STRIKE" "$MAX"
+		$BUSYBOX usleep 50000
+	fi
+	printf '%s\n' "$RAW" >"$BACKLIGHT/brightness"
+	printf 'early_brightness stage=restored raw=%s max=%s\n' "$RAW" "$MAX"
+}
+
 case "${1:-}" in
 	start)
 		$BUSYBOX mkdir -p "$RUN"
@@ -49,11 +71,7 @@ case "${1:-}" in
 			while [ "$COUNT" -lt 500 ]; do
 				if [ -r "$BACKLIGHT/max_brightness" ] && \
 					[ -w "$BACKLIGHT/brightness" ]; then
-					MAX=$($BUSYBOX cat "$BACKLIGHT/max_brightness")
-					RAW=$((5 * MAX / 100))
-					[ "$RAW" -lt 1 ] && RAW=1
-					printf '%s\n' "$RAW" >"$BACKLIGHT/brightness"
-					printf 'early_brightness raw=%s max=%s\n' "$RAW" "$MAX"
+					set_early_brightness
 					break
 				fi
 				$BUSYBOX usleep 1000

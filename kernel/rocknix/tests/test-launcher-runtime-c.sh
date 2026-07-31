@@ -7,6 +7,9 @@ trap 'rm -rf "$TMP"' EXIT INT TERM HUP
 
 CC=${CC:-cc}
 
+python3 "$ROOT/firmware/generate-launcher-bootlogo.py" \
+	"$TMP/boot-frame.bmp" --xrgb-output "$TMP/boot-frame.xrgb" >/dev/null
+
 build_and_run() {
 	NAME=$1
 	shift
@@ -20,6 +23,13 @@ build_and_run() {
 build_and_run release
 build_and_run profile -DBIRD_PROFILE
 build_and_run deep -DBIRD_PROFILE_DEEP
+build_and_run boot-frame -DBIRD_PROFILE \
+	-DBIRD_REUSE_UBOOT_FRAME -DBIRD_BOOT_FRAME_MANIFEST_VERIFIED \
+	-DBIRD_STATIC_BASE_PATH=\"/flash/bird/launcher-base.xrgb\" \
+	-DBIRD_BOOT_FRAME_VISIBLE_HASH_A=0x849df1c7262d2e3eUL \
+	-DBIRD_BOOT_FRAME_VISIBLE_HASH_B=0x754469f5749caa71UL \
+	-DBIRD_BOOT_FRAME_ASSET_ID=0xfca1176e4247c5b3UL \
+	-DBIRD_TEST_BOOT_FRAME_XRGB=\"$TMP/boot-frame.xrgb\"
 
 if "$CC" -E -DBIRD_PROFILE_DEEP "$ROOT/launcher/bird-launcher.c" \
 		-o "$TMP/production-deep.i" 2>"$TMP/production-deep.err"; then
@@ -28,6 +38,18 @@ if "$CC" -E -DBIRD_PROFILE_DEEP "$ROOT/launcher/bird-launcher.c" \
 fi
 grep -Fq 'BIRD_PROFILE_DEEP is host-test-only' "$TMP/production-deep.err" || {
 	printf '%s\n' 'production deep-profile rejection was not explicit' >&2
+	exit 1
+}
+
+if "$CC" -E -DBIRD_REUSE_UBOOT_FRAME \
+	"$ROOT/launcher/bird-launcher.c" >"$TMP/unverified-boot-frame.out" \
+	2>"$TMP/unverified-boot-frame.err"; then
+	printf '%s\n' 'launcher accepted unverified U-Boot frame reuse' >&2
+	exit 1
+fi
+grep -Fq 'U-Boot frame reuse requires an active manifest-verified boot asset' \
+	"$TMP/unverified-boot-frame.err" || {
+	printf '%s\n' 'launcher U-Boot frame gate failed for the wrong reason' >&2
 	exit 1
 }
 

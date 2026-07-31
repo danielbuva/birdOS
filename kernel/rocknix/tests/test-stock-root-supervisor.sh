@@ -12,11 +12,16 @@ trap 'rm -rf "$TMP"' EXIT INT TERM HUP
 
 FUNCTIONS=$TMP/supervisor-functions.sh
 awk '
+	/^poweroff_client\(\) \{/ { emit = 1 }
 	/^reset_boot_attempts\(\) \{/ { emit = 1 }
 	/^wait_content_cleanup$/ { exit }
 	emit { print }
 ' "$SUPERVISOR" >"$FUNCTIONS"
 
+grep -q '^poweroff_client() {' "$FUNCTIONS"
+grep -q '^request_poweroff() {' "$FUNCTIONS"
+grep -q '^reboot_client() {' "$FUNCTIONS"
+grep -q '^request_reboot() {' "$FUNCTIONS"
 grep -q '^reset_boot_attempts() {' "$FUNCTIONS"
 grep -q '^mark_healthy() {' "$FUNCTIONS"
 grep -q '^classify_startup_failure() {' "$FUNCTIONS"
@@ -31,6 +36,7 @@ RELEASE_ID=v6.23
 ATTEMPTS=$STATE/releases/$RELEASE_ID/attempts
 ATTEMPTS_TMP=$ATTEMPTS.tmp.test
 FIRST_FRAME=$STATE/first-frame
+HANDOFF_ACTION=$STATE/handoff-action
 EARLY_LOG=$STATE/early.log
 EARLY_PID=$STATE/early.pid
 LOG_DIR=$STATE/log
@@ -42,6 +48,7 @@ PIDWAIT=$PIDWAIT_MISSING
 HEALTH_REASON=
 LAUNCHER_RESULT=0
 EARLY_LAUNCHER_PID=
+EARLY_HEALTH_COMMITTED=0
 MOCK_LAUNCHER_EXITED=0
 MOCK_LAUNCHER_PID=4242
 MOCK_LAUNCHER_EXE=/opt/bird/bird-launcher
@@ -148,10 +155,12 @@ sync() {
 
 reset_case() {
 	printf '%s\n' 2 >"$ATTEMPTS"
-	rm -f "$ATTEMPTS_TMP" "$FIRST_FRAME" "$SYNC_LOG" "$KILL_LOG"
+	rm -f "$ATTEMPTS_TMP" "$FIRST_FRAME" "$HANDOFF_ACTION" "$SYNC_LOG" \
+		"$KILL_LOG"
 	HEALTH_REASON=
 	EARLY_LAUNCHER_PID=
 	EARLY_ACCEPT_REASON=
+	EARLY_HEALTH_COMMITTED=0
 	MOCK_LAUNCHER_EXITED=0
 	MOCK_LAUNCHER_EXE=/opt/bird/bird-launcher
 	MOCK_EXIT_ON_CHECK=0
@@ -166,6 +175,137 @@ reset_case() {
 	SYNC_MODE=success
 	PIDWAIT=$PIDWAIT_MISSING
 }
+
+grep -Fq 'shutdown-$OLD_BOOT_ID.log' "$SUPERVISOR"
+grep -Fq ': >"$SHUTDOWN_LOG"' "$SUPERVISOR"
+
+# A launcher can publish a usable frame and a shutdown action, then exit before
+# the persistent-root supervisor exists. The two canonical artifacts together
+# clear the charged attempt before dispatch, without consuming the action.
+reset_case
+: >"$FIRST_FRAME"
+printf '11\n' >"$HANDOFF_ACTION"
+accept_completed_early_action
+[ "$(cat "$ATTEMPTS")" = 0 ]
+[ -s "$HANDOFF_ACTION" ]
+
+# Each half of that proof fails closed. A canonical action without the
+# interactive marker remains authoritative for dispatch but cannot clear boot
+# attempts; a marker plus malformed action is not accepted as boot health.
+reset_case
+printf '11\n' >"$HANDOFF_ACTION"
+accept_completed_early_action
+[ "$(cat "$ATTEMPTS")" = 2 ]
+[ -s "$HANDOFF_ACTION" ]
+
+reset_case
+: >"$FIRST_FRAME"
+printf '11\nextra\n' >"$HANDOFF_ACTION"
+accept_completed_early_action
+[ "$(cat "$ATTEMPTS")" = 2 ]
+[ -s "$HANDOFF_ACTION" ]
+
+# Exercise transaction order with isolated mocks: reset must finish before
+# dispatch. If reset fails, dispatch is skipped and the action remains intact
+# for the systemd retry.
+reset_case
+: >"$FIRST_FRAME"
+printf '11\n' >"$HANDOFF_ACTION"
+ORDER_LOG=$STATE/handoff-order.log
+rm -f "$ORDER_LOG"
+(
+	reset_boot_attempts() {
+		[ -s "$HANDOFF_ACTION" ]
+		printf '%s\n' 0 >"$ATTEMPTS"
+		printf '%s\n' reset >>"$ORDER_LOG"
+	}
+	request_poweroff() { printf '%s\n' poweroff >>"$ORDER_LOG"; exit 0; }
+	service_handoff_action
+)
+[ "$(tr '\n' ' ' <"$ORDER_LOG" | sed 's/ $//')" = 'reset poweroff' ]
+[ "$(cat "$ATTEMPTS")" = 0 ]
+[ ! -e "$HANDOFF_ACTION" ]
+
+# Quit/Reboot is an equally authoritative completed handoff. Boot health is
+# committed before the bounded reboot client is allowed to run.
+reset_case
+: >"$FIRST_FRAME"
+printf '14\n' >"$HANDOFF_ACTION"
+rm -f "$ORDER_LOG"
+(
+	reset_boot_attempts() {
+		[ -s "$HANDOFF_ACTION" ]
+		printf '%s\n' 0 >"$ATTEMPTS"
+		printf '%s\n' reset >>"$ORDER_LOG"
+	}
+	request_reboot() { printf '%s\n' reboot >>"$ORDER_LOG"; exit 0; }
+	service_handoff_action
+)
+[ "$(tr '\n' ' ' <"$ORDER_LOG" | sed 's/ $//')" = 'reset reboot' ]
+[ "$(cat "$ATTEMPTS")" = 0 ]
+[ ! -e "$HANDOFF_ACTION" ]
+
+# An older already-running launcher may still publish action 13. Compatibility
+# consumes it without starting content or a stock frontend; the current Home-B
+# path refreshes in-process and does not emit this handoff.
+reset_case
+: >"$FIRST_FRAME"
+printf '13\n' >"$HANDOFF_ACTION"
+rm -f "$ORDER_LOG"
+(
+	reset_boot_attempts() {
+		[ -s "$HANDOFF_ACTION" ]
+		printf '%s\n' 0 >"$ATTEMPTS"
+		printf '%s\n' reset >>"$ORDER_LOG"
+	}
+	run_content() { printf 'unexpected-content %s\n' "$*" >>"$ORDER_LOG"; }
+	service_handoff_action
+)
+[ "$(cat "$ORDER_LOG")" = reset ]
+[ "$(cat "$ATTEMPTS")" = 0 ]
+[ ! -e "$HANDOFF_ACTION" ]
+
+reset_case
+: >"$FIRST_FRAME"
+printf '12\n' >"$HANDOFF_ACTION"
+rm -f "$ORDER_LOG"
+if (
+	reset_boot_attempts() { printf '%s\n' reset >>"$ORDER_LOG"; return 1; }
+	dispatch_handoff_action() {
+		printf '%s\n' dispatch >>"$ORDER_LOG"
+		rm -f "$HANDOFF_ACTION"
+	}
+	service_handoff_action
+); then
+	printf '%s\n' 'failed completed-action reset reached dispatch' >&2
+	exit 1
+fi
+[ "$(cat "$ORDER_LOG")" = reset ]
+[ -s "$HANDOFF_ACTION" ]
+
+# The ordinary systemd request is bounded as a client operation. Acceptance
+# exits the supervisor; a client failure is logged and returns to the caller.
+reset_case
+SHUTDOWN_LOG=$STATE/shutdown.log
+BOOT_ID=deadbeef
+poweroff_client() { return 124; }
+set +e
+request_poweroff
+POWEROFF_STATUS=$?
+set -e
+[ "$POWEROFF_STATUS" -eq 124 ]
+grep -Fq 'Bird shutdown requested boot_id=deadbeef' "$SHUTDOWN_LOG"
+grep -Fq 'Bird shutdown dispatch failed boot_id=deadbeef exit=124' \
+	"$SHUTDOWN_LOG"
+poweroff_client() { return 0; }
+(request_poweroff)
+grep -Fq 'Bird shutdown dispatch ready boot_id=deadbeef' "$SHUTDOWN_LOG"
+grep -Fq 'systemctl --no-block poweroff' "$SUPERVISOR"
+grep -Fq 'systemctl --no-block reboot' "$SUPERVISOR"
+if grep -q 'systemctl .*--force.*poweroff' "$SUPERVISOR"; then
+	printf '%s\n' 'forced poweroff bypass returned' >&2
+	exit 1
+fi
 
 # A crash guard's atomic state is the foreground lease. A restarted supervisor
 # must remain in the gate until that state disappears, rather than repainting
@@ -459,13 +599,29 @@ GATE_LINE=$(grep -nF 'wait_content_cleanup' "$SUPERVISOR" | tail -n 1 | \
 	command cut -d: -f1)
 ACCEPT_LINE=$(grep -nF 'if accept_early_frame "$EARLY_LAUNCHER_PID"; then' \
 	"$SUPERVISOR" | command cut -d: -f1)
+HANDOFF_SERVICE_LINE=$(grep -nF 'if ! service_handoff_action; then' \
+	"$SUPERVISOR" | command cut -d: -f1)
+[ "$(grep -Fc 'if ! service_handoff_action; then' "$SUPERVISOR")" -eq 1 ]
 [ "$GATE_LINE" -lt "$LOAD_LINE" ]
 [ "$LOAD_LINE" -lt "$ACCEPT_LINE" ]
+[ "$ACCEPT_LINE" -lt "$HANDOFF_SERVICE_LINE" ]
+grep -Fq 'accept_completed_early_action || return 1' "$SUPERVISOR"
+grep -Fq 'dispatch_handoff_action' "$SUPERVISOR"
+grep -Fq 'completed early action not accepted; supervisor retry required' \
+	"$SUPERVISOR"
 grep -Fq '10) consume_handoff_action && run_content "$REQUEST" ;;' \
 	"$SUPERVISOR"
 grep -Fq '12) consume_handoff_action && run_content --portmaster ;;' \
 	"$SUPERVISOR"
+grep -Fq '13) consume_handoff_action ;;' "$SUPERVISOR"
+grep -Fq '14) consume_handoff_action && request_reboot ;;' "$SUPERVISOR"
+grep -Fq '10|11|12|13|14) return 0 ;;' "$SUPERVISOR"
+grep -Fq "printf 'bird launcher user-requested reload\\n'" "$SUPERVISOR"
 [ "$(grep -Fc '"$RUNNER" "$@"' "$SUPERVISOR")" -eq 1 ]
+if grep -Fq -- '--rocknix' "$SUPERVISOR"; then
+	printf '%s\n' 'temporary stock frontend dispatch remained in supervisor' >&2
+	exit 1
+fi
 grep -Fq '[ "$EARLY_ACCEPT_REASON" = first-frame-timeout ]' "$SUPERVISOR"
 grep -Fq 'retire_early_launcher "$EARLY_LAUNCHER_PID"' "$SUPERVISOR"
 grep -Fq 'if ! "$PIDWAIT" "$pid"; then' "$SUPERVISOR"

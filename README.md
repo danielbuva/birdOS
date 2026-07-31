@@ -20,7 +20,21 @@ must serve this one device and this one experience.
 deployment transaction, boot sequence, readiness contracts, runtime ownership
 and recovery semantics. In particular, `deploy-manifest.tsv` is the single
 source for both versioned staging and installed-tree verification; the launcher
-B button does not select the preserved boot fallback.
+B button does not select the preserved boot fallback. On the main page it
+refreshes birdOS in-process; it does not retire the early launcher or open the
+stock ROCKNIX frontend.
+
+The active launcher uses a Mister Menu ES-DE-inspired 720x480 presentation with
+a `HOME` rail, battery-only home top bar, nested breadcrumbs and a fixed opaque
+content panel. Its original pinned PNG is converted deterministically at build
+time into BMP and native XRGB assets; the launcher performs no runtime image
+decode or alpha blend and does not expose selectable rows before input opens.
+Final-root recovery always retains the exact 1,382,400-byte XRGB page. Until
+U-Boot frame reuse has an exact hardware-verified contract, the early overlay
+carries the same native fallback under a 786,432-byte compressed budget; the
+verified reuse mode omits that early duplicate and retains the 262,144-byte
+budget. The full contract is documented in
+[`launcher/README.md`](launcher/README.md).
 
 Use [`ROADMAP.md`](ROADMAP.md) for planned work and
 [`ROCKNIX_AUDIT.md`](ROCKNIX_AUDIT.md) for the retained-userspace audit.
@@ -56,6 +70,15 @@ a completed release. The
 command verifies the fixed removable-card identity, pinned inputs, toolchain,
 free space and generated canonical manifest before invoking the existing
 transactional updater.
+
+The same preflight accepts the installed PortMaster provider only when its
+managed files match the repository-pinned official `2026.07.28-1212` release.
+The upstream nested `pylibs.zip` may be absent after first use or present with
+its one exact recorded digest; an arbitrary replacement is rejected. Generated
+Python caches remain card data but are made inert by redirecting every
+PortMaster execution to a fresh `/run/bird` cache prefix with bytecode writes
+disabled. A legitimate later network update must be imported into a new exact
+manifest before the next birdOS deployment.
 
 The card keeps the selected complete release until its replacement is fully
 staged and verified. If `BIRD` needs staging space, the command may select one

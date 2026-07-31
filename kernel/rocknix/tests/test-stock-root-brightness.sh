@@ -6,6 +6,7 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../../.." && pwd)
 SOURCE=$ROOT/kernel/rocknix/stock-root/bird-suspend.sh
+EARLY_SOURCE=$ROOT/kernel/rocknix/stock-root/bird-early.sh
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/bird-brightness.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT INT TERM HUP
 
@@ -17,6 +18,49 @@ SETTLE=$TMP/settle.sh
 SETTLE_LOG=$TMP/settle.log
 mkdir -p "$BACKLIGHT"
 printf '2499\n' >"$BACKLIGHT/max_brightness"
+printf '4\n' >"$BACKLIGHT/bl_power"
+
+# Cold boot uses the same measured wake contract as resume: unblank, hold a
+# ten-percent strike for 50 ms, then restore the accepted five-percent level.
+EARLY_FUNCTION=$TMP/early-brightness-function.sh
+python3 - "$EARLY_SOURCE" "$EARLY_FUNCTION" <<'PY'
+from pathlib import Path
+import sys
+
+source = Path(sys.argv[1]).read_text()
+start = source.index("set_early_brightness() {")
+end = source.index("\n}\n\ncase ", start) + 2
+Path(sys.argv[2]).write_text(source[start:end] + "\n")
+PY
+sh -n "$EARLY_FUNCTION"
+EARLY_BUSYBOX=$TMP/early-busybox.sh
+EARLY_SETTLE_LOG=$TMP/early-settle.log
+cat >"$EARLY_BUSYBOX" <<'EOF'
+#!/bin/sh
+case "$1" in
+	cat) shift; exec cat "$@" ;;
+	usleep)
+		printf '%s:%s\n' "$2" "$(cat "$BIRD_TEST_BACKLIGHT/brightness")" \
+			>>"$BIRD_TEST_SETTLE_LOG"
+		;;
+	*) exit 1 ;;
+esac
+EOF
+chmod 0755 "$EARLY_BUSYBOX"
+(
+	. "$EARLY_FUNCTION"
+	BUSYBOX=$EARLY_BUSYBOX
+	BIRD_TEST_BACKLIGHT=$BACKLIGHT
+	BIRD_TEST_SETTLE_LOG=$EARLY_SETTLE_LOG
+	export BIRD_TEST_BACKLIGHT BIRD_TEST_SETTLE_LOG
+	set_early_brightness
+) >"$TMP/early.log"
+[ "$(cat "$BACKLIGHT/bl_power")" = 0 ]
+[ "$(cat "$BACKLIGHT/brightness")" = 124 ]
+[ "$(cat "$EARLY_SETTLE_LOG")" = 50000:250 ]
+grep -q 'stage=wake-strike raw=250 max=2499' "$TMP/early.log"
+grep -q 'stage=restored raw=124 max=2499' "$TMP/early.log"
+
 printf '0\n' >"$BACKLIGHT/bl_power"
 
 apply_suspend() {

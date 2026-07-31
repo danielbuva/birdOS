@@ -15,12 +15,78 @@ final-root supervisor adopts it, monitors child exit and first-frame readiness,
 and starts a replacement only when required. Content executes outside the
 launcher inside a separately supervised session boundary.
 
-On nested pages, B navigates back. On the main page, a dedicated user-reload
-result leaves and immediately restarts birdOS; it neither opens the ROCKNIX
-frontend, counts as a runtime failure nor selects the clean-root boot fallback.
-The active UI labels that action `B RELOAD`. Historical passages below that describe “B
-STOCK”, `S03birdlauncher`, muOS wrappers or stock
-frontend handoff do not define the active behavior.
+On nested pages, B navigates back. On the main page, B refreshes the current
+Bird frame in-process and never retires the initramfs framebuffer/input owner.
+It neither opens the ROCKNIX frontend, counts as a runtime failure nor selects
+the clean-root boot fallback. The active UI labels that action `B REFRESH`.
+Action 13 remains accepted only as a compatibility handoff from an older
+already-running launcher. Historical passages below that describe “B STOCK”,
+`S03birdlauncher`, muOS wrappers or stock frontend handoff do not define the
+active behavior.
+
+## Active visual and asset architecture
+
+The current 720x480 visual architecture is inspired by Mister Menu's ES-DE
+presentation, implemented entirely by the freestanding launcher rather than by
+ES-DE, a compositor or a widget toolkit. The home screen uses a narrow vertical
+rail labelled `HOME` and leaves the cream top bar battery-only. Nested views
+reuse the rail for their local label and add paths such as
+`PLAY / SYSTEMS / <SYSTEM>` to the top bar, with the vertical battery retained at the
+right. The backdrop is covered by a fixed opaque burgundy content panel; there
+is no runtime alpha blend. The centered 400x288 content frame matches the
+reference panel's 1.39 width-to-height ratio while retaining nine complete
+32-pixel rows. Fixed labels use 2x2 bitmap cells, the spaced vertical rail uses
+3x3 cells and selectable rows use square 3x3 cells. Controls are drawn directly
+over a restored wallpaper strip, with no opaque footer panel or visible
+diagnostic line.
+
+The source artwork is the pinned 720x480 RGB cat-and-stairway crop at
+[`firmware/assets/bird-launcher-backdrop.png`](../firmware/assets/bird-launcher-backdrop.png)
+(SHA-256
+`3fdea84fe0c149378db32d1849e55b3fede22c74a613544810be880f48fdb9d3`).
+[`firmware/generate-launcher-bootlogo.py`](../firmware/generate-launcher-bootlogo.py)
+validates and decodes it only at build time, composites the fixed chrome for
+U-Boot, then deterministically emits the frame-zero BMP, boot-frame digest
+contract and a sparse native XRGB8888 wallpaper page. The raw page is already
+720x480, top-down, 2,880-byte stride, one page at offset 0:0, with bytes in
+`B,G,R,X` memory order. Pixels hidden by the opaque top bar, menu container and
+three-pixel menu shadow are zero rather than duplicating invisible artwork.
+The PNG is the only editable wallpaper source in the repository. Neither it nor
+the BMP enters the handheld image or a launcher runtime decode path.
+
+A replacement wallpaper should use the same exact input contract: 720x480,
+8-bit RGB, non-interlaced, no alpha, with sRGB color intent. The selected file
+is pinned by SHA-256 and converted to native XRGB at build time. A continuous
+loop is deliberately not part of the active architecture: each uncompressed
+frame is 1,382,400 bytes and even 6 fps would store about 8.3 MB/s while adding
+a periodic idle wakeup. Multiple build-time frames remain technically possible,
+but animation stays deferred until it has explicit binary, framebuffer-write
+and battery budgets.
+
+Final-root recovery always installs that native page as
+`/flash/bird/launcher-base.xrgb`: exactly 1,382,400 bytes, with SHA-256
+`6f9daae758675bd8bb805a851b30f1d64b06ec6e8367a17749707ac61824843a`.
+Until `BIRD_REUSE_UBOOT_FRAME` has a byte-identical hardware-verified contract,
+the early initramfs carries the same page at
+`/opt/bird/launcher-base.xrgb` and has a 786,432-byte compressed-overlay
+budget. A verified reuse build omits that early duplicate and retains the
+262,144-byte compressed-overlay budget; it does not remove the final-root
+recovery asset. At startup the launcher copies only raw-page spans that can be
+visible and draws fixed opaque chrome into the skipped regions before one
+framebuffer barrier. It can do that before evdev is ready, but withholds every
+selectable row until the named input has opened, then draws the interactive
+overlay and publishes first-frame readiness.
+
+The wallpaper costs no additional framebuffer page write versus a synthesized
+full-screen black base: both paths write one 1,382,400-byte XRGB page before
+the interactive overlay. It does add the 1,382,400-byte native asset to both
+final-root recovery and, until verified reuse, the early payload. With the
+current sparse native page compresses to 404,001 bytes by itself;
+the same chrome over a black base compresses to 2,539 bytes, a controlled
+401,462-byte compressed-asset difference. The deployed profile early-overlay
+size is reported by each canonical build. Its measured cold base-plus-menu render is 1,448,860
+physical framebuffer bytes. These are byte/storage measurements, not a claim
+of measured device boot latency.
 
 ## Historical direct-framebuffer launcher proof
 
@@ -87,10 +153,10 @@ launcher never scans storage at boot and can browse cached names before
 `/mnt/mmc` is mounted. A narrow 50 ms readiness probe reports when
 `/mnt/mmc/ROMS` appears; selecting a cached title tests only that exact path.
 
-The current inventory contains 5,953 launchable files across 27 populated systems.
+The current inventory contains 5,984 launchable files across 27 populated systems.
 It excludes AppleDouble files, hidden files, artwork directories, PNG artwork,
 Windows thumbnail databases and other metadata. The generated TSV also records
-the current media library: three Listen items, no Read items and six Watch
+the current media library: 51 Listen items, five Read items and eight Watch
 items. v14 compiles both the game and media records into the executable; neither
 catalog is read from the card or regenerated during boot.
 
@@ -103,7 +169,7 @@ Regenerate the complete cache and stage it on an inserted card by double-clickin
 
 The generator can still build a narrow diagnostic manifest by passing it as the
 second argument to `generate-launcher-catalog.sh`. The full system view is now
-an eight-row scrolling list with L1/R1 paging, so all 27 systems remain visible.
+a fixed nine-row paged list with L1/R1 paging, so all 27 systems remain visible.
 
 ## Fixed game handoff
 
@@ -354,20 +420,23 @@ muOS/RG34XX-SP-only Stardew wrapper with explicit runtime failure handling and
 no irrelevant `systemctl` cleanup call. Neither optional emulators nor the Mono
 runtime are inspected during normal boot.
 
-## Fixed four-part library and native media handoff
+## Fixed home hierarchy and native media handoff
 
-The v14 Home screen is the product structure rather than a diagnostic menu:
-`PLAY`, `LISTEN`, `READ`, and `WATCH`. Play contains the game Library,
-Favorites, on-demand PortMaster, and Shutdown. Listen and Watch contain the
-first directory below their media root as a category, followed by exact cached
-files. Read remains deliberately visible and empty until its final reader and
-format policy are chosen.
+The Home screen is the product structure rather than a diagnostic menu:
+`PLAY`, `LISTEN`, `READ`, `WATCH`, `TOOLS`, and `QUIT`. Play contains Systems
+and Favorites. Tools currently contains on-demand PortMaster. Quit contains
+Reload, Reboot and Shutdown. Listen, Read and Watch contain
+the first directory below their media root as a category, followed by exact
+cached files. Read accepts EPUB and PDF and routes the exact selected file to
+the installed KOReader PortMaster application.
 
-The real card currently compiles one Listen category (`AW`) with three MP3s and
-one Watch category (`MOVIES`) with six MP4/MKV files. Selecting either writes
-the same four-line content request used by games, then the supervisor calls the
-firmware's existing `ext-mpv.sh` with its native `ext-mpv-general` controller
-map. Audio/video playback therefore inherits muOS pause, quit, mute, OSD,
-subtitle, volume and display setup without a new player dependency. The
-volatile exact-return record also restores the selected media row after MPV
-exits and returns to the Play tools row after PortMaster exits.
+The real card currently compiles two Listen categories with 51 audio files, one
+Read category with five EPUB/PDF books, and one Watch category (`MOVIES`) with
+eight MP4/MKV files. Every selection writes the same four-line content request
+used by games. Audio/video is dispatched through ROCKNIX's existing MPV wrapper.
+KOReader uses a session-specific transformed launcher under `/run/bird`; the
+installed Port script, application archive and books remain untouched. Its
+first launch can resume an incomplete extraction, verifies required files, and
+opens the selected book rather than a directory. The volatile exact-return
+record restores the selected media row after either provider exits and returns
+to the Tools/PortMaster row after PortMaster exits.

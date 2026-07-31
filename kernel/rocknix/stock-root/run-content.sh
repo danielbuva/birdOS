@@ -8,6 +8,25 @@ set -u
 CATALOG_PATH_MAX_BYTES=4085
 APPLICATION_CONTRACT_REVISION=bird-application-v1
 APPLICATION_READY=${BIRD_APPLICATION_READY:-/run/bird/application-contract-ready}
+SYSTEMCTL_PROGRAM=${BIRD_SYSTEMCTL_PROGRAM:-$(command -v systemctl)}
+TIMEOUT_PROGRAM=${BIRD_TIMEOUT_PROGRAM:-$(command -v timeout)}
+NETWORK_DIRECT_BOUND=90s
+NETWORK_DIRECT_HARD_BOUND=91s
+NETWORK_STOP_BOUND=12s
+NETWORK_STOP_HARD_BOUND=13s
+
+# A wedged systemd client must never strand the launcher off-screen. Callers
+# retain their existing exact state checks; a timeout is an unknown/failure,
+# never proof that a resource stopped.
+systemctl() {
+	"$TIMEOUT_PROGRAM" --signal=TERM --kill-after=1s 3s \
+		"$SYSTEMCTL_PROGRAM" "$@"
+}
+
+content_stage() {
+	printf 'Bird content stage=%s uptime=' "$1"
+	cut -d ' ' -f 1 /proc/uptime
+}
 
 application_contract_valid() {
 	[ -f "$APPLICATION_READY" ] || return 1
@@ -109,7 +128,7 @@ REQUEST=${1:-/run/muos/bird-launch-request}
 LOG_DIR=/storage/bird-data/MUOS/Bird/log
 LOG=$LOG_DIR/stock-root-content-latest.log
 SWAY_SOCKET=/var/run/0-runtime-dir/sway-ipc.0.sock
-PORTMASTER_ONLY=0
+SESSION_MODE=content
 PORT_PREP=/storage/.config/bird/prepare-ports.sh
 NETWORK=/storage/.config/bird/bird-network.sh
 SESSION_PID=/run/bird/content-session.pid
@@ -141,6 +160,16 @@ NETWORK_OWNER=/run/bird/network-owner
 SCOPE_QUERY_RESULT=unknown
 SCOPE_QUERY_VALUE=
 PROCESS_PROC_ROOT=${BIRD_PROCESS_PROC_ROOT:-/proc}
+KOREADER_PORT_SOURCE=${BIRD_KOREADER_PORT_SOURCE:-/storage/roms/ports/KOReader.sh}
+KOREADER_PORT_SOURCE_SHA=af3f0850da81d5c3777588e597803195384d82eb3b298bab611d19aa0fb423b5
+KOREADER_ARCHIVE_SHA=be706d106d80063ec7471249011da6ee483ac18b77adb8d61571f272c88d3a57
+KOREADER_ARCHIVE_BYTES=43069001
+KOREADER_EXPANDED_BYTES=108544222
+KOREADER_ARCHIVE_ENTRIES=1139
+KOREADER_SHA256_PROGRAM=${BIRD_KOREADER_SHA256_PROGRAM:-/usr/bin/sha256sum}
+KOREADER_EXTRACTION_STATE_DIR=/storage/.config/bird/koreader-extraction
+KOREADER_PORT_SCRIPT=
+KOREADER_PORT_TEMP=
 
 initial_process_start_ticks() {
 	[ -r "$1" ] || return 1
@@ -186,6 +215,20 @@ load_launch_request() {
 	return 0
 }
 
+select_session_mode() {
+	case "$REQUEST" in
+		--portmaster) SESSION_MODE=portmaster ;;
+		*) SESSION_MODE=content ;;
+	esac
+}
+
+if [ "${BIRD_TEST_SESSION_MODE:-0}" = 1 ]; then
+	REQUEST=${BIRD_TEST_SESSION_REQUEST:-}
+	select_session_mode
+	printf '%s\n' "$SESSION_MODE"
+	exit 0
+fi
+
 if [ "${BIRD_TEST_PARSE_LAUNCH_REQUEST:-0}" = 1 ]; then
 	REQUEST=${BIRD_TEST_REQUEST_PATH:-}
 	load_launch_request
@@ -194,9 +237,8 @@ fi
 
 mkdir -p "$LOG_DIR" /run/bird "$SESSION_DIR"
 
-if [ "$REQUEST" = --portmaster ]; then
-	PORTMASTER_ONLY=1
-else
+select_session_mode
+if [ "$SESSION_MODE" = content ]; then
 	if ! load_launch_request; then
 		printf 'Rejected Bird content path (%s): %s\n' \
 			"$PATH_REJECTION" "$HOST_PATH" >"$LOG"
@@ -216,12 +258,13 @@ RUNNER_STATE=/run/bird/content-runner-$SESSION_TOKEN.state
 SCOPE_START_GATE=/run/bird/content-scope-$SESSION_TOKEN.start
 SCOPE_START_READY=/run/bird/content-scope-$SESSION_TOKEN.ready
 SCOPE_START_CANCEL=/run/bird/content-scope-$SESSION_TOKEN.cancel
+KOREADER_PORT_SCRIPT=/run/bird/ports/KOReader-$SESSION_TOKEN.sh
+KOREADER_PORT_TEMP=$KOREADER_PORT_SCRIPT.tmp
 SESSION_TICK=$(cut -d ' ' -f 1 /proc/uptime | tr -d .)
-if [ "$PORTMASTER_ONLY" -eq 1 ]; then
-	SESSION_KIND=portmaster
-else
-	SESSION_KIND=kind$KIND
-fi
+case "$SESSION_MODE" in
+	content) SESSION_KIND=kind$KIND ;;
+	portmaster) SESSION_KIND=portmaster ;;
+esac
 SESSION_LOG=$LOG_DIR/stock-root-content-$BOOT_ID-$SESSION_TICK-$SESSION_KIND.log
 
 session_lock() {
@@ -304,6 +347,7 @@ start_sway() {
 		printf '%s\n' 'Bird Sway start failed stage=seatd'
 		return 1
 	fi
+	content_stage sway-owner-claim
 	resource_lock || return 1
 	if ! claim_owner "$SWAY_OWNER"; then
 		resource_unlock
@@ -319,7 +363,7 @@ start_sway() {
 		resource_unlock
 		return 1
 	fi
-	if ! systemctl start sway.service 8>&- 9>&-; then
+	if ! systemctl start --no-block sway.service 8>&- 9>&-; then
 		resource_unlock
 		printf '%s\n' 'Bird Sway start failed stage=service'
 		rollback_sway_start
@@ -327,7 +371,10 @@ start_sway() {
 	fi
 	resource_unlock
 	for _ in $(seq 1 200); do
-		[ -S "$SWAY_SOCKET" ] && return 0
+		if [ -S "$SWAY_SOCKET" ]; then
+			content_stage sway-ready
+			return 0
+		fi
 		usleep 25000
 	done
 	printf '%s\n' 'Bird Sway start failed stage=socket-timeout'
@@ -344,7 +391,9 @@ ensure_content_services() {
 	# The writable ROCKNIX image can persist a muted internal route even while
 	# every audio service, app stream and ALSA control looks healthy. Reapply the
 	# saved Bird volume and explicitly clear that route mute before every app.
-	/storage/.config/bird/bird-volume.sh restore 8>&- 9>&- || return 1
+	"$TIMEOUT_PROGRAM" --signal=TERM --kill-after=1s 3s \
+		/storage/.config/bird/bird-volume.sh restore 8>&- 9>&- || return 1
+	content_stage services-ready
 }
 
 stop_sway() {
@@ -366,7 +415,8 @@ stop_sway() {
 		resource_unlock
 		return 1
 	fi
-	systemctl stop sway.service 8>&- 9>&- || :
+	content_stage sway-stop-request
+	systemctl stop --no-block sway.service 8>&- 9>&- || :
 	for _ in $(seq 1 100); do
 		if sway_stopped_confirmed; then
 			SWAY_OWNED=0
@@ -388,7 +438,7 @@ stop_sway() {
 	done
 	systemctl kill --kill-whom=all --signal=KILL sway.service \
 		8>&- 9>&- 2>/dev/null || :
-	systemctl stop sway.service 8>&- 9>&- 2>/dev/null || :
+	systemctl stop --no-block sway.service 8>&- 9>&- 2>/dev/null || :
 	for _ in $(seq 1 50); do
 		if sway_stopped_confirmed; then
 			SWAY_OWNED=0
@@ -1197,30 +1247,94 @@ rocknix_tuple() {
 	esac
 }
 
+run_network_helper() {
+	NETWORK_HELPER_MODE=$1
+	case "$NETWORK_HELPER_MODE" in
+		start)
+			NETWORK_HELPER_BOUND=$NETWORK_DIRECT_BOUND
+			NETWORK_HELPER_HARD_BOUND=$NETWORK_DIRECT_HARD_BOUND
+			;;
+		stop)
+			NETWORK_HELPER_BOUND=$NETWORK_STOP_BOUND
+			NETWORK_HELPER_HARD_BOUND=$NETWORK_STOP_HARD_BOUND
+			;;
+		*) return 2 ;;
+	esac
+	"$TIMEOUT_PROGRAM" --signal=TERM --kill-after=1s \
+		"$NETWORK_HELPER_BOUND" "$NETWORK" "$NETWORK_HELPER_MODE" 8>&- 9>&-
+}
+
 start_portmaster_network() {
+	NETWORK_START_MODE=${1:-start}
+	printf 'Bird portmaster network start begin uptime='
+	cut -d ' ' -f 1 /proc/uptime
+	if [ -e /run/bird/network-request ]; then
+		printf '%s\n' 'Bird network request flag present before start'
+	else
+		printf '%s\n' 'Bird network request flag absent before start'
+	fi
+	if [ -s "$NETWORK_OWNER" ]; then
+		owner_relation "$NETWORK_OWNER" || :
+		printf 'Bird portmaster network owner relation=%s token=%s\n' \
+			"$OWNER_RELATION" "$(cat "$NETWORK_OWNER")"
+	else
+		printf '%s\n' 'Bird portmaster network owner relation=none token=none'
+	fi
 	resource_lock || return 1
 	if ! claim_owner "$NETWORK_OWNER"; then
+		printf '%s\n' 'Bird portmaster network start aborted: no owner token'
 		resource_unlock
 		return 1
 	fi
 	PORTMASTER_NETWORK=1
 	if ! publish_runner_state 1; then
+		printf '%s\n' 'Bird portmaster network start aborted: publish runner state failed'
 		PORTMASTER_NETWORK=0
 		remove_owned_token "$NETWORK_OWNER" || :
 		resource_unlock
 		return 1
 	fi
-	"$NETWORK" start 8>&- 9>&-
-	NETWORK_STATUS=$?
+	NETWORK_STATUS=0
+	run_network_helper "$NETWORK_START_MODE" || NETWORK_STATUS=$?
 	resource_unlock
+	if [ -e /run/bird/network-request ]; then
+		printf '%s\n' 'Bird network request flag present after start'
+	else
+		printf '%s\n' 'Bird network request flag absent after start'
+	fi
+	if [ -s "$NETWORK_OWNER" ]; then
+		owner_relation "$NETWORK_OWNER" || :
+		printf 'Bird portmaster network owner relation=%s token=%s\n' \
+			"$OWNER_RELATION" "$(cat "$NETWORK_OWNER")"
+	else
+		printf '%s\n' 'Bird portmaster network owner relation=none token=none'
+	fi
+	printf 'Bird portmaster network start mode=%s helper_status=%s hard_bound=%s uptime=' \
+		"$NETWORK_START_MODE" "$NETWORK_STATUS" "$NETWORK_HELPER_HARD_BOUND"
+	cut -d ' ' -f 1 /proc/uptime
 	return "$NETWORK_STATUS"
 }
 
 stop_portmaster_network() {
+	printf 'Bird portmaster network stop begin uptime='
+	cut -d ' ' -f 1 /proc/uptime
+	if [ -e /run/bird/network-request ]; then
+		printf '%s\n' 'Bird network request flag present before stop'
+	else
+		printf '%s\n' 'Bird network request flag absent before stop'
+	fi
+	if [ -s "$NETWORK_OWNER" ]; then
+		owner_relation "$NETWORK_OWNER" || :
+		printf 'Bird portmaster network owner relation=%s token=%s\n' \
+			"$OWNER_RELATION" "$(cat "$NETWORK_OWNER")"
+	else
+		printf '%s\n' 'Bird portmaster network owner relation=none token=none'
+	fi
 	[ "$PORTMASTER_NETWORK" -eq 1 ] || return 0
 	resource_lock || return 1
 	owner_relation "$NETWORK_OWNER"
 	if [ "$OWNER_RELATION" = transferred ]; then
+		printf '%s\n' 'Bird portmaster network stop transfer: already owned by replacement'
 		PORTMASTER_NETWORK=0
 		if ! publish_runner_state 1; then
 			PORTMASTER_NETWORK=1
@@ -1231,10 +1345,13 @@ stop_portmaster_network() {
 		return 0
 	fi
 	if [ "$OWNER_RELATION" != ours ]; then
+		printf '%s\n' 'Bird portmaster network stop aborted: stale ownership'
 		resource_unlock
 		return 1
 	fi
-	if "$NETWORK" stop 8>&- 9>&-; then
+	NETWORK_STOP_STATUS=0
+	run_network_helper stop || NETWORK_STOP_STATUS=$?
+	if [ "$NETWORK_STOP_STATUS" -eq 0 ]; then
 		PORTMASTER_NETWORK=0
 		if ! publish_runner_state 1; then
 			PORTMASTER_NETWORK=1
@@ -1247,23 +1364,220 @@ stop_portmaster_network() {
 			resource_unlock
 			return 1
 		fi
+		if [ -e /run/bird/network-request ]; then
+			printf '%s\n' 'Bird network request flag present after stop'
+		else
+			printf '%s\n' 'Bird network request flag absent after stop'
+		fi
+		if [ -s "$NETWORK_OWNER" ]; then
+			printf 'Bird portmaster network owner token=%s\n' \
+				"$(cat "$NETWORK_OWNER")"
+		else
+			printf '%s\n' 'Bird portmaster network owner relation=none token=none'
+		fi
 		resource_unlock
+		printf '%s\n' 'Bird portmaster network stop status=ok'
 		return 0
 	fi
 	resource_unlock
-	return 1
+	printf 'Bird portmaster network stop status=%s\n' "$NETWORK_STOP_STATUS"
+	return "$NETWORK_STOP_STATUS"
+}
+
+remove_koreader_port_script() {
+	KOREADER_REMOVE_STATUS=0
+	if [ -n "$KOREADER_PORT_TEMP" ] &&
+		! rm -f "$KOREADER_PORT_TEMP"; then
+		KOREADER_REMOVE_STATUS=1
+	fi
+	if [ -n "$KOREADER_PORT_SCRIPT" ] &&
+		! rm -f "$KOREADER_PORT_SCRIPT"; then
+		KOREADER_REMOVE_STATUS=1
+	fi
+	return "$KOREADER_REMOVE_STATUS"
+}
+
+prepare_koreader_port_script() {
+	[ -n "$KOREADER_PORT_SCRIPT" ] && [ -n "$KOREADER_PORT_TEMP" ] ||
+		return 1
+	[ -f "$KOREADER_PORT_SOURCE" ] && [ ! -L "$KOREADER_PORT_SOURCE" ] ||
+		return 1
+	[ -x "$KOREADER_SHA256_PROGRAM" ] || return 1
+	[ -n "$KOREADER_ARCHIVE_SHA" ] &&
+		[ -n "$KOREADER_EXTRACTION_STATE_DIR" ] || return 1
+	KOREADER_SOURCE_DIGEST_LINE=$(
+		"$KOREADER_SHA256_PROGRAM" "$KOREADER_PORT_SOURCE" 2>/dev/null
+	) || return 1
+	KOREADER_SOURCE_DIGEST=${KOREADER_SOURCE_DIGEST_LINE%% *}
+	[ "$KOREADER_SOURCE_DIGEST" = "$KOREADER_PORT_SOURCE_SHA" ] || return 1
+	mkdir -p "${KOREADER_PORT_SCRIPT%/*}" || return 1
+	remove_koreader_port_script || return 1
+
+	# Keep the downloaded PortMaster launcher and archive immutable. The
+	# session-local copy changes exactly two audited regions: interrupted first
+	# extraction becomes restartable, and reader.lua receives the selected
+	# catalog path instead of opening the generic books directory. Any upstream
+	# structural change fails closed before the temporary script is published.
+	if ! awk -v archive_sha="$KOREADER_ARCHIVE_SHA" \
+		-v complete_dir="$KOREADER_EXTRACTION_STATE_DIR" \
+		-v sha_program="$KOREADER_SHA256_PROGRAM" '
+		BEGIN { block = 0; launch = 0; state = 0 }
+		state == 0 && $0 == "if [ -f \"$ZIPFILE\" ]; then" {
+			block += 1
+			state = 1
+			next
+		}
+		state == 1 {
+			if ($0 != "    echo \"Unzipping $ZIPFILE to $TARGET_DIR...\"") exit 71
+			state = 2
+			next
+		}
+		state == 2 {
+			if ($0 != "    unzip \"$ZIPFILE\" -d \"$TARGET_DIR\"") exit 71
+			state = 3
+			next
+		}
+		state == 3 {
+			if ($0 != "elif [ -f \"$GAMEDIR/koreader/luajit\" ]; then") exit 71
+			state = 4
+			next
+		}
+		state == 4 {
+			if ($0 != "    echo \"ZIP IS ALREADY EXTRACTED\"") exit 71
+			state = 5
+			next
+		}
+		state == 5 {
+			if ($0 != "    rm $ZIPFILE") exit 71
+			state = 6
+			next
+		}
+		state == 6 {
+			if ($0 != "else") exit 71
+			state = 7
+			next
+		}
+		state == 7 {
+			if ($0 != "    echo \"File $ZIPFILE does not exist 😢\"") exit 71
+			state = 8
+			next
+		}
+		state == 8 {
+			if ($0 != "fi") exit 71
+			print "BIRD_KOREADER_ARCHIVE_SHA=\"" archive_sha "\""
+			print "BIRD_KOREADER_SHA256_PROGRAM=\"" sha_program "\""
+			print "BIRD_KOREADER_COMPLETE_DIR=\"" complete_dir "\""
+			print "BIRD_KOREADER_COMPLETE=\"$BIRD_KOREADER_COMPLETE_DIR/$BIRD_KOREADER_ARCHIVE_SHA.complete\""
+			print "BIRD_KOREADER_COMPLETE_TEMP=\"$BIRD_KOREADER_COMPLETE.tmp\""
+			print "BIRD_KOREADER_RECORD_SHA="
+			print "if [ -f \"$BIRD_KOREADER_COMPLETE\" ]; then"
+			print "    BIRD_KOREADER_RECORD_SHA=$(cat \"$BIRD_KOREADER_COMPLETE\" 2>/dev/null) || BIRD_KOREADER_RECORD_SHA="
+			print "fi"
+			print "if [ \"$BIRD_KOREADER_RECORD_SHA\" = \"$BIRD_KOREADER_ARCHIVE_SHA\" ] && [ -f \"$GAMEDIR/koreader/luajit\" ] && [ -f \"$GAMEDIR/koreader/reader.lua\" ] && [ -f \"$GAMEDIR/koreader/frontend/apps/reader/readerui.lua\" ] && [ -f \"$GAMEDIR/koreader/libs/libkoreader-cre.so\" ] && [ -f \"$GAMEDIR/koreader/libs/libwrap-mupdf.so\" ] && [ -f \"$GAMEDIR/koreader/defaults.custom.lua\" ]; then"
+			print "    echo \"ZIP IS ALREADY EXTRACTED\""
+			print "elif [ -f \"$ZIPFILE\" ]; then"
+			print "    [ -x \"$BIRD_KOREADER_SHA256_PROGRAM\" ] || exit 1"
+			print "    mkdir -p \"$BIRD_KOREADER_COMPLETE_DIR\" || exit 1"
+			print "    chmod 0700 \"$BIRD_KOREADER_COMPLETE_DIR\" || exit 1"
+			print "    rm -f \"$BIRD_KOREADER_COMPLETE\" \"$BIRD_KOREADER_COMPLETE_TEMP\" || exit 1"
+			print "    BIRD_KOREADER_ARCHIVE_DIGEST_LINE=$(\"$BIRD_KOREADER_SHA256_PROGRAM\" \"$ZIPFILE\" 2>/dev/null) || exit 1"
+			print "    BIRD_KOREADER_ARCHIVE_DIGEST=${BIRD_KOREADER_ARCHIVE_DIGEST_LINE%% *}"
+			print "    [ \"$BIRD_KOREADER_ARCHIVE_DIGEST\" = \"$BIRD_KOREADER_ARCHIVE_SHA\" ] || exit 1"
+			print "    echo \"Unzipping $ZIPFILE to $TARGET_DIR...\""
+			print "    unzip -o \"$ZIPFILE\" -d \"$TARGET_DIR\" || exit 1"
+			print "    for BIRD_KOREADER_REQUIRED in luajit reader.lua frontend/apps/reader/readerui.lua libs/libkoreader-cre.so libs/libwrap-mupdf.so defaults.custom.lua; do"
+			print "        [ -f \"$GAMEDIR/koreader/$BIRD_KOREADER_REQUIRED\" ] || exit 1"
+			print "    done"
+			print "    printf \"%s\\n\" \"$BIRD_KOREADER_ARCHIVE_SHA\" >\"$BIRD_KOREADER_COMPLETE_TEMP\" || exit 1"
+			print "    chmod 0600 \"$BIRD_KOREADER_COMPLETE_TEMP\" || { rm -f \"$BIRD_KOREADER_COMPLETE_TEMP\"; exit 1; }"
+			print "    mv -f \"$BIRD_KOREADER_COMPLETE_TEMP\" \"$BIRD_KOREADER_COMPLETE\" || { rm -f \"$BIRD_KOREADER_COMPLETE_TEMP\"; exit 1; }"
+			print "else"
+			print "    echo \"File $ZIPFILE does not exist\""
+			print "    exit 1"
+			print "fi"
+			print "for BIRD_KOREADER_REQUIRED in luajit reader.lua frontend/apps/reader/readerui.lua libs/libkoreader-cre.so libs/libwrap-mupdf.so defaults.custom.lua; do"
+			print "    [ -f \"$GAMEDIR/koreader/$BIRD_KOREADER_REQUIRED\" ] || exit 1"
+			print "done"
+			state = 0
+			next
+		}
+		$0 == "LD_PRELOAD=$GAMEDIR/libcrusty.so CRUSTY_BLOCK_INPUT=1 ./luajit reader.lua ../books" {
+			launch += 1
+			print "[ -n \"${BIRD_EBOOK_PATH:-}\" ] || exit 1"
+			print "LD_PRELOAD=$GAMEDIR/libcrusty.so CRUSTY_BLOCK_INPUT=1 ./luajit reader.lua \"$BIRD_EBOOK_PATH\""
+			next
+		}
+		{ print }
+		END {
+			if (state != 0 || block != 1 || launch != 1) exit 72
+		}
+	' "$KOREADER_PORT_SOURCE" >"$KOREADER_PORT_TEMP"; then
+		remove_koreader_port_script || :
+		return 1
+	fi
+	KOREADER_SOURCE_DIGEST_LINE=$(
+		"$KOREADER_SHA256_PROGRAM" "$KOREADER_PORT_SOURCE" 2>/dev/null
+	) || {
+		remove_koreader_port_script || :
+		return 1
+	}
+	KOREADER_SOURCE_DIGEST=${KOREADER_SOURCE_DIGEST_LINE%% *}
+	[ "$KOREADER_SOURCE_DIGEST" = "$KOREADER_PORT_SOURCE_SHA" ] || {
+		remove_koreader_port_script || :
+		return 1
+	}
+	/bin/bash -n "$KOREADER_PORT_TEMP" || {
+		remove_koreader_port_script || :
+		return 1
+	}
+	chmod 0755 "$KOREADER_PORT_TEMP" || {
+		remove_koreader_port_script || :
+		return 1
+	}
+	mv -f "$KOREADER_PORT_TEMP" "$KOREADER_PORT_SCRIPT" || {
+		remove_koreader_port_script || :
+		return 1
+	}
+	return 0
+}
+
+prepare_portmaster_python_cache() {
+	PORTMASTER_PYCACHE=/run/bird/portmaster-pycache
+	if [ -e "$PORTMASTER_PYCACHE" ] || [ -L "$PORTMASTER_PYCACHE" ]; then
+		[ -d "$PORTMASTER_PYCACHE" ] && [ ! -L "$PORTMASTER_PYCACHE" ] || \
+			return 1
+		rm -rf "$PORTMASTER_PYCACHE" || return 1
+	fi
+	(umask 077; mkdir -p "$PORTMASTER_PYCACHE") || return 1
+	export PYTHONPYCACHEPREFIX="$PORTMASTER_PYCACHE"
+	export PYTHONDONTWRITEBYTECODE=1
 }
 
 run_selected() {
-	if [ "$PORTMASTER_ONLY" -eq 1 ]; then
-		"$PORT_PREP" || return 1
+	if [ "$SESSION_MODE" = portmaster ]; then
+		prepare_portmaster_python_cache || return 1
+		printf '%s\n' 'Bird portmaster prepare start'
+		PORT_PREP_STATUS=0
+		"$PORT_PREP" || PORT_PREP_STATUS=$?
+		printf 'Bird portmaster prepare status=%s uptime=' "$PORT_PREP_STATUS"
+		cut -d ' ' -f 1 /proc/uptime
+		[ "$PORT_PREP_STATUS" -eq 0 ] || return "$PORT_PREP_STATUS"
 		# The start helper can partially configure an interface before returning
 		# failure, so cleanup owns a stop attempt from this point onward.
-		start_portmaster_network || :
+		PORTMASTER_NETWORK_STATUS=0
+		start_portmaster_network start || PORTMASTER_NETWORK_STATUS=$?
+		printf 'Bird portmaster network-start status=%s\n' "$PORTMASTER_NETWORK_STATUS"
+		[ "$PORTMASTER_NETWORK_STATUS" -eq 0 ] || \
+			return "$PORTMASTER_NETWORK_STATUS"
 		# PortMaster is English-only on this fixed profile. Disable X11 compose
-		# parsing so xkbcommon does not load unrelated legacy encodings.
+		# parsing so xkbcommon does not load unrelated legacy encodings. Redirect
+		# Python's cache lookup is already redirected to fresh tmpfs by the shared
+		# PortMaster execution boundary, making provider-local cache bytes inert.
+		printf '%s\n' 'Bird portmaster launch start'
 		run_managed env XCOMPOSEFILE=/dev/null /usr/bin/start_portmaster.sh
-		return $?
+		PORTMASTER_RUN_STATUS=$?
+		printf 'Bird portmaster launch status=%s\n' "$PORTMASTER_RUN_STATUS"
+		return "$PORTMASTER_RUN_STATUS"
 	fi
 	case "$KIND" in
 		1|2|4|5)
@@ -1273,6 +1587,7 @@ run_selected() {
 				"--core=$CORE" "--emulator=$EMULATOR" --controllers=""
 			;;
 		3)
+			prepare_portmaster_python_cache || return 1
 			"$PORT_PREP" || return 1
 			PORT_SCRIPT=/storage/roms/ports/${CONTENT##*/}
 			# This one retained Stardew launcher predates the native ROCKNIX
@@ -1297,6 +1612,23 @@ run_selected() {
 		6)
 			install_mpv_input_policy || return 1
 			run_managed /usr/bin/start_mplayer.sh "$CONTENT"
+			;;
+		7)
+			case "$HOST_PATH" in
+				/mnt/mmc/MEDIA/READ/*.[eE][pP][uU][bB]|\
+				/mnt/mmc/MEDIA/READ/*.[pP][dD][fF]) ;;
+				*) return 1 ;;
+			esac
+			[ -f "$CONTENT" ] || return 1
+			prepare_portmaster_python_cache || return 1
+			"$PORT_PREP" || return 1
+			prepare_koreader_port_script || return 1
+			run_managed env BIRD_EBOOK_PATH="$CONTENT" \
+				/usr/bin/runemu.sh "$KOREADER_PORT_SCRIPT" -Pports \
+				--core=portmaster --emulator=portmaster --controllers=""
+			KOREADER_RUN_STATUS=$?
+			remove_koreader_port_script || return 1
+			return "$KOREADER_RUN_STATUS"
 			;;
 		*) return 1 ;;
 	esac
@@ -1339,7 +1671,8 @@ start_cleanup_guard() {
 	# needs no lease; after publication, the live guard owns recovery. Normal EXIT
 	# disarms first.
 	GUARD_UNIT=bird-content-guard-${BOOT_ID}-$$-${RUNNER_START_TICKS}.service
-	if ! /usr/bin/systemd-run --quiet --collect --service-type=exec \
+	if ! /usr/bin/timeout --signal=TERM --kill-after=1s 3s \
+		/usr/bin/systemd-run --quiet --collect --service-type=exec \
 		--unit="$GUARD_UNIT" --description='birdOS content cleanup guard' \
 		-- /bin/sh -c '
 		trap "" HUP
@@ -1362,6 +1695,7 @@ start_cleanup_guard() {
 		SCOPE_START_READY=${17}
 		SCOPE_START_CANCEL=${18}
 		PROC_ROOT=${19}
+		KOREADER_PORT_SCRIPT=${20:-}
 		if ! "$PIDWAIT" "$PARENT"; then
 			while [ -r "$PROC_ROOT/$PARENT/stat" ]; do
 				PARENT_STAT_RECORD=$(cat "$PROC_ROOT/$PARENT/stat" 2>/dev/null || :)
@@ -1419,6 +1753,12 @@ start_cleanup_guard() {
 		rm -f "$SCOPE_START_GATE" "$SCOPE_START_READY" \
 			"$SCOPE_START_CANCEL" "$SCOPE_START_READY".tmp.* \
 			2>/dev/null || :
+		if [ -n "$KOREADER_PORT_SCRIPT" ]; then
+			while ! rm -f "$KOREADER_PORT_SCRIPT" \
+				"$KOREADER_PORT_SCRIPT.tmp"; do
+				usleep 250000
+			done
+		fi
 		{
 			printf "Bird runner guard reconciled pid=%s uptime=" "$PARENT"
 			cut -d " " -f 1 /proc/uptime
@@ -1450,11 +1790,11 @@ start_cleanup_guard() {
 			}
 			sway_stopped() {
 				[ ! -S "$SWAY_SOCKET" ] || return 1
-				ACTIVE=$(systemctl show --property=ActiveState --value sway.service \
+				ACTIVE=$(timeout 3s systemctl show --property=ActiveState --value sway.service \
 					8>&- 9>&- 2>/dev/null) || return 1
 				case "$ACTIVE" in inactive|failed) return 0 ;; esac
 				[ -z "$ACTIVE" ] || return 1
-				LOAD=$(systemctl show --property=LoadState --value sway.service \
+				LOAD=$(timeout 3s systemctl show --property=LoadState --value sway.service \
 					8>&- 9>&- 2>/dev/null) || return 1
 				[ "$LOAD" = not-found ]
 			}
@@ -1468,7 +1808,8 @@ start_cleanup_guard() {
 						case "$OWNER_RELATION" in
 							transferred) NETWORK_OWNED_GUARD=0 ;;
 							ours)
-								if ! "$NETWORK_HELPER" stop 8>&- 9>&- || \
+								if ! timeout --signal=TERM --kill-after=1s 12s \
+									"$NETWORK_HELPER" stop 8>&- 9>&- || \
 									! rm -f "$NETWORK_OWNER"; then
 									RESOURCE_STATUS=1
 								else
@@ -1483,16 +1824,16 @@ start_cleanup_guard() {
 						case "$OWNER_RELATION" in
 							transferred) SWAY_OWNED_GUARD=0 ;;
 							ours)
-								systemctl stop sway.service 8>&- 9>&- || :
+								timeout 3s systemctl stop --no-block sway.service 8>&- 9>&- || :
 								COUNT=0
 								while ! sway_stopped && [ "$COUNT" -lt 100 ]; do
 									COUNT=$((COUNT + 1))
 									usleep 20000
 								done
 								if ! sway_stopped; then
-									systemctl kill --kill-whom=all --signal=KILL \
+									timeout 3s systemctl kill --kill-whom=all --signal=KILL \
 										sway.service 8>&- 9>&- 2>/dev/null || :
-									systemctl stop sway.service 8>&- 9>&- 2>/dev/null || :
+									timeout 3s systemctl stop --no-block sway.service 8>&- 9>&- 2>/dev/null || :
 								fi
 								if ! sway_stopped || ! rm -f "$SWAY_OWNER"; then
 									RESOURCE_STATUS=1
@@ -1517,6 +1858,7 @@ start_cleanup_guard() {
 		"$SESSION_LOG" "$SESSION_RECORD" "$SESSION_PID" "$SESSION_TOKEN" \
 		"$RESOURCE_LOCK" "$SWAY_OWNER" "$NETWORK_OWNER" "$SWAY_SOCKET" \
 		"$SCOPE_START_GATE" "$SCOPE_START_READY" "$SCOPE_START_CANCEL" /proc \
+		"$KOREADER_PORT_SCRIPT" \
 		8>&- 9>&- </dev/null >/dev/null 2>&1; then
 		rm -f "$RUNNER_STATE" 2>/dev/null || :
 		return 1
@@ -1543,6 +1885,10 @@ cleanup_runtime() {
 	fi
 	terminate_scope_until_gone cleanup
 	release_owned_resources_until_done
+	if ! remove_koreader_port_script; then
+		CLEANUP_STATE=failed
+		return 1
+	fi
 	CLEANUP_STATE=succeeded
 	return 0
 }
@@ -1579,19 +1925,22 @@ trap 'signal_exit 130' INT
 trap 'signal_exit 143' TERM
 trap 'signal_exit 129' HUP
 
-STATUS=0
-START_FAILURE_REASON=
-if ! start_cleanup_guard; then
-	START_FAILURE_REASON='runner cleanup guard unavailable'
-	STATUS=1
-fi
-
 {
-	printf 'Bird ROCKNIX session start uptime='
-	cut -d ' ' -f 1 /proc/uptime
+	STATUS=0
+	START_FAILURE_REASON=
+	printf 'Bird session log shareability=private-raw path=%s\n' "$SESSION_LOG"
+	content_stage session-start
+	if ! start_cleanup_guard; then
+		START_FAILURE_REASON='runner cleanup guard unavailable'
+		STATUS=1
+		content_stage guard-failed
+	else
+		content_stage guard-ready
+	fi
 	[ -z "$START_FAILURE_REASON" ] || \
 		printf 'Bird content refused: %s\n' "$START_FAILURE_REASON"
-	if [ "$PORTMASTER_ONLY" -eq 0 ]; then
+	printf 'session_mode=%s\n' "$SESSION_MODE"
+	if [ "$SESSION_MODE" = content ]; then
 		printf 'kind=%s core=%s name=%s host=%s content=%s\n' \
 			"$KIND" "$REQUESTED_CORE" "$NAME" "$HOST_PATH" "$CONTENT"
 	fi
@@ -1602,18 +1951,25 @@ fi
 		printf 'Bird application contract ready revision=%s uptime=' \
 			"$APPLICATION_CONTRACT_REVISION"
 		cut -d ' ' -f 1 /proc/uptime
-		if [ "$PORTMASTER_ONLY" -eq 0 ] && ! rm -f "$REQUEST"; then
+		content_stage contract-ready
+		if [ "$SESSION_MODE" = content ] && ! rm -f "$REQUEST"; then
 			STATUS=1
 		fi
+		if [ "$STATUS" -eq 0 ]; then
+			content_stage sway-start-request
+		fi
 		if [ "$STATUS" -eq 0 ] && start_sway; then
+			content_stage services-start
 			ensure_content_services || STATUS=1
 			: >/var/log/exec.log
 			if [ "${STATUS:-0}" -eq 0 ]; then
+				content_stage provider-start
 				run_selected
 				STATUS=$?
+				content_stage provider-returned
 			fi
 			if [ -s /var/log/exec.log ]; then
-				printf '%s\n' '--- ROCKNIX application log (last 256 KiB) ---'
+				printf '%s\n' '--- ROCKNIX application log (private raw, last 256 KiB) ---'
 				tail -c 262144 /var/log/exec.log
 				printf '%s\n' '--- end ROCKNIX application log ---'
 			fi
@@ -1623,7 +1979,9 @@ fi
 	else
 		STATUS=1
 	fi
+	content_stage cleanup-start
 	cleanup_runtime || STATUS=1
+	content_stage cleanup-complete
 	printf 'Bird ROCKNIX session result=%s uptime=' "$STATUS"
 	cut -d ' ' -f 1 /proc/uptime
 } >"$SESSION_LOG" 2>&1
