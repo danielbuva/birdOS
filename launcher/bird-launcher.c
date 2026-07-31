@@ -29,6 +29,7 @@ typedef signed long s64;
 #error "U-Boot frame reuse requires the generated boot-frame contract"
 #endif
 
+#include "bird-device-contract.h"
 #include "catalog.generated.h"
 
 #define AT_FDCWD (-100)
@@ -174,8 +175,8 @@ typedef signed long s64;
 #define PENDING_LAUNCH_NONE 0U
 #define PENDING_LAUNCH_GAME 1U
 #define PENDING_LAUNCH_MEDIA 2U
-#define INPUT_EVENT_SCAN_COUNT 32
-#define PREFERRED_INPUT_EVENT 4
+#define INPUT_EVENT_SCAN_COUNT ((int)BIRD_DEVICE_INPUT_SCAN_COUNT)
+#define PREFERRED_INPUT_EVENT ((int)BIRD_DEVICE_INPUT_PREFERRED_EVENT)
 #define NAVIGATION_BATCH_MAX_EVENTS 16U
 #define NAVIGATION_BATCH_MAX_RECORDS 32U
 #define POWER_EVENT_READ_BUDGET 8U
@@ -214,11 +215,11 @@ typedef signed long s64;
  * emulation with CONFIG_DRM_FBDEV_OVERALLOC=100. RG34XX-SP measurements show
  * one fixed XRGB8888 page; fbdev reports the unused X byte with a zero-length
  * transparency field. The sun4i dumb-buffer helper keeps the 2,880-byte pitch. */
-#define RG34XX_FB_WIDTH 720U
-#define RG34XX_FB_HEIGHT 480U
-#define RG34XX_FB_BYTES_PER_PIXEL 4U
-#define RG34XX_FB_STRIDE (RG34XX_FB_WIDTH * RG34XX_FB_BYTES_PER_PIXEL)
-#define RG34XX_FB_BYTES (RG34XX_FB_STRIDE * RG34XX_FB_HEIGHT)
+#define RG34XX_FB_WIDTH BIRD_DEVICE_FB_WIDTH
+#define RG34XX_FB_HEIGHT BIRD_DEVICE_FB_HEIGHT
+#define RG34XX_FB_BYTES_PER_PIXEL BIRD_DEVICE_FB_BYTES_PER_PIXEL
+#define RG34XX_FB_STRIDE BIRD_DEVICE_FB_STRIDE
+#define RG34XX_FB_BYTES BIRD_DEVICE_FB_MAPPING_BYTES
 
 #define FRAMEBUFFER_PATH_DIAGNOSTIC 0U
 #define FRAMEBUFFER_PATH_RG34XX_XRGB8888 1U
@@ -5067,7 +5068,7 @@ static int open_fixed_input_once(void) {
             h700_input = 0;
             goto found;
         }
-        if (string_equal(name, "H700 Gamepad")) {
+        if (string_equal(name, BIRD_DEVICE_INPUT_NAME)) {
             h700_input = 1;
             goto found;
         }
@@ -5098,7 +5099,7 @@ static void log_input_ready(void) {
     log_text("input ");
     log_text(input_path);
     log_text(" name=");
-    log_text(h700_input ? "H700 Gamepad" : "muOS-Keys");
+    log_text(h700_input ? BIRD_DEVICE_INPUT_NAME : "muOS-Keys");
     log_text(" map=");
     log_text(h700_input ? "mainline-h700" : "vendor-muos");
     log_text(" ready_boot_ms=");
@@ -5514,12 +5515,12 @@ static int application(void) {
 
     deadline = boot_ms() + DEVICE_WAIT_MS;
     while (boot_ms() < deadline) {
-        fb_fd = (int)sys_open("/dev/fb0", O_RDWR);
+        fb_fd = (int)sys_open(BIRD_DEVICE_FRAMEBUFFER_NODE, O_RDWR);
         if (fb_fd >= 0) break;
         sys_nanosleep(1000000L);
     }
     if (fb_fd < 0) {
-        log_text("error wait /dev/fb0\n");
+        log_text("error wait " BIRD_DEVICE_FRAMEBUFFER_NODE "\n");
         if (input_preopened) abandon_input();
         return 2;
     }

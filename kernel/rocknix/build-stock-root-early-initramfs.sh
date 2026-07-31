@@ -177,8 +177,15 @@ LAUNCHER=$PAYLOAD/opt/bird/bird-launcher
 mkdir -p "$PAYLOAD/opt/bird" "$VERIFY"
 if [ "$EARLY_STATIC_ASSET_BYTES" -eq 1382400 ]; then
 	cp -fp "$BOOT_FRAME_XRGB" "$PAYLOAD/opt/bird/launcher-base.xrgb"
-	chmod 0644 "$PAYLOAD/opt/bird/launcher-base.xrgb"
+chmod 0644 "$PAYLOAD/opt/bird/launcher-base.xrgb"
 fi
+
+printf 'early-launcher-compile\t%s\t%s\n' "${BIRD_LAUNCHER_PROFILE:-release}" \
+	"--target=aarch64-linux-gnu -mcpu=cortex-a53 -O2 -ffreestanding -ffunction-sections -fdata-sections -fno-builtin -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-ident -fvisibility=hidden -nostdlib -Wall -Wextra -Werror -Wno-unused-function -DROM_ROOT=\"/storage/bird-data/ROMS\" -DLIVE_STORAGE_ROOT=\"/storage/bird-data\" -DFAVORITES_PATH=\"/storage/.config/bird/favorites.txt\" -DFAVORITES_TEMP=\"/storage/.config/bird/favorites.tmp\" -DRECENT_PATH=\"/storage/.config/bird/recent.txt\" -DRECENT_TEMP=\"/storage/.config/bird/recent.tmp\" -DHANDOFF_ACTION_PATH=\"/run/muos/bird-launch-action\" -DSTORAGE_ANCHOR_MARKER=\"/run/muos/bird-storage-anchor-ready\" -DSTORAGE_READY_SIGNAL=\"/run/muos/bird-storage-ready\" -DPERSIST_UI_STATE -DDEVICE_WAIT_MS=20000UL ${LAUNCHER_PROFILE_FLAGS:-} ${BOOT_FRAME_REUSE_FLAGS:-} ${EARLY_STATIC_BASE_FLAGS:-} -c launcher/bird-launcher.c" \
+	>>"$OUTPUT/build/build-flags.tsv"
+printf 'early-launcher-link\t%s\t%s\n' "${BIRD_LAUNCHER_PROFILE:-release}" \
+	'-static --gc-sections --build-id=none -z noexecstack -s -e _start' \
+	>>"$OUTPUT/build/build-flags.tsv"
 
 "$CLANG" --target=aarch64-linux-gnu -mcpu=cortex-a53 -O2 \
 	-ffreestanding -ffunction-sections -fdata-sections \

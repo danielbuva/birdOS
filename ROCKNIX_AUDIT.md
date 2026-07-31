@@ -70,7 +70,13 @@ The power worker's low-battery red-status threshold is now exactly 41 percent.
 Charging remains kernel/PMIC-owned and the green LED remains the ordinary
 power indicator.
 
-## v6.15 result through the accepted v6.23 baseline
+## v6.15 result through the accepted `79b6e3e...` behavior baseline
+
+The operator accepts public commit
+`79b6e3e03771f2787622a3e4f6f9d8f129b7281f` as the current source and behavior
+baseline. Immutable fallback release `v6.23-20260731-054816` remains separately
+identified by its actual older dirty source in its manifest. The audit below is
+behavior evidence; it does not rewrite that binary provenance.
 
 The physical gate passed brightness stability and visible shutdown at roughly
 1.8--2.0 seconds. The shutdown log places its exact config compare/copy at

@@ -207,6 +207,7 @@ fi
 }
 mkdir -p "$OUTPUT/card/bird" "$OUTPUT/card/extlinux" "$OUTPUT/build"
 printf 'fake launcher for %s\n' "$BIRD_RELEASE_ID" >"$OUTPUT/card/bird/bird-launcher"
+printf 'schema\tstring\tbird-device-v1\n' >"$OUTPUT/card/bird/bird-device-contract.tsv"
 cp "$SOURCE/KERNEL" "$OUTPUT/card/KERNEL"
 cp "$SOURCE/dtb.img" "$OUTPUT/card/dtb.img"
 printf '%s\n' \
@@ -233,6 +234,18 @@ MANIFEST=$OUTPUT/deploy-manifest.tsv
 	printf 'release\t%s\n' "$BIRD_RELEASE_ID"
 	printf 'target-mode-policy\tfat-capability\n'
 	printf 'source-commit\ttest\tclean\n'
+	if [ "${TEST_BUILDER_BEHAVIOR:-normal}" != missing-artifacts ]; then
+		DEVICE_ARTIFACT_SHA=$(sha256 "$OUTPUT/card/bird/bird-device-contract.tsv")
+		[ "${TEST_BUILDER_BEHAVIOR:-normal}" != bad-contract-artifact ] || \
+			DEVICE_ARTIFACT_SHA=0000000000000000000000000000000000000000000000000000000000000000
+		printf 'artifact\tdevice-contract\tbird/bird-device-contract.tsv\t%s\n' \
+			"$DEVICE_ARTIFACT_SHA"
+		CATALOG_ARTIFACT_SHA=$(sha256 "$BIRD_TEST_KOREADER_CATALOG_HEADER")
+		[ "${TEST_BUILDER_BEHAVIOR:-normal}" != bad-catalog-artifact ] || \
+			CATALOG_ARTIFACT_SHA=2222222222222222222222222222222222222222222222222222222222222222
+		printf 'artifact\tcatalog\tlauncher/catalog.generated.h\t%s\n' \
+			"$CATALOG_ARTIFACT_SHA"
+	fi
 	for INPUT in KERNEL KERNEL.fallback PortMaster.zip \
 		PortMaster/PortMaster.sh PortMaster/funcs.txt PortMaster/harbourmaster \
 		PortMaster/mod_ROCKNIX.txt PortMaster/pugwash ROCKNIX-STORAGE \
@@ -1382,6 +1395,30 @@ fi
 grep -q 'candidate digest changed: bird/bird-launcher' "$CASE_ROOT/err"
 [ ! -e "$TEST_STATE/updater-ran" ]
 [ ! -e "$BIRD/bird-releases/v6.23" ]
+
+new_case manifest-artifacts-missing
+TEST_BUILDER_BEHAVIOR=missing-artifacts
+if run_command --release >"$CASE_ROOT/out" 2>"$CASE_ROOT/err"; then
+	fail 'generated manifest without Stage 0 artifact bindings was accepted'
+fi
+grep -q 'canonical deploy manifest is malformed' "$CASE_ROOT/err"
+[ ! -e "$TEST_STATE/updater-ran" ]
+
+new_case manifest-contract-binding
+TEST_BUILDER_BEHAVIOR=bad-contract-artifact
+if run_command --release >"$CASE_ROOT/out" 2>"$CASE_ROOT/err"; then
+	fail 'generated manifest with a mismatched device contract was accepted'
+fi
+grep -q 'device-contract artifact does not match' "$CASE_ROOT/err"
+[ ! -e "$TEST_STATE/updater-ran" ]
+
+new_case manifest-catalog-binding
+TEST_BUILDER_BEHAVIOR=bad-catalog-artifact
+if run_command --release >"$CASE_ROOT/out" 2>"$CASE_ROOT/err"; then
+	fail 'generated manifest with a mismatched catalog was accepted'
+fi
+grep -q 'catalog artifact does not match' "$CASE_ROOT/err"
+[ ! -e "$TEST_STATE/updater-ran" ]
 
 new_case interrupted-deployment
 PRIOR_SELECTOR_SHA=$(sha256 "$BIRD/extlinux/extlinux.conf")

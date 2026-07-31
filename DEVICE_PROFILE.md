@@ -3,9 +3,14 @@
 This is the build contract for the target console. Values here are deliberate
 product decisions, not runtime options.
 
-The accepted stock-root v6.23 implementation passed its complete functional
-RG34XX-SP gate on 2026-07-26. Its canonical deploy-manifest digest is
-`e441f9c2755173353a9d29969807c2a05411240b7e9d2a1d18ed099d3c91b4d2`.
+Commit `79b6e3e03771f2787622a3e4f6f9d8f129b7281f` is the operator-accepted source
+and behavior baseline. The accepted binary fallback is immutable release
+`v6.23-20260731-054816`, whose canonical deploy-manifest digest is
+`5f95153bf46239a5e178fde28924f01c7fe586be182562f9bd9f33cf13da02ba`.
+Its manifest retains its actual older dirty source identity rather than
+claiming a clean `79b6e3e...` provenance. `ROADMAP.md` owns successor promotion
+status. This document owns human policy; `bird-device-contract.tsv` owns the
+machine-readable hardware subset without replacing this experience contract.
 
 ## Fixed hardware
 

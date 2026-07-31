@@ -12,6 +12,7 @@ chmod 0644 "$NONEXEC"
 CC=${CC:-cc}
 "$CC" -std=c11 -O1 -Wall -Wextra -Werror \
 	-Wno-unused-function -Wno-macro-redefined \
+	-I "$ROOT/launcher" \
 	"$ROOT/kernel/rocknix/tests/fixed-controls-host.c" \
 	-o "$TMP/fixed-controls-host"
 "$TMP/fixed-controls-host" "$NONEXEC"

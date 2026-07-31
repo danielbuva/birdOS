@@ -1,10 +1,18 @@
 # Active birdOS path
 
 This document is the authority for the code that builds, installs and runs the
-current birdOS system. The accepted implementation is **stock-root v6.23**.
-The complete host fault-injection suite and broad RG34XX-SP physical gate
-passed on 2026-07-26. The accepted release manifest digest is
-`e441f9c2755173353a9d29969807c2a05411240b7e9d2a1d18ed099d3c91b4d2`.
+current birdOS system. The active implementation path is **stock-root v6.23**.
+Commit `79b6e3e03771f2787622a3e4f6f9d8f129b7281f` is the operator-accepted source
+and behavior baseline. The accepted immutable binary fallback is release
+`v6.23-20260731-054816`, published as `stable-v6.23-20260731-054816`; its
+canonical manifest digest is
+`5f95153bf46239a5e178fde28924f01c7fe586be182562f9bd9f33cf13da02ba`.
+That older release manifest honestly records its own source as commit
+`19ca0bbac47c037a868dac5500aa49c96feeb2f2` plus dirty-state digest
+`d0c3a1d805205cb2bb94b95e4c3d4fb89145ca9c1f693ed12079aa70860792b0`;
+it is not falsely relabelled as a clean build of `79b6e3e...`. A successor
+becomes the optimization baseline only when its exact clean source, release,
+manifest, contract and catalogue tuple passes the host and physical gates.
 
 birdOS targets one device: the Anbernic RG34XX-SP. Fixed paths, device names,
 display geometry and hardware policy are deliberate. Older muOS stages,
@@ -24,6 +32,7 @@ but they are not alternate active implementations.
 | Legacy Ports data migration | [`firmware/mac-migrate-rocknix-ports.sh`](firmware/mac-migrate-rocknix-ports.sh), run separately before deployment |
 | Accepted hardware and product policy | [`DEVICE_PROFILE.md`](DEVICE_PROFILE.md) |
 | Current optimization work | [`ROADMAP.md`](ROADMAP.md) and [`ROCKNIX_AUDIT.md`](ROCKNIX_AUDIT.md) |
+| Fixed machine-readable hardware contract | [`bird-device-contract.tsv`](bird-device-contract.tsv), compiled through its generated launcher header |
 
 The complete build emits `deploy-manifest.tsv` at the build-output root. That
 manifest is the authority for every deployed regular file, required empty
@@ -31,6 +40,13 @@ directory, mode and digest, plus every immutable external byte stream consumed
 by build or deployment. The updater uses the same file for preflight, staging
 and installed-tree verification; a second hand-maintained copy list is not an
 independent source of truth.
+
+The manifest records the deployed device contract and its digest plus the
+generated catalogue digest. The device contract never refers back to the
+manifest. A promotion record created only after the physical gate binds source
+SHA, immutable release ID, manifest digest, device-contract digest and
+catalogue digest. Live measurements are acquired and sealed outside the source
+tree before any optional import under `measurements/`.
 
 Generated files below `kernel/work/` are build results, not source. The
 committed `launcher/bird-launcher.o`, old card-side installers and historical

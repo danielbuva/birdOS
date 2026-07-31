@@ -187,6 +187,15 @@ awk -F '\t' -v expected_release="$RELEASE_ID" '
 		if (NF != 3 || source++) exit 1
 		next
 	}
+	$1 == "artifact" {
+		if (NF != 4 || ($2 != "device-contract" && $2 != "catalog") ||
+		    !safe_path($3) || length($4) != 64 || $4 ~ /[^0-9a-f]/) exit 1
+		if ($2 == "device-contract") device_contract++
+		if ($2 == "catalog") catalog++
+		print "artifact\t" $2 "\t" $3 "\t" $4
+		artifacts++
+		next
+	}
 	$1 == "input" {
 		if (NF != 6 || !safe_path($2) ||
 		    $3 !~ /^[0-7][0-7][0-7]$/ || $4 !~ /^[0-9]+$/ ||
@@ -206,16 +215,35 @@ awk -F '\t' -v expected_release="$RELEASE_ID" '
 		if (NF != 5 || !safe_path($2) ||
 		    $3 !~ /^[0-7][0-7][0-7]$/ ||
 		    $4 !~ /^[0-9]+$/ || length($5) != 64 || $5 ~ /[^0-9a-f]/) exit 1
-		print "file\t" $2
+		print "file\t" $2 "\t" $3 "\t" $4 "\t" $5
 		files++
 		next
 	}
 	{ exit 1 }
 	END {
 		if (schema != 1 || release != 1 || policy != 1 || source != 1 ||
-		    inputs != 15 || files < 1) exit 1
+		    inputs != 15 || files < 1 ||
+		    (artifacts != 0 && artifacts != 2) ||
+		    (artifacts == 2 && (device_contract != 1 || catalog != 1))) exit 1
 	}
 ' "$MANIFEST" >"$MANIFEST_RECORDS" || fail 'canonical deploy manifest is malformed'
+
+if [ "$(awk -F '\t' '$1 == "artifact" {count++} END {print count + 0}' \
+	"$MANIFEST_RECORDS")" -eq 2 ]; then
+	DEVICE_CONTRACT_PATH=$(awk -F '\t' '$1 == "artifact" && $2 == "device-contract" {print $3}' \
+		"$MANIFEST_RECORDS")
+	DEVICE_CONTRACT_SHA=$(awk -F '\t' '$1 == "artifact" && $2 == "device-contract" {print $4}' \
+		"$MANIFEST_RECORDS")
+	CATALOG_ARTIFACT_PATH=$(awk -F '\t' '$1 == "artifact" && $2 == "catalog" {print $3}' \
+		"$MANIFEST_RECORDS")
+	[ "$DEVICE_CONTRACT_PATH" = bird/bird-device-contract.tsv ] || \
+		fail 'device-contract artifact path changed'
+	[ "$CATALOG_ARTIFACT_PATH" = launcher/catalog.generated.h ] || \
+		fail 'catalog artifact path changed'
+	awk -F '\t' -v path="$DEVICE_CONTRACT_PATH" -v digest="$DEVICE_CONTRACT_SHA" \
+		'$1 == "file" && $2 == path && $5 == digest {found++} END {exit found != 1}' \
+		"$MANIFEST_RECORDS" || fail 'device-contract artifact does not match its file record'
+fi
 
 awk -F '\t' '$1 == "input" {print $2}' "$MANIFEST_RECORDS" | \
 	LC_ALL=C sort >"$MANIFEST_INPUTS"

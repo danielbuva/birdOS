@@ -22,6 +22,8 @@ typedef unsigned long u64;
 typedef signed int s32;
 typedef signed long s64;
 
+#include "bird-device-contract.h"
+
 #define AT_FDCWD (-100)
 #define O_RDONLY 0
 #define O_WRONLY 1
@@ -55,15 +57,15 @@ typedef signed long s64;
 
 #define EVIOCGNAME_128 0x80804506UL
 
-#define GAMEPAD_NAME "H700 Gamepad"
+#define GAMEPAD_NAME BIRD_DEVICE_INPUT_NAME
 #define VOLUME_NAME "gpio-keys-volume"
 #define POWER_NAME "axp20x-pek"
 #define LID_NAME "gpio-keys-lid"
 
 #define VOLUME_PROGRAM "/storage/.config/bird/bird-volume.sh"
 #define OSD_PROGRAM "/storage/.config/bird/bird-control-osd.sh"
-#define BRIGHTNESS_CURRENT "/sys/class/backlight/backlight/brightness"
-#define BRIGHTNESS_MAX "/sys/class/backlight/backlight/max_brightness"
+#define BRIGHTNESS_CURRENT BIRD_DEVICE_BACKLIGHT_DIRECTORY "/brightness"
+#define BRIGHTNESS_MAX BIRD_DEVICE_BACKLIGHT_DIRECTORY "/max_brightness"
 #define SUSPEND_PROGRAM "/storage/.config/bird/bird-suspend.sh"
 #define EXIT_HELPER "/storage/.config/bird/bird-fixed-control-exit.sh"
 #define KMSG_DEVICE "/dev/kmsg"

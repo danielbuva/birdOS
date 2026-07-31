@@ -206,6 +206,10 @@ strings -a -n 2 "$SYSTEM_BUSYBOX" | grep -Fqx chmod || \
 [ -x "$CLANG" ] || fail 'LLVM clang missing'
 [ -x "$LLD" ] || fail 'LLVM lld missing'
 [ -x "$READELF" ] || fail 'LLVM readelf missing'
+python3 "$ROOT/generate-device-contract.py" \
+	"$ROOT/bird-device-contract.tsv" \
+	"$ROOT/launcher/bird-device-contract.h" --check || \
+	fail 'generated fixed-device contract is stale or invalid'
 if [ "$BIRD_BUILD_PREFLIGHT_ONLY" = 1 ]; then
 	printf 'Canonical pinned-input preflight passed for release %s.\n' "$RELEASE_ID"
 	exit 0
@@ -216,6 +220,28 @@ mkdir -p "$OUTPUT/card/bird" "$OUTPUT/card/extlinux" "$OUTPUT/build"
 chmod 0755 "$OUTPUT" "$OUTPUT/card" "$OUTPUT/card/bird" \
 	"$OUTPUT/card/extlinux" "$OUTPUT/build"
 record_source_identity
+cp -fp "$ROOT/bird-device-contract.tsv" \
+	"$OUTPUT/card/bird/bird-device-contract.tsv"
+chmod 0644 "$OUTPUT/card/bird/bird-device-contract.tsv"
+DEVICE_CONTRACT_SHA=$(sha256 "$ROOT/bird-device-contract.tsv")
+CATALOG_SHA=$(sha256 "$ROOT/launcher/catalog.generated.h")
+{
+	printf 'component\tmode\tflags\n'
+	printf 'final-launcher-compile\t%s\t%s\n' "${BIRD_LAUNCHER_PROFILE:-release}" \
+		"--target=aarch64-linux-gnu -mcpu=cortex-a53 -O2 -ffreestanding -ffunction-sections -fdata-sections -fno-builtin -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-ident -fvisibility=hidden -nostdlib -Wall -Wextra -Werror -Wno-unused-function -DROM_ROOT=\"/storage/bird-data/ROMS\" -DLIVE_STORAGE_ROOT=\"/storage/bird-data\" -DFAVORITES_PATH=\"/storage/.config/bird/favorites.txt\" -DFAVORITES_TEMP=\"/storage/.config/bird/favorites.tmp\" -DRECENT_PATH=\"/storage/.config/bird/recent.txt\" -DRECENT_TEMP=\"/storage/.config/bird/recent.tmp\" -DBIRD_STATIC_BASE_PATH=\"/flash/bird/launcher-base.xrgb\" -DPERSIST_UI_STATE ${LAUNCHER_PROFILE_FLAGS:-} -c launcher/bird-launcher.c"
+	printf 'final-launcher-link\t%s\t%s\n' "${BIRD_LAUNCHER_PROFILE:-release}" \
+		'-static --gc-sections --build-id=none -z noexecstack -s -e _start'
+	printf 'bird-pidwait-compile\trelease\t%s\n' \
+		'--target=aarch64-linux-gnu -mcpu=cortex-a53 -Os -ffreestanding -ffunction-sections -fdata-sections -fno-builtin -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-ident -fvisibility=hidden -nostdlib -Wall -Wextra -Werror -c launcher/bird-pidwait.c'
+	printf 'bird-fixed-controls-compile\trelease\t%s\n' \
+		'--target=aarch64-linux-gnu -mcpu=cortex-a53 -Os -ffreestanding -ffunction-sections -fdata-sections -fno-builtin -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-ident -fvisibility=hidden -nostdlib -Wall -Wextra -Werror -I launcher -c kernel/rocknix/stock-root/bird-fixed-controls.c'
+	printf 'bird-powerstate-compile\trelease\t%s\n' \
+		'--target=aarch64-linux-gnu -mcpu=cortex-a53 -Os -ffreestanding -ffunction-sections -fdata-sections -fno-builtin -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-ident -fvisibility=hidden -nostdlib -Wall -Wextra -Werror -c launcher/bird-powerstate.c'
+	printf 'small-worker-link\trelease\t%s\n' \
+		'-static --gc-sections --build-id=none -z noexecstack -s -e _start'
+	printf 'initramfs\trelease\t%s\n' \
+		'find . -print | LC_ALL=C sort | cpio -o --format newc --owner 0:0; gzip -n -9 -c'
+} >"$OUTPUT/build/build-flags.tsv"
 
 BOOT_FRAME_WORK=$OUTPUT/build/boot-frame
 mkdir -p "$BOOT_FRAME_WORK"
@@ -320,6 +346,7 @@ fi
 	-fno-builtin -fno-stack-protector -fno-unwind-tables \
 	-fno-asynchronous-unwind-tables -fno-ident -fvisibility=hidden \
 	-nostdlib -Wall -Wextra -Werror \
+	-I "$ROOT/launcher" \
 	-c "$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" \
 	-o "$OUTPUT/build/bird-fixed-controls.o"
 "$LLD" -static --gc-sections --build-id=none -z noexecstack -s \
@@ -747,8 +774,8 @@ if grep -q 'pgrep' "$OUTPUT/card/bird/run-content.sh" \
 fi
 grep -q 'retroarch fmsx' \
 	"$OUTPUT/card/bird/run-content.sh" || fail 'fixed MSX provider missing'
-grep -q '#define INPUT_EVENT_SCAN_COUNT 32' \
-	"$ROOT/launcher/bird-launcher.c" || fail 'complete fixed input search missing'
+grep -q '^#define BIRD_DEVICE_INPUT_SCAN_COUNT 32U$' \
+	"$ROOT/launcher/bird-device-contract.h" || fail 'complete fixed input search missing'
 grep -q '^CATALOG_PATH_MAX_BYTES = 4085$' \
 	"$ROOT/generate-launcher-catalog.py" || fail 'catalogue path size contract missing'
 grep -Fq 'byte < 0x20 or byte == 0x7F' \
@@ -960,6 +987,10 @@ fi
 	printf 'release\t%s\n' "$RELEASE_ID"
 	printf 'target-mode-policy\tfat-capability\n'
 	printf 'source-commit\t%s\t%s\n' "$SOURCE_COMMIT" "$SOURCE_STATE"
+	printf 'artifact\tdevice-contract\t%s\t%s\n' \
+		'bird/bird-device-contract.tsv' "$DEVICE_CONTRACT_SHA"
+	printf 'artifact\tcatalog\t%s\t%s\n' \
+		'launcher/catalog.generated.h' "$CATALOG_SHA"
 	printf 'input\tKERNEL\t%s\t%s\t%s\t%s\n' \
 		"$(file_mode "$SOURCE/KERNEL")" "$(file_bytes "$SOURCE/KERNEL")" \
 		"$KERNEL_SHA" 'ROCKNIX-H700-20260701:KERNEL'

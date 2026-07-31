@@ -1,0 +1,154 @@
+#!/usr/bin/env python3
+"""Generate the compiled subset of birdOS's fixed-device TSV contract."""
+
+from __future__ import annotations
+
+import argparse
+import pathlib
+import re
+
+
+REQUIRED = {
+    "schema": ("string", "BIRD_DEVICE_CONTRACT_SCHEMA"),
+    "device.model": ("string", "BIRD_DEVICE_MODEL"),
+    "device.soc": ("string", "BIRD_DEVICE_SOC"),
+    "kernel.release": ("string", "BIRD_DEVICE_KERNEL_RELEASE"),
+    "dtb.compatible": ("string", "BIRD_DEVICE_DTB_COMPATIBLE"),
+    "system.provider": ("string", "BIRD_DEVICE_SYSTEM_PROVIDER"),
+    "panel.compatible": ("string", "BIRD_DEVICE_PANEL_COMPATIBLE"),
+    "framebuffer.node": ("string", "BIRD_DEVICE_FRAMEBUFFER_NODE"),
+    "framebuffer.width": ("u32", "BIRD_DEVICE_FB_WIDTH"),
+    "framebuffer.height": ("u32", "BIRD_DEVICE_FB_HEIGHT"),
+    "framebuffer.bytes_per_pixel": ("u32", "BIRD_DEVICE_FB_BYTES_PER_PIXEL"),
+    "framebuffer.stride": ("u32", "BIRD_DEVICE_FB_STRIDE"),
+    "framebuffer.mapping_bytes": ("u32", "BIRD_DEVICE_FB_MAPPING_BYTES"),
+    "framebuffer.pixel_format": ("string", "BIRD_DEVICE_FB_PIXEL_FORMAT"),
+    "input.preferred_event": ("u32", "BIRD_DEVICE_INPUT_PREFERRED_EVENT"),
+    "input.scan_count": ("u32", "BIRD_DEVICE_INPUT_SCAN_COUNT"),
+    "input.name": ("string", "BIRD_DEVICE_INPUT_NAME"),
+    "input.module": ("string", "BIRD_DEVICE_INPUT_MODULE"),
+    "input.bus": ("u32", "BIRD_DEVICE_INPUT_BUS"),
+    "input.vendor": ("u32", "BIRD_DEVICE_INPUT_VENDOR"),
+    "input.product": ("u32", "BIRD_DEVICE_INPUT_PRODUCT"),
+    "input.version": ("u32", "BIRD_DEVICE_INPUT_VERSION"),
+    "input.ev_bitmap": ("hex", "BIRD_DEVICE_INPUT_EV_BITMAP"),
+    "input.key_bitmap": ("string", "BIRD_DEVICE_INPUT_KEY_BITMAP"),
+    "input.abs_bitmap": ("hex", "BIRD_DEVICE_INPUT_ABS_BITMAP"),
+    "input.ff_bitmap": ("string", "BIRD_DEVICE_INPUT_FF_BITMAP"),
+    "backlight.directory": ("string", "BIRD_DEVICE_BACKLIGHT_DIRECTORY"),
+    "backlight.maximum_raw": ("u32", "BIRD_DEVICE_BACKLIGHT_MAXIMUM_RAW"),
+    "backlight.cold_percent": ("u32", "BIRD_DEVICE_BACKLIGHT_COLD_PERCENT"),
+    "backlight.wake_strike_percent": ("u32", "BIRD_DEVICE_BACKLIGHT_WAKE_STRIKE_PERCENT"),
+    "backlight.wake_strike_ms": ("u32", "BIRD_DEVICE_BACKLIGHT_WAKE_STRIKE_MS"),
+    "audio.card_name": ("string", "BIRD_DEVICE_AUDIO_CARD_NAME"),
+    "audio.card_index": ("u32", "BIRD_DEVICE_AUDIO_CARD_INDEX"),
+    "audio.device_index": ("u32", "BIRD_DEVICE_AUDIO_DEVICE_INDEX"),
+    "audio.route": ("string", "BIRD_DEVICE_AUDIO_ROUTE"),
+    "policy.locale": ("string", "BIRD_DEVICE_POLICY_LOCALE"),
+    "policy.timezone": ("string", "BIRD_DEVICE_POLICY_TIMEZONE"),
+    "policy.uid": ("u32", "BIRD_DEVICE_POLICY_UID"),
+    "policy.gid": ("u32", "BIRD_DEVICE_POLICY_GID"),
+    "policy.home": ("string", "BIRD_DEVICE_POLICY_HOME"),
+    "policy.network_at_boot": ("bool", "BIRD_DEVICE_NETWORK_AT_BOOT"),
+    "storage.boot_device": ("string", "BIRD_DEVICE_BOOT_DEVICE"),
+    "storage.root_device": ("string", "BIRD_DEVICE_ROOT_DEVICE"),
+    "storage.content_device": ("string", "BIRD_DEVICE_CONTENT_DEVICE"),
+    "storage.boot_filesystem": ("string", "BIRD_DEVICE_BOOT_FILESYSTEM"),
+    "storage.root_filesystem": ("string", "BIRD_DEVICE_ROOT_FILESYSTEM"),
+    "storage.content_filesystem": ("string", "BIRD_DEVICE_CONTENT_FILESYSTEM"),
+    "mount.flash": ("string", "BIRD_DEVICE_FLASH_ROOT"),
+    "mount.runtime_storage": ("string", "BIRD_DEVICE_RUNTIME_STORAGE"),
+    "mount.application_roms": ("string", "BIRD_DEVICE_APPLICATION_ROMS"),
+    "mount.catalog_root": ("string", "BIRD_DEVICE_CATALOG_ROOT"),
+}
+
+
+def c_string(value: str) -> str:
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def parse_contract(path: pathlib.Path) -> dict[str, tuple[str, str]]:
+    result: dict[str, tuple[str, str]] = {}
+    for line_number, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        if not raw or raw.startswith("#"):
+            continue
+        fields = raw.split("\t")
+        if len(fields) != 3:
+            raise SystemExit(f"{path}:{line_number}: expected key, type, value")
+        key, kind, value = fields
+        if key in result:
+            raise SystemExit(f"{path}:{line_number}: duplicate key: {key}")
+        if not re.fullmatch(r"[a-z][a-z0-9_.]*", key):
+            raise SystemExit(f"{path}:{line_number}: invalid key: {key}")
+        if kind not in {"string", "u32", "hex", "bool"}:
+            raise SystemExit(f"{path}:{line_number}: invalid type: {kind}")
+        if "\r" in value or "\n" in value or not value:
+            raise SystemExit(f"{path}:{line_number}: invalid value")
+        result[key] = kind, value
+    missing = sorted(set(REQUIRED) - set(result))
+    extra = sorted(set(result) - set(REQUIRED))
+    if missing or extra:
+        raise SystemExit(f"contract key mismatch; missing={missing}, extra={extra}")
+    return result
+
+
+def render(contract: dict[str, tuple[str, str]]) -> str:
+    lines = [
+        "/* Generated by generate-device-contract.py; do not edit manually. */",
+        "#ifndef BIRD_DEVICE_CONTRACT_H",
+        "#define BIRD_DEVICE_CONTRACT_H",
+        "",
+    ]
+    for key, (expected_kind, macro) in REQUIRED.items():
+        kind, value = contract[key]
+        if kind != expected_kind:
+            raise SystemExit(f"{key}: expected type {expected_kind}, found {kind}")
+        if kind == "string":
+            rendered = c_string(value)
+        elif kind == "u32":
+            number = int(value, 10)
+            if number < 0 or number > 0xFFFFFFFF or str(number) != value:
+                raise SystemExit(f"{key}: invalid canonical u32: {value}")
+            rendered = f"{number}U"
+        elif kind == "hex":
+            if not re.fullmatch(r"0x[0-9a-f]+", value):
+                raise SystemExit(f"{key}: invalid canonical hex: {value}")
+            rendered = f"{value}UL"
+        else:
+            if value not in {"true", "false"}:
+                raise SystemExit(f"{key}: invalid bool: {value}")
+            rendered = "1U" if value == "true" else "0U"
+        lines.append(f"#define {macro} {rendered}")
+    lines.extend(
+        [
+            "",
+            "#if BIRD_DEVICE_FB_STRIDE != (BIRD_DEVICE_FB_WIDTH * BIRD_DEVICE_FB_BYTES_PER_PIXEL)",
+            '#error "fixed framebuffer stride is inconsistent"',
+            "#endif",
+            "#if BIRD_DEVICE_FB_MAPPING_BYTES != (BIRD_DEVICE_FB_STRIDE * BIRD_DEVICE_FB_HEIGHT)",
+            '#error "fixed framebuffer mapping size is inconsistent"',
+            "#endif",
+            "",
+            "#endif",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("contract", type=pathlib.Path)
+    parser.add_argument("output", type=pathlib.Path)
+    parser.add_argument("--check", action="store_true")
+    args = parser.parse_args()
+    generated = render(parse_contract(args.contract))
+    if args.check:
+        if not args.output.is_file() or args.output.read_text(encoding="utf-8") != generated:
+            raise SystemExit(f"generated device contract is stale: {args.output}")
+        return
+    args.output.write_text(generated, encoding="utf-8")
+
+
+if __name__ == "__main__":
+    main()

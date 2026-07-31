@@ -1,0 +1,51 @@
+schema	string	bird-device-v1
+device.model	string	Anbernic RG34XX-SP
+device.soc	string	Allwinner H700
+kernel.release	string	7.0.11
+dtb.compatible	string	anbernic,rg34xx-sp
+system.provider	string	ROCKNIX-H700-20260701
+panel.compatible	string	anbernic,rg34xx-sp-panel
+framebuffer.node	string	/dev/fb0
+framebuffer.width	u32	720
+framebuffer.height	u32	480
+framebuffer.bytes_per_pixel	u32	4
+framebuffer.stride	u32	2880
+framebuffer.mapping_bytes	u32	1382400
+framebuffer.pixel_format	string	XRGB8888
+input.preferred_event	u32	4
+input.scan_count	u32	32
+input.name	string	H700 Gamepad
+input.module	string	rocknix-singleadc-joypad
+input.bus	u32	25
+input.vendor	u32	18507
+input.product	u32	5343
+input.version	u32	256
+input.ev_bitmap	hex	0x20000b
+input.key_bitmap	string	f00000000 0 0 0 7fdb000000000000 0 0 0 0
+input.abs_bitmap	hex	0x1b
+input.ff_bitmap	string	10000 0
+backlight.directory	string	/sys/class/backlight/backlight
+backlight.maximum_raw	u32	2499
+backlight.cold_percent	u32	5
+backlight.wake_strike_percent	u32	10
+backlight.wake_strike_ms	u32	50
+audio.card_name	string	audiocodec
+audio.card_index	u32	0
+audio.device_index	u32	0
+audio.route	string	internal-speaker
+policy.locale	string	C
+policy.timezone	string	UTC
+policy.uid	u32	0
+policy.gid	u32	0
+policy.home	string	/storage
+policy.network_at_boot	bool	false
+storage.boot_device	string	/dev/mmcblk0p1
+storage.root_device	string	/dev/mmcblk0p5
+storage.content_device	string	/dev/mmcblk0p6
+storage.boot_filesystem	string	vfat
+storage.root_filesystem	string	ext4
+storage.content_filesystem	string	exfat
+mount.flash	string	/flash
+mount.runtime_storage	string	/storage/bird-data
+mount.application_roms	string	/storage/roms
+mount.catalog_root	string	/mnt/mmc

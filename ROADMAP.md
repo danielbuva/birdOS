@@ -1,163 +1,288 @@
-# birdOS roadmap
+# birdOS RG34XX-SP optimization roadmap
 
-This is the authoritative plan for the active birdOS implementation. The
-current repository candidate is **stock-root v6.23**. Stock-root v6.22 remains
-the last broad hardware-accepted checkpoint until v6.23 passes the host and
-RG34XX-SP promotion gates in [`ACTIVE_PATH.md`](ACTIVE_PATH.md).
+This is the governing constitution for the active stock-root implementation.
+Commit `79b6e3e03771f2787622a3e4f6f9d8f129b7281f` is the operator-accepted source
+and behavior baseline. Immutable release `v6.23-20260731-054816` remains the
+accepted binary fallback and performance reference. Its canonical manifest
+digest is
+`5f95153bf46239a5e178fde28924f01c7fe586be182562f9bd9f33cf13da02ba`.
+That manifest retains its actual older dirty source identity; it is not
+represented as a clean build of `79b6e3e...`.
 
-The original feature-by-feature plan and full version narrative are preserved
-in [`docs/history/LEGACY_ROADMAP.md`](docs/history/LEGACY_ROADMAP.md).
-They explain how the project arrived here, but do not define the current build
-or deployment path.
+The historical version narrative remains in
+[`docs/history/LEGACY_ROADMAP.md`](docs/history/LEGACY_ROADMAP.md). It explains
+how birdOS arrived here but does not define current work.
 
-## Governing order
+## Immutable priority and promotion policy
 
-birdOS optimizes in this order:
+Optimize in this lexicographic order:
 
-1. Power-to-interactive-menu and interaction latency.
-2. Battery efficiency and avoidable wake-ups.
-3. Memory and storage efficiency.
-4. Only the exact features required by the fixed RG34XX-SP experience.
+1. Power-to-visible, genuinely usable menu.
+2. UI interaction latency, then content launch and return latency.
+3. Calibrated battery energy and unnecessary wakeups.
+4. Memory and storage efficiency.
+5. Fixed-device kernel work after userspace promotion.
+6. U-Boot performance and frame production last.
 
-Compatibility is a promotion gate, not a permanent excuse for generic work.
-Each retained process, dependency, probe and abstraction must have a measured
-consumer before it is accepted into the final image.
+Each candidate names one target and changes one attributable boundary. It may
+promote only when its target improves beyond a margin frozen from A/A variation
+and instrument resolution, every higher-priority metric is non-inferior, and
+accepted behavior remains intact. Cosmetic continuity may not delay honest
+usability at all. Neutral correctness, measurement, rollback and readiness
+infrastructure may promote with no measurable regression.
 
-## Current state
+Use randomized or ABBA paired acquisition in controlled charge, temperature,
+brightness, card and content-state blocks. Use 20 boots for screening, at least
+60 for promotion, at least 100 events per UI scenario and repeated cold/warm
+provider runs. Treat p95 and maxima as descriptive unless the sample supports a
+tail claim. Ordinary promotion runs permit no missed milestone, duplicate
+launch, ownership loss or unexpected timeout/recovery activation. New recovery
+mechanisms require separate fault injection.
 
-| Boundary | Status |
-| --- | --- |
-| Fixed direct-framebuffer launcher, input and cached catalogue | Hardware accepted |
-| Asynchronous storage, application dispatch and exact-page return | Hardware accepted through v6.22 |
-| Games, media, Ports, system controls, suspend/wake and shutdown | Broadly accepted through v6.22 |
-| Process-interruption-safe release deployment and post-init fallback | v6.23 candidate; promotion gate pending |
-| Fail-closed application readiness and launcher health recovery | v6.23 candidate; promotion gate pending |
-| Enforced foreground content lifetime and atomic persistence | v6.23 candidate; promotion gate pending |
-| Fixed-device userspace reduction | Active |
-| Custom kernel trimming | Deferred until userspace stabilizes |
-| U-Boot optimization | Last lower-layer stage |
+Host dynamic instructions, syscalls and synthetic framebuffer bytes are host
+metrics, not RG34XX-SP latency claims. Hardware timing uses both external power
+origin and kernel-relative `CLOCK_BOOTTIME`. Input acquisition distinguishes
+electrical-edge-to-photons, evdev-to-photons and launcher-read-to-framebuffer
+barrier. Energy is measured at the battery path or a calibrated inline shunt.
 
-The active compatibility base remains the exact ROCKNIX 20260701 DDR4 kernel,
-DTB, immutable system image and configured writable provider. birdOS replaces
-the frontend and selected policy while retaining that proven application and
-hardware closure.
+## Readiness contract
 
-## 1. Promote stock-root v6.23
+Record separately:
 
-Complete the combined correctness gate before subtracting more runtime work:
+1. External power origin.
+2. Kernel start.
+3. Framebuffer node available.
+4. `first_pixel_commit`.
+5. Panel ready.
+6. Input registration.
+7. Input node creation.
+8. Validated input descriptor open: `input_ready`.
+9. `usable_frame_ready`.
+10. Storage ready.
+11. Application contract ready.
+12. Provider/content ready.
 
-- build from every pinned input and verify the canonical
-  `deploy-manifest.tsv`;
-- fault-inject process interruption during release staging and selector
-  activation, plus post-init automatic fallback, and prove that only a
-  complete release can be selected;
-- prove the application contract fails closed and a launcher exit is detected
-  before a stale first-frame marker can be accepted;
-- prove every foreground descendant is contained and reaped before the launcher
-  resumes, including TERM-resistant and reparented children;
-- verify atomic Favorites and shutdown checkpoints plus bounded polling and
-  execution-error recovery; and
-- repeat the broad physical gate for menu/input, early storage, games, media,
-  Ports, controls, suspend/wake, global exit, fallback and shutdown.
+`usable_frame_ready` means a successful visible commit, panel readiness and a
+validated open input descriptor. `/run/muos/bird-first-frame-ready` temporarily
+retains that meaning for compatibility. Publishing readiness must not force a
+second framebuffer write. Before input works, display only noninteractive
+background/header pixels.
 
-No v6.23 result is a new baseline until both the host suite and physical device
-gate pass.
+Until the kernel exposes truthful readiness, use the hardware-characterized
+predicate: backlight interface ready, selected brightness sequence complete,
+framebuffer commit complete, and observed vblank or the conservative proven
+interval elapsed. Never publish readiness before visible photons.
 
-## 2. Finish the retained-userspace audit
+## Stage 0 — Authority, provenance and successor gate
 
-Continue with the highest-return, lowest-risk layer:
+Authority is intentionally divided:
 
-- classify every retained ROCKNIX startup script, service, output and idle
-  wake-up by its exact consumer;
-- keep the launcher as the first usable userspace application and move all
-  nonessential work behind its interactive frame;
-- replace generic discovery with fixed RG34XX-SP initialization only after all
-  game, media, control and suspend consumers are proven;
-- generate the exact Sway, audio and application profiles instead of running
-  broad multi-device generators;
-- reassess udev, logind/seatd, journald and other resident managers from
-  measured behavior; and
-- keep networking absent from offline boot and acquire it only for an explicit
-  network session such as PortMaster.
+- `ACTIVE_PATH.md`: active implementation and deployment.
+- `DEVICE_PROFILE.md`: human product and one-user policy.
+- `bird-device-contract.tsv`: fixed hardware and one-user invariants.
+- generated `bird-device-contract.h`: compiled subset.
+- generated catalog sources: catalog revision, counts and data.
+- `deploy-manifest.tsv`: release files, immutable inputs, modes, sizes and hashes.
+- out-of-tree card-instance evidence: replaceable card/filesystem identity.
+- promotion record: accepted source/release/digest binding.
 
-The retained implementation and open audit evidence are tracked in
-[`ROCKNIX_AUDIT.md`](ROCKNIX_AUDIT.md).
+The digest graph is one-way. The deploy manifest records the device-contract
+file/digest and catalog digest. The device contract never contains the final
+manifest digest. A promotion record binds clean source SHA, immutable release
+ID, manifest digest, device-contract digest, catalog digest and sealed host and
+hardware evidence.
 
-## 3. Remove compatibility namespaces and shims
+Before every build or acquisition, freeze local/origin/public SHA, complete
+tracked diff, untracked path inventory, submodules, pinned inputs, tool
+versions/executable hashes, exact flags, mode, environment, commands and raw
+samples. Acquire under an output-root `measurements-live` directory outside the
+repository. Seal it with a canonical inventory only after acquisition ends.
+Importing sealed evidence into `measurements/` establishes a new source identity
+for all later work and never affects a runtime image.
 
-After the v6.23 gate is stable:
+For every successor to `79b6e3e...`:
 
-- move runtime markers and persistent state from legacy `MUOS`/`muos`
-  namespaces into canonical birdOS locations;
-- generate catalogue paths directly for the final `/storage/roms` contract;
-- normalize BIOS, Ports and media paths; and
-- delete launcher and runner rewrites only after one coherent migration and
-  rollback test.
+1. Publish a clean commit and verify local, origin and public identity.
+2. Build all pinned inputs under a fresh immutable release ID.
+3. Build release/profile final-root and early-initramfs launchers.
+4. Run the complete host suite and transactional fault-injection tests.
+5. Deploy without replacing the accepted fallback.
+6. Complete the RG34XX-SP behavior and measurement gate.
+7. Seal the evidence and create the exact promotion record.
+8. Only then update authority documents to name the successor as accepted.
 
-This is a single migration boundary. Partial namespace conversion is not an
-acceptable deployed state.
+If any physical gate fails, retain `79b6e3e...` as the accepted source/behavior
+reference and `v6.23-20260731-054816` as the accepted binary fallback.
 
-## 4. Reproduce the complete birdOS image
+## Stage 1 — Low-risk release-path cleanup
 
-Bake the accepted card-side state, fixed profiles, launcher, recovery assets and
-content contracts into one deterministic image build. A clean checkout with the
-pinned upstream inputs must reproduce identical boot and runtime artifacts. The
-process-interruption-safe release mechanism remains the development and recovery
-path until that image passes the same broad device gate.
+Promote independently: zero pre-usable release logging; trace/recovery-only
+diagnostics; deferred power netlink, battery reads and battery rendering;
+removal of the valid-resume startup rewrite; removal of normal LED inspection
+and `dmesg | tail`; bounded Favorites retries; no same-view A-button full
+redraw; no redundant marquee clearing; production extlinux with no serial
+console A/B against diagnostics; and identical-payload gzip `-9`, gzip `-1`
+and LZ4 experiments. Report image size, card-read/decompression timing and
+power-to-usable results. Do not replace the early shell in this stage.
 
-## 5. Build the fixed RG34XX-SP kernel
+## Stage 2 — Race-free event-driven discovery
 
-Only after userspace contracts and benchmarks settle:
+Install the `/dev/input` watch before discovery, try the fixed hint once,
+validate name, full input ID and capabilities, then perform one recovery scan.
+Afterward inspect only creation events; rescan on overflow, ambiguity,
+reconnect or explicit recovery. Apply the same watch-before-scan pattern to
+`/dev/fb0`, validating geometry, stride, format and mapping. Controls use the
+same input contract. Eliminate repeated 1 ms failed-open scans, preserve input
+priority and block ordinary idle in `ppoll`.
 
-- start from the compatible public ROCKNIX Linux source and exact device tree;
-- record the complete live hardware and module closure;
-- remove unused drivers, buses, protocols and probes in measured batches;
-- hardcode fixed-device policy where that improves latency or efficiency without
-  coupling unrelated application behavior; and
-- require the custom kernel to beat the accepted release kernel in boot latency
-  or efficiency while preserving display, input, storage, audio, charging,
-  suspend, content and shutdown behavior.
+Hardware-verify application-return retained-frame reuse. Cold bootloader-frame
+reuse remains disabled.
 
-Kernel work does not absorb launcher, content-session or optional-network
-policy. Those remain separate userspace responsibilities.
+## Stage 3 — Bootstrap progression
 
-## 6. Optimize U-Boot last
+### 3A — Minimal shell
 
-Once the kernel boundary is stable:
+Retain pinned `/init` and its `start`, `root-ready` and `handoff` hooks plus the
+filesystem/FIFO contract. Keep only endpoint setup, H700 module load, brightness
+preparation, launcher start/PID, storage-root notification/acknowledgement and
+ownership verification. Move all other logging and diagnostics after usability.
 
-- shorten unused target discovery and fixed-device probes;
-- investigate earlier green-LED and panel assertion;
-- implement a genuine bootloader-owned A/B selector with redundant durable
-  boot state, bounded tries and a recovery-tested response to power loss at
-  every state transition;
-- preserve a recovery-tested boot path for every experiment; and
-- decide from measured power-to-menu behavior whether any splash is still
-  useful.
+After Stage 2, A/B fully deferred preparation against low-priority concurrent
+release/root/storage/application preparation after launcher dispatch. Test
+release verification, storage, noncritical module, audio and provider work
+separately. Concurrency promotes only if boot and UI interaction remain
+non-inferior, failed probes/contention do not increase and content readiness
+improves.
 
-The runtime red LED remains reserved for the fixed low-battery threshold. Boot
-indicator policy and runtime battery policy are separate owners.
+### 3B — Persistent freestanding coordinator
 
-## Deferred experience and performance work
+`start` launches one long-lived coordinator. It owns a private
+`SOCK_SEQPACKET` launcher socketpair; launcher FD 3 is the fixed endpoint and FD
+4 is closed. Transient later hooks use a root-owned mode-0600 control socket
+with peer credential validation. The coordinator forwards versioned commands,
+returns matching results and lives through acknowledged handoff.
 
-These items are intentional backlog, not discarded features:
+The fixed 32-byte protocol includes magic, version, size, event, status,
+sequence and `CLOCK_BOOTTIME`. Commands receive ACK/NACK with the same sequence;
+completed duplicates return cached results; stale/malformed/truncated messages
+are rejected; EOF, peer death, full buffers, `EINTR`, `EAGAIN` and timeout have
+fixed semantics; unused ends close immediately; readiness is never dropped.
 
-- survey muOS and other handheld operating systems for transferable performance
-  techniques;
-- tune RetroArch, standalone emulators and first-game cold loading;
-- optimize PortMaster startup and finish its network experience;
-- package the pinned KOReader runtime as an RG34XX-SP-native on-demand app so
-  books no longer cross PortMaster preparation hooks;
-- add build-time game collections and optional post-first-frame user playlist
-  indexes without adding a boot-time ROM scan;
-- make music, video, reading, Ports and emulator interfaces bespoke;
-- finish media controls, playlists and reader formats;
-- optimize suspend/wake battery behavior;
-- calibrate charging percentage and final LED behavior; and
-- retain the accepted static cat-and-stairway wallpaper; keep boot animation
-  and sound as future ideas unless they can be introduced without delaying
-  usable input.
+Pinned init still owns release selection, `prepare_sysroot`, mounts, recovery
+and `switch_root`. Prove the same launcher PID and framebuffer/input ownership,
+one storage anchor, one cancellable pending intent, no duplicate launch and
+correct supervisor adoption.
 
-Independent items may share one physical card cycle only when their outcomes
-remain distinguishable. Larger performance work comes before cosmetic
-diminishing returns; once those boundaries are stable, line-by-line subtraction
-remains part of the project goal.
+### 3C — Standalone bootstrap/PID 1
+
+Develop only as a separate extlinux candidate with the accepted initramfs still
+bootable. It mounts `/dev`, `/proc`, `/sys` and `/run`, reproduces 3B transitions,
+validates the release, owns the launcher protocol, handles PID 1 signals and
+reaping, moves special filesystems and execs one fixed continuation. A fatal
+failure preserves pixels but disables interaction. It cannot become default
+until Stage 7 passes.
+
+## Stage 4 — Retained userspace and content interaction
+
+Run immutable final-root programs directly from versioned `/flash/bird`; keep
+the early launcher in initramfs and mutable state under `/storage`. Evaluate one
+at a time: fixed coordinator/module/firmware layouts, exact internal audio,
+removal of HDMI/Bluetooth/quantum work, warm versus on-demand PipeWire, narrowed
+udev, on-demand seatd, logind removal after suspend proof, volatile journald
+before removal, trace-only diagnostics and PortMaster-only networking.
+
+Measure A edge through launcher request, supervisor acceptance, provider exec,
+usable provider state and first accepted input, plus provider exit through
+restored Bird interaction. Cover RetroArch, PPSSPP, DraStic, OpenBOR/native
+Ports, MPV audio/video, KOReader and PortMaster.
+
+## Stage 5 — Battery, suspend and memory closure
+
+Measure calibrated energy, wakeups, IRQs and CPU residency for short-label menu
+idle, marquee idle, paused game, audio/video, Wi-Fi acquisition/transaction/
+cleanup, lid suspend, resume and external power. Resume also records latency,
+energy and exact brightness restoration. Audit every timer, retry, manager,
+audio wake, network cleanup, storage access and input poll. Retain the capacity
+timer until a proven event source replaces it.
+
+Measure PSS/USS at usable frame, storage readiness, application readiness,
+content idle and post-return. Reduce memory only where boot, interaction and
+battery remain non-inferior.
+
+## Stage 6 — Canonical namespace and hermetic image
+
+Atomically migrate `/run/muos` to `/run/bird`, legacy state to Bird state,
+catalog paths to `/storage/roms`, and normalized BIOS/Ports/media/persistence
+paths. Supply one migration tool, rollback, interruption recovery and mixed-
+state rejection; do not perform piecemeal compatibility removal.
+
+Build the complete image with a digest-pinned container or immutable toolchain,
+fixed partition/filesystem identities, deterministic mkfs seeds/options,
+timestamps, owners, modes, ordering and sparse handling. Require two clean
+builds in separate output roots and a separate-host reproduction where
+feasible, yielding byte-identical output or a formally defined excluded-region
+list. Content reproducibility may pass before Stage 7; selector power-loss
+acceptance may not.
+
+## Stage 7 — U-Boot A/B safety lane
+
+Begin after Stage 0 in parallel without altering the accepted card. Implement
+only redundant selector state, durable bounded attempts, externally forced
+fallback, pre-userspace recovery, verified fallback assets and power-loss tests
+at every transition. No display, artwork, frame or speed work.
+
+Stage 7 gates 3C default promotion, deterministic-image selector acceptance
+and routine experimental-kernel deployment.
+
+## Stage 8 — Source-kernel parity lane
+
+Parity builds may begin after Stage 0 in a digest-pinned environment but cannot
+redefine the active baseline early. Rebuild the behavior-equivalent unmodified
+ROCKNIX kernel/modules/DTB, boot the accepted current userspace, retain exact
+config/tool/patch provenance, pass the full hardware/application matrix and
+compare boot, interaction, power, size and memory. Promote that source-built
+baseline before optimizing the kernel.
+
+## Stage 9 — Fixed-device kernel optimization
+
+The kernel owns panel initialization and cold brightness. Test standard DRM,
+vblank and backlight readiness before adding a clean read-only driver
+attribute. A/B direct cold brightness against the wake strike; keep the strike
+only for proven off-to-on/resume transitions and restore exact requested
+brightness. Prevent blanking, flashing and generic high brightness. Define
+firmware-frame adoption experimentally but leave it disabled until Stage 10
+provides the producer.
+
+Measure live H700 polling and electrical topology. Use IRQ-backed GPIO input
+where possible and minimal polling only where necessary while preserving exact
+identity, capabilities, SDL GUID, rumble, reconnect and provider behavior.
+Subtract drivers, modules, probes, buses, protocols and subsystems one
+attributable group at a time only after complete consumer closure. Neutral
+kernel measurement/readiness infrastructure may promote without regression;
+performance changes require a measured boot, interaction, power, wakeup,
+memory or size benefit.
+
+## Stage 10 — U-Boot performance and inherited frame
+
+After userspace and kernel stability, split PMIC, SPL/DRAM, TF-A, U-Boot,
+storage, decompression and kernel-entry time. Hardcode the board, target and
+paths; remove unused menus, discovery, USB/network paths, protocols and probes;
+then optimize fixed loading and handoff. Add frame production last and enable
+kernel adoption only in the joint experiment. Promote only when no blank,
+clear, flash or input delay occurs and total power-to-usable or continuity
+improves without higher-priority regression.
+
+## Candidate report gate
+
+Before editing, inspect and state the active critical path. Acquire and seal a
+baseline, add focused tests, compile release/profile final-root and early
+launchers where applicable, and run affected launcher, catalog, boot-frame,
+storage, supervisor, application, content, persistence, controls, brightness,
+PortMaster, deployment, fallback and reproducibility tests.
+
+Report syscalls, framebuffer bytes, host dynamic instructions, ELF sections,
+binary size, PSS/USS, tasks, wakeups and IRQs separately from RG34XX-SP timing
+and calibrated energy. Preserve menu/navigation/paging/actions, Favorites,
+asynchronous storage, exactly one pending selection, exact return state,
+reconnect, recovery, all providers, networking isolation, charging, battery,
+brightness, suspend/resume, shutdown, fallback and power-loss recovery.
