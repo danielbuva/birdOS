@@ -4,6 +4,27 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../../.." && pwd)
 . "$ROOT/firmware/mac-removable-device.sh"
 
+grep -Fq 'rocknix-bird-prefix-compat-v3/bird-rocknix-prefix.img' \
+	"$ROOT/firmware/mac-install-rocknix-bird-prefix.sh" || {
+	printf 'prefix installer does not select the v3 builder output\n' >&2
+	exit 1
+}
+grep -Fq 'PREFIX_SHA=6f5f6cec067c9e03c088d629c9a31f9f382d6302e1095fbacd66fde1476761cb' \
+	"$ROOT/firmware/mac-install-rocknix-bird-prefix.sh" || {
+	printf 'prefix installer digest differs from the reproduced v3 prefix\n' >&2
+	exit 1
+}
+grep -Fq 'RECOVERY_SHA=0bcacc83bf7345306ef7615be1012b5c7dd0a92630cf764f34b049f88e9b9f78' \
+	"$ROOT/firmware/mac-reimage-bird-prefix.sh" || {
+	printf 'combined reimage recovery digest changed\n' >&2
+	exit 1
+}
+grep -Fq 'BIRD_PREFIX_SHA=6f5f6cec067c9e03c088d629c9a31f9f382d6302e1095fbacd66fde1476761cb' \
+	"$ROOT/firmware/mac-reimage-bird-prefix.sh" || {
+	printf 'combined reimage Bird prefix digest changed\n' >&2
+	exit 1
+}
+
 fail() {
 	printf '%s\n' "$*" >&2
 	exit 1
