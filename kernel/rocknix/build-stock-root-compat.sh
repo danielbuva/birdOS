@@ -772,6 +772,10 @@ grep -Fq 'poll_timeout(sources, &state, watch_fd < 0' \
 	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'control polling fallback is not inotify-scoped'
 grep -Fq 'h700_input_contract_matches((int)fd)' \
 	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'fixed controls H700 contract validation missing'
+grep -Fq 'queue_while_resuming' \
+	"$ROOT/kernel/rocknix/stock-root/bird-suspend.sh" || fail 'rapid repeated suspend queue missing'
+grep -Fq 'BIRD_SUSPEND_HANDOFF=1' \
+	"$ROOT/kernel/rocknix/stock-root/bird-suspend.sh" || fail 'resume-to-suspend handoff missing'
 for ACTION in volume suspend content-exit; do
 	grep -q "$ACTION-exec-failed" \
 		"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || \

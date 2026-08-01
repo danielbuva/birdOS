@@ -11,6 +11,103 @@ STATE=${BIRD_SUSPEND_STATE:-/run/muos/bird-pre-suspend-brightness}
 STOCK=${BIRD_SUSPEND_PROVIDER:-/usr/bin/rocknix-fake-suspend}
 LOG=${BIRD_SUSPEND_LOG:-/storage/bird-data/MUOS/Bird/log/suspend-latest.log}
 SETTLE=${BIRD_SUSPEND_SETTLE:-/usr/bin/usleep}
+TRANSITION=${BIRD_SUSPEND_TRANSITION:-/run/muos/bird-suspend-resuming}
+PENDING=${BIRD_SUSPEND_PENDING:-/run/muos/bird-suspend-pending}
+TRANSITION_LOCK=${BIRD_SUSPEND_TRANSITION_LOCK:-/run/muos/bird-suspend-transition.lock}
+FLOCK=${BIRD_SUSPEND_FLOCK:-flock}
+
+lock_transition() {
+	mkdir -p "${TRANSITION_LOCK%/*}"
+	exec 9>"$TRANSITION_LOCK"
+	"$FLOCK" -x 9
+}
+
+unlock_transition() {
+	"$FLOCK" -u 9 2>/dev/null || :
+	exec 9>&-
+}
+
+pending_value() {
+	case "${1:-}:${2:-}" in
+		power:) printf '%s\n' power ;;
+		lid:close) printf '%s\n' lid-close ;;
+		*) printf '%s\n' none ;;
+	esac
+}
+
+queue_while_resuming() {
+	REQUEST=$(pending_value "${1:-}" "${2:-}")
+	lock_transition
+	if [ ! -e "$TRANSITION" ]; then
+		unlock_transition
+		return 1
+	fi
+	OWNER=
+	IFS= read -r OWNER <"$TRANSITION" || :
+	case "$OWNER" in
+		''|*[!0-9]*) OWNER=0 ;;
+	esac
+	if [ "$OWNER" -le 0 ] || ! kill -0 "$OWNER" 2>/dev/null; then
+		rm -f "$TRANSITION" "$PENDING"
+		unlock_transition
+		return 1
+	fi
+	if [ "$REQUEST" = none ]; then
+		rm -f "$PENDING"
+	else
+		printf '%s\n' "$REQUEST" >"$PENDING"
+	fi
+	unlock_transition
+	printf 'bird-suspend stage=queued request=%s\n' "$REQUEST" >>"$LOG"
+	return 0
+}
+
+begin_resume() {
+	lock_transition
+	if [ -e "$TRANSITION" ]; then
+		unlock_transition
+		return 1
+	fi
+	printf '%s\n' "$$" >"$TRANSITION"
+	rm -f "$PENDING"
+	unlock_transition
+}
+
+finish_resume() {
+	QUEUED=none
+	lock_transition
+	if [ -r "$PENDING" ]; then
+		IFS= read -r QUEUED <"$PENDING" || QUEUED=none
+	fi
+	if [ "$QUEUED" = none ]; then
+		rm -f "$PENDING" "$TRANSITION"
+	fi
+	unlock_transition
+	[ "$QUEUED" != none ] || return 0
+	BIRD_SUSPEND_HANDOFF=1
+	export BIRD_SUSPEND_HANDOFF
+	exec "$0"
+}
+
+accept_handoff() {
+	[ "${BIRD_SUSPEND_HANDOFF:-0}" = 1 ] || return 1
+	QUEUED=none
+	lock_transition
+	if [ -r "$PENDING" ]; then
+		IFS= read -r QUEUED <"$PENDING" || QUEUED=none
+	fi
+	rm -f "$PENDING" "$TRANSITION"
+	unlock_transition
+	case "$QUEUED" in
+		power) set -- power ;;
+		lid-close) set -- lid close ;;
+		*) exit 0 ;;
+	esac
+	BIRD_SUSPEND_HANDOFF=0
+	export BIRD_SUSPEND_HANDOFF
+	HANDOFF_SOURCE=$1
+	HANDOFF_ACTION=${2:-}
+}
 
 log_brightness() {
 	RAW=unavailable
@@ -56,7 +153,20 @@ is_resume() {
 }
 
 mkdir -p "${LOG%/*}"
+HANDOFF_SOURCE=
+HANDOFF_ACTION=
+if accept_handoff; then
+	:
+elif queue_while_resuming "${1:-}" "${2:-}"; then
+	exit 0
+fi
+[ -z "$HANDOFF_SOURCE" ] || set -- "$HANDOFF_SOURCE" "$HANDOFF_ACTION"
 if is_resume "${1:-}" "${2:-}"; then
+	while ! begin_resume; do
+		if queue_while_resuming "${1:-}" "${2:-}"; then
+			exit 0
+		fi
+	done
 	SAVED=
 	[ -r "$STATE" ] && IFS= read -r SAVED <"$STATE"
 	normalize_saved_lit_level "$SAVED"
@@ -85,6 +195,7 @@ if is_resume "${1:-}" "${2:-}"; then
 	esac
 	rm -f "$STATE"
 	log_brightness restored
+	finish_resume
 	exit 0
 fi
 

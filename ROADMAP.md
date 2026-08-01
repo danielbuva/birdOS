@@ -199,8 +199,16 @@ name ioctl; hardware must show boot non-inferiority before promotion.
 
 Hardware follow-up on release `v6.23-input-contract-4fd18d0` passed the complete
 functional screen. Exact launcher input validation is retained. No ordinary
-behavior regression was observed; timing remains unclaimed without device
-samples.
+behavior regression was observed.
+
+The retained device records now separate the earlier visible-but-not-input-ready
+frame from honest usability. Forty older boots reached their later input-ready
+frame at a descriptive median 1,504 ms after kernel start. Ninety-four later
+boots reached a visible, input-ready frame at a descriptive median 1,229 ms, a
+275 ms kernel-relative improvement. The user's external stopwatch observations
+also moved from approximately 2.8 seconds toward consistent 2.7-second boots.
+These are RG34XX-SP measurements and support an observed boot improvement; they
+are not a randomized or environmentally paired promotion distribution.
 
 The third Stage 2 candidate changes only the post-menu fixed-controls worker.
 It installs and retains a `/dev/input` creation watch before its initial scan,
@@ -217,6 +225,16 @@ wakeup candidate. It may reduce priority 2 scheduler/filesystem contention
 during reconnect, does not enter the priority 1 usable-menu path, and adds one
 resident descriptor plus a small amount of code rather than targeting priority
 4 memory.
+
+The first physical follow-up for that controls candidate found rapid repeated
+power and lid suspend requests could be ignored until ROCKNIX resume cleanup
+finished. The retained provider makes the panel visible before its final global
+process cleanup; a new suspend helper in that interval can be killed. Bird now
+keeps one last-writer-wins suspend intent while resume is active, cancels it on
+an intervening lid-open event, and hands a retained close/power request to the
+same wrapper immediately after cleanup. This restores repeated-control intent
+without changing the provider's proven display, governor, input, LED or audio
+sequence.
 
 ## Stage 3 — Bootstrap progression
 

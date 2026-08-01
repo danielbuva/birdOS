@@ -16,6 +16,10 @@ LOG=$TMP/suspend.log
 PROVIDER=$TMP/provider.sh
 SETTLE=$TMP/settle.sh
 SETTLE_LOG=$TMP/settle.log
+TRANSITION=$TMP/run/resuming
+PENDING=$TMP/run/pending
+TRANSITION_LOCK=$TMP/run/transition.lock
+FLOCK=$TMP/flock.py
 mkdir -p "$BACKLIGHT"
 printf '2499\n' >"$BACKLIGHT/max_brightness"
 printf '4\n' >"$BACKLIGHT/bl_power"
@@ -81,8 +85,36 @@ apply_suspend() {
 	BIRD_SUSPEND_PROVIDER=$PROVIDER \
 	BIRD_SUSPEND_SETTLE=$SETTLE \
 	BIRD_TEST_SETTLE_LOG=$SETTLE_LOG \
+	BIRD_SUSPEND_TRANSITION=$TRANSITION \
+	BIRD_SUSPEND_PENDING=$PENDING \
+	BIRD_SUSPEND_TRANSITION_LOCK=$TRANSITION_LOCK \
+	BIRD_SUSPEND_FLOCK=$FLOCK \
 		"$SOURCE" lid "$1"
 }
+
+apply_power() {
+	BIRD_BACKLIGHT=$BACKLIGHT \
+	BIRD_SUSPEND_STATE=$STATE \
+	BIRD_SUSPEND_LOG=$LOG \
+	BIRD_SUSPEND_PROVIDER=$PROVIDER \
+	BIRD_SUSPEND_SETTLE=$SETTLE \
+	BIRD_TEST_SETTLE_LOG=$SETTLE_LOG \
+	BIRD_SUSPEND_TRANSITION=$TRANSITION \
+	BIRD_SUSPEND_PENDING=$PENDING \
+	BIRD_SUSPEND_TRANSITION_LOCK=$TRANSITION_LOCK \
+	BIRD_SUSPEND_FLOCK=$FLOCK \
+		"$SOURCE" power
+}
+
+cat >"$FLOCK" <<'PY'
+#!/usr/bin/env python3
+import fcntl
+import sys
+
+operation = fcntl.LOCK_UN if "-u" in sys.argv else fcntl.LOCK_EX
+fcntl.flock(int(sys.argv[-1]), operation)
+PY
+chmod 0755 "$FLOCK"
 
 printf '%s\n' \
 	'#!/bin/sh' \
@@ -107,6 +139,49 @@ apply_suspend open
 [ "$(cat "$SETTLE_LOG")" = 50000:250 ]
 grep -q 'stage=wake-strike raw=250 bl_power=0' "$LOG"
 grep -q 'stage=restored raw=25 bl_power=0' "$LOG"
+
+# ROCKNIX turns the panel on before its resume helper reaches the final global
+# cleanup. A new suspend in that interval used to be killed and silently lost.
+# Hold the provider at that boundary and prove exactly one close is retained and
+# dispatched after resume completes.
+PROVIDER_GATE=$TMP/provider-gate
+PROVIDER_ENTERED=$TMP/provider-entered
+PROVIDER_LOG=$TMP/provider.log
+printf '%s\n' \
+	'#!/bin/sh' \
+	'[ -z "$2" ] || printf "%s\n" "$2" >>"$BIRD_TEST_PROVIDER_LOG"' \
+	'case "$2" in' \
+	'  close) printf "4\n" >"$BIRD_BACKLIGHT/bl_power"; printf "0\n" >"$BIRD_BACKLIGHT/brightness" ;;' \
+	'  open)' \
+	'    printf "0\n" >"$BIRD_BACKLIGHT/bl_power"' \
+	'    printf "0\n" >"$BIRD_BACKLIGHT/brightness"' \
+	'    : >"$BIRD_TEST_PROVIDER_ENTERED"' \
+	'    while [ ! -e "$BIRD_TEST_PROVIDER_GATE" ]; do sleep 0.01; done' \
+	'    ;;' \
+	'esac' \
+	'if [ "$1" = power ]; then printf "power\n" >>"$BIRD_TEST_PROVIDER_LOG"; printf "4\n" >"$BIRD_BACKLIGHT/bl_power"; printf "0\n" >"$BIRD_BACKLIGHT/brightness"; fi' >"$PROVIDER"
+chmod 0755 "$PROVIDER"
+export BIRD_TEST_PROVIDER_LOG=$PROVIDER_LOG
+export BIRD_TEST_PROVIDER_ENTERED=$PROVIDER_ENTERED
+export BIRD_TEST_PROVIDER_GATE=$PROVIDER_GATE
+apply_suspend close
+apply_suspend open &
+RESUME_PID=$!
+while [ ! -e "$PROVIDER_ENTERED" ]; do sleep 0.01; done
+apply_suspend close
+[ -e "$PENDING" ]
+[ "$(cat "$PENDING")" = lid-close ]
+apply_suspend open
+[ ! -e "$PENDING" ]
+apply_power
+[ "$(cat "$PENDING")" = power ]
+: >"$PROVIDER_GATE"
+wait "$RESUME_PID"
+[ ! -e "$TRANSITION" ]
+[ ! -e "$PENDING" ]
+[ "$(tail -2 "$PROVIDER_LOG" | tr '\n' ' ')" = "open power " ]
+[ "$(cat "$BACKLIGHT/bl_power")" = 4 ]
+[ "$(cat "$STATE")" = 25 ]
 
 # If close observes the display-off sentinel, never persist zero as the wake
 # target. The stable one-percent floor for max 2499 is raw 25.
