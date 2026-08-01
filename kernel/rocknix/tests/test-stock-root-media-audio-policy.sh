@@ -47,6 +47,13 @@ BIRD_TEST_JACK=off; export BIRD_TEST_JACK
 grep -Fq "amixer -q -c 0 cset name='Speaker Switch' on" "$BIRD_TEST_EVENTS"
 
 : >"$BIRD_TEST_EVENTS"
+"$TMP/volume-test.sh" up
+if grep -Fq 'amixer ' "$BIRD_TEST_EVENTS"; then
+	printf '%s\n' 'volume-button action performed route inspection' >&2
+	exit 1
+fi
+
+: >"$BIRD_TEST_EVENTS"
 BIRD_TEST_JACK=unknown; export BIRD_TEST_JACK
 if "$TMP/volume-test.sh" restore; then
 	printf '%s\n' 'unknown headphone state was accepted' >&2
