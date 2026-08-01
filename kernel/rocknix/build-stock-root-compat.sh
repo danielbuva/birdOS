@@ -560,6 +560,13 @@ grep -q "^  FDT /bird-releases/$RELEASE_ID/dtb.img$" \
 	"$OUTPUT/card/extlinux/extlinux.conf" || fail 'versioned DTB selector missing'
 grep -Fq "bird_release=$RELEASE_ID" \
 	"$OUTPUT/card/extlinux/extlinux.conf" || fail 'release identity missing from kernel command line'
+if grep -Fq 'console=ttyS0,115200' \
+		"$OUTPUT/card/extlinux/extlinux.conf"; then
+	fail 'production selector unexpectedly enables the diagnostic serial console'
+fi
+grep -Fq 'console=ttyS0,115200' \
+	"$OUTPUT/card/extlinux/extlinux.fallback.conf" || \
+	fail 'fallback selector lost the diagnostic serial console'
 [ "$(awk '{ for (field = 1; field <= NF; field++) if ($field == "fbcon=map:1") { count++; if ($1 == "APPEND") append++ } } END { print (count + 0) ":" (append + 0) }' \
 	"$OUTPUT/card/extlinux/extlinux.conf")" = 1:1 ] || \
 	fail 'active selector must map fbcon away from the fixed panel exactly once'

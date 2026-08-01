@@ -5,6 +5,7 @@ ROOT=$(CDPATH= cd -- "$(dirname "$0")/../../.." && pwd)
 BUILDER=$ROOT/kernel/rocknix/build-stock-root-compat.sh
 EARLY_BUILDER=$ROOT/kernel/rocknix/build-stock-root-early-initramfs.sh
 ACTIVE_SELECTOR=$ROOT/kernel/rocknix/stock-root/extlinux.conf
+FALLBACK_SELECTOR=$ROOT/kernel/rocknix/stock-root/extlinux.fallback.conf
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/bird-build-reproducibility.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT INT TERM HUP
 
@@ -73,8 +74,11 @@ for TOKEN in fbcon=map:1 vt.global_cursor_default=0; do
 	' "$ACTIVE_SELECTOR")" = 1:1 ] ||
 		fail "active selector must place $TOKEN on APPEND exactly once"
 done
-grep -Fq 'console=ttyS0,115200' "$ACTIVE_SELECTOR" ||
-	fail 'active selector lost the serial recovery console'
+if grep -Fq 'console=ttyS0,115200' "$ACTIVE_SELECTOR"; then
+	fail 'production selector still enables the diagnostic serial console'
+fi
+grep -Fq 'console=ttyS0,115200' "$FALLBACK_SELECTOR" ||
+	fail 'fallback selector lost the diagnostic serial console'
 FINAL_ASSET_LINE=$(line_number '^validate_final_launcher_static_assets$' "$BUILDER")
 FINAL_COPY_LINE=$(line_number 'mpv-input.conf' "$BUILDER")
 FINAL_MANIFEST_LINE=$(line_number '^MANIFEST=' "$BUILDER")
