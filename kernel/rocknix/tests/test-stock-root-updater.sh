@@ -460,6 +460,8 @@ if ! run_updater none >"$TMP/install.out" 2>"$TMP/install.err"; then
 	cat "$TMP/install.err" >&2
 	exit 1
 fi
+grep -Fq 'Production omits the serial console; the fixed diagnostic fallback retains it.' \
+	"$TMP/install.out"
 [ ! -e "$CARD_LOCK" ] && [ ! -L "$CARD_LOCK" ]
 
 # The namespace is deliberately fixed across effective UIDs. Simulate a

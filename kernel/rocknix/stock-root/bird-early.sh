@@ -58,9 +58,11 @@ case "${1:-}" in
 			STORAGE_FIFO=failed
 		fi
 		{
-			printf 'early_storage_fifo=%s\n' "$STORAGE_FIFO"
+			if [ "$STORAGE_FIFO" != ready ]; then
+				printf '%s\n' 'early_storage_fifo=failed'
+			fi
 			if $BUSYBOX insmod "$JOYPAD" 2>&1; then
-				printf '%s\n' 'early_input_module=loaded'
+				:
 			else
 				printf '%s\n' 'early_input_module=failed'
 				$BUSYBOX dmesg | $BUSYBOX tail -n 30

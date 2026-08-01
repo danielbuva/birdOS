@@ -138,9 +138,10 @@ the validated level switch remains available for later controlled tests.
 The production no-serial-console candidate is `v6.23-no-serial-328db9e`.
 It removes only `console=ttyS0,115200` from the active extlinux entry. The
 previous selector and fixed fallback retain the serial console for diagnostics
-and recovery. This candidate remains pending its RG34XX-SP behavior and timing
-gate; it is not yet the accepted optimization baseline. No kernel or launcher
-change is included in this experiment.
+and recovery. The RG34XX-SP behavior screen passed, and three consecutive cold
+stopwatch boots measured 2.7 s. This is a favorable screening result with no
+observed regression, but it is not yet a promotion-grade tail or latency claim.
+No kernel or launcher change is included in this experiment.
 
 ## Stage 2 — Race-free event-driven discovery
 
