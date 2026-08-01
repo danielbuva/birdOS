@@ -726,7 +726,7 @@ grep -Fq '#define VOLUME_PROGRAM "/storage/.config/bird/bird-volume.sh"' \
 	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'unmuting volume wrapper missing'
 grep -Fq 'set-sink-mute @DEFAULT_SINK@ 0' \
 	"$OUTPUT/card/bird/bird-volume.sh" || fail 'default audio sink unmute missing'
-grep -Fq "cget \"name='Headphone Jack'\"" \
+grep -Fq "cget \"iface=CARD,name='Headphone Jack'\"" \
 	"$OUTPUT/card/bird/bird-volume.sh" || fail 'headphone route inspection missing'
 grep -Fq "cset \"name='Speaker Switch'\"" \
 	"$OUTPUT/card/bird/bird-volume.sh" || fail 'speaker route reconciliation missing'
@@ -734,10 +734,10 @@ grep -Fq 'pactl get-sink-volume @DEFAULT_SINK@' \
 	"$OUTPUT/card/bird/bird-volume.sh" || fail 'no-op audio volume inspection missing'
 grep -Fq 'must never prevent a game' \
 	"$OUTPUT/card/bird/bird-volume.sh" || fail 'nonfatal audio policy contract missing'
-if grep -Fq 'set-sink-mute @DEFAULT_SINK@ 1' \
-	"$OUTPUT/card/bird/bird-volume.sh"; then
-	fail 'audio route reconciliation still wakes the sink before switching'
-fi
+grep -Fq 'pactl suspend-sink @DEFAULT_SINK@ 0' \
+	"$OUTPUT/card/bird/bird-volume.sh" || fail 'muted codec prewake missing'
+grep -Fq 'content:[1-6]) AUDIO_ACTION=prepare' \
+	"$OUTPUT/card/bird/run-content.sh" || fail 'audio provider prewake scope missing'
 if grep -Fq 'bird-volume.sh' "$OUTPUT/card/bird/999-export"; then
 	fail 'application contract still performs an unnecessary audio restore'
 fi

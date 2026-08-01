@@ -239,6 +239,23 @@ buttons retain their existing path. This remains a hardware candidate until
 cold boots with and without headphones and repeated game/media launches prove
 launch recovery, routing correctness and absence of the transient.
 
+Hardware follow-up on release `v6.23-audio-reconcile-e400bb4` restored content
+launching but rejected both remaining audio claims. Its logs recorded
+`jack=unknown`, because the H616 jack is the proven ALSA `CARD` control while
+the helper implicitly queried the `MIXER` interface. The same records proved
+that Bird changed no route, volume or mute value, yet the suspended sink still
+cracked when the provider opened it. Headphones produced two transients and the
+still-enabled speaker reproduced audio simultaneously.
+
+The next bounded candidate pins the full jack identifier
+`iface=CARD,name='Headphone Jack'`. For audio-bearing content kinds 1–6 only,
+it corrects the independent speaker switch first, then requests one explicit
+PipeWire sink resume while muted and unmutes before provider exec. The intent is
+to hide the codec power transition without keeping audio awake during menu idle
+or adding work to reader and PortMaster sessions. The sequence is nonfatal and
+must be rejected if it does not remove the transients, restore headphone-only
+output, or remain interaction-non-inferior on the RG34XX-SP.
+
 ## Stage 5 — Battery, suspend and memory closure
 
 Measure calibrated energy, wakeups, IRQs and CPU residency for short-label menu
