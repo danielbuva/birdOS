@@ -25,6 +25,7 @@ cat >"$TMP/bin/amixer" <<'EOF'
 printf 'amixer %s\n' "$*" >>"$BIRD_TEST_EVENTS"
 case "$*" in
 	*"cget name='Headphone Jack'"*) printf '  : values=%s\n' "$BIRD_TEST_JACK" ;;
+	*"cget name='Speaker Switch'"*) printf '  : values=%s\n' "$BIRD_TEST_SPEAKER" ;;
 esac
 EOF
 chmod 0755 "$TMP/bin/volume" "$TMP/bin/pactl" "$TMP/bin/amixer"
@@ -37,14 +38,35 @@ chmod 0755 "$TMP/volume-test.sh"
 export BIRD_TEST_EVENTS=$TMP/audio-events
 
 : >"$BIRD_TEST_EVENTS"
-BIRD_TEST_JACK=on; export BIRD_TEST_JACK
+BIRD_TEST_JACK=on; BIRD_TEST_SPEAKER=on
+export BIRD_TEST_JACK BIRD_TEST_SPEAKER
 "$TMP/volume-test.sh" restore
 grep -Fq "amixer -q -c 0 cset name='Speaker Switch' off" "$BIRD_TEST_EVENTS"
+[ "$(sed -n '3p' "$BIRD_TEST_EVENTS")" = \
+	'pactl -- set-sink-mute @DEFAULT_SINK@ 1' ]
+[ "$(sed -n '4p' "$BIRD_TEST_EVENTS")" = \
+	"amixer -q -c 0 cset name='Speaker Switch' off" ]
+[ "$(sed -n '5p' "$BIRD_TEST_EVENTS")" = 'volume restore' ]
+[ "$(sed -n '6p' "$BIRD_TEST_EVENTS")" = \
+	'pactl -- set-sink-mute @DEFAULT_SINK@ 0' ]
 
 : >"$BIRD_TEST_EVENTS"
-BIRD_TEST_JACK=off; export BIRD_TEST_JACK
+BIRD_TEST_JACK=off; BIRD_TEST_SPEAKER=on
+export BIRD_TEST_JACK BIRD_TEST_SPEAKER
 "$TMP/volume-test.sh" restore
-grep -Fq "amixer -q -c 0 cset name='Speaker Switch' on" "$BIRD_TEST_EVENTS"
+if grep -Fq ' cset ' "$BIRD_TEST_EVENTS"; then
+	printf '%s\n' 'already-correct speaker route was rewritten' >&2
+	exit 1
+fi
+
+: >"$BIRD_TEST_EVENTS"
+BIRD_TEST_JACK=on; BIRD_TEST_SPEAKER=off
+export BIRD_TEST_JACK BIRD_TEST_SPEAKER
+"$TMP/volume-test.sh" restore
+if grep -Fq ' cset ' "$BIRD_TEST_EVENTS"; then
+	printf '%s\n' 'already-correct headphone route was rewritten' >&2
+	exit 1
+fi
 
 : >"$BIRD_TEST_EVENTS"
 "$TMP/volume-test.sh" up

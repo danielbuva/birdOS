@@ -730,8 +730,9 @@ grep -Fq "cget \"name='Headphone Jack'\"" \
 	"$OUTPUT/card/bird/bird-volume.sh" || fail 'headphone route inspection missing'
 grep -Fq "cset \"name='Speaker Switch'\"" \
 	"$OUTPUT/card/bird/bird-volume.sh" || fail 'speaker route reconciliation missing'
-grep -Fq '"$VOLUME_HELPER" restore' \
-	"$OUTPUT/card/bird/999-export" || fail 'application-ready audio restore missing'
+if grep -Fq 'bird-volume.sh' "$OUTPUT/card/bird/999-export"; then
+	fail 'application contract still performs an unnecessary audio restore'
+fi
 grep -Fq '/storage/.config/bird/bird-volume.sh restore' \
 	"$OUTPUT/card/bird/run-content.sh" || fail 'per-launch audio restore missing'
 grep -Fq 'pactl get-sink-mute @DEFAULT_SINK@' \

@@ -214,6 +214,19 @@ usable provider state and first accepted input, plus provider exit through
 restored Bird interaction. Cover RetroArch, PPSSPP, DraStic, OpenBOR/native
 Ports, MPV audio/video, KOReader and PortMaster.
 
+### Stage 4 audio-restore decision — 2026-08-01
+
+Application-contract publication no longer restores audio: the menu has no
+audio consumer, and the same restore already exists at the content-service
+boundary. This removes an unnecessary post-menu gain, mute and route operation
+that could produce an audible crack while preserving silent-route recovery
+before any provider can emit audio. The fixed content restore reads both jack
+and speaker controls, never rewrites an already-correct amplifier switch, and
+mutes the PipeWire sink around a genuinely required speaker-route correction.
+Volume-button actions retain their existing path. This remains a hardware
+candidate until cold boots with and without headphones and repeated media
+launches prove both routing correctness and absence of the transient.
+
 ## Stage 5 — Battery, suspend and memory closure
 
 Measure calibrated energy, wakeups, IRQs and CPU residency for short-label menu
