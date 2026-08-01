@@ -236,11 +236,14 @@ The v6.15 audit found the following generic work and defects. Only items marked
    rotations, dual panels and unrelated products before rewriting Sway on every
    boot. birdOS now bind-replaces it with the generated RG34XX-SP
    `card1`/`DSI-1` profile.
-2. **Open:** `050-audio` uses `[ -n "/usr/sbin/quantum" ]`, which is always
-   true, instead of testing whether the executable exists. It also performs
-   generic HDMI, Bluetooth and route discovery for a fixed internal codec. A
-   measured fixed H700 audio route is the next large application-contract
-   target.
+2. **Partially closed; pop work deferred:** `050-audio` uses
+   `[ -n "/usr/sbin/quantum" ]`, which is always true, instead of testing
+   whether the executable exists. Bird's content boundary now reads the exact
+   H616 CARD jack and reconciles the independent MIXER speaker switch only when
+   needed; physical testing accepts headphone-only output. A muted explicit
+   PipeWire resume did not remove the speaker or headphone transients and was
+   removed. Generic HDMI/Bluetooth/quantum subtraction and codec power/pop
+   attribution remain later Stage 4 candidates.
 3. **Closed in v6.16:** the two latency writers used inconsistent
    `audiolatency` and `global.audiolatency` keys. Both are suppressed because
    the pinned writable provider already contains the required value.
@@ -260,8 +263,7 @@ The v6.15 audit found the following generic work and defects. Only items marked
 
 ## Next active order
 
-1. Replace generic audio setup with a fixed H700 route while preserving the
-   already-warm asynchronous audio services.
+1. Complete race-free event-driven launcher and fixed-control device discovery.
 2. Audit udev coldplug output and let its manager exit if no retained feature
    needs runtime hotplug; keep fixed hardware initialization separate from
    Bird.
@@ -278,6 +280,7 @@ The v6.15 audit found the following generic work and defects. Only items marked
 - emulator/RetroArch experience and cold-load tuning;
 - PortMaster load-time tuning;
 - bespoke music, movie, emulator and application experiences;
+- codec crack/pop attribution and retained audio residency/power policy;
 - suspend/wake battery optimization; and
 - final boot animation, sound and media-player control design.
 

@@ -256,6 +256,21 @@ or adding work to reader and PortMaster sessions. The sequence is nonfatal and
 must be rejected if it does not remove the transients, restore headphone-only
 output, or remain interaction-non-inferior on the RG34XX-SP.
 
+Hardware follow-up on release `v6.23-audio-prewake-eba3438` accepts only the
+fixed route correction. The first content launch observed the exact CARD jack
+as on and the independent speaker switch as on, changed that switch off, and
+later launches observed it already off. Physical testing confirmed that audio
+then used the headphones alone. The muted prewake sequence reported `ready` on
+every observed launch but did not remove the speaker transient or the two
+headphone transients. It is rejected and removed: its three extra `pactl`
+operations have no accepted benefit and must not remain in the content path.
+
+Crack/pop elimination is now deliberately deferred within Stage 4. A future
+bounded candidate must attribute the transition among H616 codec power, the
+analog amplifier/path, PipeWire suspension and UCM policy before changing
+residency or timing. The accepted path remains nonfatal state reconciliation at
+the provider boundary; it does not keep audio awake while the menu is idle.
+
 ## Stage 5 — Battery, suspend and memory closure
 
 Measure calibrated energy, wakeups, IRQs and CPU residency for short-label menu

@@ -734,14 +734,13 @@ grep -Fq 'pactl get-sink-volume @DEFAULT_SINK@' \
 	"$OUTPUT/card/bird/bird-volume.sh" || fail 'no-op audio volume inspection missing'
 grep -Fq 'must never prevent a game' \
 	"$OUTPUT/card/bird/bird-volume.sh" || fail 'nonfatal audio policy contract missing'
-grep -Fq 'pactl suspend-sink @DEFAULT_SINK@ 0' \
-	"$OUTPUT/card/bird/bird-volume.sh" || fail 'muted codec prewake missing'
-grep -Fq 'content:[1-6]) AUDIO_ACTION=prepare' \
-	"$OUTPUT/card/bird/run-content.sh" || fail 'audio provider prewake scope missing'
+if grep -Fq 'suspend-sink' "$OUTPUT/card/bird/bird-volume.sh"; then
+	fail 'rejected codec prewake remains in audio policy'
+fi
 if grep -Fq 'bird-volume.sh' "$OUTPUT/card/bird/999-export"; then
 	fail 'application contract still performs an unnecessary audio restore'
 fi
-grep -Fq '/storage/.config/bird/bird-volume.sh "$AUDIO_ACTION"' \
+grep -Fq '/storage/.config/bird/bird-volume.sh restore' \
 	"$OUTPUT/card/bird/run-content.sh" || fail 'per-launch audio policy missing'
 grep -Fq 'pactl get-sink-mute @DEFAULT_SINK@' \
 	"$OUTPUT/card/bird/capture-boot-state.sh" || fail 'effective audio mute diagnostic missing'

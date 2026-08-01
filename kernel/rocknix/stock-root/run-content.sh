@@ -391,12 +391,8 @@ ensure_content_services() {
 	# The writable ROCKNIX image can persist a muted internal route even while
 	# every audio service, app stream and ALSA control looks healthy. Reapply the
 	# saved Bird volume and explicitly clear that route mute before every app.
-	AUDIO_ACTION=restore
-	case "$SESSION_MODE:$KIND" in
-		content:[1-6]) AUDIO_ACTION=prepare ;;
-	esac
 	"$TIMEOUT_PROGRAM" --signal=TERM --kill-after=1s 3s \
-		/storage/.config/bird/bird-volume.sh "$AUDIO_ACTION" \
+		/storage/.config/bird/bird-volume.sh restore \
 		8>&- 9>&- || return 1
 	content_stage services-ready
 }

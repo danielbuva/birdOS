@@ -6,7 +6,7 @@ set -u
 
 ACTION=${1:-restore}
 case "$ACTION" in
-	restore|prepare) ;;
+	restore) ;;
 	*)
 	/usr/bin/volume "$ACTION" || exit 1
 	pactl -- set-sink-mute @DEFAULT_SINK@ 0 || exit 1
@@ -94,37 +94,22 @@ elif [ "$CURRENT_VOLUME" != "$DESIRED_VOLUME" ]; then
 fi
 
 MUTE_ACTION=unchanged
-PREWAKE_ACTION=not-requested
-if [ "$ACTION" = prepare ]; then
-	# Providers otherwise resume a suspended H616 codec with the live output
-	# exposed. Mute the selected PipeWire sink, synchronously request resume,
-	# then expose it before exec. This does not keep audio awake during menu idle.
-	if pactl -- set-sink-mute @DEFAULT_SINK@ 1 &&
-		pactl suspend-sink @DEFAULT_SINK@ 0 &&
-		pactl -- set-sink-mute @DEFAULT_SINK@ 0; then
-		PREWAKE_ACTION=ready
-		[ "$CURRENT_MUTE" = yes ] && MUTE_ACTION=changed
-	else
-		PREWAKE_ACTION=failed
-		pactl -- set-sink-mute @DEFAULT_SINK@ 0 >/dev/null 2>&1 || :
-	fi
-else
-	case "$CURRENT_MUTE" in
-		yes)
-			if pactl -- set-sink-mute @DEFAULT_SINK@ 0; then
-				MUTE_ACTION=changed
-			else
-				MUTE_ACTION=change-failed
-			fi
-			;;
-		unknown) MUTE_ACTION=inspect-failed ;;
-	esac
-fi
 
-printf 'Bird audio restore jack=%s speaker=%s route=%s desired_volume=%s current_volume=%s volume=%s mute=%s mute_action=%s prewake=%s\n' \
+case "$CURRENT_MUTE" in
+	yes)
+		if pactl -- set-sink-mute @DEFAULT_SINK@ 0; then
+			MUTE_ACTION=changed
+		else
+			MUTE_ACTION=change-failed
+		fi
+		;;
+	unknown) MUTE_ACTION=inspect-failed ;;
+esac
+
+printf 'Bird audio restore jack=%s speaker=%s route=%s desired_volume=%s current_volume=%s volume=%s mute=%s mute_action=%s\n' \
 	"$JACK_STATE" "$SPEAKER_STATE" "$ROUTE_ACTION" "$DESIRED_VOLUME" \
 	"${CURRENT_VOLUME:-unknown}" "$VOLUME_ACTION" "$CURRENT_MUTE" \
-	"$MUTE_ACTION" "$PREWAKE_ACTION"
+	"$MUTE_ACTION"
 
 # Audio policy failures are recorded above. They must never prevent a game,
 # reader, or other non-audio provider from launching.

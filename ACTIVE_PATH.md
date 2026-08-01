@@ -395,6 +395,14 @@ non-striped desktop-OpenGL presentation. Brightness exposes stable 5, 3 and 1
 percent low ticks; wake strikes the panel at its measured 10-percent threshold
 for 50 ms and restores the exact saved dim value.
 
+The content boundary reconciles audio state without blocking provider launch:
+it reads the exact H616 CARD headphone jack and changes the independent MIXER
+speaker switch only when the live route disagrees. The RG34XX-SP physical gate
+accepts headphone-only output from that correction. Crack/pop transients at
+codec activation remain deferred Stage 4 work. An explicit muted PipeWire
+prewake was tested, reported success, produced no audible improvement and is
+not part of the active path.
+
 Kernel trimming, U-Boot timing, earlier LED/display assertion, emulator and
 PortMaster performance, final media controls, final boot effects and complete
 shim removal remain roadmap work. Their absence is not evidence that the

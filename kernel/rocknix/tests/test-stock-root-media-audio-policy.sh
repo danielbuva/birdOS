@@ -71,15 +71,6 @@ fi
 grep -Fq 'route=unchanged' "$TMP/audio-result"
 grep -Fq 'volume=unchanged' "$TMP/audio-result"
 
-# Audio-bearing content explicitly resumes the sink only while it is muted.
-: >"$BIRD_TEST_EVENTS"
-"$TMP/volume-test.sh" prepare >"$TMP/audio-result"
-PREPARE_WRITES=$(grep -E 'set-sink-mute|suspend-sink' "$BIRD_TEST_EVENTS")
-[ "$PREPARE_WRITES" = "pactl -- set-sink-mute @DEFAULT_SINK@ 1
-pactl suspend-sink @DEFAULT_SINK@ 0
-pactl -- set-sink-mute @DEFAULT_SINK@ 0" ]
-grep -Fq 'prewake=ready' "$TMP/audio-result"
-
 # A boot-time headphone mismatch changes only the speaker amplifier. It must
 # not wake the suspended PCM sink with a pre-route PulseAudio write.
 BIRD_TEST_JACK=on; BIRD_TEST_SPEAKER=on
