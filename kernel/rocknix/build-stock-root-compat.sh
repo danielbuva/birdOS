@@ -768,14 +768,18 @@ grep -Fq 'watch_fd = open_input_watch();' \
 	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'control watch-before-scan discovery missing'
 grep -Fq 'process_input_watch(watch_fd, sources)' \
 	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'control creation-edge discovery missing'
-grep -Fq 'poll_timeout(sources, &state, watch_fd < 0' \
+grep -Fq 'poll_timeout(sources, &state, &suspend,' \
 	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'control polling fallback is not inotify-scoped'
 grep -Fq 'h700_input_contract_matches((int)fd)' \
 	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'fixed controls H700 contract validation missing'
-grep -Fq 'queue_while_resuming' \
-	"$ROOT/kernel/rocknix/stock-root/bird-suspend.sh" || fail 'rapid repeated suspend queue missing'
-grep -Fq 'BIRD_SUSPEND_HANDOFF=1' \
-	"$ROOT/kernel/rocknix/stock-root/bird-suspend.sh" || fail 'resume-to-suspend handoff missing'
+grep -Fq '#define POWER_SUSPEND_ACTIVE "/var/run/power-fake-suspend-active.flag"' \
+	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'power resume transaction detection missing'
+grep -Fq 'complete_resume_state(suspend)' \
+	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'persistent suspend completion coordinator missing'
+grep -Fq 'O_WRONLY | O_CREAT | O_APPEND | O_DSYNC | O_CLOEXEC' \
+	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'durable suspend trace missing'
+grep -Fq ': >"$RESUME_READY"' \
+	"$ROOT/kernel/rocknix/stock-root/bird-suspend.sh" || fail 'resume transaction completion marker missing'
 for ACTION in volume suspend content-exit; do
 	grep -q "$ACTION-exec-failed" \
 		"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || \

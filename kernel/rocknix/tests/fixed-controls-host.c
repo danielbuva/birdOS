@@ -197,6 +197,7 @@ int main(int argc, char **argv) {
         {103, LID_NAME},
     };
     struct control_state state = {1, 1, 1, 1, 1, 1, 1, 1234};
+    struct suspend_state suspend = {0, 0, 0};
     struct input_source read_source = {100, GAMEPAD_NAME};
     u64 delay;
     unsigned step;
@@ -283,13 +284,16 @@ int main(int argc, char **argv) {
 
     fake_input_read = 1;
     fake_input_result = -EINTR;
-    ok &= check(process_source(&read_source, SOURCE_GAMEPAD, &state) == 1,
+    ok &= check(process_source(&read_source, SOURCE_GAMEPAD, &state,
+                               &suspend) == 1,
                 "input read EINTR caused descriptor loss");
     fake_input_result = -EAGAIN;
-    ok &= check(process_source(&read_source, SOURCE_GAMEPAD, &state) == 1,
+    ok &= check(process_source(&read_source, SOURCE_GAMEPAD, &state,
+                               &suspend) == 1,
                 "input read EAGAIN caused descriptor loss");
     fake_input_result = -EBADF_LINUX;
-    ok &= check(process_source(&read_source, SOURCE_GAMEPAD, &state) == 0,
+    ok &= check(process_source(&read_source, SOURCE_GAMEPAD, &state,
+                               &suspend) == 0,
                 "input read EBADF did not request descriptor recovery");
     fake_input_read = 0;
 
@@ -312,6 +316,36 @@ int main(int argc, char **argv) {
                     !state.repeat_direction && !state.repeat_at_ns,
                 "poll recovery retained descriptors or held-key state");
 
+    queue_power_suspend(&suspend);
+    ok &= check(suspend.pending_suspend == PENDING_SUSPEND_POWER,
+                "resume coordinator did not retain a power intent");
+    queue_power_suspend(&suspend);
+    ok &= check(suspend.pending_suspend == PENDING_SUSPEND_NONE,
+                "second queued power edge did not cancel the toggle");
+    queue_lid_suspend(&suspend, 1);
+    ok &= check(suspend.pending_suspend == PENDING_SUSPEND_LID_CLOSE,
+                "resume coordinator did not retain lid close");
+    queue_lid_suspend(&suspend, 0);
+    ok &= check(suspend.pending_suspend == PENDING_SUSPEND_NONE,
+                "lid open did not cancel pending lid close");
+
+    suspend.resume_in_flight = 1;
+    suspend.pending_suspend = PENDING_SUSPEND_LID_CLOSE;
+    suspend.resume_deadline_ns = 1234;
+    ok &= check(complete_resume_state(&suspend) == PENDING_SUSPEND_LID_CLOSE &&
+                    !suspend.resume_in_flight &&
+                    suspend.pending_suspend == PENDING_SUSPEND_NONE &&
+                    !suspend.resume_deadline_ns,
+                "resume completion did not atomically consume one intent");
+
+    suspend.resume_in_flight = 1;
+    ok &= check(poll_timeout(sources, &state, &suspend, 0,
+                            &discovery_timeout) == &discovery_timeout &&
+                    discovery_timeout.sec == 0 &&
+                    discovery_timeout.nsec == RESUME_READY_RETRY_NS,
+                "resume completion lost its bounded transition poll");
+    suspend.resume_in_flight = 0;
+
     reset_discovery_fixture();
     fake_event_names[0] = POWER_NAME;
     fake_event_names[1] = "H616 Audio Codec Headphone Jack";
@@ -327,6 +361,18 @@ int main(int argc, char **argv) {
                     fake_discovery_ioctl_calls == 10U &&
                     fake_discovery_close_calls == 1U,
                 "initial control discovery did not stop after the four sources");
+
+    discovery_sources[SOURCE_GAMEPAD].fd = -1;
+    reset_discovery_fixture();
+    fake_event_names[7] = GAMEPAD_NAME;
+    fake_input_contract_mismatch = 1;
+    try_input_event(discovery_sources, 7);
+    ok &= check(discovery_sources[SOURCE_GAMEPAD].fd < 0 &&
+                    fake_discovery_open_calls == 1U &&
+                    fake_discovery_ioctl_calls == 6U &&
+                    fake_discovery_close_calls == 1U,
+                "fixed controls accepted a mismatched H700 capability set");
+    fake_input_contract_mismatch = 0;
 
     reset_discovery_fixture();
     fake_inotify_init_result = 90;
@@ -352,23 +398,14 @@ int main(int argc, char **argv) {
                 "control creation edge rescanned unrelated event nodes");
 
     discovery_sources[SOURCE_GAMEPAD].fd = -1;
-    fake_input_contract_mismatch = 1;
-    try_input_event(discovery_sources, 7);
-    ok &= check(discovery_sources[SOURCE_GAMEPAD].fd < 0 &&
-                    fake_discovery_open_calls == 2U &&
-                    fake_discovery_ioctl_calls == 12U &&
-                    fake_discovery_close_calls == 1U,
-                "fixed controls accepted a mismatched H700 capability set");
-    fake_input_contract_mismatch = 0;
-
-    ok &= check(poll_timeout(discovery_sources, &discovery_state, 0,
+    ok &= check(poll_timeout(discovery_sources, &discovery_state, &suspend, 0,
                             &discovery_timeout) == 0,
                 "live discovery watch retained a periodic retry timeout");
-    ok &= check(poll_timeout(discovery_sources, &discovery_state, 1,
+    ok &= check(poll_timeout(discovery_sources, &discovery_state, &suspend, 1,
                             &discovery_timeout) == &discovery_timeout &&
                     discovery_timeout.sec == 0 &&
                     discovery_timeout.nsec == DISCOVERY_RETRY_NS,
-                "inotify failure lost the bounded polling fallback");
+                "inotify failure lost bounded polling fallback");
     ok &= check(input_event_index("event4", 7U) == 4 &&
                     input_event_index("event31", 8U) == 31 &&
                     input_event_index("event32", 8U) < 0 &&

@@ -277,10 +277,13 @@ True power-loss recovery requires the later U-Boot A/B design in the roadmap.
    bounded name scan, validates the exact H700 contract, and thereafter inspects
    only created nodes; reconnect or overflow permits one recovery scan. Its
    250 ms discovery timer exists only when inotify is unavailable. These
-   responsibilities are not linked into the launcher. During the retained
-   ROCKNIX resume transaction, Bird preserves exactly one last-writer-wins
-   repeated power/lid suspend intent until the provider's final cleanup can no
-   longer kill it. Optional networking is released only for direct PortMaster.
+   responsibilities are not linked into the launcher. The persistent controls
+   process owns the retained ROCKNIX resume transaction from the first accepted
+   wake request until the wrapper explicitly reports that core restoration,
+   provider cleanup and Bird brightness restoration have completed. During
+   that interval it preserves at most one cancellable power or lid-close intent
+   and never starts an overlapping helper. Optional networking is released only
+   for direct PortMaster.
 10. **Shutdown:** systemd retains ordered shutdown. The birdOS configuration
     checkpoint is an atomic, verified transaction and reports failure instead
     of publishing a false successful checkpoint. The supervisor bounds only the

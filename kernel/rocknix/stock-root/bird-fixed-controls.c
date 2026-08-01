@@ -28,7 +28,10 @@ typedef signed long s64;
 #define AT_FDCWD (-100)
 #define O_RDONLY 0
 #define O_WRONLY 1
+#define O_CREAT 0100
+#define O_APPEND 02000
 #define O_NONBLOCK 04000
+#define O_DSYNC 010000
 #define O_CLOEXEC 02000000
 #define SIGCHLD 17
 #define POLLIN 0x0001
@@ -76,8 +79,11 @@ typedef signed long s64;
 #define BRIGHTNESS_CURRENT BIRD_DEVICE_BACKLIGHT_DIRECTORY "/brightness"
 #define BRIGHTNESS_MAX BIRD_DEVICE_BACKLIGHT_DIRECTORY "/max_brightness"
 #define SUSPEND_PROGRAM "/storage/.config/bird/bird-suspend.sh"
+#define SUSPEND_RESUME_READY "/run/muos/bird-suspend-resume-ready"
+#define POWER_SUSPEND_ACTIVE "/var/run/power-fake-suspend-active.flag"
 #define EXIT_HELPER "/storage/.config/bird/bird-fixed-control-exit.sh"
 #define KMSG_DEVICE "/dev/kmsg"
+#define SUSPEND_TRACE "/storage/bird-data/MUOS/Bird/log/suspend-events.tsv"
 
 #define SOURCE_GAMEPAD 0
 #define SOURCE_VOLUME 1
@@ -89,6 +95,12 @@ typedef signed long s64;
 #define VOLUME_REPEAT_DELAY_NS 300000000L
 #define VOLUME_REPEAT_INTERVAL_NS 100000000L
 #define DISCOVERY_RETRY_NS 250000000L
+#define RESUME_READY_RETRY_NS 25000000L
+#define RESUME_READY_TIMEOUT_NS 10000000000UL
+
+#define PENDING_SUSPEND_NONE 0
+#define PENDING_SUSPEND_POWER 1
+#define PENDING_SUSPEND_LID_CLOSE 2
 
 #define POLL_RESULT_READY 0
 #define POLL_RESULT_INTERRUPTED 1
@@ -146,6 +158,12 @@ struct control_state {
     u64 repeat_at_ns;
 };
 
+struct suspend_state {
+    int resume_in_flight;
+    int pending_suspend;
+    u64 resume_deadline_ns;
+};
+
 static char *const fixed_env[] = {
     "HOME=/storage",
     "LANG=C",
@@ -157,6 +175,7 @@ static char *const fixed_env[] = {
 };
 
 static int kmsg_fd = -1;
+static u64 suspend_trace_sequence;
 
 #ifdef BIRD_HOST_TEST
 extern long bird_test_syscall6(long number, long a0, long a1, long a2,
@@ -188,8 +207,16 @@ static long sys_open(const char *path, int flags) {
     return syscall6(56, AT_FDCWD, (long)path, flags, 0, 0, 0);
 }
 
+static long sys_open_mode(const char *path, int flags, int mode) {
+    return syscall6(56, AT_FDCWD, (long)path, flags, mode, 0, 0);
+}
+
 static long sys_close(int fd) {
     return syscall6(57, fd, 0, 0, 0, 0, 0);
+}
+
+static long sys_unlink(const char *path) {
+    return syscall6(35, AT_FDCWD, (long)path, 0, 0, 0, 0);
 }
 
 static long sys_pipe2(int pipes[2], int flags) {
@@ -306,6 +333,14 @@ static int write_number(const char *path, u64 value) {
     return written == length;
 }
 
+static int path_exists(const char *path) {
+    long fd = sys_open(path, O_RDONLY | O_CLOEXEC);
+
+    if (fd < 0) return 0;
+    sys_close((int)fd);
+    return 1;
+}
+
 static void log_text(const char *text) {
     u64 length = string_length(text);
     write_all(1, text, length);
@@ -321,6 +356,48 @@ static u64 now_ns(void) {
 static void ns_to_timespec(u64 nanoseconds, struct timespec *value) {
     value->sec = (s64)(nanoseconds / 1000000000UL);
     value->nsec = (s64)(nanoseconds % 1000000000UL);
+}
+
+static char *append_trace_text(char *output, const char *text) {
+    while (*text) *output++ = *text++;
+    return output;
+}
+
+static char *append_trace_u64(char *output, u64 value) {
+    char digits[20];
+    int count = 0;
+
+    do {
+        digits[count++] = (char)('0' + value % 10U);
+        value /= 10U;
+    } while (value);
+    while (count) *output++ = digits[--count];
+    return output;
+}
+
+static void trace_suspend(const char *source, const char *action,
+                          const char *phase) {
+    char record[192];
+    char *end = record;
+    long fd;
+
+    end = append_trace_text(end, "boottime_ns\t");
+    end = append_trace_u64(end, now_ns());
+    end = append_trace_text(end, "\tsequence\t");
+    end = append_trace_u64(end, ++suspend_trace_sequence);
+    end = append_trace_text(end, "\tsource\t");
+    end = append_trace_text(end, source);
+    end = append_trace_text(end, "\taction\t");
+    end = append_trace_text(end, action ? action : "toggle");
+    end = append_trace_text(end, "\tphase\t");
+    end = append_trace_text(end, phase);
+    *end++ = '\n';
+    fd = sys_open_mode(SUSPEND_TRACE,
+                       O_WRONLY | O_CREAT | O_APPEND | O_DSYNC | O_CLOEXEC,
+                       0600);
+    if (fd < 0) return;
+    write_all((int)fd, record, (u64)(end - record));
+    sys_close((int)fd);
 }
 
 static int report_exec_failure(int fd) {
@@ -471,18 +548,25 @@ static void run_brightness(int direction) {
         log_text("bird-fixed-controls: brightness-write-failed\n");
 }
 
-static void run_suspend(const char *source, const char *action) {
-    int result = spawn_action(SUSPEND_PROGRAM, source, action);
+static int run_suspend(const char *source, const char *action) {
+    int result;
 
-    if (result == SPAWN_DISPATCHED)
+    result = spawn_action(SUSPEND_PROGRAM, source, action);
+
+    if (result == SPAWN_DISPATCHED) {
+        trace_suspend(source, action, "dispatched");
         log_text(action ? (action[0] == 'c'
                                ? "bird-fixed-controls: lid-close\n"
                                : "bird-fixed-controls: lid-open\n")
                         : "bird-fixed-controls: power\n");
-    else if (result == SPAWN_EXEC_FAILED)
+    } else if (result == SPAWN_EXEC_FAILED) {
+        trace_suspend(source, action, "exec-failed");
         log_text("bird-fixed-controls: suspend-exec-failed\n");
-    else
+    } else {
+        trace_suspend(source, action, "spawn-failed");
         log_text("bird-fixed-controls: suspend-spawn-failed\n");
+    }
+    return result == SPAWN_DISPATCHED;
 }
 
 static void run_exit(void) {
@@ -790,22 +874,62 @@ static void handle_volume(const struct input_event *event,
     }
 }
 
-static void handle_power(const struct input_event *event) {
-    if (event->type == EV_KEY && event->code == KEY_POWER &&
-        event->value == 1)
-        run_suspend("power", 0);
+static void queue_power_suspend(struct suspend_state *suspend) {
+    suspend->pending_suspend =
+        suspend->pending_suspend == PENDING_SUSPEND_POWER
+            ? PENDING_SUSPEND_NONE
+            : PENDING_SUSPEND_POWER;
 }
 
-static void handle_lid(const struct input_event *event) {
+static void queue_lid_suspend(struct suspend_state *suspend, int closed) {
+    suspend->pending_suspend =
+        closed ? PENDING_SUSPEND_LID_CLOSE : PENDING_SUSPEND_NONE;
+}
+
+static void begin_resume(struct suspend_state *suspend, const char *source,
+                         const char *action) {
+    (void)sys_unlink(SUSPEND_RESUME_READY);
+    if (!run_suspend(source, action)) return;
+    suspend->resume_in_flight = 1;
+    suspend->pending_suspend = PENDING_SUSPEND_NONE;
+    suspend->resume_deadline_ns = now_ns() + RESUME_READY_TIMEOUT_NS;
+}
+
+static void handle_power(const struct input_event *event,
+                         struct suspend_state *suspend) {
+    if (event->type != EV_KEY || event->code != KEY_POWER ||
+        event->value != 1)
+        return;
+    if (suspend->resume_in_flight) {
+        queue_power_suspend(suspend);
+        trace_suspend("power", 0,
+                      suspend->pending_suspend == PENDING_SUSPEND_POWER
+                          ? "queued"
+                          : "cancelled");
+    } else if (path_exists(POWER_SUSPEND_ACTIVE)) {
+        begin_resume(suspend, "power", 0);
+    } else {
+        (void)run_suspend("power", 0);
+    }
+}
+
+static void handle_lid(const struct input_event *event,
+                       struct suspend_state *suspend) {
     if (event->type != EV_SW || event->code != SW_LID) return;
-    if (event->value == 1)
-        run_suspend("lid", "close");
-    else if (event->value == 0)
-        run_suspend("lid", "open");
+    if (suspend->resume_in_flight) {
+        queue_lid_suspend(suspend, event->value == 1);
+        trace_suspend("lid", event->value == 1 ? "close" : "open",
+                      event->value == 1 ? "queued" : "cancelled");
+    } else if (event->value == 1) {
+        (void)run_suspend("lid", "close");
+    } else if (event->value == 0) {
+        begin_resume(suspend, "lid", "open");
+    }
 }
 
 static int process_source(struct input_source *source, int source_index,
-                          struct control_state *state) {
+                          struct control_state *state,
+                          struct suspend_state *suspend) {
     struct input_event events[16];
     long bytes;
 
@@ -822,14 +946,42 @@ static int process_source(struct input_source *source, int source_index,
             else if (source_index == SOURCE_VOLUME)
                 handle_volume(&events[index], state);
             else if (source_index == SOURCE_POWER)
-                handle_power(&events[index]);
+                handle_power(&events[index], suspend);
             else
-                handle_lid(&events[index]);
+                handle_lid(&events[index], suspend);
         }
     }
     if (bytes == 0) return 0;
     if (bytes == -EAGAIN || bytes == -EINTR) return 1;
     return 0;
+}
+
+static int complete_resume_state(struct suspend_state *suspend) {
+    int pending = suspend->pending_suspend;
+
+    suspend->resume_in_flight = 0;
+    suspend->pending_suspend = PENDING_SUSPEND_NONE;
+    suspend->resume_deadline_ns = 0;
+    return pending;
+}
+
+static void process_resume_transition(struct suspend_state *suspend) {
+    int pending;
+
+    if (!suspend->resume_in_flight) return;
+    if (!path_exists(SUSPEND_RESUME_READY)) {
+        if (now_ns() < suspend->resume_deadline_ns) return;
+        trace_suspend("coordinator", "resume", "timeout");
+        (void)complete_resume_state(suspend);
+        return;
+    }
+    (void)sys_unlink(SUSPEND_RESUME_READY);
+    pending = complete_resume_state(suspend);
+    trace_suspend("coordinator", "resume", "complete");
+    if (pending == PENDING_SUSPEND_POWER)
+        (void)run_suspend("power", 0);
+    else if (pending == PENDING_SUSPEND_LID_CLOSE)
+        (void)run_suspend("lid", "close");
 }
 
 static int repeat_is_held(const struct control_state *state) {
@@ -854,11 +1006,15 @@ static void process_repeat(struct control_state *state) {
 
 static const struct timespec *poll_timeout(
     const struct input_source *sources, const struct control_state *state,
-    int discovery_poll_fallback, struct timespec *timeout) {
+    const struct suspend_state *suspend, int discovery_poll_fallback,
+    struct timespec *timeout) {
     u64 delay = 0;
 
     if (discovery_poll_fallback && missing_sources(sources))
         delay = (u64)DISCOVERY_RETRY_NS;
+    if (suspend->resume_in_flight &&
+        (!delay || (u64)RESUME_READY_RETRY_NS < delay))
+        delay = (u64)RESUME_READY_RETRY_NS;
     if (state->repeat_direction && repeat_is_held(state)) {
         u64 now = now_ns();
         u64 repeat_delay = state->repeat_at_ns > now
@@ -884,6 +1040,7 @@ static void application(void) {
         {-1, LID_NAME},
     };
     struct control_state state = {0, 0, 0, 0, 0, 0, 0, 0};
+    struct suspend_state suspend = {0, 0, 0};
     struct pollfd polls[SOURCE_COUNT + 1];
     u64 poll_error_delay_ns = 1000000UL;
     int watch_fd;
@@ -915,8 +1072,8 @@ static void application(void) {
             polls[SOURCE_COUNT].revents = 0;
             poll_count++;
         }
-        timeout_pointer = poll_timeout(sources, &state, watch_fd < 0,
-                                       &timeout);
+        timeout_pointer = poll_timeout(sources, &state, &suspend,
+                                       watch_fd < 0, &timeout);
         ready = sys_ppoll(polls, poll_count, timeout_pointer);
         if (classify_poll_result(ready) == POLL_RESULT_INTERRUPTED) continue;
         if (classify_poll_result(ready) == POLL_RESULT_FAILED) {
@@ -948,7 +1105,7 @@ static void application(void) {
                 continue;
             }
             if ((polls[index].revents & POLLIN) &&
-                !process_source(&sources[index], index, &state)) {
+                !process_source(&sources[index], index, &state, &suspend)) {
                 close_source(&sources[index], index, &state);
                 rescan_required = 1;
             }
@@ -957,6 +1114,7 @@ static void application(void) {
             if (watch_fd < 0) watch_fd = open_input_watch();
             discover_inputs(sources);
         }
+        process_resume_transition(&suspend);
         process_repeat(&state);
     }
 }

@@ -176,6 +176,14 @@ directly instead of spawning the generic Bash/find/bc/settings stack. V6.21
 initially treated raw one as lit and reserved zero for display-off; the later
 physical correction below replaces that unstable minimum.
 
+The retained fake-suspend implementation parks CPU1--CPU3 and deliberately
+leaves CPU0 online. On resume it unparks those cores before restoring governors,
+unfreezing processes, enabling the panel, releasing evdev grabs, restoring
+audio/LED state and globally terminating the old suspend workers. That ordering
+creates a real post-visible completion window. Bird's fixed-controls process on
+CPU0 is consequently the durable transaction owner; the wrapper's explicit
+completion marker, not panel visibility, releases a queued follow-up request.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.

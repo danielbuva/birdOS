@@ -228,13 +228,31 @@ resident descriptor plus a small amount of code rather than targeting priority
 
 The first physical follow-up for that controls candidate found rapid repeated
 power and lid suspend requests could be ignored until ROCKNIX resume cleanup
-finished. The retained provider makes the panel visible before its final global
-process cleanup; a new suspend helper in that interval can be killed. Bird now
-keeps one last-writer-wins suspend intent while resume is active, cancels it on
-an intervening lid-open event, and hands a retained close/power request to the
-same wrapper immediately after cleanup. This restores repeated-control intent
-without changing the provider's proven display, governor, input, LED or audio
-sequence.
+finished. The retained provider brings CPU1--CPU3 online at the start of resume,
+but only then restores governors, unfreezes processes, turns the panel on,
+releases input grabs, restores the remaining devices and globally kills the old
+suspend helpers. A visible panel is therefore not evidence that the transaction
+has completed.
+
+Release `v6.23-suspend-queue-ec0ea60` tried to retain this input in separately
+invoked shell wrappers. The physical gate rejected it: the cooldown remained
+and one suspend cycle ended in an abrupt reboot rather than an orderly Bird
+shutdown or restart. Anonymous shell scheduling could not establish ownership
+before another helper was dispatched, so that mechanism was removed rather
+than promoted.
+
+The successor candidate puts transaction ownership in the persistent fixed-
+controls process that remains available on CPU0. It identifies a power resume
+from ROCKNIX's active-state flag, records at most one cancellable power or lid-
+close intent while resume is in flight, and dispatches that intent only after
+the Bird wrapper publishes an explicit completion marker following retained
+provider cleanup and exact-brightness restoration. A ten-second failure bound
+drops rather than dispatches an ambiguous intent. Transition-only O_DSYNC
+records under the Bird data log preserve the last dispatched/queued/completed
+boundary across a forced reset. This adds no ordinary idle timer:
+the 25 ms marker check exists only during an active resume transaction. It is a
+correctness and priority-2 suspend-interaction candidate pending physical proof;
+it makes no boot, battery or latency claim.
 
 ## Stage 3 — Bootstrap progression
 
