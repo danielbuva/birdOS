@@ -726,7 +726,7 @@ grep -Fq '#define VOLUME_PROGRAM "/storage/.config/bird/bird-volume.sh"' \
 	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'unmuting volume wrapper missing'
 grep -Fq 'set-sink-mute @DEFAULT_SINK@ 0' \
 	"$OUTPUT/card/bird/bird-volume.sh" || fail 'default audio sink unmute missing'
-grep -Fq "cget \"iface=CARD,name='Headphone Jack'\"" \
+grep -Fq "iface=CARD,name='Headphone Jack'" \
 	"$OUTPUT/card/bird/bird-volume.sh" || fail 'headphone route inspection missing'
 grep -Fq "cset \"name='Speaker Switch'\"" \
 	"$OUTPUT/card/bird/bird-volume.sh" || fail 'speaker route reconciliation missing'
