@@ -53,6 +53,8 @@ static const char *fake_ioctl_name_script[FAKE_IOCTL_SCRIPT_MAX];
 static unsigned fake_ioctl_script_count;
 static unsigned fake_ioctl_script_index;
 static unsigned fake_ioctl_calls;
+static int fake_input_contract_valid;
+static int fake_input_contract_mismatch;
 static long fake_write_result;
 #define FAKE_WRITE_CAPTURE_BYTES 16384U
 static char fake_write_capture[FAKE_WRITE_CAPTURE_BYTES];
@@ -135,8 +137,36 @@ long bird_test_syscall6(long number, long a0, long a1, long a2, long a3,
         return fake_ppoll_result;
     }
     if (number == 29) {
+        static const u64 expected_key[BIRD_DEVICE_INPUT_KEY_BITMAP_WORD_COUNT] =
+            BIRD_DEVICE_INPUT_KEY_BITMAP_WORDS;
+        static const u64 expected_ff[BIRD_DEVICE_INPUT_FF_BITMAP_WORD_COUNT] =
+            BIRD_DEVICE_INPUT_FF_BITMAP_WORDS;
         long result = fake_ioctl_result;
         const char *name = 0;
+
+        if ((u64)a1 == EVIOCGID || (u64)a1 == EVIOCGBIT_EV ||
+            (u64)a1 == EVIOCGBIT_KEY || (u64)a1 == EVIOCGBIT_ABS ||
+            (u64)a1 == EVIOCGBIT_FF) {
+            fake_ioctl_calls++;
+            if (!fake_input_contract_valid) return -EIO_LINUX;
+            if ((u64)a1 == EVIOCGID) {
+                struct input_id *id = (struct input_id *)a2;
+                id->bus = BIRD_DEVICE_INPUT_BUS;
+                id->vendor = BIRD_DEVICE_INPUT_VENDOR;
+                id->product = BIRD_DEVICE_INPUT_PRODUCT;
+                id->version = BIRD_DEVICE_INPUT_VERSION;
+            } else if ((u64)a1 == EVIOCGBIT_EV)
+                *(u64 *)a2 = BIRD_DEVICE_INPUT_EV_BITMAP;
+            else if ((u64)a1 == EVIOCGBIT_KEY)
+                memcpy((void *)a2, expected_key, sizeof(expected_key));
+            else if ((u64)a1 == EVIOCGBIT_ABS)
+                *(u64 *)a2 = BIRD_DEVICE_INPUT_ABS_BITMAP;
+            else
+                memcpy((void *)a2, expected_ff, sizeof(expected_ff));
+            if (fake_input_contract_mismatch && (u64)a1 == EVIOCGBIT_FF)
+                ((u64 *)a2)[1] ^= 1U;
+            return 0;
+        }
         if (fake_ioctl_script_index < fake_ioctl_script_count) {
             result = fake_ioctl_script[fake_ioctl_script_index];
             name = fake_ioctl_name_script[fake_ioctl_script_index];
@@ -249,6 +279,8 @@ static void reset_fake_file(long open_result, const char *payload,
     fake_ioctl_script_count = 0;
     fake_ioctl_script_index = 0;
     fake_ioctl_calls = 0;
+    fake_input_contract_valid = 1;
+    fake_input_contract_mismatch = 0;
     fake_write_result = 0;
     fake_payload = payload ? payload : "";
     fake_payload_bytes = payload ? (u64)strlen(payload) : 0;
@@ -883,7 +915,7 @@ static int run_preferred_input_probe_tests(void) {
     ok &= check(open_fixed_input_once() == 0 && input_fd == 70 &&
                     h700_input == 1 && input_path_is(0U, 4) &&
                     fake_open_path_count == 1U && fake_open_calls <= 1U &&
-                    fake_ioctl_calls <= 1U && fake_close_calls == 0U &&
+                    fake_ioctl_calls == 6U && fake_close_calls == 0U &&
                     axis_x == 0 && axis_y == 0,
                 "preferred H700 input did not take the one-candidate path");
     abandon_input();
@@ -902,7 +934,7 @@ static int run_preferred_input_probe_tests(void) {
     ok &= check(open_fixed_input_once() == 0 && input_fd == 71 &&
                     h700_input == 1 && input_path_is(0U, 4) &&
                     input_path_is(1U, 0) && fake_open_calls <= 2U &&
-                    fake_ioctl_calls <= 1U && fake_close_calls == 0U,
+                    fake_ioctl_calls == 6U && fake_close_calls == 0U,
                 "missing preferred input did not fall back to event0");
     abandon_input();
 
@@ -921,7 +953,7 @@ static int run_preferred_input_probe_tests(void) {
     ok &= check(open_fixed_input_once() == 0 && input_fd == 73 &&
                     h700_input == 1 && input_path_is(0U, 4) &&
                     input_path_is(1U, 0) && fake_open_calls <= 2U &&
-                    fake_ioctl_calls <= 2U && fake_close_calls == 1U,
+                    fake_ioctl_calls == 7U && fake_close_calls == 1U,
                 "rejected preferred input descriptor leaked before fallback");
     abandon_input();
 
@@ -941,7 +973,7 @@ static int run_preferred_input_probe_tests(void) {
     ok &= check(open_fixed_input_once() == 0 && input_fd == 75 &&
                     h700_input == 1 && input_path_is(0U, 4) &&
                     input_path_is(1U, 0) && fake_open_calls <= 2U &&
-                    fake_ioctl_calls <= 2U && fake_close_calls == 1U,
+                    fake_ioctl_calls == 7U && fake_close_calls == 1U,
                 "failed preferred EVIOCGNAME did not close and fall back");
     abandon_input();
 
@@ -962,6 +994,24 @@ static int run_preferred_input_probe_tests(void) {
                     fake_ioctl_calls <= 1U && fake_close_calls == 0U,
                 "preferred muOS-Keys input did not select the vendor map");
     abandon_input();
+
+    /* A matching name with any capability drift is not the fixed H700
+     * controller. Close it and complete the bounded recovery scan. */
+    for (index = 0; index < INPUT_EVENT_SCAN_COUNT; index++)
+        open_results[index] = -ENOENT;
+    open_results[0] = 77;
+    ioctl_results[0] = 0;
+    ioctl_names[0] = "H700 Gamepad";
+    reset_fake_file(-ENOENT, 0, 0);
+    fake_close_calls = 0U;
+    fake_input_contract_mismatch = 1;
+    set_fake_open_script(open_results, INPUT_EVENT_SCAN_COUNT);
+    set_fake_ioctl_script(ioctl_results, ioctl_names, 1U);
+    input_fd = -1;
+    ok &= check(open_fixed_input_once() < 0 && input_fd == -1 &&
+                    fake_open_calls == INPUT_EVENT_SCAN_COUNT &&
+                    fake_ioctl_calls == 6U && fake_close_calls == 1U,
+                "H700 capability mismatch was accepted or leaked");
 
     /* If every candidate opens but names an unrelated device, the bounded
      * fallback visits each node once, closes every fd, and retains none. */
@@ -1015,7 +1065,7 @@ static int run_preferred_input_probe_tests(void) {
     ok &= check(reconnect_input("host-preferred-probe") == 0 &&
                     input_fd == 80 && h700_input == 1 &&
                     input_path_is(0U, 4) && fake_close_calls == 1U &&
-                    fake_open_calls <= 1U && fake_ioctl_calls <= 1U &&
+                    fake_open_calls <= 1U && fake_ioctl_calls == 6U &&
                     axis_x == 0 && axis_y == 0,
                 "preferred reconnect leaked its old fd or retained latches");
     abandon_input();
@@ -1100,7 +1150,7 @@ static int run_event_driven_input_discovery_tests(void) {
                     fake_open_path_count == INPUT_EVENT_SCAN_COUNT + 1U &&
                     strcmp(fake_open_path[INPUT_EVENT_SCAN_COUNT],
                            "event7") == 0 &&
-                    fake_ioctl_calls == 1U && fake_ppoll_calls == 1U &&
+                    fake_ioctl_calls == 6U && fake_ppoll_calls == 1U &&
                     fake_sleep_calls == 0U,
                 "creation edge repeated the full input scan or slept");
     abandon_input();

@@ -181,8 +181,11 @@ True power-loss recovery requires the later U-Boot A/B design in the roadmap.
    available, it paints a launcher-owned base with no menu rows, then blocks on
    the watch and validates only newly created numbered event nodes. A queue
    overflow permits a complete rescan; unavailable inotify retains the bounded
-   polling fallback. Only after input is open does it paint interactive rows,
-   execute the framebuffer barrier and publish first-frame readiness. From that marker,
+   polling fallback. An H700 name match is accepted only when its complete
+   input ID and event/key/absolute/force-feedback bitmaps match the generated
+   fixed-device contract; the retained legacy mapping remains name-based. Only
+   after input is open does it paint interactive rows, execute the framebuffer
+   barrier and publish first-frame readiness. From that marker,
    every zero-time input poll and complete drain may advance at most one deferred
    profiling, logging, checkpoint, power, storage or Favorites task; input,
    reconnect and exit work always interrupt that sequence. Its cached catalogue

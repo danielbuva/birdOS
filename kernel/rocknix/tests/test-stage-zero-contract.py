@@ -26,6 +26,8 @@ def main() -> None:
     header = (ROOT / "launcher/bird-device-contract.h").read_text()
     assert "BIRD_DEVICE_FB_MAPPING_BYTES 1382400U" in header
     assert "BIRD_DEVICE_INPUT_NAME \"H700 Gamepad\"" in header
+    assert "BIRD_DEVICE_INPUT_KEY_BITMAP_WORD_COUNT 12U" in header
+    assert "0x0000000107030000UL" in header
     assert "BIRD_DEVICE_BACKLIGHT_MAXIMUM_RAW 2499U" in header
     assert "deploy-manifest" not in (ROOT / "bird-device-contract.tsv").read_text()
 

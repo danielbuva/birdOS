@@ -752,6 +752,10 @@ grep -Fq 'event->mask & IN_Q_OVERFLOW' \
 	"$ROOT/launcher/bird-launcher.c" || fail 'input discovery overflow recovery missing'
 grep -Fq 'try_fixed_input_index(index)' \
 	"$ROOT/launcher/bird-launcher.c" || fail 'created input node validation missing'
+grep -Fq 'h700_input_contract_matches(input_fd)' \
+	"$ROOT/launcher/bird-launcher.c" || fail 'complete H700 input validation missing'
+grep -Fq 'BIRD_DEVICE_INPUT_FF_BITMAP_WORDS' \
+	"$ROOT/launcher/bird-launcher.c" || fail 'fixed H700 force-feedback closure missing'
 grep -q 'sys_pipe2(handshake, O_CLOEXEC)' \
 	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'control exec handshake missing'
 grep -q 'SPAWN_EXEC_FAILED' \

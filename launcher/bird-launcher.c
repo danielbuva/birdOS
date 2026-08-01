@@ -51,6 +51,11 @@ typedef signed long s64;
 #define FB_TYPE_PACKED_PIXELS 0U
 #define FB_VISUAL_TRUECOLOR 2U
 #define EVIOCGNAME_128 0x80804506
+#define EVIOCGID 0x80084502UL
+#define EVIOCGBIT_EV 0x80084520UL
+#define EVIOCGBIT_KEY 0x80604521UL
+#define EVIOCGBIT_ABS 0x80084523UL
+#define EVIOCGBIT_FF 0x80104535UL
 
 #define EV_KEY 0x01
 #define EV_ABS 0x03
@@ -361,6 +366,15 @@ struct input_event {
     u16 code;
     s32 value;
 };
+
+struct input_id {
+    u16 bus;
+    u16 vendor;
+    u16 product;
+    u16 version;
+};
+
+_Static_assert(sizeof(struct input_id) == 8U, "input ID ABI changed");
 
 struct timespec {
     s64 sec;
@@ -5064,12 +5078,53 @@ static int fixed_input_scan_index(int order) {
     return index >= PREFERRED_INPUT_EVENT ? index + 1 : index;
 }
 
+static int input_words_equal(const u64 *left, const u64 *right, u32 count) {
+    u32 index;
+
+    for (index = 0U; index < count; index++) {
+        if (left[index] != right[index]) return 0;
+    }
+    return 1;
+}
+
+static int h700_input_contract_matches(int fd) {
+    static const u64 expected_key[BIRD_DEVICE_INPUT_KEY_BITMAP_WORD_COUNT] =
+        BIRD_DEVICE_INPUT_KEY_BITMAP_WORDS;
+    static const u64 expected_ff[BIRD_DEVICE_INPUT_FF_BITMAP_WORD_COUNT] =
+        BIRD_DEVICE_INPUT_FF_BITMAP_WORDS;
+    struct input_id id;
+    u64 event_bits = 0U;
+    u64 key_bits[BIRD_DEVICE_INPUT_KEY_BITMAP_WORD_COUNT] = {0U};
+    u64 absolute_bits = 0U;
+    u64 force_feedback_bits[BIRD_DEVICE_INPUT_FF_BITMAP_WORD_COUNT] = {0U};
+
+    if (sys_ioctl(fd, EVIOCGID, &id) < 0 ||
+        sys_ioctl(fd, EVIOCGBIT_EV, &event_bits) < 0 ||
+        sys_ioctl(fd, EVIOCGBIT_KEY, key_bits) < 0 ||
+        sys_ioctl(fd, EVIOCGBIT_ABS, &absolute_bits) < 0 ||
+        sys_ioctl(fd, EVIOCGBIT_FF, force_feedback_bits) < 0)
+        return 0;
+    return id.bus == BIRD_DEVICE_INPUT_BUS &&
+           id.vendor == BIRD_DEVICE_INPUT_VENDOR &&
+           id.product == BIRD_DEVICE_INPUT_PRODUCT &&
+           id.version == BIRD_DEVICE_INPUT_VERSION &&
+           event_bits == BIRD_DEVICE_INPUT_EV_BITMAP &&
+           input_words_equal(key_bits, expected_key,
+                             BIRD_DEVICE_INPUT_KEY_BITMAP_WORD_COUNT) &&
+           absolute_bits == BIRD_DEVICE_INPUT_ABS_BITMAP &&
+           input_words_equal(force_feedback_bits, expected_ff,
+                             BIRD_DEVICE_INPUT_FF_BITMAP_WORD_COUNT);
+}
+
 static int try_fixed_input_index(int index) {
     char name[128];
 
     set_input_path(index);
     input_fd = (int)fixed_open(input_path, O_RDONLY | O_NONBLOCK);
-    if (input_fd < 0) return -1;
+    if (input_fd < 0) {
+        input_fd = -1;
+        return -1;
+    }
 
     name[0] = 0;
     if (sys_ioctl(input_fd, EVIOCGNAME_128, name) < 0) name[0] = 0;
@@ -5078,7 +5133,8 @@ static int try_fixed_input_index(int index) {
         h700_input = 0;
         goto found;
     }
-    if (string_equal(name, BIRD_DEVICE_INPUT_NAME)) {
+    if (string_equal(name, BIRD_DEVICE_INPUT_NAME) &&
+        h700_input_contract_matches(input_fd)) {
         h700_input = 1;
         goto found;
     }

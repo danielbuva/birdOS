@@ -178,6 +178,25 @@ syscall result, not a device boot-latency claim. Full H700 input-ID/capability
 validation, fixed-controls discovery and framebuffer discovery remain separate
 Stage 2 candidates after this one passes hardware.
 
+Hardware follow-up on release `v6.23-input-watch-c141573` passed the complete
+functional screen. The watch-before-scan launcher path is retained; no boot,
+input, content or return regression was observed. This is behavioral
+acceptance, not a promotion-grade timing claim.
+
+The second launcher-input candidate validates the exact H700 identity after
+the name match: bus `0019`, vendor `484b`, product `14df`, version `0100`, plus
+the complete event, key, absolute-axis and force-feedback bitmaps. Repeated
+retained hardware snapshots exposed and correct one Stage 0 authority error:
+the full force-feedback bitmap is `107030000 0`, not the truncated `10000 0`.
+The TSV now stores key and force-feedback capabilities as canonical
+little-endian 64-bit word arrays, and its generated header supplies those
+arrays directly to the freestanding launcher without parsing.
+
+An H700 name match with an ioctl failure or any identity/capability mismatch is
+closed and the bounded scan continues. The legacy `muOS-Keys` recovery mapping
+is unchanged. The ready H700 path adds five fixed ioctls after the existing
+name ioctl; hardware must show boot non-inferiority before promotion.
+
 ## Stage 3 — Bootstrap progression
 
 ### 3A — Minimal shell

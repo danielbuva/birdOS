@@ -32,9 +32,9 @@ REQUIRED = {
     "input.product": ("u32", "BIRD_DEVICE_INPUT_PRODUCT"),
     "input.version": ("u32", "BIRD_DEVICE_INPUT_VERSION"),
     "input.ev_bitmap": ("hex", "BIRD_DEVICE_INPUT_EV_BITMAP"),
-    "input.key_bitmap": ("string", "BIRD_DEVICE_INPUT_KEY_BITMAP"),
+    "input.key_bitmap": ("bitmap64", "BIRD_DEVICE_INPUT_KEY_BITMAP"),
     "input.abs_bitmap": ("hex", "BIRD_DEVICE_INPUT_ABS_BITMAP"),
-    "input.ff_bitmap": ("string", "BIRD_DEVICE_INPUT_FF_BITMAP"),
+    "input.ff_bitmap": ("bitmap64", "BIRD_DEVICE_INPUT_FF_BITMAP"),
     "backlight.directory": ("string", "BIRD_DEVICE_BACKLIGHT_DIRECTORY"),
     "backlight.maximum_raw": ("u32", "BIRD_DEVICE_BACKLIGHT_MAXIMUM_RAW"),
     "backlight.cold_percent": ("u32", "BIRD_DEVICE_BACKLIGHT_COLD_PERCENT"),
@@ -80,7 +80,7 @@ def parse_contract(path: pathlib.Path) -> dict[str, tuple[str, str]]:
             raise SystemExit(f"{path}:{line_number}: duplicate key: {key}")
         if not re.fullmatch(r"[a-z][a-z0-9_.]*", key):
             raise SystemExit(f"{path}:{line_number}: invalid key: {key}")
-        if kind not in {"string", "u32", "hex", "bool"}:
+        if kind not in {"string", "u32", "hex", "bool", "bitmap64"}:
             raise SystemExit(f"{path}:{line_number}: invalid type: {kind}")
         if "\r" in value or "\n" in value or not value:
             raise SystemExit(f"{path}:{line_number}: invalid value")
@@ -114,10 +114,20 @@ def render(contract: dict[str, tuple[str, str]]) -> str:
             if not re.fullmatch(r"0x[0-9a-f]+", value):
                 raise SystemExit(f"{key}: invalid canonical hex: {value}")
             rendered = f"{value}UL"
-        else:
+        elif kind == "bool":
             if value not in {"true", "false"}:
                 raise SystemExit(f"{key}: invalid bool: {value}")
             rendered = "1U" if value == "true" else "0U"
+        else:
+            words = value.split(",")
+            if not words or any(
+                not re.fullmatch(r"0x[0-9a-f]{16}", word) for word in words
+            ):
+                raise SystemExit(f"{key}: invalid canonical bitmap64: {value}")
+            lines.append(f"#define {macro}_WORD_COUNT {len(words)}U")
+            rendered_words = ", ".join(f"{word}UL" for word in words)
+            lines.append(f"#define {macro}_WORDS {{ {rendered_words} }}")
+            continue
         lines.append(f"#define {macro} {rendered}")
     lines.extend(
         [

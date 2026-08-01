@@ -18,6 +18,10 @@ machine-readable hardware subset without replacing this experience contract.
 - SoC: Allwinner H700, AArch64 Cortex-A53.
 - Internal display: 720x480, landscape, 3:2.
 - Input: built-in D-pad, A/B/X/Y, shoulders, Start/Select/Menu and lid switch.
+  The primary launcher device is the exact `H700 Gamepad` identity
+  `0019:484b:14df:0100` with its complete generated event, key, absolute-axis
+  and force-feedback closure. Retained hardware captures establish the full
+  force-feedback bitmap as `107030000 0`.
 - Primary storage: the OS card's content partition, retained by the early
   launcher at `/storage/bird-data` and exported to applications through the
   fixed `/storage/roms` view. `/mnt/mmc` is only the launcher's compiled
