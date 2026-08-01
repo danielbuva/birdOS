@@ -28,19 +28,11 @@ from pathlib import Path
 import sys
 
 source = Path(sys.argv[1]).read_text()
-start = source.index("trace_early() {")
+start = source.index("set_early_brightness() {")
 end = source.index("\n}\n\ncase ", start) + 2
 Path(sys.argv[2]).write_text(source[start:end] + "\n")
 PY
 sh -n "$EARLY_FUNCTION"
-[ "$(
-	. "$EARLY_FUNCTION"
-	EARLY_TRACE=0
-	BUSYBOX=/forbidden-busybox
-	trace_early 'forbidden diagnostic\n'
-	trace_leds start
-)" = '' ]
-grep -Fq '$BUSYBOX dmesg | $BUSYBOX tail -n 30' "$EARLY_SOURCE"
 EARLY_BUSYBOX=$TMP/early-busybox.sh
 EARLY_SETTLE_LOG=$TMP/early-settle.log
 cat >"$EARLY_BUSYBOX" <<'EOF'
@@ -61,32 +53,13 @@ chmod 0755 "$EARLY_BUSYBOX"
 	BIRD_TEST_BACKLIGHT=$BACKLIGHT
 	BIRD_TEST_SETTLE_LOG=$EARLY_SETTLE_LOG
 	export BIRD_TEST_BACKLIGHT BIRD_TEST_SETTLE_LOG
-	EARLY_TRACE=0
 	set_early_brightness
 ) >"$TMP/early.log"
 [ "$(cat "$BACKLIGHT/bl_power")" = 0 ]
 [ "$(cat "$BACKLIGHT/brightness")" = 124 ]
 [ "$(cat "$EARLY_SETTLE_LOG")" = 50000:250 ]
-[ ! -s "$TMP/early.log" ]
-
-# Trace builds retain the same post-hoc brightness evidence without making
-# normal release boot issue diagnostic writes before the usable frame.
-printf '4\n' >"$BACKLIGHT/bl_power"
-: >"$EARLY_SETTLE_LOG"
-(
-	. "$EARLY_FUNCTION"
-	BUSYBOX=$EARLY_BUSYBOX
-	BIRD_TEST_BACKLIGHT=$BACKLIGHT
-	BIRD_TEST_SETTLE_LOG=$EARLY_SETTLE_LOG
-	export BIRD_TEST_BACKLIGHT BIRD_TEST_SETTLE_LOG
-	EARLY_TRACE=1
-	set_early_brightness
-) >"$TMP/early-trace.log"
-[ "$(cat "$BACKLIGHT/bl_power")" = 0 ]
-[ "$(cat "$BACKLIGHT/brightness")" = 124 ]
-[ "$(cat "$EARLY_SETTLE_LOG")" = 50000:250 ]
-grep -q 'stage=wake-strike raw=250 max=2499' "$TMP/early-trace.log"
-grep -q 'stage=restored raw=124 max=2499' "$TMP/early-trace.log"
+grep -q 'stage=wake-strike raw=250 max=2499' "$TMP/early.log"
+grep -q 'stage=restored raw=124 max=2499' "$TMP/early.log"
 
 printf '0\n' >"$BACKLIGHT/bl_power"
 

@@ -12,15 +12,8 @@ JOYPAD=/opt/bird/rocknix-singleadc-joypad.ko
 BACKLIGHT=/sys/class/backlight/backlight
 STORAGE_MARKER=$RUN/bird-storage-anchor-ready
 STORAGE_SIGNAL=$RUN/bird-storage-ready
-EARLY_TRACE=${BIRD_EARLY_TRACE:-0}
 
-trace_early() {
-	[ "$EARLY_TRACE" = 1 ] || return 0
-	printf "$@"
-}
-
-trace_leds() {
-	[ "$EARLY_TRACE" = 1 ] || return 0
+log_leds() {
 	STAGE=$1
 	for NAME in green:power red:status; do
 		LED=/sys/class/leds/$NAME
@@ -47,12 +40,12 @@ set_early_brightness() {
 	fi
 	if [ "$RAW" -lt "$STRIKE" ]; then
 		printf '%s\n' "$STRIKE" >"$BACKLIGHT/brightness"
-		trace_early 'early_brightness stage=wake-strike raw=%s max=%s\n' \
+		printf 'early_brightness stage=wake-strike raw=%s max=%s\n' \
 			"$STRIKE" "$MAX"
 		$BUSYBOX usleep 50000
 	fi
 	printf '%s\n' "$RAW" >"$BACKLIGHT/brightness"
-	trace_early 'early_brightness stage=restored raw=%s max=%s\n' "$RAW" "$MAX"
+	printf 'early_brightness stage=restored raw=%s max=%s\n' "$RAW" "$MAX"
 }
 
 case "${1:-}" in
@@ -65,13 +58,11 @@ case "${1:-}" in
 			STORAGE_FIFO=failed
 		fi
 		{
-			if [ "$EARLY_TRACE" = 1 ]; then
-				printf 'Bird early-init start uptime='
-				$BUSYBOX cut -d ' ' -f 1 /proc/uptime
-				printf 'early_storage_fifo=%s\n' "$STORAGE_FIFO"
-			fi
+			printf 'Bird early-init start uptime='
+			$BUSYBOX cut -d ' ' -f 1 /proc/uptime
+			printf 'early_storage_fifo=%s\n' "$STORAGE_FIFO"
 			if $BUSYBOX insmod "$JOYPAD" 2>&1; then
-				trace_early '%s\n' 'early_input_module=loaded'
+				printf '%s\n' 'early_input_module=loaded'
 			else
 				printf '%s\n' 'early_input_module=failed'
 				$BUSYBOX dmesg | $BUSYBOX tail -n 30
@@ -86,7 +77,7 @@ case "${1:-}" in
 				$BUSYBOX usleep 1000
 				COUNT=$((COUNT + 1))
 			done
-			trace_leds start
+			log_leds start
 		} >"$LOG" 2>&1
 		"$LAUNCHER" >>"$LOG" 2>&1 &
 		printf '%s\n' "$!" >"$PID_FILE"
@@ -111,7 +102,7 @@ case "${1:-}" in
 				printf 'Bird storage anchor acknowledged wait_ms=%s uptime=' \
 					"$COUNT" >>"$LOG"
 				$BUSYBOX cut -d ' ' -f 1 /proc/uptime >>"$LOG"
-				trace_leds root-ready >>"$LOG" 2>&1
+				log_leds root-ready >>"$LOG" 2>&1
 				exit 0
 			fi
 			$BUSYBOX usleep 1000
@@ -134,7 +125,7 @@ case "${1:-}" in
 		exit 0
 		;;
 	handoff)
-		trace_leds handoff >>"$LOG" 2>&1
+		log_leds handoff >>"$LOG" 2>&1
 		if [ -s "$PID_FILE" ]; then
 			PID=$($BUSYBOX cat "$PID_FILE")
 			case "$PID" in *[!0-9]*|'') PID= ;; esac
