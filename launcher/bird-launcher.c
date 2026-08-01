@@ -4165,17 +4165,9 @@ static int service_selected_text_scroll(void) {
     load_launcher_palette(&palette);
     if (view == VIEW_MAIN || view == VIEW_PLAY ||
         view == VIEW_TOOLS || view == VIEW_QUIT) {
-        int y = MENU_MAIN_ROW_START_Y +
-                (int)selection * MENU_MAIN_ROW_SPACING;
-        rectangle(MENU_ROW_LEFT, y, MENU_ROW_WIDTH,
-                  MENU_MAIN_ROW_H, palette.menu_panel);
         draw_main_row(selection, &palette);
     } else {
         first = viewport_first(view, selection);
-        rectangle(MENU_ROW_LEFT,
-                  MENU_CONTENT_Y + (int)(selection - first) *
-                                       MENU_ROW_SPACING,
-                  MENU_ROW_WIDTH, MENU_ROW_H, palette.menu_panel);
         draw_list_row(selection, selection - first, &palette);
     }
     framebuffer_barrier();

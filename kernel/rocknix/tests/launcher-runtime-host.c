@@ -2618,6 +2618,23 @@ static int run_dirty_region_render_tests(void) {
     ok &= dirty_framebuffer_matches_full(
         1U, "battery commit left failed-dispatch status stale");
 
+    /* A marquee tick redraws the selected row exactly once and must still
+     * produce the same pixels as the full-render recovery path. */
+    setup_test_framebuffer(1U, fake_framebuffer);
+    memset(fake_framebuffer, 0x5a, RG34XX_FB_BYTES);
+    view = VIEW_GAMES;
+    active_system = 0U;
+    selection = 0U;
+    selected_status = "ROM STORAGE READY";
+    reset_selected_text_scroll();
+    fake_now_ms = 1000;
+    draw_screen();
+    fake_now_ms = 3500;
+    ok &= check(service_selected_text_scroll(),
+                "marquee dirty-render fixture did not advance");
+    ok &= dirty_framebuffer_matches_full(
+        1U, "marquee dirty render differs from a full render");
+
     /* The diagnostic/recovery renderer intentionally writes both exposed
      * pages. Dirty updates must retain that page-selection behavior. */
     setup_test_framebuffer(2U, fake_framebuffer);
@@ -3905,7 +3922,7 @@ static int run_profile_tests(void) {
     BIRD_PROFILE_FINISH_EVENT();
     render = &bird_profile.render[PROFILE_RENDER_TEXT_SCROLL];
     ok &= check(render->commits == 1U && render->pages_written == 1U &&
-                    render->physical_bytes < 200000U &&
+                    render->physical_bytes < 60000U &&
                     bird_profile.event_pre_barrier_filesystem_ops == 0U &&
                     bird_profile.event_pre_barrier_diagnostic_writes == 0U,
                 "text scroll exceeded its row-only render contract");
