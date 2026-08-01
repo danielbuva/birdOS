@@ -732,7 +732,7 @@ grep -Fq "cset \"name='Speaker Switch'\"" \
 	"$OUTPUT/card/bird/bird-volume.sh" || fail 'speaker route reconciliation missing'
 grep -Fq 'pactl get-sink-volume @DEFAULT_SINK@' \
 	"$OUTPUT/card/bird/bird-volume.sh" || fail 'no-op audio volume inspection missing'
-grep -Fq 'cannot block a game' \
+grep -Fq 'must never prevent a game' \
 	"$OUTPUT/card/bird/bird-volume.sh" || fail 'nonfatal audio policy contract missing'
 if grep -Fq 'set-sink-mute @DEFAULT_SINK@ 1' \
 	"$OUTPUT/card/bird/bird-volume.sh"; then
