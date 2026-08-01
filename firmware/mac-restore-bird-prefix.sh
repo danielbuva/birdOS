@@ -26,6 +26,8 @@ plist_value() {
 	diskutil info -plist "$1" | plutil -extract "$2" raw -o - -
 }
 
+. "$(CDPATH= cd -- "$(dirname "$0")" && pwd)/mac-removable-device.sh"
+
 [ -n "$DEVICE" ] && [ "$ACTION" = '--restore-bird-prefix' ] ||
 	fail "usage: $0 /dev/diskN --restore-bird-prefix"
 [ -x "$GDD" ] || fail 'GNU dd is required; install it with: brew install coreutils'
@@ -43,10 +45,7 @@ case "$WHOLE" in
 disk[0-9]*) ;;
 *) fail 'device must be a whole disk such as /dev/disk4' ;;
 esac
-[ "$(plist_value "/dev/$WHOLE" Internal)" = false ] ||
-	fail 'refusing an internal disk'
-[ "$(plist_value "/dev/$WHOLE" Removable)" = true ] ||
-	fail 'refusing non-removable media'
+bird_require_safe_removable_device "/dev/$WHOLE"
 [ "$(plist_value "/dev/$WHOLE" Size)" = "$DISK_BYTES" ] ||
 	fail 'unexpected card size'
 

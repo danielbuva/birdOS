@@ -28,6 +28,8 @@ plist_value() {
 	diskutil info -plist "$1" | plutil -extract "$2" raw -o - -
 }
 
+. "$(CDPATH= cd -- "$(dirname "$0")" && pwd)/mac-removable-device.sh"
+
 [ "$ACTION" = '--install-bird-prefix' ] ||
 	fail "usage: $0 /Volumes/BIRD-DATA --install-bird-prefix"
 [ -d "$CARD" ] || fail "card volume not mounted: $CARD"
@@ -49,11 +51,8 @@ command -v plutil >/dev/null 2>&1 || fail 'plutil is required'
 
 WHOLE=$(plist_value "$CARD" ParentWholeDisk)
 VOLUME_ID=$(plist_value "$CARD" DeviceIdentifier)
-INTERNAL=$(plist_value "$CARD" Internal)
-REMOVABLE=$(plist_value "$CARD" Removable)
 DISK_SIZE=$(plist_value "/dev/$WHOLE" Size)
-[ "$INTERNAL" = false ] || fail 'refusing an internal disk'
-[ "$REMOVABLE" = true ] || fail 'refusing non-removable media'
+bird_require_safe_removable_device "/dev/$WHOLE"
 [ "$DISK_SIZE" = "$DISK_BYTES" ] || fail "unexpected card size: $DISK_SIZE"
 [ "$VOLUME_ID" = "${WHOLE}s6" ] ||
 	fail "data volume is not partition 6 of $WHOLE"
