@@ -165,10 +165,13 @@ True power-loss recovery requires the later U-Boot A/B design in the roadmap.
 
 1. **Bootloader:** extlinux selects the active release's versioned unchanged
    ROCKNIX kernel and DTB plus its `bird-initramfs.cpio.gz`, and identifies that
-   release with the `bird_release` command-line parameter. It maps fbcon away
-   from the fixed panel and disables the VT cursor while retaining the serial
-   console, so Sway teardown cannot clear the launcher-owned framebuffer or
-   expose a console cursor before the replacement launcher takes ownership.
+   release with the `bird_release` command-line parameter. The current Stage 1
+   candidate maps fbcon away from the fixed panel and disables the VT cursor
+   without enabling the serial console on the production entry, so Sway teardown
+   cannot clear the launcher-owned framebuffer or expose a console cursor before
+   the replacement launcher takes ownership. The previous release selector and
+   fixed fallback retain `console=ttyS0,115200` for diagnostics and recovery
+   until this candidate completes its physical gate.
 2. **Early overlay:** the overlaid ROCKNIX init calls `bird-early.sh start`
    after the special filesystems exist. It creates the storage event channel,
    loads the exact H700 input module and starts the static framebuffer launcher.

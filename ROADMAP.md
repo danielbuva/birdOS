@@ -125,6 +125,23 @@ console A/B against diagnostics; and identical-payload gzip `-9`, gzip `-1`
 and LZ4 experiments. Report image size, card-read/decompression timing and
 power-to-usable results. Do not replace the early shell in this stage.
 
+### Stage 1 decision record — 2026-08-01
+
+The gzip A/B was screened on the RG34XX-SP with the same normalized early
+overlay payload. gzip `-9` produced a 613,865-byte initramfs; gzip `-1`
+produced 681,658 bytes. Cold stopwatch samples for gzip `-1` were 2.7–2.9 s,
+which was non-inferior to the preceding 2.7–2.8 s gzip `-9` samples but did
+not exceed the frozen improvement margin. gzip `-1` is therefore not
+promoted. The canonical build and the next candidate use gzip `-9` again;
+the validated level switch remains available for later controlled tests.
+
+The production no-serial-console candidate is `v6.23-no-serial-328db9e`.
+It removes only `console=ttyS0,115200` from the active extlinux entry. The
+previous selector and fixed fallback retain the serial console for diagnostics
+and recovery. This candidate remains pending its RG34XX-SP behavior and timing
+gate; it is not yet the accepted optimization baseline. No kernel or launcher
+change is included in this experiment.
+
 ## Stage 2 — Race-free event-driven discovery
 
 Install the `/dev/input` watch before discovery, try the fixed hint once,
