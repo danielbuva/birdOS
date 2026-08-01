@@ -111,6 +111,12 @@ case "$REQUESTED_RELEASE_ID" in
 	''|[![:alnum:]]*|*[![:alnum:]._-]*) fail "unsafe Bird release ID: $REQUESTED_RELEASE_ID" ;;
 esac
 [ "${#REQUESTED_RELEASE_ID}" -le 64 ] || fail 'Bird release ID is longer than 64 bytes'
+BIRD_INITRAMFS_GZIP_LEVEL=${BIRD_INITRAMFS_GZIP_LEVEL:-9}
+case "$BIRD_INITRAMFS_GZIP_LEVEL" in
+	1|9) ;;
+	*) fail 'Bird initramfs gzip level must be 1 or 9' ;;
+esac
+export BIRD_INITRAMFS_GZIP_LEVEL
 printf '%s\n' "$ARCHIVE_REPOSITORY" | \
 	awk '/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/ {found++} END {exit found != 1}' || \
 	fail "unsafe GitHub archive repository: $ARCHIVE_REPOSITORY"
@@ -1240,6 +1246,7 @@ require_free_space "$DATA" "$DATA_REQUIRED_BYTES" 'BIRD-DATA'
 
 printf 'Selected release ID: %s\n' "$RELEASE_ID"
 printf 'Build mode: %s\n' "$MODE"
+printf 'Initramfs compression: gzip -n -%s\n' "$BIRD_INITRAMFS_GZIP_LEVEL"
 printf 'Output directory: %s\n' "$OUTPUT"
 printf 'Card identity: /dev/%s (p1 BIRD, p6 BIRD-DATA)\n' "$WHOLE"
 printf 'PortMaster preflight: pinned installed provider %s; checkpoint state %s.\n' \

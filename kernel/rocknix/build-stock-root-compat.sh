@@ -84,6 +84,13 @@ esac
 [ "${#RELEASE_ID}" -le 64 ] || fail 'Bird release ID is longer than 64 bytes'
 export BIRD_RELEASE_ID="$RELEASE_ID"
 
+BIRD_INITRAMFS_GZIP_LEVEL=${BIRD_INITRAMFS_GZIP_LEVEL:-9}
+case "$BIRD_INITRAMFS_GZIP_LEVEL" in
+	1|9) ;;
+	*) fail 'Bird initramfs gzip level must be 1 or 9' ;;
+esac
+export BIRD_INITRAMFS_GZIP_LEVEL
+
 LAUNCHER_PROFILE_FLAGS=
 LAUNCHER_BINARY_MAX_BYTES=600000
 case "${BIRD_LAUNCHER_PROFILE:-none}" in
@@ -240,7 +247,7 @@ CATALOG_SHA=$(sha256 "$ROOT/launcher/catalog.generated.h")
 	printf 'small-worker-link\trelease\t%s\n' \
 		'-static --gc-sections --build-id=none -z noexecstack -s -e _start'
 	printf 'initramfs\trelease\t%s\n' \
-		'find . -print | LC_ALL=C sort | cpio -o --format newc --owner 0:0; gzip -n -9 -c'
+		"find . -print | LC_ALL=C sort | cpio -o --format newc --owner 0:0; gzip -n -$BIRD_INITRAMFS_GZIP_LEVEL -c"
 } >"$OUTPUT/build/build-flags.tsv"
 
 BOOT_FRAME_WORK=$OUTPUT/build/boot-frame

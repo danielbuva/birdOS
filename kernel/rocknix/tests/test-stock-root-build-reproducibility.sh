@@ -227,7 +227,8 @@ build_early() (
 	export TZ
 	OUTPUT=$3
 	mkdir -p "$OUTPUT/build" "$OUTPUT/card"
-	BIRD_RELEASE_ID=${4:-v6.23} OUTPUT=$OUTPUT "$EARLY_BUILDER"
+	BIRD_RELEASE_ID=${4:-v6.23} BIRD_INITRAMFS_GZIP_LEVEL=${5:-9} \
+		OUTPUT=$OUTPUT "$EARLY_BUILDER"
 )
 
 FIRST=$TMP/output-umask-022-utc
@@ -283,5 +284,22 @@ grep -Fq "BIRD_LOADER_RELEASE=$CUSTOM_ID" \
 	fail 'custom release ID did not reach the early release loader'
 bash -n "$CUSTOM/build/early-initramfs/payload/bird-release-loader.sh" || \
 	fail 'custom release loader is not valid shell'
+
+# The screening compression candidate changes only the deterministic gzip
+# level. It must unpack to the identical normalized cpio payload and remain
+# explicitly recorded in the build flags.
+FAST=$TMP/output-gzip-1
+build_early 022 UTC "$FAST" v6.23-gzip-1 1 >"$TMP/gzip-1-build.log"
+gzip -dc "$FAST/card/bird-initramfs.cpio.gz" | \
+	cmp - "$FAST/build/early-initramfs/bird-initramfs.cpio" || \
+	fail 'gzip level 1 did not preserve the normalized initramfs payload'
+grep -Fq 'gzip -n -1 -c' "$FAST/build/build-flags.tsv" || \
+	fail 'gzip level 1 was not recorded in build flags'
+if BIRD_INITRAMFS_GZIP_LEVEL=2 OUTPUT=$TMP/output-gzip-invalid \
+		"$EARLY_BUILDER" >"$TMP/gzip-invalid.log" 2>&1; then
+	fail 'unsupported initramfs gzip level was accepted'
+fi
+grep -Fq 'gzip level must be 1 or 9' "$TMP/gzip-invalid.log" || \
+	fail 'unsupported initramfs gzip level failure was not diagnostic'
 
 printf 'stock-root build reproducibility tests: PASS\n'

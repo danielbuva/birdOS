@@ -63,6 +63,12 @@ case "$RELEASE_ID" in
 esac
 [ "${#RELEASE_ID}" -le 64 ] || fail 'Bird release ID is longer than 64 bytes'
 
+BIRD_INITRAMFS_GZIP_LEVEL=${BIRD_INITRAMFS_GZIP_LEVEL:-9}
+case "$BIRD_INITRAMFS_GZIP_LEVEL" in
+	1|9) ;;
+	*) fail 'Bird initramfs gzip level must be 1 or 9' ;;
+esac
+
 LAUNCHER_PROFILE_FLAGS=
 BOOT_FRAME_REUSE_FLAGS=
 EARLY_STATIC_BASE_FLAGS=
@@ -185,6 +191,9 @@ printf 'early-launcher-compile\t%s\t%s\n' "${BIRD_LAUNCHER_PROFILE:-release}" \
 	>>"$OUTPUT/build/build-flags.tsv"
 printf 'early-launcher-link\t%s\t%s\n' "${BIRD_LAUNCHER_PROFILE:-release}" \
 	'-static --gc-sections --build-id=none -z noexecstack -s -e _start' \
+	>>"$OUTPUT/build/build-flags.tsv"
+printf 'early-initramfs-compress\trelease\t%s\n' \
+	"gzip -n -$BIRD_INITRAMFS_GZIP_LEVEL -c" \
 	>>"$OUTPUT/build/build-flags.tsv"
 
 "$CLANG" --target=aarch64-linux-gnu -mcpu=cortex-a53 -O2 \
@@ -314,7 +323,7 @@ find "$PAYLOAD" -exec touch -t 202601010000.00 {} +
 		cpio -o --format newc --owner 0:0 >"$CPIO" 2>"$WORK/cpio.log"
 )
 "$ROOT/firmware/normalize-newc.py" "$CPIO"
-gzip -n -9 -c "$CPIO" >"$GZIP"
+gzip -n "-$BIRD_INITRAMFS_GZIP_LEVEL" -c "$CPIO" >"$GZIP"
 [ "$(stat -f %z "$GZIP" 2>/dev/null || stat -c %s "$GZIP")" -le \
 	"$EARLY_INITRAMFS_GZIP_MAX_BYTES" ] || \
 	fail 'early overlay exceeded its compressed-initramfs budget'
