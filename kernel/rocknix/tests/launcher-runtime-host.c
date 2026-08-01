@@ -1143,6 +1143,56 @@ static int run_phase5_startup_tests(void) {
                     fake_unlink_calls == 2U,
                 "the next input sample did not advance the next task");
 
+    /* A validated resume descriptor is already the authoritative state.
+     * Missing or malformed state still receives one deferred atomic repair. */
+    memset(&work, 0, sizeof(work));
+    work.task = STARTUP_TASK_CHECKPOINT;
+    work.resume_loaded = 1;
+    reset_fake_file(FAKE_FD, 0, 0);
+#ifdef BIRD_PROFILE
+    bird_profile_reset();
+#endif
+    service_startup_work_step(&work);
+    ok &= check(work.task == STARTUP_TASK_POWER_ANCHOR &&
+                    fake_create_calls == 0U && fake_rename_calls == 0U &&
+                    fake_unlink_calls == 0U,
+                "valid startup resume state was rewritten");
+#ifdef BIRD_PROFILE
+    ok &= check(bird_profile.syscalls == 0U &&
+                    bird_profile.filesystem_ops == 0U &&
+                    bird_profile.diagnostic_writes == 0U,
+                "valid startup resume state retained hidden work");
+    printf("launcher profile benchmark scenario=valid-resume-checkpoint "
+           "syscalls=%lu filesystem_ops=%lu diagnostic_writes=%lu\n",
+           (unsigned long)bird_profile.syscalls,
+           (unsigned long)bird_profile.filesystem_ops,
+           (unsigned long)bird_profile.diagnostic_writes);
+#endif
+
+    memset(&work, 0, sizeof(work));
+    work.task = STARTUP_TASK_CHECKPOINT;
+    work.resume_loaded = 0;
+    reset_fake_file(FAKE_FD, 0, 0);
+#ifdef BIRD_PROFILE
+    bird_profile_reset();
+#endif
+    service_startup_work_step(&work);
+    ok &= check(work.task == STARTUP_TASK_POWER_ANCHOR &&
+                    fake_create_calls == 1U && fake_rename_calls == 1U &&
+                    fake_unlink_calls == 0U,
+                "invalid startup resume state lost its deferred repair");
+#ifdef BIRD_PROFILE
+    ok &= check(bird_profile.syscalls > 0U &&
+                    bird_profile.filesystem_ops == 2U &&
+                    bird_profile.diagnostic_writes > 0U,
+                "invalid startup resume repair lost measurable work");
+    printf("launcher profile benchmark scenario=invalid-resume-repair "
+           "syscalls=%lu filesystem_ops=%lu diagnostic_writes=%lu\n",
+           (unsigned long)bird_profile.syscalls,
+           (unsigned long)bird_profile.filesystem_ops,
+           (unsigned long)bird_profile.diagnostic_writes);
+#endif
+
     setup_test_framebuffer(1U, fake_framebuffer);
     setup_main_view();
     clear_favorites();

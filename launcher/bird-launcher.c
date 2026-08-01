@@ -5252,7 +5252,7 @@ static void service_startup_work_step(struct startup_work_state *work) {
         break;
     case STARTUP_TASK_CHECKPOINT:
 #ifdef PERSIST_UI_STATE
-        (void)save_ui_resume();
+        if (!work->resume_loaded) (void)save_ui_resume();
 #endif
         break;
     case STARTUP_TASK_POWER_ANCHOR:
