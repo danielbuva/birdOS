@@ -1,5 +1,5 @@
 #!/bin/sh
-# Host-side checks for fixed audio routing and MPV position-only resume state.
+# Host-side checks for fixed audio reconciliation and MPV position-only resume.
 
 set -eu
 
@@ -9,81 +9,105 @@ RUNNER=$ROOT/kernel/rocknix/stock-root/run-content.sh
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/bird-media-audio.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT INT TERM HUP
 
-mkdir -p "$TMP/bin" "$TMP/storage/.config/mpv/watch_later" \
+mkdir -p "$TMP/bin" "$TMP/storage/.config/system/configs" \
+	"$TMP/storage/.config/mpv/watch_later" \
 	"$TMP/storage/.local/state/mpv/watch_later"
+printf '%s\n' 'system.audio.volume=50' \
+	>"$TMP/storage/.config/system/configs/system.cfg"
 
 cat >"$TMP/bin/volume" <<'EOF'
 #!/bin/sh
 printf 'volume %s\n' "$*" >>"$BIRD_TEST_EVENTS"
+[ "${BIRD_TEST_VOLUME_FAIL:-0}" -eq 0 ]
 EOF
 cat >"$TMP/bin/pactl" <<'EOF'
 #!/bin/sh
 printf 'pactl %s\n' "$*" >>"$BIRD_TEST_EVENTS"
+case "$*" in
+	'get-sink-volume @DEFAULT_SINK@')
+		printf 'Volume: front-left: 32768 / %s%% / -18.06 dB, front-right: 32768 / %s%% / -18.06 dB\n' \
+			"$BIRD_TEST_VOLUME" "$BIRD_TEST_VOLUME"
+		;;
+	'get-sink-mute @DEFAULT_SINK@') printf 'Mute: %s\n' "$BIRD_TEST_MUTE" ;;
+esac
 EOF
 cat >"$TMP/bin/amixer" <<'EOF'
 #!/bin/sh
 printf 'amixer %s\n' "$*" >>"$BIRD_TEST_EVENTS"
 case "$*" in
-	*"cget name='Headphone Jack'"*) printf '  : values=%s\n' "$BIRD_TEST_JACK" ;;
-	*"cget name='Speaker Switch'"*) printf '  : values=%s\n' "$BIRD_TEST_SPEAKER" ;;
+	*"cget name='Headphone Jack'"*)
+		[ "$BIRD_TEST_JACK" != fail ] || exit 1
+		printf '  : values=%s\n' "$BIRD_TEST_JACK"
+		;;
+	*"cget name='Speaker Switch'"*)
+		[ "$BIRD_TEST_SPEAKER" != fail ] || exit 1
+		printf '  : values=%s\n' "$BIRD_TEST_SPEAKER"
+		;;
 esac
 EOF
 chmod 0755 "$TMP/bin/volume" "$TMP/bin/pactl" "$TMP/bin/amixer"
 
-# Execute the exact policy with only absolute executable paths redirected.
 sed -e "s#/usr/bin/volume#$TMP/bin/volume#" \
-	-e "s#pactl --#$TMP/bin/pactl --#" \
-	-e "s#/usr/bin/amixer#$TMP/bin/amixer#" "$VOLUME" >"$TMP/volume-test.sh"
+	-e "s#pactl#$TMP/bin/pactl#g" \
+	-e "s#/usr/bin/amixer#$TMP/bin/amixer#" \
+	-e "s#/storage#$TMP/storage#g" "$VOLUME" >"$TMP/volume-test.sh"
 chmod 0755 "$TMP/volume-test.sh"
 export BIRD_TEST_EVENTS=$TMP/audio-events
+export BIRD_TEST_VOLUME=50 BIRD_TEST_MUTE=no
 
-: >"$BIRD_TEST_EVENTS"
-BIRD_TEST_JACK=on; BIRD_TEST_SPEAKER=on
-export BIRD_TEST_JACK BIRD_TEST_SPEAKER
-"$TMP/volume-test.sh" restore
-grep -Fq "amixer -q -c 0 cset name='Speaker Switch' off" "$BIRD_TEST_EVENTS"
-[ "$(sed -n '3p' "$BIRD_TEST_EVENTS")" = \
-	'pactl -- set-sink-mute @DEFAULT_SINK@ 1' ]
-[ "$(sed -n '4p' "$BIRD_TEST_EVENTS")" = \
-	"amixer -q -c 0 cset name='Speaker Switch' off" ]
-[ "$(sed -n '5p' "$BIRD_TEST_EVENTS")" = 'volume restore' ]
-[ "$(sed -n '6p' "$BIRD_TEST_EVENTS")" = \
-	'pactl -- set-sink-mute @DEFAULT_SINK@ 0' ]
+run_restore() {
+	: >"$BIRD_TEST_EVENTS"
+	"$TMP/volume-test.sh" restore >"$TMP/audio-result"
+}
 
-: >"$BIRD_TEST_EVENTS"
+# An already-correct speaker route, volume, and mute state must be read-only.
 BIRD_TEST_JACK=off; BIRD_TEST_SPEAKER=on
 export BIRD_TEST_JACK BIRD_TEST_SPEAKER
-"$TMP/volume-test.sh" restore
-if grep -Fq ' cset ' "$BIRD_TEST_EVENTS"; then
-	printf '%s\n' 'already-correct speaker route was rewritten' >&2
+run_restore
+if grep -Eq ' cset |set-sink-(volume|mute)|^volume ' "$BIRD_TEST_EVENTS"; then
+	printf '%s\n' 'correct audio state was rewritten' >&2
 	exit 1
 fi
+grep -Fq 'route=unchanged' "$TMP/audio-result"
+grep -Fq 'volume=unchanged' "$TMP/audio-result"
 
-: >"$BIRD_TEST_EVENTS"
-BIRD_TEST_JACK=on; BIRD_TEST_SPEAKER=off
+# A boot-time headphone mismatch changes only the speaker amplifier. It must
+# not wake the suspended PCM sink with a pre-route PulseAudio write.
+BIRD_TEST_JACK=on; BIRD_TEST_SPEAKER=on
 export BIRD_TEST_JACK BIRD_TEST_SPEAKER
-"$TMP/volume-test.sh" restore
-if grep -Fq ' cset ' "$BIRD_TEST_EVENTS"; then
-	printf '%s\n' 'already-correct headphone route was rewritten' >&2
+run_restore
+[ "$(grep -c ' cset ' "$BIRD_TEST_EVENTS")" -eq 1 ]
+if grep -Eq 'set-sink-(volume|mute)|^volume ' "$BIRD_TEST_EVENTS"; then
+	printf '%s\n' 'route-only repair woke the PCM sink' >&2
 	exit 1
 fi
+grep -Fq 'route=changed' "$TMP/audio-result"
 
+# Numeric volume and route mute are changed only when they differ.
+BIRD_TEST_JACK=off; BIRD_TEST_SPEAKER=on
+BIRD_TEST_VOLUME=35; BIRD_TEST_MUTE=yes
+export BIRD_TEST_JACK BIRD_TEST_SPEAKER BIRD_TEST_VOLUME BIRD_TEST_MUTE
+run_restore
+[ "$(grep -c '^volume restore$' "$BIRD_TEST_EVENTS")" -eq 1 ]
+[ "$(grep -c 'set-sink-mute @DEFAULT_SINK@ 0' "$BIRD_TEST_EVENTS")" -eq 1 ]
+grep -Fq 'volume=changed' "$TMP/audio-result"
+grep -Fq 'mute_action=changed' "$TMP/audio-result"
+
+# Unavailable controls are observable but never block unrelated content.
+BIRD_TEST_JACK=fail; BIRD_TEST_SPEAKER=fail
+BIRD_TEST_VOLUME=50; BIRD_TEST_MUTE=no
+export BIRD_TEST_JACK BIRD_TEST_SPEAKER BIRD_TEST_VOLUME BIRD_TEST_MUTE
+run_restore
+grep -Fq 'route=inspect-failed' "$TMP/audio-result"
+
+# Volume buttons keep their direct accepted path.
 : >"$BIRD_TEST_EVENTS"
 "$TMP/volume-test.sh" up
-if grep -Fq 'amixer ' "$BIRD_TEST_EVENTS"; then
-	printf '%s\n' 'volume-button action performed route inspection' >&2
-	exit 1
-fi
+[ "$(sed -n '1p' "$BIRD_TEST_EVENTS")" = 'volume up' ]
+[ "$(sed -n '2p' "$BIRD_TEST_EVENTS")" = \
+	'pactl -- set-sink-mute @DEFAULT_SINK@ 0' ]
 
-: >"$BIRD_TEST_EVENTS"
-BIRD_TEST_JACK=unknown; export BIRD_TEST_JACK
-if "$TMP/volume-test.sh" restore; then
-	printf '%s\n' 'unknown headphone state was accepted' >&2
-	exit 1
-fi
-
-# Extract the active MPV policy function and redirect its fixed roots into the
-# host fixture.  This exercises the migration rather than a reimplementation.
+# Exercise the exact active MPV migration function in a redirected fixture.
 MPV_FUNCTION=$TMP/install-mpv-policy.sh
 awk '
 	/^install_mpv_input_policy\(\) \{/ { copy=1 }
@@ -121,11 +145,5 @@ if grep -Eq '^(aid|vid|sid|volume|mute|speed)=' \
 	exit 1
 fi
 [ -e "$TMP/storage/.config/mpv/.bird-watch-later-start-only-v1" ]
-
-# The marker makes later launches O(1) and preserves newly written position
-# state without rescanning the directory.
-printf '%s\n' 'aid=no' >>"$TMP/storage/.config/mpv/watch_later/AUDIO"
-install_mpv_input_policy
-grep -Eq '^aid=no$' "$TMP/storage/.config/mpv/watch_later/AUDIO"
 
 printf '%s\n' 'stock-root media/audio policy tests passed'

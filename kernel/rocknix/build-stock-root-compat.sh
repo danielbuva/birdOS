@@ -730,6 +730,14 @@ grep -Fq "cget \"name='Headphone Jack'\"" \
 	"$OUTPUT/card/bird/bird-volume.sh" || fail 'headphone route inspection missing'
 grep -Fq "cset \"name='Speaker Switch'\"" \
 	"$OUTPUT/card/bird/bird-volume.sh" || fail 'speaker route reconciliation missing'
+grep -Fq 'pactl get-sink-volume @DEFAULT_SINK@' \
+	"$OUTPUT/card/bird/bird-volume.sh" || fail 'no-op audio volume inspection missing'
+grep -Fq 'cannot block a game' \
+	"$OUTPUT/card/bird/bird-volume.sh" || fail 'nonfatal audio policy contract missing'
+if grep -Fq 'set-sink-mute @DEFAULT_SINK@ 1' \
+	"$OUTPUT/card/bird/bird-volume.sh"; then
+	fail 'audio route reconciliation still wakes the sink before switching'
+fi
 if grep -Fq 'bird-volume.sh' "$OUTPUT/card/bird/999-export"; then
 	fail 'application contract still performs an unnecessary audio restore'
 fi

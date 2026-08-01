@@ -219,13 +219,25 @@ Ports, MPV audio/video, KOReader and PortMaster.
 Application-contract publication no longer restores audio: the menu has no
 audio consumer, and the same restore already exists at the content-service
 boundary. This removes an unnecessary post-menu gain, mute and route operation
-that could produce an audible crack while preserving silent-route recovery
-before any provider can emit audio. The fixed content restore reads both jack
-and speaker controls, never rewrites an already-correct amplifier switch, and
-mutes the PipeWire sink around a genuinely required speaker-route correction.
-Volume-button actions retain their existing path. This remains a hardware
-candidate until cold boots with and without headphones and repeated media
-launches prove both routing correctness and absence of the transient.
+while preserving silent-route recovery before a provider can emit audio.
+
+The first candidate, source `1e58c93` and release
+`v6.23-audio-pop-1e58c93`, is rejected. On the RG34XX-SP every recorded launch
+reached `services-start`, returned status 1 before provider execution, and
+cleaned up; some observed attempts required a forced reset. The candidate's
+fail-closed mixer inspection therefore violated the content contract, and its
+unconditional restore writes did not eliminate the audible transient.
+
+The successor restore is a state reconciliation. It reads jack, speaker,
+current sink volume and mute, writes no value that already matches, and changes
+only the independent ALSA speaker switch when boot-with-headphones requires it.
+It deliberately does not wake the suspended PCM sink with a PulseAudio mute
+before that switch. Numeric volume and route mute are written only when their
+saved and live values differ. Inspection or correction failures are recorded
+in the content log but cannot block a game, reader or other provider. Volume
+buttons retain their existing path. This remains a hardware candidate until
+cold boots with and without headphones and repeated game/media launches prove
+launch recovery, routing correctness and absence of the transient.
 
 ## Stage 5 — Battery, suspend and memory closure
 
