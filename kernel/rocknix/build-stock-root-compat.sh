@@ -502,6 +502,8 @@ fi
 grep -q '^VOLUME_UP ignore$' "$OUTPUT/card/bird/mpv-input.conf" || fail 'MPV volume policy missing'
 grep -q "RESUME='save-position-on-quit=yes'" \
 	"$OUTPUT/card/bird/run-content.sh" || fail 'MPV resume policy missing'
+grep -q "RESUME_OPTIONS='watch-later-options=start'" \
+	"$OUTPUT/card/bird/run-content.sh" || fail 'MPV position-only resume policy missing'
 grep -q "s#/mnt/mmc/MUOS/PortMaster#/storage/roms/ports/PortMaster#g" \
 	"$OUTPUT/card/bird/run-content.sh" || fail 'legacy PortMaster path translation missing'
 grep -q 'ExecStart=/storage/.config/bird/fixed-storage.sh' \
@@ -724,6 +726,10 @@ grep -Fq '#define VOLUME_PROGRAM "/storage/.config/bird/bird-volume.sh"' \
 	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'unmuting volume wrapper missing'
 grep -Fq 'set-sink-mute @DEFAULT_SINK@ 0' \
 	"$OUTPUT/card/bird/bird-volume.sh" || fail 'default audio sink unmute missing'
+grep -Fq "cget \"name='Headphone Jack'\"" \
+	"$OUTPUT/card/bird/bird-volume.sh" || fail 'headphone route inspection missing'
+grep -Fq "cset \"name='Speaker Switch'\"" \
+	"$OUTPUT/card/bird/bird-volume.sh" || fail 'speaker route reconciliation missing'
 grep -Fq '"$VOLUME_HELPER" restore' \
 	"$OUTPUT/card/bird/999-export" || fail 'application-ready audio restore missing'
 grep -Fq '/storage/.config/bird/bird-volume.sh restore' \

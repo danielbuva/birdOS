@@ -468,6 +468,8 @@ install_mpv_input_policy() {
 	TARGET=/storage/.config/mpv/input.conf
 	CONFIG=/storage/.config/mpv/mpv.conf
 	RESUME='save-position-on-quit=yes'
+	RESUME_OPTIONS='watch-later-options=start'
+	RESUME_MIGRATION=/storage/.config/mpv/.bird-watch-later-start-only-v1
 	[ -f "$SOURCE" ] || return 1
 	mkdir -p /storage/.config/mpv || return 1
 	if ! cmp -s "$SOURCE" "$TARGET"; then
@@ -483,6 +485,35 @@ install_mpv_input_policy() {
 		printf '\n# birdOS: resume media after a clean player exit\n%s\n' \
 			"$RESUME" >>"$CONFIG" || return 1
 		printf 'Bird MPV resume policy installed\n'
+	fi
+	# MPV's default watch-later set includes changed track selections.  A saved
+	# aid=no makes a later audio-only launch exit with "No video or audio streams
+	# selected".  Preserve resume position, but never persist player-local track,
+	# volume, mute, or speed choices as part of Bird's system media contract.
+	if ! grep -Eq \
+		'^[[:space:]]*watch-later-options[[:space:]]*=[[:space:]]*start[[:space:]]*$' \
+		"$CONFIG"; then
+		printf '\n# birdOS: resume position only; system controls own audio policy\n%s\n' \
+			"$RESUME_OPTIONS" >>"$CONFIG" || return 1
+		printf 'Bird MPV position-only resume policy installed\n'
+	fi
+	if [ ! -e "$RESUME_MIGRATION" ]; then
+		for WATCH_DIR in /storage/.config/mpv/watch_later \
+			/storage/.local/state/mpv/watch_later; do
+			[ -d "$WATCH_DIR" ] || continue
+			for WATCH_STATE in "$WATCH_DIR"/*; do
+				[ -f "$WATCH_STATE" ] || continue
+				WATCH_TMP=$WATCH_STATE.bird.$$
+				if ! awk '/^#/ || /^start=/' "$WATCH_STATE" >"$WATCH_TMP" ||
+					! chmod 0600 "$WATCH_TMP" ||
+					! mv -f "$WATCH_TMP" "$WATCH_STATE"; then
+					rm -f "$WATCH_TMP"
+					return 1
+				fi
+			done
+		done
+		: >"$RESUME_MIGRATION" || return 1
+		printf 'Bird MPV legacy resume state sanitized\n'
 	fi
 }
 
