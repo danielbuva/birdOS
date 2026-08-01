@@ -741,8 +741,8 @@ grep -Fq 'content:[1-6]) AUDIO_ACTION=prepare' \
 if grep -Fq 'bird-volume.sh' "$OUTPUT/card/bird/999-export"; then
 	fail 'application contract still performs an unnecessary audio restore'
 fi
-grep -Fq '/storage/.config/bird/bird-volume.sh restore' \
-	"$OUTPUT/card/bird/run-content.sh" || fail 'per-launch audio restore missing'
+grep -Fq '/storage/.config/bird/bird-volume.sh "$AUDIO_ACTION"' \
+	"$OUTPUT/card/bird/run-content.sh" || fail 'per-launch audio policy missing'
 grep -Fq 'pactl get-sink-mute @DEFAULT_SINK@' \
 	"$OUTPUT/card/bird/capture-boot-state.sh" || fail 'effective audio mute diagnostic missing'
 grep -Fq 'h700_input ? BTN_NORTH : BUTTON_Y' \
