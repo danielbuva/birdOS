@@ -156,6 +156,28 @@ priority and block ordinary idle in `ppoll`.
 Hardware-verify application-return retained-frame reuse. Cold bootloader-frame
 reuse remains disabled.
 
+### Stage 2 launcher-input candidate — 2026-08-01
+
+The accepted audio diversion boundary is release
+`v6.23-audio-defer-a078861`: the complete physical behavior check passed,
+headphone exclusion remains correct and crack/pop work remains deferred.
+
+The first discovery candidate changes only launcher input startup and
+reconnect. The prior missing-device loop performed a preferred-first scan of
+all 32 `event*` candidates, slept 1 ms and repeated until the five-second
+deadline. The candidate installs an inotify watch before its preferred probe,
+performs one recovery scan, then blocks in `ppoll` and validates only a newly
+created numbered event node. Queue overflow is the only ordinary reason for a
+second complete scan. If inotify itself is unavailable, the bounded prior
+polling behavior remains as a recovery fallback.
+
+The focused host edge fixture records 32 initial failed opens, one blocking
+poll, no nanosleep and one open of the created node; the prior design could
+repeat the 32-open scan after every 1 ms sleep. This is a structural host
+syscall result, not a device boot-latency claim. Full H700 input-ID/capability
+validation, fixed-controls discovery and framebuffer discovery remain separate
+Stage 2 candidates after this one passes hardware.
+
 ## Stage 3 — Bootstrap progression
 
 ### 3A — Minimal shell

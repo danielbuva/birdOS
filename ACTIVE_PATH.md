@@ -175,11 +175,14 @@ True power-loss recovery requires the later U-Boot A/B design in the roadmap.
 2. **Early overlay:** the overlaid ROCKNIX init calls `bird-early.sh start`
    after the special filesystems exist. It creates the storage event channel,
    loads the exact H700 input module and starts the static framebuffer launcher.
-3. **First usable menu:** the launcher makes one immediate named-input scan
-   before inspecting framebuffer recovery. If input is not already available,
-   it paints a launcher-owned base with no menu rows before entering the bounded
-   input wait. Only after input is open does it paint interactive rows, execute
-   the framebuffer barrier and publish first-frame readiness. From that marker,
+3. **First usable menu:** the launcher installs a `/dev/input` creation watch,
+   tries the measured event hint and makes one complete named-input recovery
+   scan before inspecting framebuffer recovery. If input is not already
+   available, it paints a launcher-owned base with no menu rows, then blocks on
+   the watch and validates only newly created numbered event nodes. A queue
+   overflow permits a complete rescan; unavailable inotify retains the bounded
+   polling fallback. Only after input is open does it paint interactive rows,
+   execute the framebuffer barrier and publish first-frame readiness. From that marker,
    every zero-time input poll and complete drain may advance at most one deferred
    profiling, logging, checkpoint, power, storage or Favorites task; input,
    reconnect and exit work always interrupt that sequence. Its cached catalogue

@@ -39,6 +39,7 @@ typedef signed long s64;
 #define O_CREAT 0100
 #define O_TRUNC 01000
 #define O_NONBLOCK 04000
+#define O_CLOEXEC 02000000
 #define PROT_READ 1
 #define PROT_WRITE 2
 #define MAP_SHARED 1
@@ -72,6 +73,9 @@ typedef signed long s64;
 #define POLLERR 0x0008
 #define POLLHUP 0x0010
 #define POLLNVAL 0x0020
+#define IN_MOVED_TO 0x00000080U
+#define IN_CREATE 0x00000100U
+#define IN_Q_OVERFLOW 0x00004000U
 #define EINTR 4
 #define EAGAIN 11
 #define ENOENT 2
@@ -367,6 +371,14 @@ struct pollfd {
     int fd;
     short events;
     short revents;
+};
+
+struct inotify_event {
+    s32 wd;
+    u32 mask;
+    u32 cookie;
+    u32 len;
+    char name[];
 };
 
 struct sockaddr_nl {
@@ -1151,6 +1163,15 @@ static long sys_clock_gettime(struct timespec *value) {
 
 static long sys_ppoll(struct pollfd *fds, u64 count, struct timespec *timeout) {
     return syscall6(73, (long)fds, (long)count, (long)timeout, 0, 0, 0);
+}
+
+static long sys_inotify_init1(int flags) {
+    return syscall6(26, flags, 0, 0, 0, 0, 0);
+}
+
+static long sys_inotify_add_watch(int fd, const char *path, u32 mask) {
+    BIRD_PROFILE_FILESYSTEM();
+    return syscall6(27, fd, (long)path, mask, 0, 0, 0);
 }
 
 static long sys_socket(int domain, int type, int protocol) {
@@ -5043,31 +5064,25 @@ static int fixed_input_scan_index(int order) {
     return index >= PREFERRED_INPUT_EVENT ? index + 1 : index;
 }
 
-static int open_fixed_input_once(void) {
+static int try_fixed_input_index(int index) {
     char name[128];
-    int order;
-    int index;
 
-    for (order = 0; order < INPUT_EVENT_SCAN_COUNT; order++) {
-        index = fixed_input_scan_index(order);
-        set_input_path(index);
-        input_fd = (int)fixed_open(input_path, O_RDONLY | O_NONBLOCK);
-        if (input_fd < 0) continue;
+    set_input_path(index);
+    input_fd = (int)fixed_open(input_path, O_RDONLY | O_NONBLOCK);
+    if (input_fd < 0) return -1;
 
-        name[0] = 0;
-        sys_ioctl(input_fd, EVIOCGNAME_128, name);
-        name[127] = 0;
-        if (string_equal(name, "muOS-Keys")) {
-            h700_input = 0;
-            goto found;
-        }
-        if (string_equal(name, BIRD_DEVICE_INPUT_NAME)) {
-            h700_input = 1;
-            goto found;
-        }
-        sys_close(input_fd);
-        input_fd = -1;
+    name[0] = 0;
+    if (sys_ioctl(input_fd, EVIOCGNAME_128, name) < 0) name[0] = 0;
+    name[127] = 0;
+    if (string_equal(name, "muOS-Keys")) {
+        h700_input = 0;
+        goto found;
     }
+    if (string_equal(name, BIRD_DEVICE_INPUT_NAME)) {
+        h700_input = 1;
+        goto found;
+    }
+    sys_close(input_fd);
     input_fd = -1;
     return -1;
 
@@ -5078,14 +5093,124 @@ found:
     return 0;
 }
 
-static int open_fixed_input(void) {
+static int open_fixed_input_once(void) {
+    int order;
+
+    for (order = 0; order < INPUT_EVENT_SCAN_COUNT; order++) {
+        if (try_fixed_input_index(fixed_input_scan_index(order)) == 0)
+            return 0;
+    }
+    return -1;
+}
+
+static int fixed_input_event_index(const char *name, u32 length) {
+    static const char prefix[] = "event";
+    u32 position = 0U;
+    int index = 0;
+
+    while (prefix[position]) {
+        if (position >= length || name[position] != prefix[position])
+            return -1;
+        position++;
+    }
+    if (position >= length || name[position] < '0' || name[position] > '9')
+        return -1;
+    while (position < length && name[position] >= '0' && name[position] <= '9') {
+        index = index * 10 + (name[position] - '0');
+        if (index >= INPUT_EVENT_SCAN_COUNT) return -1;
+        position++;
+    }
+    if (position >= length || name[position] != 0) return -1;
+    return index;
+}
+
+static int open_fixed_input_watch(void) {
+    int fd = (int)sys_inotify_init1(O_NONBLOCK | O_CLOEXEC);
+
+    if (fd < 0) return -1;
+    if (sys_inotify_add_watch(fd, "/dev/input", IN_CREATE | IN_MOVED_TO) < 0) {
+        sys_close(fd);
+        return -1;
+    }
+    return fd;
+}
+
+static int wait_fixed_input_watch(int watch_fd) {
+    _Alignas(8) u8 event_buffer[512];
     u64 deadline = boot_ms() + DEVICE_WAIT_MS;
+    struct pollfd poll;
+
+    while (boot_ms() < deadline) {
+        struct timespec timeout;
+        u64 now = boot_ms();
+        u64 remaining = deadline > now ? deadline - now : 0U;
+        long ready;
+
+        timeout.sec = (s64)(remaining / 1000UL);
+        timeout.nsec = (s64)((remaining % 1000UL) * 1000000UL);
+        poll.fd = watch_fd;
+        poll.events = POLLIN;
+        poll.revents = 0;
+        ready = sys_ppoll(&poll, 1U, &timeout);
+        if (ready == -EINTR) continue;
+        if (ready <= 0 || (poll.revents & (POLLERR | POLLHUP | POLLNVAL)))
+            return -1;
+        if (poll.revents & POLLIN) {
+            for (;;) {
+                long count = sys_read(watch_fd, event_buffer,
+                                      sizeof(event_buffer));
+                u64 offset = 0U;
+
+                if (count == -EINTR) continue;
+                if (count == -EAGAIN) break;
+                if (count <= 0) return -1;
+                while (offset + sizeof(struct inotify_event) <= (u64)count) {
+                    struct inotify_event *event =
+                        (struct inotify_event *)(event_buffer + offset);
+                    u64 record_bytes = sizeof(*event) + event->len;
+                    int index;
+
+                    if (record_bytes > (u64)count - offset) return -1;
+                    if (event->mask & IN_Q_OVERFLOW) {
+                        if (open_fixed_input_once() == 0) return 0;
+                    } else if ((event->mask & (IN_CREATE | IN_MOVED_TO)) &&
+                               event->len) {
+                        index = fixed_input_event_index(event->name,
+                                                        event->len);
+                        if (index >= 0 && try_fixed_input_index(index) == 0)
+                            return 0;
+                    }
+                    offset += record_bytes;
+                }
+                if (offset != (u64)count) return -1;
+            }
+        }
+    }
+    return -1;
+}
+
+static int open_fixed_input_poll_fallback(void) {
+    u64 deadline = boot_ms() + DEVICE_WAIT_MS;
+
     while (boot_ms() < deadline) {
         if (open_fixed_input_once() == 0) return 0;
         sys_nanosleep(1000000L);
     }
-    log_text("error wait fixed RG34XX-SP input\n");
     return -1;
+}
+
+static int open_fixed_input(void) {
+    int watch_fd = open_fixed_input_watch();
+    int result;
+
+    if (watch_fd < 0) result = open_fixed_input_poll_fallback();
+    else {
+        result = open_fixed_input_once();
+        if (result < 0) result = wait_fixed_input_watch(watch_fd);
+        sys_close(watch_fd);
+    }
+    if (result < 0) log_text("error wait fixed RG34XX-SP input\n");
+    return result;
 }
 
 static void log_input_ready(void) {
@@ -5494,6 +5619,7 @@ static int application(void) {
     u32 poll_error_count = 0;
     int exit_action = ACTION_NONE;
     int input_preopened;
+    int input_watch_fd;
     int frame_resume_snapshot_ready;
     int startup_base_ready = 0;
     struct frame_resume_state frame_resume;
@@ -5504,7 +5630,12 @@ static int application(void) {
     /* On a normal content return, input already exists. Open it before
      * inspecting framebuffer state so retained interactive rows are never
      * deliberately preserved while the launcher waits for an input device. */
+    input_watch_fd = open_fixed_input_watch();
     input_preopened = open_fixed_input_once() == 0;
+    if (input_preopened && input_watch_fd >= 0) {
+        sys_close(input_watch_fd);
+        input_watch_fd = -1;
+    }
 
     deadline = boot_ms() + DEVICE_WAIT_MS;
     while (boot_ms() < deadline) {
@@ -5514,6 +5645,7 @@ static int application(void) {
     }
     if (fb_fd < 0) {
         log_text("error wait " BIRD_DEVICE_FRAMEBUFFER_NODE "\n");
+        if (input_watch_fd >= 0) sys_close(input_watch_fd);
         if (input_preopened) abandon_input();
         return 2;
     }
@@ -5521,6 +5653,7 @@ static int application(void) {
         sys_ioctl(fb_fd, FBIOGET_FSCREENINFO, &fb_fix) < 0) {
         log_text("error framebuffer ioctl\n");
         sys_close(fb_fd);
+        if (input_watch_fd >= 0) sys_close(input_watch_fd);
         if (input_preopened) abandon_input();
         return 3;
     }
@@ -5529,6 +5662,7 @@ static int application(void) {
     if (fb_var.bits_per_pixel != 16 && fb_var.bits_per_pixel != 24 && fb_var.bits_per_pixel != 32) {
         log_text("error unsupported framebuffer depth\n");
         sys_close(fb_fd);
+        if (input_watch_fd >= 0) sys_close(input_watch_fd);
         if (input_preopened) abandon_input();
         return 4;
     }
@@ -5537,6 +5671,7 @@ static int application(void) {
     if ((u64)fb >= (u64)-4095L) {
         log_text("error framebuffer mmap\n");
         sys_close(fb_fd);
+        if (input_watch_fd >= 0) sys_close(input_watch_fd);
         if (input_preopened) abandon_input();
         return 5;
     }
@@ -5568,11 +5703,24 @@ static int application(void) {
             startup_work.frame_recovery = FRAME_RECOVERY_MISMATCH;
     }
 
-    if (input_fd < 0 && open_fixed_input() < 0) {
-        close_static_base();
-        sys_munmap((void *)fb, fb_fix.smem_len);
-        sys_close(fb_fd);
-        return 6;
+    if (input_fd < 0) {
+        int input_result;
+
+        if (input_watch_fd >= 0)
+            input_result = wait_fixed_input_watch(input_watch_fd);
+        else
+            input_result = open_fixed_input();
+        if (input_watch_fd >= 0) {
+            sys_close(input_watch_fd);
+            input_watch_fd = -1;
+        }
+        if (input_result < 0) {
+            log_text("error wait fixed RG34XX-SP input\n");
+            close_static_base();
+            sys_munmap((void *)fb, fb_fix.smem_len);
+            sys_close(fb_fd);
+            return 6;
+        }
     }
     if (startup_work.frame_recovery == FRAME_RECOVERY_CANDIDATE)
         startup_work.frame_recovery =

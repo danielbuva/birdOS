@@ -746,6 +746,12 @@ grep -Fq 'pactl get-sink-mute @DEFAULT_SINK@' \
 	"$OUTPUT/card/bird/capture-boot-state.sh" || fail 'effective audio mute diagnostic missing'
 grep -Fq 'h700_input ? BTN_NORTH : BUTTON_Y' \
 	"$ROOT/launcher/bird-launcher.c" || fail 'physical Y favorite mapping missing'
+grep -Fq 'input_watch_fd = open_fixed_input_watch();' \
+	"$ROOT/launcher/bird-launcher.c" || fail 'watch-before-scan input discovery missing'
+grep -Fq 'event->mask & IN_Q_OVERFLOW' \
+	"$ROOT/launcher/bird-launcher.c" || fail 'input discovery overflow recovery missing'
+grep -Fq 'try_fixed_input_index(index)' \
+	"$ROOT/launcher/bird-launcher.c" || fail 'created input node validation missing'
 grep -q 'sys_pipe2(handshake, O_CLOEXEC)' \
 	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'control exec handshake missing'
 grep -q 'SPAWN_EXEC_FAILED' \

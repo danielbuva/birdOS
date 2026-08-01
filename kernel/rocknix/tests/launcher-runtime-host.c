@@ -36,6 +36,16 @@ static unsigned fake_unlink_calls;
 static char fake_unlink_path[FAKE_OPEN_PATH_BYTES];
 static int fake_unlinked_launch_request;
 static unsigned fake_close_calls;
+static long fake_inotify_init_result;
+static long fake_inotify_add_result;
+static unsigned fake_inotify_init_calls;
+static unsigned fake_inotify_add_calls;
+static long fake_ppoll_result;
+static short fake_ppoll_revents;
+static unsigned fake_ppoll_calls;
+#define FAKE_SYSCALL_TRACE_MAX 128U
+static long fake_syscall_trace[FAKE_SYSCALL_TRACE_MAX];
+static unsigned fake_syscall_trace_count;
 static long fake_ioctl_result;
 #define FAKE_IOCTL_SCRIPT_MAX 64U
 static long fake_ioctl_script[FAKE_IOCTL_SCRIPT_MAX];
@@ -91,6 +101,16 @@ long bird_test_syscall6(long number, long a0, long a1, long a2, long a3,
     (void)a3;
     (void)a4;
     (void)a5;
+    if (fake_syscall_trace_count < FAKE_SYSCALL_TRACE_MAX)
+        fake_syscall_trace[fake_syscall_trace_count++] = number;
+    if (number == 26) {
+        fake_inotify_init_calls++;
+        return fake_inotify_init_result;
+    }
+    if (number == 27) {
+        fake_inotify_add_calls++;
+        return fake_inotify_add_result;
+    }
     if (number == 56) {
         long result = fake_open_result;
         if (fake_open_path_count < FAKE_OPEN_SCRIPT_MAX) {
@@ -107,6 +127,12 @@ long bird_test_syscall6(long number, long a0, long a1, long a2, long a3,
     if (number == 57) {
         fake_close_calls++;
         return 0;
+    }
+    if (number == 73) {
+        fake_ppoll_calls++;
+        if (fake_ppoll_result > 0 && a0 && a1)
+            ((struct pollfd *)a0)[0].revents = fake_ppoll_revents;
+        return fake_ppoll_result;
     }
     if (number == 29) {
         long result = fake_ioctl_result;
@@ -232,6 +258,14 @@ static void reset_fake_file(long open_result, const char *payload,
     fake_read_script_index = 0U;
     fake_read_fd_count = 0U;
     fake_clock_calls = 0;
+    fake_inotify_init_result = -EBADF_LINUX;
+    fake_inotify_add_result = -EBADF_LINUX;
+    fake_inotify_init_calls = 0;
+    fake_inotify_add_calls = 0;
+    fake_ppoll_result = -EBADF_LINUX;
+    fake_ppoll_revents = 0;
+    fake_ppoll_calls = 0;
+    fake_syscall_trace_count = 0;
     fake_write_capture_bytes = 0U;
     fake_capture_file_writes = 0;
 }
@@ -989,6 +1023,87 @@ static int run_preferred_input_probe_tests(void) {
 #ifdef BIRD_PROFILE
     bird_profile_reset();
 #endif
+    return ok;
+}
+
+static int run_event_driven_input_discovery_tests(void) {
+    struct inotify_fixture {
+        s32 wd;
+        u32 mask;
+        u32 cookie;
+        u32 len;
+        char name[16];
+    } event;
+    struct fake_read_step read_steps[2];
+    long open_results[INPUT_EVENT_SCAN_COUNT + 1U];
+    long ioctl_results[1] = {0};
+    const char *ioctl_names[1] = {"H700 Gamepad"};
+    unsigned index;
+    int ok = 1;
+
+    ok &= check(fixed_input_event_index("event4", 7U) == 4 &&
+                    fixed_input_event_index("event31", 8U) == 31 &&
+                    fixed_input_event_index("event32", 8U) < 0 &&
+                    fixed_input_event_index("mouse0", 7U) < 0 &&
+                    fixed_input_event_index("event4-extra", 13U) < 0,
+                "input creation-name validation accepted an ambiguous node");
+
+    /* The production entry point must establish the watch before even its
+     * preferred-node fast path. An already-present event4 still costs only
+     * one open and one identity query. */
+    reset_fake_file(-ENOENT, 0, 0);
+    fake_inotify_init_result = 90;
+    fake_inotify_add_result = 1;
+    open_results[0] = 70;
+    set_fake_open_script(open_results, 1U);
+    set_fake_ioctl_script(ioctl_results, ioctl_names, 1U);
+    input_fd = -1;
+    ok &= check(open_fixed_input() == 0 && input_fd == 70 &&
+                    fake_syscall_trace_count >= 3U &&
+                    fake_syscall_trace[0] == 26 &&
+                    fake_syscall_trace[1] == 27 &&
+                    fake_syscall_trace[2] == 56 &&
+                    fake_inotify_init_calls == 1U &&
+                    fake_inotify_add_calls == 1U &&
+                    fake_open_calls == 1U && fake_ppoll_calls == 0U &&
+                    fake_sleep_calls == 0U,
+                "input watch was not installed before the preferred probe");
+    abandon_input();
+
+    /* If no input exists, scan all nodes once, block on the creation edge,
+     * and validate only that new node. No 1-ms sleep or second full scan is
+     * allowed on the ordinary edge-driven path. */
+    for (index = 0; index < INPUT_EVENT_SCAN_COUNT; index++)
+        open_results[index] = -ENOENT;
+    open_results[INPUT_EVENT_SCAN_COUNT] = 71;
+    memset(&event, 0, sizeof(event));
+    event.wd = 1;
+    event.mask = IN_CREATE;
+    event.len = sizeof(event.name);
+    snprintf(event.name, sizeof(event.name), "event7");
+    read_steps[0].result = sizeof(event);
+    read_steps[0].payload = (const char *)&event;
+    read_steps[1].result = -EAGAIN;
+    read_steps[1].payload = 0;
+    reset_fake_file(-ENOENT, 0, 0);
+    fake_inotify_init_result = 90;
+    fake_inotify_add_result = 1;
+    fake_ppoll_result = 1;
+    fake_ppoll_revents = POLLIN;
+    set_fake_open_script(open_results, INPUT_EVENT_SCAN_COUNT + 1U);
+    set_fake_ioctl_script(ioctl_results, ioctl_names, 1U);
+    set_fake_read_script(read_steps, 2U);
+    input_fd = -1;
+    fake_now_ms = 1000;
+    ok &= check(open_fixed_input() == 0 && input_fd == 71 &&
+                    fake_open_calls == INPUT_EVENT_SCAN_COUNT + 1U &&
+                    fake_open_path_count == INPUT_EVENT_SCAN_COUNT + 1U &&
+                    strcmp(fake_open_path[INPUT_EVENT_SCAN_COUNT],
+                           "event7") == 0 &&
+                    fake_ioctl_calls == 1U && fake_ppoll_calls == 1U &&
+                    fake_sleep_calls == 0U,
+                "creation edge repeated the full input scan or slept");
+    abandon_input();
     return ok;
 }
 
@@ -4282,6 +4397,7 @@ int main(void) {
     ok &= run_phase9_menu_hierarchy_tests();
     ok &= run_user_reload_handoff_tests();
     ok &= run_storage_handoff_tests();
+    ok &= run_event_driven_input_discovery_tests();
 
     /* ENOENT alone establishes a new, successfully loaded empty collection. */
     reset_favorites();
