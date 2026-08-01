@@ -273,8 +273,12 @@ True power-loss recovery requires the later U-Boot A/B design in the roadmap.
 9. **Fixed controls and power:** the separate controls and power workers own
    system volume, brightness, lid/power suspend and the low-battery LED policy.
    The kernel/PMIC owns charging state; the launcher only observes and displays
-   it. These responsibilities are not linked into the launcher. Optional
-   networking is released only for direct PortMaster.
+   it. The controls worker installs a persistent `/dev/input` watch before one
+   bounded name scan, validates the exact H700 contract, and thereafter inspects
+   only created nodes; reconnect or overflow permits one recovery scan. Its
+   250 ms discovery timer exists only when inotify is unavailable. These
+   responsibilities are not linked into the launcher. Optional networking is
+   released only for direct PortMaster.
 10. **Shutdown:** systemd retains ordered shutdown. The birdOS configuration
     checkpoint is an atomic, verified transaction and reports failure instead
     of publishing a false successful checkpoint. The supervisor bounds only the

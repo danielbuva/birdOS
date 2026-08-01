@@ -18,6 +18,7 @@
  */
 
 typedef unsigned short u16;
+typedef unsigned int u32;
 typedef unsigned long u64;
 typedef signed int s32;
 typedef signed long s64;
@@ -34,6 +35,9 @@ typedef signed long s64;
 #define POLLERR 0x0008
 #define POLLHUP 0x0010
 #define POLLNVAL 0x0020
+#define IN_MOVED_TO 0x00000080U
+#define IN_CREATE 0x00000100U
+#define IN_Q_OVERFLOW 0x00004000U
 #define WNOHANG 1
 #define EAGAIN 11
 #define EINTR 4
@@ -56,6 +60,11 @@ typedef signed long s64;
 #define BTN_MODE 316
 
 #define EVIOCGNAME_128 0x80804506UL
+#define EVIOCGID 0x80084502UL
+#define EVIOCGBIT_EV 0x80084520UL
+#define EVIOCGBIT_KEY 0x80604521UL
+#define EVIOCGBIT_ABS 0x80084523UL
+#define EVIOCGBIT_FF 0x80104535UL
 
 #define GAMEPAD_NAME BIRD_DEVICE_INPUT_NAME
 #define VOLUME_NAME "gpio-keys-volume"
@@ -96,6 +105,14 @@ struct pollfd {
     short revents;
 };
 
+struct inotify_event {
+    s32 wd;
+    u32 mask;
+    u32 cookie;
+    u32 len;
+    char name[];
+};
+
 struct input_event {
     s64 seconds;
     s64 microseconds;
@@ -103,6 +120,15 @@ struct input_event {
     u16 code;
     s32 value;
 };
+
+struct input_id {
+    u16 bus;
+    u16 vendor;
+    u16 product;
+    u16 version;
+};
+
+_Static_assert(sizeof(struct input_id) == 8U, "input ID ABI changed");
 
 struct input_source {
     int fd;
@@ -185,6 +211,14 @@ static long sys_ioctl(int fd, u64 request, void *argument) {
 static long sys_ppoll(struct pollfd *fds, u64 count,
                       const struct timespec *timeout) {
     return syscall6(73, (long)fds, (long)count, (long)timeout, 0, 0, 0);
+}
+
+static long sys_inotify_init1(int flags) {
+    return syscall6(26, flags, 0, 0, 0, 0, 0);
+}
+
+static long sys_inotify_add_watch(int fd, const char *path, u32 mask) {
+    return syscall6(27, fd, (long)path, mask, 0, 0, 0);
 }
 
 static long sys_clock_gettime(int clock, struct timespec *value) {
@@ -483,42 +517,151 @@ static int missing_sources(const struct input_source *sources) {
     return 0;
 }
 
-static void discover_inputs(struct input_source *sources) {
+static int input_words_equal(const u64 *left, const u64 *right, u32 count) {
+    u32 index;
+
+    for (index = 0U; index < count; index++) {
+        if (left[index] != right[index]) return 0;
+    }
+    return 1;
+}
+
+static int h700_input_contract_matches(int fd) {
+    static const u64 expected_key[BIRD_DEVICE_INPUT_KEY_BITMAP_WORD_COUNT] =
+        BIRD_DEVICE_INPUT_KEY_BITMAP_WORDS;
+    static const u64 expected_ff[BIRD_DEVICE_INPUT_FF_BITMAP_WORD_COUNT] =
+        BIRD_DEVICE_INPUT_FF_BITMAP_WORDS;
+    struct input_id id;
+    u64 event_bits = 0U;
+    u64 key_bits[BIRD_DEVICE_INPUT_KEY_BITMAP_WORD_COUNT] = {0U};
+    u64 absolute_bits = 0U;
+    u64 force_feedback_bits[BIRD_DEVICE_INPUT_FF_BITMAP_WORD_COUNT] = {0U};
+
+    if (sys_ioctl(fd, EVIOCGID, &id) < 0 ||
+        sys_ioctl(fd, EVIOCGBIT_EV, &event_bits) < 0 ||
+        sys_ioctl(fd, EVIOCGBIT_KEY, key_bits) < 0 ||
+        sys_ioctl(fd, EVIOCGBIT_ABS, &absolute_bits) < 0 ||
+        sys_ioctl(fd, EVIOCGBIT_FF, force_feedback_bits) < 0)
+        return 0;
+    return id.bus == BIRD_DEVICE_INPUT_BUS &&
+           id.vendor == BIRD_DEVICE_INPUT_VENDOR &&
+           id.product == BIRD_DEVICE_INPUT_PRODUCT &&
+           id.version == BIRD_DEVICE_INPUT_VERSION &&
+           event_bits == BIRD_DEVICE_INPUT_EV_BITMAP &&
+           input_words_equal(key_bits, expected_key,
+                             BIRD_DEVICE_INPUT_KEY_BITMAP_WORD_COUNT) &&
+           absolute_bits == BIRD_DEVICE_INPUT_ABS_BITMAP &&
+           input_words_equal(force_feedback_bits, expected_ff,
+                             BIRD_DEVICE_INPUT_FF_BITMAP_WORD_COUNT);
+}
+
+static void try_input_event(struct input_source *sources, int event_index) {
     char path[32];
     char name[128];
-    int event_index;
+    long fd;
+    int source_index;
 
     if (!missing_sources(sources)) return;
-    for (event_index = 0; event_index < EVENT_SCAN_COUNT; event_index++) {
-        long fd;
-        int source_index;
 
-        event_path(path, event_index);
-        fd = sys_open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
-        if (fd < 0) continue;
-        name[0] = '\0';
-        if (sys_ioctl((int)fd, EVIOCGNAME_128, name) < 0) {
-            sys_close((int)fd);
-            continue;
+    event_path(path, event_index);
+    fd = sys_open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+    if (fd < 0) return;
+    name[0] = '\0';
+    if (sys_ioctl((int)fd, EVIOCGNAME_128, name) < 0) {
+        sys_close((int)fd);
+        return;
+    }
+    name[sizeof(name) - 1] = '\0';
+    for (source_index = 0; source_index < SOURCE_COUNT; source_index++) {
+        if (sources[source_index].fd < 0 &&
+            strings_equal(name, sources[source_index].name) &&
+            (source_index != SOURCE_GAMEPAD ||
+             h700_input_contract_matches((int)fd))) {
+            sources[source_index].fd = (int)fd;
+            fd = -1;
+            if (source_index == SOURCE_GAMEPAD)
+                log_text("bird-fixed-controls: gamepad-ready\n");
+            else if (source_index == SOURCE_VOLUME)
+                log_text("bird-fixed-controls: volume-ready\n");
+            else if (source_index == SOURCE_POWER)
+                log_text("bird-fixed-controls: power-ready\n");
+            else
+                log_text("bird-fixed-controls: lid-ready\n");
+            break;
         }
-        name[sizeof(name) - 1] = '\0';
-        for (source_index = 0; source_index < SOURCE_COUNT; source_index++) {
-            if (sources[source_index].fd < 0 &&
-                strings_equal(name, sources[source_index].name)) {
-                sources[source_index].fd = (int)fd;
-                fd = -1;
-                if (source_index == SOURCE_GAMEPAD)
-                    log_text("bird-fixed-controls: gamepad-ready\n");
-                else if (source_index == SOURCE_VOLUME)
-                    log_text("bird-fixed-controls: volume-ready\n");
-                else if (source_index == SOURCE_POWER)
-                    log_text("bird-fixed-controls: power-ready\n");
-                else
-                    log_text("bird-fixed-controls: lid-ready\n");
-                break;
+    }
+    if (fd >= 0) sys_close((int)fd);
+}
+
+static void discover_inputs(struct input_source *sources) {
+    int event_index;
+
+    for (event_index = 0;
+         event_index < EVENT_SCAN_COUNT && missing_sources(sources);
+         event_index++)
+        try_input_event(sources, event_index);
+}
+
+static int input_event_index(const char *name, u32 length) {
+    static const char prefix[] = "event";
+    u32 position = 0U;
+    int index = 0;
+
+    while (prefix[position]) {
+        if (position >= length || name[position] != prefix[position])
+            return -1;
+        position++;
+    }
+    if (position >= length || name[position] < '0' || name[position] > '9')
+        return -1;
+    while (position < length && name[position] >= '0' && name[position] <= '9') {
+        index = index * 10 + (name[position] - '0');
+        if (index >= EVENT_SCAN_COUNT) return -1;
+        position++;
+    }
+    if (position >= length || name[position] != '\0') return -1;
+    return index;
+}
+
+static int open_input_watch(void) {
+    int fd = (int)sys_inotify_init1(O_NONBLOCK | O_CLOEXEC);
+
+    if (fd < 0) return -1;
+    if (sys_inotify_add_watch(fd, "/dev/input", IN_CREATE | IN_MOVED_TO) < 0) {
+        sys_close(fd);
+        return -1;
+    }
+    return fd;
+}
+
+static int process_input_watch(int watch_fd, struct input_source *sources) {
+    _Alignas(8) unsigned char buffer[512];
+
+    for (;;) {
+        long bytes = sys_read(watch_fd, buffer, sizeof(buffer));
+        u64 offset = 0U;
+
+        if (bytes == -EINTR) continue;
+        if (bytes == -EAGAIN) return 1;
+        if (bytes <= 0) return 0;
+        while (offset + sizeof(struct inotify_event) <= (u64)bytes) {
+            struct inotify_event *event =
+                (struct inotify_event *)(buffer + offset);
+            u64 record_bytes = sizeof(*event) + event->len;
+            int index;
+
+            if (record_bytes > (u64)bytes - offset) return 0;
+            if (event->mask & IN_Q_OVERFLOW) {
+                discover_inputs(sources);
+            } else if ((event->mask & (IN_CREATE | IN_MOVED_TO)) &&
+                       event->len) {
+                index = input_event_index(event->name, event->len);
+                if (index >= 0) try_input_event(sources, index);
             }
+            offset += record_bytes;
         }
-        if (fd >= 0) sys_close((int)fd);
+        if (offset != (u64)bytes) return 0;
+        if (!missing_sources(sources)) return 1;
     }
 }
 
@@ -711,10 +854,11 @@ static void process_repeat(struct control_state *state) {
 
 static const struct timespec *poll_timeout(
     const struct input_source *sources, const struct control_state *state,
-    struct timespec *timeout) {
+    int discovery_poll_fallback, struct timespec *timeout) {
     u64 delay = 0;
 
-    if (missing_sources(sources)) delay = (u64)DISCOVERY_RETRY_NS;
+    if (discovery_poll_fallback && missing_sources(sources))
+        delay = (u64)DISCOVERY_RETRY_NS;
     if (state->repeat_direction && repeat_is_held(state)) {
         u64 now = now_ns();
         u64 repeat_delay = state->repeat_at_ns > now
@@ -740,45 +884,78 @@ static void application(void) {
         {-1, LID_NAME},
     };
     struct control_state state = {0, 0, 0, 0, 0, 0, 0, 0};
-    struct pollfd polls[SOURCE_COUNT];
+    struct pollfd polls[SOURCE_COUNT + 1];
     u64 poll_error_delay_ns = 1000000UL;
+    int watch_fd;
 
     kmsg_fd = (int)sys_open(KMSG_DEVICE, O_WRONLY | O_CLOEXEC);
     log_text("bird-fixed-controls: start\n");
+    watch_fd = open_input_watch();
+    discover_inputs(sources);
     for (;;) {
         struct timespec timeout;
         const struct timespec *timeout_pointer;
         long ready;
+        u64 poll_count = SOURCE_COUNT;
+        int rescan_required = 0;
         int index;
 
-        discover_inputs(sources);
+        if (missing_sources(sources) && watch_fd < 0) {
+            watch_fd = open_input_watch();
+            discover_inputs(sources);
+        }
         for (index = 0; index < SOURCE_COUNT; index++) {
             polls[index].fd = sources[index].fd;
             polls[index].events = POLLIN;
             polls[index].revents = 0;
         }
-        timeout_pointer = poll_timeout(sources, &state, &timeout);
-        ready = sys_ppoll(polls, SOURCE_COUNT, timeout_pointer);
+        if (watch_fd >= 0) {
+            polls[SOURCE_COUNT].fd = watch_fd;
+            polls[SOURCE_COUNT].events = POLLIN;
+            polls[SOURCE_COUNT].revents = 0;
+            poll_count++;
+        }
+        timeout_pointer = poll_timeout(sources, &state, watch_fd < 0,
+                                       &timeout);
+        ready = sys_ppoll(polls, poll_count, timeout_pointer);
         if (classify_poll_result(ready) == POLL_RESULT_INTERRUPTED) continue;
         if (classify_poll_result(ready) == POLL_RESULT_FAILED) {
             /* A bad auxiliary descriptor must not turn the fixed controls
              * service into a full-core spin. Drop every descriptor, clear
              * held-key state, sleep with capped backoff, and rediscover the
              * immutable devices on the next iteration. */
+            if (watch_fd >= 0) sys_close(watch_fd);
+            watch_fd = -1;
             poll_error_delay_ns = recover_poll_failure(
                 sources, &state, poll_error_delay_ns);
             continue;
         }
         poll_error_delay_ns = 1000000UL;
+        if (watch_fd >= 0) {
+            if (poll_descriptor_failed(polls[SOURCE_COUNT].revents) ||
+                ((polls[SOURCE_COUNT].revents & POLLIN) &&
+                 !process_input_watch(watch_fd, sources))) {
+                sys_close(watch_fd);
+                watch_fd = -1;
+                rescan_required = 1;
+            }
+        }
         for (index = 0; index < SOURCE_COUNT; index++) {
             if (sources[index].fd < 0) continue;
             if (poll_descriptor_failed(polls[index].revents)) {
                 close_source(&sources[index], index, &state);
+                rescan_required = 1;
                 continue;
             }
             if ((polls[index].revents & POLLIN) &&
-                !process_source(&sources[index], index, &state))
+                !process_source(&sources[index], index, &state)) {
                 close_source(&sources[index], index, &state);
+                rescan_required = 1;
+            }
+        }
+        if (rescan_required && missing_sources(sources)) {
+            if (watch_fd < 0) watch_fd = open_input_watch();
+            discover_inputs(sources);
         }
         process_repeat(&state);
     }

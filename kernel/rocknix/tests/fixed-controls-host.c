@@ -17,6 +17,7 @@
 #undef timespec
 
 #define EBADF_LINUX 9
+#define ENOENT_LINUX 2
 
 static pid_t test_parent;
 static int inject_wait_eintr;
@@ -27,6 +28,20 @@ static int fake_poll_recovery;
 static unsigned fake_close_calls;
 static unsigned fake_sleep_calls;
 static u64 fake_sleep_ns;
+static int fake_discovery;
+static const char *fake_event_names[EVENT_SCAN_COUNT];
+static unsigned fake_discovery_open_calls;
+static unsigned fake_discovery_ioctl_calls;
+static unsigned fake_discovery_close_calls;
+static long fake_inotify_init_result;
+static long fake_inotify_add_result;
+static unsigned fake_inotify_init_calls;
+static unsigned fake_inotify_add_calls;
+static int fake_watch_fd;
+static const void *fake_watch_payload;
+static u64 fake_watch_payload_bytes;
+static int fake_watch_consumed;
+static int fake_input_contract_mismatch;
 
 static int check(int condition, const char *message) {
     if (condition) return 1;
@@ -34,11 +49,44 @@ static int check(int condition, const char *message) {
     return 0;
 }
 
+static void reset_discovery_fixture(void) {
+    memset(fake_event_names, 0, sizeof(fake_event_names));
+    fake_discovery = 1;
+    fake_discovery_open_calls = 0;
+    fake_discovery_ioctl_calls = 0;
+    fake_discovery_close_calls = 0;
+    fake_inotify_init_result = -EBADF_LINUX;
+    fake_inotify_add_result = -EBADF_LINUX;
+    fake_inotify_init_calls = 0;
+    fake_inotify_add_calls = 0;
+    fake_watch_fd = -1;
+    fake_watch_payload = 0;
+    fake_watch_payload_bytes = 0;
+    fake_watch_consumed = 0;
+    fake_input_contract_mismatch = 0;
+}
+
 long bird_test_syscall6(long number, long a0, long a1, long a2, long a3,
                         long a4, long a5) {
     (void)a3;
     (void)a4;
     (void)a5;
+    if (number == 26) {
+        fake_inotify_init_calls++;
+        return fake_inotify_init_result;
+    }
+    if (number == 27) {
+        fake_inotify_add_calls++;
+        return fake_inotify_add_result;
+    }
+    if (number == 56 && fake_discovery) {
+        int index = -1;
+        fake_discovery_open_calls++;
+        if (sscanf((const char *)a1, "/dev/input/event%d", &index) != 1 ||
+            index < 0 || index >= EVENT_SCAN_COUNT || !fake_event_names[index])
+            return -ENOENT_LINUX;
+        return 1000 + index;
+    }
     if (number == 59) {
         int *pipes = (int *)a0;
         if (pipe(pipes) < 0) return -1;
@@ -51,6 +99,10 @@ long bird_test_syscall6(long number, long a0, long a1, long a2, long a3,
         return 0;
     }
     if (number == 57) {
+        if (fake_discovery && (a0 >= 1000 || a0 == fake_watch_fd)) {
+            fake_discovery_close_calls++;
+            return 0;
+        }
         if (fake_poll_recovery && a0 >= 100) {
             fake_close_calls++;
             return 0;
@@ -58,12 +110,51 @@ long bird_test_syscall6(long number, long a0, long a1, long a2, long a3,
         return close((int)a0);
     }
     if (number == 63) {
+        if ((int)a0 == fake_watch_fd && fake_watch_payload) {
+            u64 bytes;
+            if (fake_watch_consumed) return -EAGAIN;
+            bytes = fake_watch_payload_bytes < (u64)a2
+                        ? fake_watch_payload_bytes : (u64)a2;
+            memcpy((void *)a1, fake_watch_payload, (size_t)bytes);
+            fake_watch_consumed = 1;
+            return (long)bytes;
+        }
         if (fake_input_read) return fake_input_result;
         if (getpid() == test_parent && inject_read_eintr) {
             inject_read_eintr = 0;
             return -EINTR;
         }
         return (long)read((int)a0, (void *)a1, (size_t)a2);
+    }
+    if (number == 29 && fake_discovery && a0 >= 1000) {
+        static const u64 expected_key[BIRD_DEVICE_INPUT_KEY_BITMAP_WORD_COUNT] =
+            BIRD_DEVICE_INPUT_KEY_BITMAP_WORDS;
+        static const u64 expected_ff[BIRD_DEVICE_INPUT_FF_BITMAP_WORD_COUNT] =
+            BIRD_DEVICE_INPUT_FF_BITMAP_WORDS;
+        int index = (int)a0 - 1000;
+        fake_discovery_ioctl_calls++;
+        if (index < 0 || index >= EVENT_SCAN_COUNT || !fake_event_names[index])
+            return -EBADF_LINUX;
+        if ((u64)a1 == EVIOCGNAME_128)
+            snprintf((char *)a2, 128U, "%s", fake_event_names[index]);
+        else if ((u64)a1 == EVIOCGID) {
+            struct input_id *id = (struct input_id *)a2;
+            id->bus = BIRD_DEVICE_INPUT_BUS;
+            id->vendor = BIRD_DEVICE_INPUT_VENDOR;
+            id->product = BIRD_DEVICE_INPUT_PRODUCT;
+            id->version = BIRD_DEVICE_INPUT_VERSION;
+        } else if ((u64)a1 == EVIOCGBIT_EV)
+            *(u64 *)a2 = BIRD_DEVICE_INPUT_EV_BITMAP;
+        else if ((u64)a1 == EVIOCGBIT_KEY)
+            memcpy((void *)a2, expected_key, sizeof(expected_key));
+        else if ((u64)a1 == EVIOCGBIT_ABS)
+            *(u64 *)a2 = BIRD_DEVICE_INPUT_ABS_BITMAP;
+        else if ((u64)a1 == EVIOCGBIT_FF) {
+            memcpy((void *)a2, expected_ff, sizeof(expected_ff));
+            if (fake_input_contract_mismatch) ((u64 *)a2)[1] ^= 1U;
+        } else
+            return -EBADF_LINUX;
+        return 0;
     }
     if (number == 64) {
         if ((int)a0 == 1) return a2; /* discard diagnostics */
@@ -111,6 +202,21 @@ int main(int argc, char **argv) {
     unsigned step;
     int ok = 1;
     struct input_event key = {0};
+    struct control_state discovery_state = {0, 0, 0, 0, 0, 0, 0, 0};
+    struct input_source discovery_sources[SOURCE_COUNT] = {
+        {-1, GAMEPAD_NAME},
+        {-1, VOLUME_NAME},
+        {-1, POWER_NAME},
+        {-1, LID_NAME},
+    };
+    struct {
+        s32 wd;
+        u32 mask;
+        u32 cookie;
+        u32 len;
+        char name[16];
+    } creation_event = {0};
+    struct bird_timespec discovery_timeout;
 
     if (argc != 2) {
         fprintf(stderr, "usage: %s NONEXECUTABLE\n", argv[0]);
@@ -205,6 +311,69 @@ int main(int argc, char **argv) {
                     !state.volume_up_held && !state.volume_down_held &&
                     !state.repeat_direction && !state.repeat_at_ns,
                 "poll recovery retained descriptors or held-key state");
+
+    reset_discovery_fixture();
+    fake_event_names[0] = POWER_NAME;
+    fake_event_names[1] = "H616 Audio Codec Headphone Jack";
+    fake_event_names[2] = VOLUME_NAME;
+    fake_event_names[3] = LID_NAME;
+    fake_event_names[4] = GAMEPAD_NAME;
+    discover_inputs(discovery_sources);
+    ok &= check(discovery_sources[SOURCE_GAMEPAD].fd == 1004 &&
+                    discovery_sources[SOURCE_VOLUME].fd == 1002 &&
+                    discovery_sources[SOURCE_POWER].fd == 1000 &&
+                    discovery_sources[SOURCE_LID].fd == 1003 &&
+                    fake_discovery_open_calls == 5U &&
+                    fake_discovery_ioctl_calls == 10U &&
+                    fake_discovery_close_calls == 1U,
+                "initial control discovery did not stop after the four sources");
+
+    reset_discovery_fixture();
+    fake_inotify_init_result = 90;
+    fake_inotify_add_result = 1;
+    fake_watch_fd = 90;
+    ok &= check(open_input_watch() == 90 &&
+                    fake_inotify_init_calls == 1U &&
+                    fake_inotify_add_calls == 1U,
+                "control input watch did not initialize exactly once");
+
+    discovery_sources[SOURCE_GAMEPAD].fd = -1;
+    fake_event_names[7] = GAMEPAD_NAME;
+    creation_event.wd = 1;
+    creation_event.mask = IN_CREATE;
+    creation_event.len = sizeof(creation_event.name);
+    snprintf(creation_event.name, sizeof(creation_event.name), "event7");
+    fake_watch_payload = &creation_event;
+    fake_watch_payload_bytes = sizeof(creation_event);
+    ok &= check(process_input_watch(90, discovery_sources) == 1 &&
+                    discovery_sources[SOURCE_GAMEPAD].fd == 1007 &&
+                    fake_discovery_open_calls == 1U &&
+                    fake_discovery_ioctl_calls == 6U,
+                "control creation edge rescanned unrelated event nodes");
+
+    discovery_sources[SOURCE_GAMEPAD].fd = -1;
+    fake_input_contract_mismatch = 1;
+    try_input_event(discovery_sources, 7);
+    ok &= check(discovery_sources[SOURCE_GAMEPAD].fd < 0 &&
+                    fake_discovery_open_calls == 2U &&
+                    fake_discovery_ioctl_calls == 12U &&
+                    fake_discovery_close_calls == 1U,
+                "fixed controls accepted a mismatched H700 capability set");
+    fake_input_contract_mismatch = 0;
+
+    ok &= check(poll_timeout(discovery_sources, &discovery_state, 0,
+                            &discovery_timeout) == 0,
+                "live discovery watch retained a periodic retry timeout");
+    ok &= check(poll_timeout(discovery_sources, &discovery_state, 1,
+                            &discovery_timeout) == &discovery_timeout &&
+                    discovery_timeout.sec == 0 &&
+                    discovery_timeout.nsec == DISCOVERY_RETRY_NS,
+                "inotify failure lost the bounded polling fallback");
+    ok &= check(input_event_index("event4", 7U) == 4 &&
+                    input_event_index("event31", 8U) == 31 &&
+                    input_event_index("event32", 8U) < 0 &&
+                    input_event_index("mouse0", 7U) < 0,
+                "control creation event accepted an ambiguous node");
 
     if (!ok) return 1;
     puts("fixed-controls C tests: PASS");

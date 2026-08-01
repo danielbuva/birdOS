@@ -197,6 +197,27 @@ closed and the bounded scan continues. The legacy `muOS-Keys` recovery mapping
 is unchanged. The ready H700 path adds five fixed ioctls after the existing
 name ioctl; hardware must show boot non-inferiority before promotion.
 
+Hardware follow-up on release `v6.23-input-contract-4fd18d0` passed the complete
+functional screen. Exact launcher input validation is retained. No ordinary
+behavior regression was observed; timing remains unclaimed without device
+samples.
+
+The third Stage 2 candidate changes only the post-menu fixed-controls worker.
+It installs and retains a `/dev/input` creation watch before its initial scan,
+stops that scan as soon as power, volume, lid and the exact H700 gamepad are
+open, and thereafter opens only a newly created numbered node. Reconnect and
+queue overflow permit one complete recovery scan. If inotify is unavailable,
+the prior bounded 250 ms scan remains as the recovery fallback.
+
+On the measured RG34XX-SP event layout, ordinary initial discovery drops from
+32 event-node opens to five. With any source missing, the prior path woke four
+times per second and could issue 128 failed opens per second; the watched path
+blocks without a discovery timer. This is principally a priority 3 battery and
+wakeup candidate. It may reduce priority 2 scheduler/filesystem contention
+during reconnect, does not enter the priority 1 usable-menu path, and adds one
+resident descriptor plus a small amount of code rather than targeting priority
+4 memory.
+
 ## Stage 3 — Bootstrap progression
 
 ### 3A — Minimal shell

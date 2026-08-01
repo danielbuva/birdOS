@@ -764,6 +764,14 @@ grep -q 'poll-failed-recovering' \
 	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'control poll recovery missing'
 grep -q '^static u64 recover_poll_failure' \
 	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'bounded control poll recovery missing'
+grep -Fq 'watch_fd = open_input_watch();' \
+	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'control watch-before-scan discovery missing'
+grep -Fq 'process_input_watch(watch_fd, sources)' \
+	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'control creation-edge discovery missing'
+grep -Fq 'poll_timeout(sources, &state, watch_fd < 0' \
+	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'control polling fallback is not inotify-scoped'
+grep -Fq 'h700_input_contract_matches((int)fd)' \
+	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'fixed controls H700 contract validation missing'
 for ACTION in volume suspend content-exit; do
 	grep -q "$ACTION-exec-failed" \
 		"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || \
