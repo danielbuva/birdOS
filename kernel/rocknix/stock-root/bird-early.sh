@@ -77,7 +77,9 @@ case "${1:-}" in
 				$BUSYBOX usleep 1000
 				COUNT=$((COUNT + 1))
 			done
-			log_leds start
+			# LED state is diagnostic-only. Keep inspection after the usable-frame
+			# boundary in root-ready/handoff, never between display preparation and
+			# launcher dispatch.
 		} >"$LOG" 2>&1
 		"$LAUNCHER" >>"$LOG" 2>&1 &
 		printf '%s\n' "$!" >"$PID_FILE"
