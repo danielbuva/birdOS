@@ -58,8 +58,6 @@ case "${1:-}" in
 			STORAGE_FIFO=failed
 		fi
 		{
-			printf 'Bird early-init start uptime='
-			$BUSYBOX cut -d ' ' -f 1 /proc/uptime
 			printf 'early_storage_fifo=%s\n' "$STORAGE_FIFO"
 			if $BUSYBOX insmod "$JOYPAD" 2>&1; then
 				printf '%s\n' 'early_input_module=loaded'

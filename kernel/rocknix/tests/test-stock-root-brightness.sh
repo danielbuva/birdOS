@@ -63,6 +63,7 @@ grep -q 'stage=restored raw=124 max=2499' "$TMP/early.log"
 
 # Normal start must dispatch the launcher without probing diagnostic LEDs.
 # Post-usable root/handoff inspection remains available for retained evidence.
+! grep -q 'Bird early-init start uptime' "$EARLY_SOURCE"
 ! grep -q 'log_leds start' "$EARLY_SOURCE"
 [ "$(grep -c 'log_leds root-ready' "$EARLY_SOURCE")" = 1 ]
 [ "$(grep -c 'log_leds handoff' "$EARLY_SOURCE")" = 1 ]
