@@ -97,6 +97,8 @@ enable_release() {
 	cp "$HOOK" "$RELEASE/post-flash.sh"
 	printf '#!/bin/sh\n' >"$RELEASE/mount-storage.sh"
 	printf '#!/bin/sh\n' >"$RELEASE/bird/supervisor.sh"
+	printf 'schema\tstring\tbird-device-v1\n' \
+		>"$RELEASE/bird/bird-device-contract.tsv"
 	chmod 0755 "$RELEASE/post-flash.sh" "$RELEASE/mount-storage.sh" \
 		"$RELEASE/bird/supervisor.sh"
 	MANIFEST=$RELEASE/deploy-manifest.tsv
@@ -105,6 +107,10 @@ enable_release() {
 		printf 'release\tv6.23\n'
 		printf 'target-mode-policy\tfat-capability\n'
 		printf 'source-commit\ttest\tclean\n'
+		printf 'artifact\tdevice-contract\tbird/bird-device-contract.tsv\t%s\n' \
+			"$(sha256 "$RELEASE/bird/bird-device-contract.tsv")"
+		printf 'artifact\tcatalog\tlauncher/catalog.generated.h\t%s\n' \
+			2222222222222222222222222222222222222222222222222222222222222222
 		for INPUT in KERNEL dtb.img ROCKNIX-SYSTEM ROCKNIX-STORAGE \
 			usr/bin/autostart initramfs/init rocknix-singleadc-joypad.ko \
 			initramfs/busybox PortMaster.zip KERNEL.fallback \
@@ -114,7 +120,8 @@ enable_release() {
 			printf 'input\t%s\t644\t1\t%s\ttest\n' "$INPUT" \
 				0000000000000000000000000000000000000000000000000000000000000000
 		done
-		for RELATIVE in post-flash.sh mount-storage.sh bird/supervisor.sh; do
+		for RELATIVE in post-flash.sh mount-storage.sh bird/supervisor.sh \
+			bird/bird-device-contract.tsv; do
 			FILE=$RELEASE/$RELATIVE
 			printf 'file\t%s\t%s\t%s\t%s\n' "$RELATIVE" "$(mode "$FILE")" \
 				"$(bytes "$FILE")" "$(sha256 "$FILE")"
@@ -399,6 +406,30 @@ reset_case release-manifest-corrupt
 printf '0\n' >"$ATTEMPTS_FILE"
 printf 'corrupt\n' >>"$MANIFEST"
 assert_fallback_activated none no
+
+reset_case release-manifest-artifacts-missing
+printf '0\n' >"$ATTEMPTS_FILE"
+awk -F '\t' '$1 != "artifact"' "$MANIFEST" >"$MANIFEST.new"
+mv "$MANIFEST.new" "$MANIFEST"
+sha256 "$MANIFEST" >"$RELEASE/.complete"
+assert_fallback_activated none
+
+reset_case release-manifest-contract-binding
+printf '0\n' >"$ATTEMPTS_FILE"
+awk -F '\t' 'BEGIN {OFS="\t"}
+	$1 == "artifact" && $2 == "device-contract" {$4 = "0000000000000000000000000000000000000000000000000000000000000000"}
+	{print}' "$MANIFEST" >"$MANIFEST.new"
+mv "$MANIFEST.new" "$MANIFEST"
+sha256 "$MANIFEST" >"$RELEASE/.complete"
+assert_fallback_activated none
+
+reset_case release-manifest-artifact-duplicate
+printf '0\n' >"$ATTEMPTS_FILE"
+awk -F '\t' '$1 == "artifact" && $2 == "catalog" {print; print; next} {print}' \
+	"$MANIFEST" >"$MANIFEST.new"
+mv "$MANIFEST.new" "$MANIFEST"
+sha256 "$MANIFEST" >"$RELEASE/.complete"
+assert_fallback_activated none
 
 reset_case release-storage-bind
 printf '0\n' >"$ATTEMPTS_FILE"

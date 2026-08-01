@@ -185,6 +185,21 @@ verify_release_runtime() {
 			next
 		}
 		$1 == "source-commit" { if (NF != 3 || source++) exit 1; next }
+		$1 == "artifact" {
+			if (NF != 4 || ($2 != "device-contract" && $2 != "catalog") ||
+			    $3 !~ /^[A-Za-z0-9._\/-]+$/ || $3 ~ /(^|\/)\.\.?($|\/)/ ||
+			    length($4) != 64 || $4 ~ /[^0-9a-f]/) exit 1
+			artifacts++
+			if ($2 == "device-contract") {
+				if (device_contract++) exit 1
+				device_contract_path = $3
+				device_contract_digest = $4
+			} else {
+				if (catalog++) exit 1
+				catalog_path = $3
+			}
+			next
+		}
 		$1 == "input" {
 			if (NF != 6 || $2 !~ /^[A-Za-z0-9._\/-]+$/ ||
 			    $2 ~ /(^|\/)\.\.?($|\/)/ ||
@@ -206,6 +221,10 @@ verify_release_runtime() {
 			    $4 !~ /^[0-9]+$/ || length($5) != 64 || $5 ~ /[^0-9a-f]/)
 				exit 1
 			files++
+			if ($2 == "bird/bird-device-contract.tsv") {
+				if (device_contract_file++) exit 1
+				device_contract_file_digest = $5
+			}
 			if ($2 == "post-flash.sh" || $2 == "mount-storage.sh" ||
 			    index($2, "bird/") == 1) {
 				print $2 "\t" $3 "\t" $4 "\t" $5
@@ -219,6 +238,11 @@ verify_release_runtime() {
 		{ exit 1 }
 		END {
 			if (schema != 1 || release != 1 || policy != 1 || source != 1 ||
+			    artifacts != 2 || device_contract != 1 || catalog != 1 ||
+			    device_contract_path != "bird/bird-device-contract.tsv" ||
+			    catalog_path != "launcher/catalog.generated.h" ||
+			    device_contract_file != 1 ||
+			    device_contract_digest != device_contract_file_digest ||
 			    inputs != 15 || files < 1 || runtime < 1 || hook != 1 ||
 			    storage_hook != 1 || bird < 1) exit 1
 		}
