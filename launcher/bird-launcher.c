@@ -4452,9 +4452,7 @@ static void toggle_current_favorite(void) {
 
 static int select_current(void) {
     int action = ACTION_NONE;
-#ifdef BIRD_PROFILE
-    u32 profile_original_view = view;
-#endif
+    u32 original_view = view;
     if (view == VIEW_MAIN) {
         if (selection == 0U) {
             view = VIEW_PLAY;
@@ -4549,10 +4547,13 @@ static int select_current(void) {
             }
         }
     }
-    BIRD_PROFILE_RENDER(view != profile_original_view
+    BIRD_PROFILE_RENDER(view != original_view
                             ? PROFILE_RENDER_VIEW_CHANGE
                             : PROFILE_RENDER_STATUS);
-    draw_interactive_screen();
+    if (view != original_view)
+        draw_interactive_screen();
+    else
+        draw_status_update();
     if (action == ACTION_NONE) preserve_early_handoff_state();
     return action;
 }

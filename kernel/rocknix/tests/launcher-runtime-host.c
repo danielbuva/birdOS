@@ -3815,6 +3815,26 @@ static int run_profile_tests(void) {
 
     bird_profile_reset();
     setup_test_framebuffer(1U, fake_framebuffer);
+    view = VIEW_QUIT;
+    selection = 0U;
+    selected_status = "QUIT OPTIONS READY";
+    action = select_current();
+    render = &bird_profile.render[PROFILE_RENDER_STATUS];
+    ok &= check(action == ACTION_RELOAD && render->commits == 1U &&
+                    render->logical_pixels == 0U &&
+                    render->visible_bytes == 0U &&
+                    render->physical_bytes == 0U &&
+                    render->pages_written == 0U,
+                "same-view A selection performed framebuffer traffic");
+    printf("launcher profile benchmark scenario=same-view-select "
+           "logical_pixels=%lu visible_bytes=%lu pages=%lu physical_bytes=%lu\n",
+           (unsigned long)render->logical_pixels,
+           (unsigned long)render->visible_bytes,
+           (unsigned long)render->pages_written,
+           (unsigned long)render->physical_bytes);
+
+    bird_profile_reset();
+    setup_test_framebuffer(1U, fake_framebuffer);
     setup_main_view();
     toggle_current_favorite();
     render = &bird_profile.render[PROFILE_RENDER_STATUS];
@@ -3987,6 +4007,10 @@ static int run_profile_tests(void) {
     ok &= check(action == ACTION_LAUNCH && bird_profile.selection_pending &&
                     bird_profile.resume_before_barrier > 0U,
                 "direct launch lost its selection or content resume commit");
+    ok &= check(
+        bird_profile.render[PROFILE_RENDER_STATUS].commits == 1U &&
+            bird_profile.render[PROFILE_RENDER_STATUS].physical_bytes == 0U,
+        "direct launch performed a same-view framebuffer rewrite");
     fake_now_sub_ms_ns = 900L;
     bird_profile_note_exit_and_emit();
     ok &= check(bird_profile.selection_to_exit_ns == 800U &&
@@ -4041,6 +4065,10 @@ static int run_profile_tests(void) {
                     pending_launch.kind == PENDING_LAUNCH_GAME &&
                     bird_profile.selection_pending,
                 "pending dispatch setup lost its selection timestamp");
+    ok &= check(
+        bird_profile.render[PROFILE_RENDER_STATUS].commits == 1U &&
+            bird_profile.render[PROFILE_RENDER_STATUS].physical_bytes == 0U,
+        "queued selection performed a same-view framebuffer rewrite");
     storage_ready = 1;
     fake_now_ms = 5001;
     reset_fake_file(FAKE_FD, 0, 0);
