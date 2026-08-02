@@ -5269,6 +5269,106 @@ static int open_fixed_input(void) {
     return result;
 }
 
+static int framebuffer_event_name_matches(const char *name, u32 length) {
+    return length >= 4U && name[0] == 'f' && name[1] == 'b' &&
+           name[2] == '0' && name[3] == 0;
+}
+
+static int try_fixed_framebuffer(void) {
+    fb_fd = (int)sys_open(BIRD_DEVICE_FRAMEBUFFER_NODE, O_RDWR);
+    if (fb_fd >= 0) return 0;
+    fb_fd = -1;
+    return -1;
+}
+
+static int open_fixed_framebuffer_watch(void) {
+    int fd = (int)sys_inotify_init1(O_NONBLOCK | O_CLOEXEC);
+
+    if (fd < 0) return -1;
+    if (sys_inotify_add_watch(fd, "/dev", IN_CREATE | IN_MOVED_TO) < 0) {
+        sys_close(fd);
+        return -1;
+    }
+    return fd;
+}
+
+static int wait_fixed_framebuffer_watch(int watch_fd) {
+    _Alignas(8) u8 event_buffer[512];
+    u64 deadline = boot_ms() + DEVICE_WAIT_MS;
+    struct pollfd poll;
+
+    for (;;) {
+        struct timespec timeout;
+        u64 now = boot_ms();
+        u64 remaining;
+        long ready;
+
+        if (now >= deadline) return -1;
+        remaining = deadline - now;
+        timeout.sec = (s64)(remaining / 1000UL);
+        timeout.nsec = (s64)((remaining % 1000UL) * 1000000UL);
+        poll.fd = watch_fd;
+        poll.events = POLLIN;
+        poll.revents = 0;
+        ready = sys_ppoll(&poll, 1U, &timeout);
+        if (ready == -EINTR) continue;
+        if (ready <= 0 || (poll.revents & (POLLERR | POLLHUP | POLLNVAL)))
+            return -1;
+        if (poll.revents & POLLIN) {
+            for (;;) {
+                long count = sys_read(watch_fd, event_buffer,
+                                      sizeof(event_buffer));
+                u64 offset = 0U;
+
+                if (count == -EINTR) continue;
+                if (count == -EAGAIN) break;
+                if (count <= 0) return -1;
+                while (offset + sizeof(struct inotify_event) <= (u64)count) {
+                    struct inotify_event *event =
+                        (struct inotify_event *)(event_buffer + offset);
+                    u64 record_bytes = sizeof(*event) + event->len;
+
+                    if (record_bytes > (u64)count - offset) return -1;
+                    if (event->mask & IN_Q_OVERFLOW) {
+                        if (try_fixed_framebuffer() == 0) return 0;
+                    } else if ((event->mask & (IN_CREATE | IN_MOVED_TO)) &&
+                               event->len &&
+                               framebuffer_event_name_matches(event->name,
+                                                              event->len)) {
+                        if (try_fixed_framebuffer() == 0) return 0;
+                    }
+                    offset += record_bytes;
+                }
+                if (offset != (u64)count) return -1;
+            }
+        }
+    }
+    return -1;
+}
+
+static int open_fixed_framebuffer_poll_fallback(void) {
+    u64 deadline = boot_ms() + DEVICE_WAIT_MS;
+
+    while (boot_ms() < deadline) {
+        if (try_fixed_framebuffer() == 0) return 0;
+        sys_nanosleep(1000000L);
+    }
+    return -1;
+}
+
+static int open_fixed_framebuffer(void) {
+    int watch_fd = open_fixed_framebuffer_watch();
+    int result;
+
+    if (watch_fd < 0) result = open_fixed_framebuffer_poll_fallback();
+    else {
+        result = try_fixed_framebuffer();
+        if (result < 0) result = wait_fixed_framebuffer_watch(watch_fd);
+        sys_close(watch_fd);
+    }
+    return result;
+}
+
 static void log_input_ready(void) {
     log_text("input ");
     log_text(input_path);
@@ -5670,7 +5770,6 @@ static int application(void) {
     u64 profile_started_ns = bird_profile_now_ns();
 #endif
     u64 started = boot_ms();
-    u64 deadline;
     u64 poll_retry_ms = POLL_RETRY_INITIAL_MS;
     u32 poll_error_count = 0;
     int exit_action = ACTION_NONE;
@@ -5693,13 +5792,7 @@ static int application(void) {
         input_watch_fd = -1;
     }
 
-    deadline = boot_ms() + DEVICE_WAIT_MS;
-    while (boot_ms() < deadline) {
-        fb_fd = (int)sys_open(BIRD_DEVICE_FRAMEBUFFER_NODE, O_RDWR);
-        if (fb_fd >= 0) break;
-        sys_nanosleep(1000000L);
-    }
-    if (fb_fd < 0) {
+    if (open_fixed_framebuffer() < 0) {
         log_text("error wait " BIRD_DEVICE_FRAMEBUFFER_NODE "\n");
         if (input_watch_fd >= 0) sys_close(input_watch_fd);
         if (input_preopened) abandon_input();

@@ -241,13 +241,31 @@ stress sequence reached the existing ten-second coordinator timeout. The user
 accepts that residual quirk for now; it is documented rather than silently
 treated as fixed.
 
-Cost attribution is post-usable: missing RetroArch prerequisites are checked
-during root preparation, and the fixed policy verifier runs in common
-autostart. On this card all prerequisites are present and the verifier performs
-read-only comparisons. It installs no resident process or timer and adds no
-ordinary idle wakeup. The launcher binary is byte-identical to the prior
-candidate, so no framebuffer, input, UI-instruction or launcher-memory delta is
-attributed to this repair.
+The repair does not change launcher dispatch, rendering or input; its launcher
+binary is byte-identical to the prior candidate. In the returned sample,
+honest first usability was approximately 1.22 seconds after kernel start and
+root preparation followed at approximately 3.87 seconds. Root preparation is
+nevertheless concurrent post-launch work: pinned init has no explicit
+usable-frame barrier before it continues, so the sampled ordering must not be
+generalized into a categorical post-usable boundary. The fixed verifier runs
+later in common autostart.
+
+On this card all prerequisites are present and the verifier performs read-only
+comparisons. It installs no resident process or timer and adds no steady-state
+memory or ordinary idle-wakeup cost. Raw release payload excluding the manifest
+grew by 3,688 bytes. Transient peak memory and device timing and energy remain
+unmeasured. No framebuffer, input, UI-instruction or launcher-memory delta is
+attributed to the repair, and its residual suspend quirks are accepted for now.
+
+The current Stage 2 candidate is a separate launcher framebuffer-discovery
+change pending physical proof. It installs a `/dev` watch before the exact
+`fb0` probe, accepts only `fb0` create/move events, reprobes once on queue
+overflow, and retains the bounded 1 ms polling path only when inotify is
+unavailable. Geometry, stride, format, mapping validation, rendering and
+ownership remain unchanged. A late-registering node avoids repeated failed
+opens and sleeps; an already-present node pays inotify setup and close instead.
+RG34XX-SP boot non-inferiority is therefore required, and no improvement is yet
+claimed.
 
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full

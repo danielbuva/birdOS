@@ -303,15 +303,39 @@ the coordinator's queued/cancelled-intent paths. One deliberately rapid power
 sequence still reached the existing ten-second completion timeout; that and
 the remaining physical quirks are accepted-for-now and explicitly deferred.
 
-This repair did not enter power-to-usable work. The early launcher is
-byte-identical, and the new configuration checks run only during post-usable
-root preparation and retained common autostart. The accepted steady state adds
-no writes, resident process, timer or idle wakeup. Raw release content grew by
-1,855 bytes for the verifier and 1,835 bytes in `mount-storage.sh`; cpio block
-rounding kept the uncompressed early archive at 2,072,064 bytes and the gzip
-archive changed from 615,064 to 615,052 bytes. That compressed-size variation
-is not an optimization claim. No device energy or memory improvement is
-claimed without physical measurement.
+This repair did not change launcher dispatch, rendering or input: the early
+launcher is byte-identical. In the returned sample, honest first usability was
+recorded at approximately 1.22 seconds after kernel start and root preparation
+ran later, at approximately 3.87 seconds. That ordering is evidence for the
+sample, not an architectural post-usable guarantee: pinned init starts root
+preparation concurrently after launcher dispatch and has no explicit
+usable-frame barrier before continuing. The fixed verifier runs later in
+retained common autostart.
+
+The accepted steady state adds no writes, resident process, timer or idle
+wakeup. Raw release payload excluding the manifest grew by 3,688 bytes; cpio
+block rounding kept the uncompressed early archive at 2,072,064 bytes and the
+gzip archive changed from 615,064 to 615,052 bytes. That compressed-size
+variation is release-identity noise, not an optimization claim. Transient peak
+memory and RG34XX-SP timing and energy remain unmeasured. The remaining suspend
+quirks are accepted for now and are not a gate on the next bounded candidate.
+
+### Stage 2 framebuffer-discovery candidate — pending physical gate
+
+The next bounded candidate changes only how the launcher waits for the fixed
+`/dev/fb0` node. It installs a `/dev` inotify watch before the first exact
+`fb0` probe, accepts only `fb0` create or move events, and performs one exact
+reprobe after queue overflow. The previous bounded 1 ms polling loop remains
+only when inotify cannot be installed. Framebuffer geometry, stride, format,
+mapping validation, framebuffer ownership and all render paths are unchanged.
+
+When `fb0` registers late, this removes repeated failed opens and 1 ms sleeps
+from the power-to-usable path. When `fb0` is already present, it adds inotify
+setup and close work to the prior single-open path. It therefore targets
+priority 1 only for delayed framebuffer registration and requires RG34XX-SP
+boot non-inferiority before promotion. It adds no ordinary-idle polling and
+makes no boot, interaction, battery or memory improvement claim before that
+physical gate.
 
 ## Stage 3 — Bootstrap progression
 

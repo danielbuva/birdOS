@@ -43,6 +43,11 @@ static unsigned fake_inotify_add_calls;
 static long fake_ppoll_result;
 static short fake_ppoll_revents;
 static unsigned fake_ppoll_calls;
+#define FAKE_PPOLL_SCRIPT_MAX 16U
+static long fake_ppoll_result_script[FAKE_PPOLL_SCRIPT_MAX];
+static short fake_ppoll_revents_script[FAKE_PPOLL_SCRIPT_MAX];
+static unsigned fake_ppoll_script_count;
+static unsigned fake_ppoll_script_index;
 #define FAKE_SYSCALL_TRACE_MAX 128U
 static long fake_syscall_trace[FAKE_SYSCALL_TRACE_MAX];
 static unsigned fake_syscall_trace_count;
@@ -131,10 +136,18 @@ long bird_test_syscall6(long number, long a0, long a1, long a2, long a3,
         return 0;
     }
     if (number == 73) {
+        long result = fake_ppoll_result;
+        short revents = fake_ppoll_revents;
+
         fake_ppoll_calls++;
-        if (fake_ppoll_result > 0 && a0 && a1)
-            ((struct pollfd *)a0)[0].revents = fake_ppoll_revents;
-        return fake_ppoll_result;
+        if (fake_ppoll_script_index < fake_ppoll_script_count) {
+            result = fake_ppoll_result_script[fake_ppoll_script_index];
+            revents = fake_ppoll_revents_script[fake_ppoll_script_index];
+            fake_ppoll_script_index++;
+        }
+        if (result > 0 && a0 && a1)
+            ((struct pollfd *)a0)[0].revents = revents;
+        return result;
     }
     if (number == 29) {
         static const u64 expected_key[BIRD_DEVICE_INPUT_KEY_BITMAP_WORD_COUNT] =
@@ -297,6 +310,8 @@ static void reset_fake_file(long open_result, const char *payload,
     fake_ppoll_result = -EBADF_LINUX;
     fake_ppoll_revents = 0;
     fake_ppoll_calls = 0;
+    fake_ppoll_script_count = 0U;
+    fake_ppoll_script_index = 0U;
     fake_syscall_trace_count = 0;
     fake_write_capture_bytes = 0U;
     fake_capture_file_writes = 0;
@@ -319,6 +334,19 @@ static void set_fake_read_script(const struct fake_read_step *steps,
         fake_read_script[index] = steps[index];
     fake_read_script_count = count;
     fake_read_script_index = 0U;
+}
+
+static void set_fake_ppoll_script(const long *results, const short *revents,
+                                  unsigned count) {
+    unsigned index;
+
+    if (count > FAKE_PPOLL_SCRIPT_MAX) count = FAKE_PPOLL_SCRIPT_MAX;
+    for (index = 0; index < count; index++) {
+        fake_ppoll_result_script[index] = results[index];
+        fake_ppoll_revents_script[index] = revents[index];
+    }
+    fake_ppoll_script_count = count;
+    fake_ppoll_script_index = 0U;
 }
 
 static unsigned fake_read_count_for_fd(int fd) {
@@ -1102,6 +1130,8 @@ static int run_event_driven_input_discovery_tests(void) {
      * preferred-node fast path. An already-present event4 still costs only
      * one open and one identity query. */
     reset_fake_file(-ENOENT, 0, 0);
+    fake_close_calls = 0U;
+    fake_sleep_calls = 0U;
     fake_inotify_init_result = 90;
     fake_inotify_add_result = 1;
     open_results[0] = 70;
@@ -1136,6 +1166,8 @@ static int run_event_driven_input_discovery_tests(void) {
     read_steps[1].result = -EAGAIN;
     read_steps[1].payload = 0;
     reset_fake_file(-ENOENT, 0, 0);
+    fake_close_calls = 0U;
+    fake_sleep_calls = 0U;
     fake_inotify_init_result = 90;
     fake_inotify_add_result = 1;
     fake_ppoll_result = 1;
@@ -1154,6 +1186,203 @@ static int run_event_driven_input_discovery_tests(void) {
                     fake_sleep_calls == 0U,
                 "creation edge repeated the full input scan or slept");
     abandon_input();
+    return ok;
+}
+
+static int run_event_driven_framebuffer_discovery_tests(void) {
+    struct inotify_fixture {
+        s32 wd;
+        u32 mask;
+        u32 cookie;
+        u32 len;
+        char name[16];
+    } events[2];
+    struct fake_read_step read_steps[3];
+    long open_results[2];
+    long ppoll_results[3];
+    short ppoll_revents[3];
+    unsigned index;
+    int ok = 1;
+
+    ok &= check(framebuffer_event_name_matches("fb0", 4U) &&
+                    !framebuffer_event_name_matches("fb1", 4U) &&
+                    !framebuffer_event_name_matches("fb00", 5U) &&
+                    !framebuffer_event_name_matches("fb0-extra", 10U) &&
+                    !framebuffer_event_name_matches("fb", 3U),
+                "framebuffer creation-name validation accepted another node");
+
+    /* Install the /dev watch before the exact fixed-node fast path. An
+     * already-present fb0 still needs one node open and no wait or sleep. */
+    reset_fake_file(-ENOENT, 0, 0);
+    fake_close_calls = 0U;
+    fake_sleep_calls = 0U;
+    fake_inotify_init_result = 90;
+    fake_inotify_add_result = 1;
+    open_results[0] = 70;
+    set_fake_open_script(open_results, 1U);
+    fb_fd = -1;
+    ok &= check(open_fixed_framebuffer() == 0 && fb_fd == 70 &&
+                    fake_syscall_trace_count >= 4U &&
+                    fake_syscall_trace[0] == 26 &&
+                    fake_syscall_trace[1] == 27 &&
+                    fake_syscall_trace[2] == 56 &&
+                    fake_syscall_trace[3] == 57 &&
+                    fake_inotify_init_calls == 1U &&
+                    fake_inotify_add_calls == 1U &&
+                    fake_open_calls == 1U &&
+                    fake_opened_path(BIRD_DEVICE_FRAMEBUFFER_NODE) &&
+                    fake_ppoll_calls == 0U && fake_sleep_calls == 0U &&
+                    fake_close_calls == 1U && fake_clock_calls == 0U,
+                "framebuffer watch was not installed before the fixed probe");
+    fb_fd = -1;
+
+    /* A delayed fb0 edge must replace the old repeated 1-ms open/sleep loop.
+     * Ignore fb1, tolerate an interrupted poll, then open only exact fb0. */
+    memset(events, 0, sizeof(events));
+    events[0].wd = 1;
+    events[0].mask = IN_CREATE;
+    events[0].len = sizeof(events[0].name);
+    snprintf(events[0].name, sizeof(events[0].name), "fb1");
+    events[1].wd = 1;
+    events[1].mask = IN_MOVED_TO;
+    events[1].len = sizeof(events[1].name);
+    snprintf(events[1].name, sizeof(events[1].name), "fb0");
+    read_steps[0].result = sizeof(events[0]);
+    read_steps[0].payload = (const char *)&events[0];
+    read_steps[1].result = -EAGAIN;
+    read_steps[1].payload = 0;
+    read_steps[2].result = sizeof(events[1]);
+    read_steps[2].payload = (const char *)&events[1];
+    ppoll_results[0] = 1;
+    ppoll_revents[0] = POLLIN;
+    ppoll_results[1] = -EINTR;
+    ppoll_revents[1] = 0;
+    ppoll_results[2] = 1;
+    ppoll_revents[2] = POLLIN;
+    open_results[0] = -ENOENT;
+    open_results[1] = 71;
+    reset_fake_file(-ENOENT, 0, 0);
+    fake_close_calls = 0U;
+    fake_sleep_calls = 0U;
+    fake_inotify_init_result = 90;
+    fake_inotify_add_result = 1;
+    set_fake_open_script(open_results, 2U);
+    set_fake_read_script(read_steps, 3U);
+    set_fake_ppoll_script(ppoll_results, ppoll_revents, 3U);
+    fake_now_ms = 1000;
+    fb_fd = -1;
+    ok &= check(open_fixed_framebuffer() == 0 && fb_fd == 71 &&
+                    fake_open_calls == 2U &&
+                    fake_open_path_count == 2U &&
+                    fake_opened_path(BIRD_DEVICE_FRAMEBUFFER_NODE) &&
+                    fake_ppoll_calls == 3U && fake_sleep_calls == 0U &&
+                    fake_read_count_for_fd(90) == 3U &&
+                    fake_close_calls == 1U && fake_clock_calls == 4U,
+                "framebuffer creation edge repeated probes or slept");
+    for (index = 0U; index < fake_open_path_count; index++)
+        ok &= check(strcmp(fake_open_path[index],
+                           BIRD_DEVICE_FRAMEBUFFER_NODE) == 0,
+                    "framebuffer discovery opened a non-fixed node");
+    fb_fd = -1;
+
+    /* Queue overflow permits one recovery probe of the only supported node. */
+    memset(events, 0, sizeof(events));
+    events[0].wd = -1;
+    events[0].mask = IN_Q_OVERFLOW;
+    events[0].len = 0U;
+    read_steps[0].result = sizeof(struct inotify_event);
+    read_steps[0].payload = (const char *)&events[0];
+    open_results[0] = -ENOENT;
+    open_results[1] = 72;
+    reset_fake_file(-ENOENT, 0, 0);
+    fake_close_calls = 0U;
+    fake_sleep_calls = 0U;
+    fake_inotify_init_result = 90;
+    fake_inotify_add_result = 1;
+    fake_ppoll_result = 1;
+    fake_ppoll_revents = POLLIN;
+    set_fake_open_script(open_results, 2U);
+    set_fake_read_script(read_steps, 1U);
+    fake_now_ms = 1000;
+    fb_fd = -1;
+    ok &= check(open_fixed_framebuffer() == 0 && fb_fd == 72 &&
+                    fake_open_calls == 2U && fake_ppoll_calls == 1U &&
+                    fake_sleep_calls == 0U && fake_close_calls == 1U &&
+                    fake_clock_calls == 2U,
+                "framebuffer overflow did not perform one recovery probe");
+    fb_fd = -1;
+
+    /* Truncated event records and a bounded timeout fail closed and release
+     * the watch rather than falling into repeated namespace probes. */
+    read_steps[0].result = 1;
+    read_steps[0].payload = (const char *)events;
+    open_results[0] = -ENOENT;
+    reset_fake_file(-ENOENT, 0, 0);
+    fake_close_calls = 0U;
+    fake_sleep_calls = 0U;
+    fake_inotify_init_result = 90;
+    fake_inotify_add_result = 1;
+    fake_ppoll_result = 1;
+    fake_ppoll_revents = POLLIN;
+    set_fake_open_script(open_results, 1U);
+    set_fake_read_script(read_steps, 1U);
+    fake_now_ms = 1000;
+    fb_fd = -1;
+    ok &= check(open_fixed_framebuffer() < 0 && fb_fd == -1 &&
+                    fake_open_calls == 1U && fake_ppoll_calls == 1U &&
+                    fake_sleep_calls == 0U && fake_close_calls == 1U &&
+                    fake_clock_calls == 2U,
+                "truncated framebuffer event did not fail closed");
+
+    reset_fake_file(-ENOENT, 0, 0);
+    fake_close_calls = 0U;
+    fake_sleep_calls = 0U;
+    fake_inotify_init_result = 90;
+    fake_inotify_add_result = 1;
+    fake_ppoll_result = 0;
+    open_results[0] = -ENOENT;
+    set_fake_open_script(open_results, 1U);
+    fake_now_ms = 1000;
+    fb_fd = -1;
+    ok &= check(open_fixed_framebuffer() < 0 && fb_fd == -1 &&
+                    fake_open_calls == 1U && fake_ppoll_calls == 1U &&
+                    fake_sleep_calls == 0U && fake_close_calls == 1U &&
+                    fake_clock_calls == 2U,
+                "framebuffer watch timeout leaked or polled the node");
+
+    /* Keep the old bounded 1-ms retry only when inotify cannot be established.
+     * The fallback remains capable of recovering a node that appears later. */
+    reset_fake_file(-ENOENT, 0, 0);
+    fake_close_calls = 0U;
+    fake_sleep_calls = 0U;
+    fake_inotify_init_result = -EBADF_LINUX;
+    open_results[0] = -ENOENT;
+    open_results[1] = 73;
+    set_fake_open_script(open_results, 2U);
+    fake_now_ms = 1000;
+    fb_fd = -1;
+    ok &= check(open_fixed_framebuffer() == 0 && fb_fd == 73 &&
+                    fake_inotify_init_calls == 1U &&
+                    fake_inotify_add_calls == 0U &&
+                    fake_open_calls == 2U && fake_ppoll_calls == 0U &&
+                    fake_sleep_calls == 1U && fake_close_calls == 0U,
+                "framebuffer inotify failure lost the bounded polling fallback");
+    fb_fd = -1;
+
+    reset_fake_file(74, 0, 0);
+    fake_close_calls = 0U;
+    fake_sleep_calls = 0U;
+    fake_inotify_init_result = 90;
+    fake_inotify_add_result = -EIO_LINUX;
+    fake_now_ms = 1000;
+    fb_fd = -1;
+    ok &= check(open_fixed_framebuffer() == 0 && fb_fd == 74 &&
+                    fake_inotify_init_calls == 1U &&
+                    fake_inotify_add_calls == 1U &&
+                    fake_open_calls == 1U && fake_ppoll_calls == 0U &&
+                    fake_sleep_calls == 0U && fake_close_calls == 1U,
+                "failed framebuffer watch was not closed before fallback");
+    fb_fd = -1;
     return ok;
 }
 
@@ -4448,6 +4677,7 @@ int main(void) {
     ok &= run_user_reload_handoff_tests();
     ok &= run_storage_handoff_tests();
     ok &= run_event_driven_input_discovery_tests();
+    ok &= run_event_driven_framebuffer_discovery_tests();
 
     /* ENOENT alone establishes a new, successfully loaded empty collection. */
     reset_favorites();
