@@ -74,11 +74,14 @@ grep -Fq 'IFS= read -r MAX <"$BACKLIGHT/max_brightness"' "$EARLY_SOURCE"
 ! grep -q 'early_input_module=loaded' "$EARLY_SOURCE"
 grep -Fq "'early_storage_fifo=failed'" "$EARLY_SOURCE"
 grep -Fq "'early_input_module=failed'" "$EARLY_SOURCE"
-! grep -Eq 'log_leds(root|\\s)' "$EARLY_SOURCE"
+! grep -q 'log_leds root-ready' "$EARLY_SOURCE"
+! grep -Eq 'log_leds handoff([[:space:]]|$)' "$EARLY_SOURCE"
+[ "$(grep -c 'log_leds root-timeout' "$EARLY_SOURCE")" = 1 ]
+[ "$(grep -c 'log_leds handoff-missing' "$EARLY_SOURCE")" = 1 ]
 ! grep -q 'final-root storage signalled' "$EARLY_SOURCE"
 ! grep -q 'storage anchor acknowledged' "$EARLY_SOURCE"
 ! grep -q 'persistent-owner uptime' "$EARLY_SOURCE"
-[ "$(grep -c '/proc/uptime' "$EARLY_SOURCE")" = 0 ]
+[ "$(grep -c '/proc/uptime' "$EARLY_SOURCE")" = 2 ]
 
 printf '0\n' >"$BACKLIGHT/bl_power"
 

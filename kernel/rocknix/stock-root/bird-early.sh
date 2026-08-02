@@ -13,6 +13,19 @@ BACKLIGHT=/sys/class/backlight/backlight
 STORAGE_MARKER=$RUN/bird-storage-anchor-ready
 STORAGE_SIGNAL=$RUN/bird-storage-ready
 
+log_leds() {
+	STAGE=$1
+	for NAME in green:power red:status; do
+		LED=/sys/class/leds/$NAME
+		printf 'early_led stage=%s name=%s brightness=' "$STAGE" "$NAME"
+		if [ -r "$LED/brightness" ]; then
+			$BUSYBOX cat "$LED/brightness"
+		else
+			printf '%s\n' missing
+		fi
+	done
+}
+
 set_early_brightness() {
 	IFS= read -r MAX <"$BACKLIGHT/max_brightness"
 	RAW=$((5 * MAX / 100))
@@ -45,8 +58,11 @@ case "${1:-}" in
 			if [ "$STORAGE_FIFO" != ready ]; then
 				printf '%s\n' 'early_storage_fifo=failed'
 			fi
-			if ! $BUSYBOX insmod "$JOYPAD" 2>&1; then
+			if $BUSYBOX insmod "$JOYPAD" 2>&1; then
+				:
+			else
 				printf '%s\n' 'early_input_module=failed'
+				$BUSYBOX dmesg | $BUSYBOX tail -n 30
 			fi
 			COUNT=0
 			while [ "$COUNT" -lt 500 ]; do
@@ -62,7 +78,7 @@ case "${1:-}" in
 			# ownership failure, never between display preparation and launcher
 			# dispatch.
 		} >"$LOG" 2>&1
-		"$LAUNCHER" &
+		"$LAUNCHER" >>"$LOG" 2>&1 &
 		printf '%s\n' "$!" >"$PID_FILE"
 		;;
 	root-ready)
@@ -85,7 +101,9 @@ case "${1:-}" in
 			$BUSYBOX usleep 1000
 			COUNT=$((COUNT + 1))
 		done
-		printf '%s\n' 'Bird final-root storage timeout waiting for storage' >>"$LOG"
+		printf 'Bird final-root storage timeout wait_ms=%s uptime=' "$COUNT" >>"$LOG"
+		$BUSYBOX cut -d ' ' -f 1 /proc/uptime >>"$LOG"
+		log_leds root-timeout >>"$LOG" 2>&1
 		# Never preserve a launcher that cannot reach content. Its framebuffer
 		# remains visible while the normal final-root supervisor takes over.
 		if [ -s "$PID_FILE" ]; then
@@ -93,7 +111,8 @@ case "${1:-}" in
 			case "$PID" in *[!0-9]*|'') PID= ;; esac
 			if [ -n "$PID" ]; then
 				$BUSYBOX kill -TERM "$PID" 2>/dev/null || :
-				printf 'Bird final-root timeout retired pid=%s\n' "$PID" >>"$LOG"
+				printf 'Bird final-root timeout retired pid=%s uptime=' "$PID" >>"$LOG"
+				$BUSYBOX cut -d ' ' -f 1 /proc/uptime >>"$LOG"
 			fi
 			$BUSYBOX rm -f "$PID_FILE"
 		fi
@@ -107,6 +126,7 @@ case "${1:-}" in
 				exit 0
 			fi
 		fi
+		log_leds handoff-missing >>"$LOG" 2>&1
 		printf '%s\n' 'Bird early-init owner missing before mount move' >>"$LOG"
 		;;
 	*)
