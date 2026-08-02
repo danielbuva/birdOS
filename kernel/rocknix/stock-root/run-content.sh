@@ -387,14 +387,20 @@ ensure_content_services() {
 	# Bird can be selected before the background compatibility graph completes.
 	# Join only the services every proven application session actually needs.
 	systemctl start dbus.service 8>&- 9>&- || return 1
-	systemctl start pipewire.service wireplumber.service \
-		pipewire-pulse.service 8>&- 9>&- || return 1
-	# The writable ROCKNIX image can persist a muted internal route even while
-	# every audio service, app stream and ALSA control looks healthy. Reapply the
-	# saved Bird volume and explicitly clear that route mute before every app.
-	"$TIMEOUT_PROGRAM" --signal=TERM --kill-after=1s 3s \
-		/storage/.config/bird/bird-volume.sh restore \
-		8>&- 9>&- || return 1
+	# Keep service residency minimal to reduce content launch wakeups:
+	# only MPV media launches currently require PipeWire/pulse restoration
+	# guarantees in this fixed profile.
+	if [ "$SESSION_MODE" = content ] && [ "$KIND" = 6 ]; then
+		systemctl start pipewire.service wireplumber.service \
+			pipewire-pulse.service 8>&- 9>&- || return 1
+		# The writable ROCKNIX image can persist a muted internal route even while
+		# every audio service, app stream and ALSA control looks healthy. Reapply
+		# the saved Bird volume and explicitly clear that route mute before every
+		# media app launch.
+		"$TIMEOUT_PROGRAM" --signal=TERM --kill-after=1s 3s \
+			/storage/.config/bird/bird-volume.sh restore \
+			8>&- 9>&- || return 1
+	fi
 	content_stage services-ready
 }
 
