@@ -4,62 +4,125 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../../.." && pwd)
 POLICY=$ROOT/kernel/rocknix/stock-root/mpv-input.conf
-CLEAN_POLICY=$ROOT/kernel/rocknix/clean-root/mpv-input.conf
+CONTROLS=$ROOT/kernel/rocknix/stock-root/bird-mpv-controls.c
+PLAYER=$ROOT/kernel/rocknix/stock-root/bird-mpv-player.sh
+RUNNER=$ROOT/kernel/rocknix/stock-root/run-content.sh
+TMP=$(mktemp -d "${TMPDIR:-/tmp}/bird-mpv-player.XXXXXX")
+trap 'rm -rf "$TMP"' EXIT INT TERM HUP
 
-EXPECTED_KEYS='GAMEPAD_ACTION_DOWN
-GAMEPAD_ACTION_RIGHT
-GAMEPAD_ACTION_LEFT
-GAMEPAD_ACTION_UP
-GAMEPAD_DPAD_LEFT
-GAMEPAD_DPAD_RIGHT
-GAMEPAD_DPAD_DOWN
-GAMEPAD_DPAD_UP
-GAMEPAD_LEFT_SHOULDER
-GAMEPAD_RIGHT_SHOULDER
-VOLUME_DOWN
-VOLUME_UP'
-
-ACTUAL_KEYS=$(awk 'NF && $1 !~ /^#/ { print $1 }' "$POLICY")
-[ "$ACTUAL_KEYS" = "$EXPECTED_KEYS" ] || {
-	printf '%s\n' 'active MPV control policy has missing, duplicate, or reordered keys' >&2
+[ "$(awk 'NF && $1 !~ /^#/ { print $1 }' "$POLICY")" = \
+"VOLUME_DOWN
+VOLUME_UP" ] || {
+	printf '%s\n' 'active MPV policy contains a second gamepad translation path' >&2
 	exit 1
 }
+grep -Fxq 'VOLUME_DOWN ignore' "$POLICY"
+grep -Fxq 'VOLUME_UP ignore' "$POLICY"
+! grep -Eq '^GAMEPAD_' "$POLICY"
 
-for BINDING in \
-	'GAMEPAD_ACTION_DOWN cycle pause' \
-	'GAMEPAD_ACTION_RIGHT ignore' \
-	'GAMEPAD_ACTION_LEFT cycle sub' \
-	'GAMEPAD_ACTION_UP show-progress' \
-	'GAMEPAD_DPAD_LEFT seek -5' \
-	'GAMEPAD_DPAD_RIGHT seek 5' \
-	'GAMEPAD_DPAD_DOWN seek -60' \
-	'GAMEPAD_DPAD_UP seek 60' \
-	'GAMEPAD_LEFT_SHOULDER add volume -2' \
-	'GAMEPAD_RIGHT_SHOULDER add volume 2' \
-	'VOLUME_DOWN ignore' \
-	'VOLUME_UP ignore'; do
-	grep -Fxq "$BINDING" "$POLICY" || {
-		printf 'missing exact active MPV binding: %s\n' "$BINDING" >&2
+grep -Fq -- '--input-gamepad=no' "$PLAYER"
+grep -Fq -- '--input-default-bindings=no' "$PLAYER"
+grep -Fq -- '--input-conf=/flash/bird/mpv-input.conf' "$PLAYER"
+grep -Fq '/flash/bird/bird-mpv-controls' "$PLAYER"
+grep -Fq 'set_kill set "mpv"' "$PLAYER"
+grep -Fq 'set_kill stop' "$PLAYER"
+if awk '$1 !~ /^#/ { print }' "$PLAYER" | \
+	grep -Eq 'start_mplayer|systemctl[[:space:]]+start[[:space:]]+mpv'; then
+	printf '%s\n' 'fixed player still starts the retained mpv_sense reader' >&2
+	exit 1
+fi
+grep -Fq 'run_managed "$MPV_PLAYER" "$CONTENT"' "$RUNNER"
+
+# Fixed physical map from the accepted RG34XX-SP labels. Audio selection is a
+# shoulder+Select chord, never a face-button alias. Menu+D-pad picture controls
+# are Bird extensions and cannot overlap ordinary seeking.
+for TOKEN in \
+	'code == BTN_EAST' \
+	'code == BTN_SOUTH' \
+	'code == BTN_WEST' \
+	'code == BTN_NORTH' \
+	'command_pause' \
+	'command_frame_step' \
+	'command_mute' \
+	'command_progress' \
+	'command_chapter_previous' \
+	'command_chapter_next' \
+	'command_playlist_previous' \
+	'command_playlist_next' \
+	'PENDING_BUTTON_AUDIO' \
+	'command_contrast_down' \
+	'command_contrast_up' \
+	'command_saturation_down' \
+	'command_saturation_up' \
+	'BIRD_DEVICE_INPUT_PREFERRED_EVENT' \
+	'h700_input_contract_matches' \
+	'EVIOCGKEY_768' \
+	'discard_until_syn_report' \
+	'open_synchronized_input' \
+	'disconnect_ipc' \
+	'sys_ppoll'; do
+	grep -Fq "$TOKEN" "$CONTROLS" || {
+		printf 'missing fixed MPV control token: %s\n' "$TOKEN" >&2
 		exit 1
 	}
 done
 
-# Physical face-button presses can produce overlapping MPV/SDL actions. The
-# secondary action must therefore be harmless and no face action may cycle
-# audio tracks.
-[ "$(grep -Ec '^[^#]+[[:space:]]cycle[[:space:]]+pause([[:space:]]|$)' "$POLICY")" = 1 ]
-! grep -Eq '^[^#]+[[:space:]]cycle[[:space:]]+audio([[:space:]]|$)' "$POLICY"
-! grep -Eq '^[^#]+[[:space:]]cycle[[:space:]]+audio([[:space:]]|$)' "$CLEAN_POLICY"
+grep -Fq 'state->select_held && state->start_held' "$CONTROLS"
+grep -Fq 'state->select_pending = PENDING_BUTTON_NONE' "$CONTROLS"
+grep -Fq 'SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC' "$CONTROLS"
+grep -Fq 'MSG_NOSIGNAL' "$CONTROLS"
 
-# MPV 0.38 on the retained ROCKNIX image can repeat a trigger command after
-# release. Keep both triggers absent rather than assigning a hazardous action.
-if grep -Eq '^GAMEPAD_(LEFT|RIGHT)_TRIGGER[[:space:]]' "$POLICY"; then
-	printf '%s\n' 'unsafe MPV trigger binding reintroduced' >&2
+# Exercise the exact player boundary with host stubs. It must start one fixed
+# control owner, disable both retained MPV gamepad paths, preserve geometry and
+# content arguments, and remove the IPC endpoint on return.
+cat >"$TMP/controls" <<'EOF'
+#!/bin/sh
+printf '%s\n' start >>"$BIRD_TEST_EVENTS"
+trap 'printf "%s\n" stop >>"$BIRD_TEST_EVENTS"; exit 0' TERM INT HUP
+while :; do sleep 1; done
+EOF
+cat >"$TMP/mpv" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$@" >"$BIRD_TEST_ARGS"
+sleep 0.1
+EOF
+cat >"$TMP/profile" <<'EOF'
+set_kill() {
+	printf 'set_kill %s %s\n' "$1" "${2:-}" >>"$BIRD_TEST_EVENTS"
+}
+EOF
+cat >"$TMP/fbwidth" <<'EOF'
+#!/bin/sh
+printf '%s\n' 720
+EOF
+cat >"$TMP/fbheight" <<'EOF'
+#!/bin/sh
+printf '%s\n' 480
+EOF
+chmod 0755 "$TMP/controls" "$TMP/mpv" "$TMP/fbwidth" "$TMP/fbheight"
+: >"$TMP/movie.mkv"
+[ ! -e /tmp/mpvsocket ] || {
+	printf '%s\n' 'host MPV socket already exists; refusing destructive wrapper test' >&2
 	exit 1
-fi
-if grep -Eq '^GAMEPAD_(LEFT|RIGHT)_TRIGGER[[:space:]]' "$CLEAN_POLICY"; then
-	printf '%s\n' 'unsafe clean-root MPV trigger binding reintroduced' >&2
-	exit 1
-fi
+}
+BIRD_MPV_CONTROLS=$TMP/controls \
+BIRD_MPV_PROGRAM=$TMP/mpv \
+BIRD_FBWIDTH_PROGRAM=$TMP/fbwidth \
+BIRD_FBHEIGHT_PROGRAM=$TMP/fbheight \
+BIRD_PROFILE_PATH=$TMP/profile \
+BIRD_TEST_EVENTS=$TMP/events \
+BIRD_TEST_ARGS=$TMP/args \
+	"$PLAYER" "$TMP/movie.mkv"
+grep -Fxq start "$TMP/events"
+grep -Fxq stop "$TMP/events"
+grep -Fxq 'set_kill set mpv' "$TMP/events"
+grep -Fxq 'set_kill stop ' "$TMP/events"
+grep -Fxq -- '--input-gamepad=no' "$TMP/args"
+grep -Fxq -- '--input-default-bindings=no' "$TMP/args"
+grep -Fxq -- '--geometry=720x480' "$TMP/args"
+grep -Fxq -- "$TMP/movie.mkv" "$TMP/args"
+grep -Fxq -- '--input-ipc-server=/tmp/mpvsocket' "$TMP/args"
+[ ! -e /tmp/mpvsocket ]
 
+"$ROOT/kernel/rocknix/tests/test-mpv-controls-c.sh"
 printf '%s\n' 'stock-root MPV controls tests: PASS'

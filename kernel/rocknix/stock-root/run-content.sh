@@ -131,6 +131,7 @@ SWAY_SOCKET=/var/run/0-runtime-dir/sway-ipc.0.sock
 SESSION_MODE=content
 PORT_PREP=/storage/.config/bird/prepare-ports.sh
 NETWORK=/storage/.config/bird/bird-network.sh
+MPV_PLAYER=${BIRD_MPV_PLAYER:-/flash/bird/bird-mpv-player.sh}
 SESSION_PID=/run/bird/content-session.pid
 SESSION_DIR=/run/bird/content-sessions
 SCOPE_UNIT=
@@ -1643,7 +1644,7 @@ run_selected() {
 			;;
 		6)
 			install_mpv_input_policy || return 1
-			run_managed /usr/bin/start_mplayer.sh "$CONTENT"
+			run_managed "$MPV_PLAYER" "$CONTENT"
 			;;
 		7)
 			case "$HOST_PATH" in

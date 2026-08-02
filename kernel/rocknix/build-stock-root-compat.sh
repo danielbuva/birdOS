@@ -248,6 +248,8 @@ CATALOG_SHA=$(sha256 "$ROOT/launcher/catalog.generated.h")
 		'--target=aarch64-linux-gnu -mcpu=cortex-a53 -Os -ffreestanding -ffunction-sections -fdata-sections -fno-builtin -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-ident -fvisibility=hidden -nostdlib -Wall -Wextra -Werror -c launcher/bird-pidwait.c'
 	printf 'bird-fixed-controls-compile\trelease\t%s\n' \
 		'--target=aarch64-linux-gnu -mcpu=cortex-a53 -Os -ffreestanding -ffunction-sections -fdata-sections -fno-builtin -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-ident -fvisibility=hidden -nostdlib -Wall -Wextra -Werror -I launcher -c kernel/rocknix/stock-root/bird-fixed-controls.c'
+	printf 'bird-mpv-controls-compile\trelease\t%s\n' \
+		'--target=aarch64-linux-gnu -mcpu=cortex-a53 -Os -ffreestanding -ffunction-sections -fdata-sections -fno-builtin -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-ident -fvisibility=hidden -nostdlib -Wall -Wextra -Werror -I launcher -c kernel/rocknix/stock-root/bird-mpv-controls.c'
 	printf 'bird-powerstate-compile\trelease\t%s\n' \
 		'--target=aarch64-linux-gnu -mcpu=cortex-a53 -Os -ffreestanding -ffunction-sections -fdata-sections -fno-builtin -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-ident -fvisibility=hidden -nostdlib -Wall -Wextra -Werror -c launcher/bird-powerstate.c'
 	printf 'small-worker-link\trelease\t%s\n' \
@@ -377,6 +379,24 @@ fi
 	-fno-builtin -fno-stack-protector -fno-unwind-tables \
 	-fno-asynchronous-unwind-tables -fno-ident -fvisibility=hidden \
 	-nostdlib -Wall -Wextra -Werror \
+	-I "$ROOT/launcher" \
+	-c "$ROOT/kernel/rocknix/stock-root/bird-mpv-controls.c" \
+	-o "$OUTPUT/build/bird-mpv-controls.o"
+"$LLD" -static --gc-sections --build-id=none -z noexecstack -s \
+	-e _start -o "$OUTPUT/card/bird/bird-mpv-controls" \
+	"$OUTPUT/build/bird-mpv-controls.o"
+chmod 0755 "$OUTPUT/card/bird/bird-mpv-controls"
+file "$OUTPUT/card/bird/bird-mpv-controls" | \
+	grep -q 'ARM aarch64.*statically linked' || fail 'MPV controls are not static AArch64'
+if "$READELF" -l "$OUTPUT/card/bird/bird-mpv-controls" | grep -q ' INTERP '; then
+	fail 'MPV controls unexpectedly have an interpreter'
+fi
+
+"$CLANG" --target=aarch64-linux-gnu -mcpu=cortex-a53 -Os \
+	-ffreestanding -ffunction-sections -fdata-sections \
+	-fno-builtin -fno-stack-protector -fno-unwind-tables \
+	-fno-asynchronous-unwind-tables -fno-ident -fvisibility=hidden \
+	-nostdlib -Wall -Wextra -Werror \
 	-c "$ROOT/launcher/bird-powerstate.c" \
 	-o "$OUTPUT/build/bird-powerstate.o"
 "$LLD" -static --gc-sections --build-id=none -z noexecstack -s \
@@ -405,7 +425,7 @@ for FILE in 090-ui_service 999-export essway.service rocknix.target \
 	NetworkManager.service iwd.service systemd-resolved.service \
 	systemd-timesyncd.service systemd-rfkill.service \
 	bird-fixed-controls.service \
-	bird-powerstate.service supervisor.sh run-content.sh \
+	bird-powerstate.service supervisor.sh run-content.sh bird-mpv-player.sh \
 	prepare-ports.sh verify-portmaster-provider.sh \
 	portmaster-provider.manifest.tsv fixed-storage.sh first-frame-prep.sh \
 	capture-boot-state.sh bird-network.sh bird-fixed-control-exit.sh \
@@ -438,6 +458,7 @@ chmod 0755 "$OUTPUT/card/post-flash.sh" "$OUTPUT/card/mount-storage.sh" \
 	"$OUTPUT/card/bird/090-ui_service" \
 	"$OUTPUT/card/bird/999-export" \
 	"$OUTPUT/card/bird/supervisor.sh" "$OUTPUT/card/bird/run-content.sh" \
+	"$OUTPUT/card/bird/bird-mpv-player.sh" \
 	"$OUTPUT/card/bird/prepare-ports.sh" \
 	"$OUTPUT/card/bird/verify-portmaster-provider.sh" \
 	"$OUTPUT/card/bird/fixed-storage.sh" \
@@ -521,14 +542,24 @@ if grep -Fq 'rm -rf "$PORTMASTER"' \
 	fail 'PortMaster runtime still deletes an installed provider'
 fi
 grep -q '^VOLUME_UP ignore$' "$OUTPUT/card/bird/mpv-input.conf" || fail 'MPV volume policy missing'
-grep -q '^GAMEPAD_ACTION_RIGHT ignore$' "$OUTPUT/card/bird/mpv-input.conf" || \
-	fail 'MPV overlapping pause action is not neutralized'
-grep -q '^GAMEPAD_ACTION_UP cycle audio$' "$OUTPUT/card/bird/mpv-input.conf" || \
-	fail 'MPV independent audio-track action missing'
-if grep -Eq '^GAMEPAD_ACTION_(DOWN|RIGHT)[[:space:]].*cycle[[:space:]]+audio([[:space:]]|$)' \
-	"$OUTPUT/card/bird/mpv-input.conf"; then
-	fail 'MPV pause path still overlaps audio-track selection'
+if grep -q '^GAMEPAD_' "$OUTPUT/card/bird/mpv-input.conf"; then
+	fail 'MPV policy still contains a second gamepad translation path'
 fi
+grep -Fq -- '--input-gamepad=no' "$OUTPUT/card/bird/bird-mpv-player.sh" || \
+	fail 'MPV SDL gamepad path is not disabled'
+grep -Fq -- '--input-default-bindings=no' \
+	"$OUTPUT/card/bird/bird-mpv-player.sh" || \
+	fail 'MPV default input path is not disabled'
+grep -Fq '/flash/bird/bird-mpv-controls' \
+	"$OUTPUT/card/bird/bird-mpv-player.sh" || \
+	fail 'fixed MPV controls are not launched'
+grep -Fq 'set_kill set "mpv"' "$OUTPUT/card/bird/bird-mpv-player.sh" || \
+	fail 'MPV fake-suspend process publication is missing'
+grep -Fq 'set_kill stop' "$OUTPUT/card/bird/bird-mpv-player.sh" || \
+	fail 'MPV fake-suspend process cleanup is missing'
+grep -Fq 'run_managed "$MPV_PLAYER" "$CONTENT"' \
+	"$OUTPUT/card/bird/run-content.sh" || \
+	fail 'content runner does not use the fixed MPV player'
 grep -q "RESUME='save-position-on-quit=yes'" \
 	"$OUTPUT/card/bird/run-content.sh" || fail 'MPV resume policy missing'
 grep -q "RESUME_OPTIONS='watch-later-options=start'" \

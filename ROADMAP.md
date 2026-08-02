@@ -419,12 +419,35 @@ The active and previous releases carry byte-identical MPV input policy, so that
 content-control defect is not attributed to the early-shell subtraction. It
 nevertheless blocks combined-candidate acceptance.
 
-The bounded correction makes the overlapping SDL action harmless with an
-explicit `GAMEPAD_ACTION_RIGHT ignore` override and moves the one audio-track
-binding to the independent Y action. It removes the redundant progress-only
-binding; seeking and pausing retain MPV's ordinary OSD feedback. The candidate
-changes only the final-root MPV policy and its focused test. It adds no boot
-work, resident process, timer, framebuffer traffic or menu-input work.
+The first bounded correction made `GAMEPAD_ACTION_RIGHT` harmless and moved
+audio-track selection to `GAMEPAD_ACTION_UP`. Hardware disproved the assumption
+that this was independent: west retained its original time-details behavior but
+also changed tracks, south paused correctly, and east both paused and changed
+tracks. A second policy-only move cannot establish one-command ownership.
+
+Active-path inspection found the cause: retained `start_mplayer.sh` starts the
+raw-evdev `mpv_sense` service and also enables MPV's SDL gamepad reader. Both
+consume the H700 event stream, and the shell service additionally forks
+`evtest`, `udevadm`, `echo` and `socat` work. The Stage 4 correction therefore
+uses one media-lifetime freestanding process to validate the fixed input
+contract and send MPV JSON IPC directly. The player wrapper starts neither
+`mpv_sense` nor SDL/default input handling, but preserves the provider's
+`set_kill set "mpv"` fake-suspend freeze contract and clears it on return.
+Ordinary media idle blocks in `ppoll`; an IPC retry timer exists only before
+the MPV socket is available or while reconnecting. Evdev overflow is discarded
+through `SYN_REPORT` and held modifiers are resynchronized from the device.
+IPC reconnect clears unsent commands so a stale action cannot reach a new
+connection.
+
+The candidate restores the complete documented regular and one-handed control
+set: face actions, short/long seeks, chapters, playlists, subtitles and
+shoulder+Select audio-track cycling. Select+Start emits no media command and
+remains owned by the global exit worker. Menu+D-pad contrast and saturation
+steps are explicit Bird extensions. This final-root media path adds no boot or
+menu-idle work. Its priority-2 target is one command per physical edge without
+per-press process creation; its secondary priority-3/4 targets are fewer
+media-session tasks, wakeups and resident bytes. No device latency, energy or
+memory improvement is claimed before measurement.
 
 ### 3B — Persistent freestanding coordinator
 

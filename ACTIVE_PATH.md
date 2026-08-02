@@ -357,9 +357,27 @@ The returned Stage 3A boots recorded launcher/input/usable milestones of
 3739 ms. The user verified the rest of the functional gate. The release and
 its previous selector contain byte-identical MPV input policies, so the newly
 observed pause-plus-audio-track action was not introduced by the shell
-subtraction. The pending media correction explicitly ignores the overlapping
-`GAMEPAD_ACTION_RIGHT` event and moves audio-track selection to the independent
-Y action; it changes no boot, launcher or idle path.
+subtraction. Two attempted SDL-policy corrections then proved that changing
+`GAMEPAD_ACTION_*` aliases cannot make the path deterministic: physical west
+and east presses each retained one intended action while also changing audio
+tracks.
+
+Inspection found two simultaneous owners in the retained provider. ROCKNIX's
+`start_mplayer.sh` starts `mpv.service`/`mpv_sense`, which reads raw evdev and
+spawns `socat` commands, while the same wrapper starts MPV with
+`--input-gamepad=yes`. The pending Stage 4 correction replaces both media-only
+translation paths with one 6,424-byte freestanding `bird-mpv-controls` process.
+It validates the complete H700 contract, uses watch-before-scan discovery,
+discards overflowed evdev records through `SYN_REPORT`, resynchronizes held
+keys, reconnects IPC without replaying stale commands, blocks in `ppoll`, and
+sends direct JSON commands without per-press processes. The wrapper disables
+MPV default/SDL gamepad bindings and never starts `mpv_sense`, while retaining
+the provider's `mpv` freeze publication for fake suspend. The documented
+regular and one-handed controls, chapter, playlist, subtitle and
+shoulder+Select audio-track actions are preserved;
+Menu+D-pad adds isolated contrast and saturation steps. This candidate is
+loaded only after media selection and adds no initramfs, launcher, boot-time
+process, timer, framebuffer traffic or ordinary menu-idle work.
 
 ## Launcher visual architecture
 

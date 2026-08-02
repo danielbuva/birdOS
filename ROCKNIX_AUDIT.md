@@ -305,11 +305,25 @@ Returned Stage 3A hardware evidence recorded launcher/input/usable values of
 3739 ms. The broad menu/content path passed except that one movie pause press
 also cycled the audio track. Both the Stage 3A and preceding framebuffer
 releases contain the same MPV policy digest, so the shell subtraction did not
-introduce that binding. The separate correction explicitly ignores
-`GAMEPAD_ACTION_RIGHT`, which is the overlapping action, and assigns the sole
-audio-track command to the independent Y action. This is final-root content
-policy only: it does not alter launcher dispatch, initramfs work, menu input,
-framebuffer traffic, resident memory or idle wakeups.
+introduce that binding. Moving the audio command among SDL action aliases also
+failed: west and east each emitted an intended action plus audio-track change.
+
+The retained provider explains the overlap. `start_mplayer.sh` starts
+`mpv.service`, whose Bash `mpv_sense` discovers devices, runs multiple `evtest`
+readers and forks `echo | socat` for actions; the wrapper simultaneously passes
+`--input-gamepad=yes` to MPV. The pending correction bypasses that wrapper with
+a Bird wrapper that preserves fullscreen geometry and hardware decoding but
+disables SDL/default bindings. One 6,424-byte static AArch64 helper validates the
+fixed H700 name, ID and capability bitmaps, uses event-driven reconnect, and
+resynchronizes evdev state after overflow before sending direct JSON IPC
+commands. IPC loss reconnects without stale queued actions. The wrapper retains
+the `mpv` process-name publication used by fake suspend and removes it at
+provider return. The helper runs only for Listen/Watch content and blocks in
+`ppoll` after socket readiness, so it changes neither boot nor menu idle. Host
+tests cover every regular/one-handed command, chapters, playlists,
+subtitle/audio chords, Select+Start suppression, picture adjustments,
+`SYN_DROPPED`, bounded queuing and wrapper cleanup. Physical command mapping,
+content interaction and media-session task/wakeup/memory effects remain gated.
 
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
