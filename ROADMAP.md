@@ -651,6 +651,30 @@ brightness, volume and suspend behavior. This candidate does not block later
 content-readiness investigation if the reported early-selection fault remains
 intermittent.
 
+Boot ID `bf45b45b` accepts the recovery mechanism and turns the intermittent
+freeze into attributable evidence. The chord persisted 178,213 bytes, completed
+foreground cleanup and restored a retained-frame usable menu in about 656 ms;
+the same game then launched and returned normally. Initial
+launcher/input/usable-frame milestones were 1217/1218/1221 ms.
+
+The fault was a final-root systemd cycle, not a provider crash. The retained
+image enables powerstate from multi-user, Bird made it wait for essway, essway
+waits through graphical/seatd/multi-user, and systemd deleted the initial
+`essway.service` job at 5.268 s. The early launcher subsequently exited on a
+valid request with nobody available to dispatch it.
+
+The next bounded Stage 4 correctness candidate removes only
+`After=essway.service` from powerstate. Source
+`895e6a7ae557df3b202e6ac7b78234441b705c0e`, release
+`v6.23-ui-order-895e6a7` and manifest
+`fdf3e466ef85682c4b6de977ff8484c5bb9b24eddf953f4f6981eb206aa6e149`
+are deployed with the accepted recovery release as previous. The unit shrinks
+15 bytes; launcher and power-worker binaries are identical. No early-initramfs
+executable, boot task, timer, idle wakeup, framebuffer traffic or resident
+memory changes. The hardware gate requires both services active, no ordering
+cycle, repeated cold first-game launches and unchanged boot/UI behavior before
+the next content-latency subtraction.
+
 ## Stage 5 — Battery, suspend and memory closure
 
 Measure calibrated energy, wakeups, IRQs and CPU residency for short-label menu

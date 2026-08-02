@@ -19,20 +19,20 @@ display geometry and hardware policy are deliberate. Older muOS stages,
 source-kernel challengers and clean-root experiments remain useful evidence,
 but they are not alternate active implementations.
 
-The card currently selects the bounded Stage 4 emergency-recovery candidate
-`v6.23-emergency-recovery-e2c46b2`, built from clean source
-`e2c46b278c19974c2983aadc1249bcce9353f709`. Its previous selector is the
-physically accepted direct-flash checkpoint
-`v6.23-flash-launcher-12b8ff6`, not a rejected experiment. The selected
+The card currently selects the bounded Stage 4 final-root ordering candidate
+`v6.23-ui-order-895e6a7`, built from clean source
+`895e6a7ae557df3b202e6ac7b78234441b705c0e`. Its previous selector is the
+physically accepted emergency-recovery checkpoint
+`v6.23-emergency-recovery-e2c46b2`, not a rejected experiment. The selected
 candidate's canonical manifest digest is
-`cfe5864bd9a21805d14b625bc17945dd14eb38a5206593f22072ffcf1e640f91`,
+`fdf3e466ef85682c4b6de977ff8484c5bb9b24eddf953f4f6981eb206aa6e149`,
 and deployment verified all 57 manifest-owned files. The device-contract digest is
 `85ccb8e46e71ee66e2320022ac13228124d6efcea5abdd800b8c18bd190f73cd`
 and the generated-catalog digest is
 `7e29e491bb43191ca9ae6c18bd566b6ba0c984bf43d1d0103eddd6e534306e62`.
-The direct-flash checkpoint passed launch, return and broad functionality on
-boot ID `a4886df4`; the emergency-recovery candidate has passed host, build and
-deployment gates but still requires its RG34XX-SP recovery gate. Neither tuple
+The emergency-recovery checkpoint passed on boot ID `bf45b45b`; the ordering
+candidate has passed host, build and deployment gates but still requires its
+RG34XX-SP boot/content gate. Neither tuple
 replaces the broader source/behavior baseline or immutable fallback named above.
 
 ## Authority
@@ -518,6 +518,39 @@ ordinary idle wakeup; diagnostics and sync cost occur only when the emergency
 chord is deliberately invoked. Host dynamic-instruction counts are unavailable
 because Valgrind is not installed. Physical chord recovery, preserved logs and
 ordinary Select+Start behavior remain the device gate.
+
+Boot ID `bf45b45b` passes that recovery gate. The initial launcher started at
+1217 ms, validated input at 1218 ms and published a usable frame at 1221 ms.
+Menu+Select+Start at 75.887 s persisted a 178,213-byte snapshot, completed the
+managed foreground-exit path, cancelled the pending action and successfully
+requested the UI restart. A retained-frame menu was usable at 76.543 s without
+a reset. The same game then launched through RetroArch and returned with result
+0. Brightness, volume, media launch and shutdown also remained functional.
+
+The snapshot identifies the first-game freeze precisely. At 5.268 s systemd
+found an ordering cycle from the retained multi-user-enabled
+`powerstate.service`, through its `After=essway.service` edge, graphical target,
+seatd and back to multi-user/powerstate. It deleted `essway.service/start` to
+break the cycle. The early launcher later published the Atari request and
+exited normally at 27.157 s, but no supervisor existed to consume it. No game,
+RetroArch, OOM, input or kernel fault occurred before the freeze.
+
+The bounded correction removes only powerstate's invalid reverse ordering edge.
+`powerstate.service` remains requested by both the retained multi-user enablement
+and `rocknix.target`, while `essway` remains behind the stable graphical
+boundary. The unit shrinks from 291 to 276 bytes. The 597,336-byte launcher and
+5,528-byte power worker are byte-identical to the recovery checkpoint; there is
+no new task, timer, framebuffer byte, syscall loop, binary memory or early-boot
+work. This is final-root correctness after the already-usable menu, not a boot
+latency claim. It prevents systemd from sacrificing either the supervisor or
+power worker and therefore protects content interaction and power policy.
+
+Clean source `895e6a7ae557df3b202e6ac7b78234441b705c0e` is deployed as
+`v6.23-ui-order-895e6a7`, canonical manifest
+`fdf3e466ef85682c4b6de977ff8484c5bb9b24eddf953f4f6981eb206aa6e149`.
+All 57 manifest-owned files verified, with the accepted emergency checkpoint as
+the previous selector. Repeated cold first-game launch, both active unit states,
+ordinary recovery and boot non-inferiority remain the RG34XX-SP gate.
 
 ## Launcher visual architecture
 

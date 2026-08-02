@@ -404,6 +404,30 @@ syscall or idle wakeup. The controls binary adds 256 file bytes (`.text` +60,
 `.rodata` +192, `.bss` unchanged); the helper adds 6,254 immutable release
 bytes. Physical recovery and log-survival remain unclaimed until tested.
 
+Boot ID `bf45b45b` physically accepts emergency recovery. The chord at
+75.887 s sealed a 178,213-byte snapshot and restored a matched retained-frame
+menu by 76.543 s without resetting. The same Atari game then completed a normal
+RetroArch launch and return. Initial launcher/input/usable-frame timing was
+1217/1218/1221 ms.
+
+The snapshot proves the freeze preceded provider execution. Systemd reported
+the chain `powerstate -> essway -> graphical -> seatd -> multi-user ->
+powerstate` at 5.268 s and deleted `essway.service/start`. The launcher produced
+a valid request and exited at 27.157 s; process and unit snapshots later showed
+no supervisor, Sway or content process. The old menu pixels therefore had no
+input owner or dispatcher. Earlier result-137 content evidence belonged to a
+different boot and is not the cause of this incident.
+
+The correction deletes the `After=essway.service` edge while retaining both
+units in the fixed target. Clean source
+`895e6a7ae557df3b202e6ac7b78234441b705c0e` is deployed as
+`v6.23-ui-order-895e6a7`, manifest
+`fdf3e466ef85682c4b6de977ff8484c5bb9b24eddf953f4f6981eb206aa6e149`.
+The unit file falls from 291 to 276 bytes; the launcher and 5,528-byte power
+worker remain byte-identical. This adds no boot executable, process, timer,
+wakeup, framebuffer traffic or binary memory. Hardware must now show both
+services active and repeated first-game dispatch without an ordering cycle.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.
