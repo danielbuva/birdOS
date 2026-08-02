@@ -231,6 +231,24 @@ future bounded candidate must either replace the broad common/001 recovery or
 add an explicit fail-closed consumer. That fault-injection boundary is not part
 of this returned-card correctness repair.
 
+The physical follow-up accepted
+`v6.23-suspend-recovery-103ce3b` for continued work. The full functional screen
+passed and suspend was materially more reliable and predictable. Returned
+event records now contain provider resume completions plus exercised
+coordinator `queued` and `cancelled` transitions, proving the restored `off`
+policy reaches the intended fake-suspend transaction. One rapid power-button
+stress sequence reached the existing ten-second coordinator timeout. The user
+accepts that residual quirk for now; it is documented rather than silently
+treated as fixed.
+
+Cost attribution is post-usable: missing RetroArch prerequisites are checked
+during root preparation, and the fixed policy verifier runs in common
+autostart. On this card all prerequisites are present and the verifier performs
+read-only comparisons. It installs no resident process or timer and adds no
+ordinary idle wakeup. The launcher binary is byte-identical to the prior
+candidate, so no framebuffer, input, UI-instruction or launcher-memory delta is
+attributed to this repair.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.

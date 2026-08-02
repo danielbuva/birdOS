@@ -293,6 +293,26 @@ a performance claim. Its ordinary path removes the returned-card recovery
 trigger; fail-closed handling for a separately fault-injected common/001
 recovery failure remains a later retained-userspace hardening candidate.
 
+The RG34XX-SP gate accepted release
+`v6.23-suspend-recovery-103ce3b` (manifest
+`8f779e033385c51d2ebe441c21c637bb00920e7192b93fe4a79277a3924174a0`)
+for continued roadmap work. Menu, content and shutdown behavior passed, and
+power/lid suspend became substantially more reliable, consistent and
+predictable. The returned trace proves ordinary provider resume completion and
+the coordinator's queued/cancelled-intent paths. One deliberately rapid power
+sequence still reached the existing ten-second completion timeout; that and
+the remaining physical quirks are accepted-for-now and explicitly deferred.
+
+This repair did not enter power-to-usable work. The early launcher is
+byte-identical, and the new configuration checks run only during post-usable
+root preparation and retained common autostart. The accepted steady state adds
+no writes, resident process, timer or idle wakeup. Raw release content grew by
+1,855 bytes for the verifier and 1,835 bytes in `mount-storage.sh`; cpio block
+rounding kept the uncompressed early archive at 2,072,064 bytes and the gzip
+archive changed from 615,064 to 615,052 bytes. That compressed-size variation
+is not an optimization claim. No device energy or memory improvement is
+claimed without physical measurement.
+
 ## Stage 3 — Bootstrap progression
 
 ### 3A — Minimal shell
