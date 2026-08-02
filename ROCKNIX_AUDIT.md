@@ -355,6 +355,16 @@ suppression, reconnect snapshots and `SYN_DROPPED`. The launcher is
 byte-identical; the final-root helper's 280-byte file and six-byte loadable
 section increases do not create a boot or menu-idle cost.
 
+The RG34XX-SP gate passes the complete successor control contract on boot ID
+`347650ca`, including chaptered `Angel's Egg.mkv`, provider exit and matched
+retained-frame return. The early log recorded launcher start at 1218 ms,
+validated input at 1219 ms, usable frame at 1222 ms and storage at 3945 ms.
+The content log then attributed request/session/application-contract/Sway/
+provider-dispatch milestones to 7.558/10.09/12.21/14.04/14.29 seconds. Provider
+return at 73.98 seconds preceded launcher restart and usable retained-frame
+publication at 74.324 and 74.377 seconds. These are one-run kernel-relative
+stage observations, not physical content-photon or distribution claims.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.

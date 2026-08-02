@@ -30,8 +30,9 @@ digest is `85ccb8e46e71ee66e2320022ac13228124d6efcea5abdd800b8c18bd190f73cd`
 and the generated-catalog digest is
 `7e29e491bb43191ca9ae6c18bd566b6ba0c984bf43d1d0103eddd6e534306e62`.
 It retains the Stage 3A early-shell subtraction and one fixed media-lifetime
-input owner. The candidate remains pending the RG34XX-SP physical gate and does
-not replace the source/behavior baseline or immutable fallback named above.
+input owner. The RG34XX-SP media-control gate passed on boot ID `347650ca`; this
+tuple is the accepted Stage 4 MPV-control checkpoint. It does not replace the
+broader source/behavior baseline or immutable fallback named above.
 
 ## Authority
 
@@ -427,6 +428,25 @@ leak a bumper-volume action. The helper is 6,704 bytes, 280 bytes larger than
 the rejected helper; its loadable section total excluding `.comment` is 8,294
 bytes, six bytes larger. The launcher is byte-identical to the rejected
 release. These are host binary facts, not RG34XX-SP timing claims.
+
+The returned physical gate confirmed the complete control map, including
+one-frame B behavior, direct audio cycling, player-local volume and brightness,
+chapter navigation on chaptered content, subtitles, picture controls, exit and
+menu return. The same boot's early log recorded launcher start at 1218 ms,
+validated input at 1219 ms, honest usable frame at 1222 ms and storage at
+3945 ms. Its SHA-256 is
+`5ca5e2aaa8174ff7226271f1ae6416bc8870fc32363d1115f8b72beb574623a8`.
+The preceding candidate's latest sample was 1223 ms input and 1232 ms usable;
+the unpaired single samples establish functional non-regression only, not a
+boot improvement.
+
+This gate also establishes a content-interaction attribution baseline. The
+launcher published the MPV request at 7.558 s; the content session began at
+10.09 s, application contract became ready at 12.21 s, Sway became ready at
+14.04 s and provider dispatch began at 14.29 s. After provider return at
+73.98 s, the replacement launcher started at 74.324 s and published a matched
+retained-frame usable menu at 74.377 s. These kernel-relative stages do not
+substitute for button-to-photon or first-content-photon measurement.
 
 ## Launcher visual architecture
 

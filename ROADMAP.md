@@ -489,6 +489,19 @@ six loadable-section bytes; it adds no boot executable, menu task, timer or
 wakeup. Physical controls, media suspend, launch, exit and return remain the
 gate before promotion.
 
+Boot ID `347650ca` passes that physical control gate, so the exact tuple is the
+accepted Stage 4 MPV-control checkpoint. The returned early log recorded
+launcher start/input/usable-frame at 1218/1219/1222 ms and storage at 3945 ms.
+One earlier candidate sample recorded 1223 ms input and 1232 ms usability; this
+unpaired result is non-regression evidence, not a boot-time improvement claim.
+
+The same run provides the next content-interaction baseline: request at
+7.558 s, content-session start at 10.09 s, application contract at 12.21 s,
+Sway readiness at 14.04 s and provider dispatch at 14.29 s. Provider return at
+73.98 s was followed by replacement-launcher start at 74.324 s and matched
+retained-frame usability at 74.377 s. Optimize one attributable interval at a
+time and retain physical photon measurement as the promotion metric.
+
 ### 3B — Persistent freestanding coordinator
 
 `start` launches one long-lived coordinator. It owns a private
