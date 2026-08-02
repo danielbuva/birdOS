@@ -288,8 +288,8 @@ the retained suspend trace. That incomplete record cannot attribute the cause
 to the coordinator, provider, kernel or another power path. The quirk remains
 unproven and explicitly deferred while the plan advances.
 
-The next pending Stage 3A candidate subtracts only normal-success early-shell
-work. It replaces the pre-launch BusyBox maximum-brightness `cat` with a shell
+The retained Stage 3A candidate subtracts only normal-success early-shell work.
+It replaces the pre-launch BusyBox maximum-brightness `cat` with a shell
 builtin `read`, removes two brightness diagnostic writes, removes three
 concurrent/later uptime `cut` children and four normal root-ready/handoff LED
 `cat` children, and reserves LED inspection for failure evidence. Exact
@@ -364,6 +364,23 @@ provider-dispatch milestones to 7.558/10.09/12.21/14.04/14.29 seconds. Provider
 return at 73.98 seconds preceded launcher restart and usable retained-frame
 publication at 74.324 and 74.377 seconds. These are one-run kernel-relative
 stage observations, not physical content-photon or distribution claims.
+
+The next Stage 4 candidate removes only the largest remaining per-boot runtime
+copy. Clean source `12b8ff6906eebe86eac9431d690769fcc94db1c1` is deployed as
+`v6.23-flash-launcher-12b8ff6`, canonical manifest
+`44ce41ac87cea8f84a36ea1934c28b2d9ed3821d76bf8b864d2bc484ecececd5`,
+with all 56 files independently verified. Its previous selector is the accepted
+MPV-control checkpoint. The early launcher stays in initramfs and is
+byte-identical; only a final-root replacement executes from the selected
+immutable `/flash/bird/bird-launcher`.
+
+The writable preparation set falls from 19 copies/817,170 bytes to 18
+copies/219,817 bytes. This removes one `cp` child, one chmod operand, one
+destination check and 597,353 aggregate bytes (73.1 percent). No launcher code,
+framebuffer traffic, input work, resident task or timer changes. The likely
+benefit is less post-launch storage work and a shorter path to replacement
+launcher availability; boot, UI/content timing, transient memory and energy
+remain physical measurements rather than claims.
 
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
@@ -452,16 +469,18 @@ The v6.15 audit found the following generic work and defects. Only items marked
 
 ## Next active order
 
-1. Complete the Stage 3A normal-success early-shell subtraction and physical
-   non-regression gate.
-2. Audit udev coldplug output and let its manager exit if no retained feature
+1. Complete the direct-flash replacement-launcher functional, boot and
+   launch/return gate while retaining the accepted MPV release as fallback.
+2. If it passes, move the next final-root executable directly from the selected
+   immutable release as its own bounded candidate.
+3. Audit udev coldplug output and let its manager exit if no retained feature
    needs runtime hotplug; keep fixed hardware initialization separate from
    Bird.
-3. Audit logind versus seatd, journald policy, and remaining idle wakeups.
-4. Remove the muOS-to-ROCKNIX compatibility namespace as an explicit migration:
+4. Audit logind versus seatd, journald policy, and remaining idle wakeups.
+5. Remove the muOS-to-ROCKNIX compatibility namespace as an explicit migration:
    canonical `/storage/roms`, `/run/bird`, Bird-owned data/config directories,
    native BIOS/Ports paths and no launcher-time path rewriting.
-5. Re-measure menu, storage and application-contract boundaries before kernel
+6. Re-measure menu, storage and application-contract boundaries before kernel
    or U-Boot subtraction.
 
 ## Deliberately deferred

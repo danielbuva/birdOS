@@ -19,20 +19,22 @@ display geometry and hardware policy are deliberate. Older muOS stages,
 source-kernel challengers and clean-root experiments remain useful evidence,
 but they are not alternate active implementations.
 
-The card currently selects the Stage 4 media-control correction
-`v6.23-mpv-complete-controls-813226d`, built from clean source
-`813226d4c1b0fe9715bdae3f37d44485e4ad815f`, with the physically rejected
-`v6.23-mpv-single-input-f866fe7` retained as its previous selector. The current
-candidate manifest digest is
-`05f20822324d62be334a290f9567d341efc6f08243c14ab88adda43073d975a6`,
-and deployment verified all 56 of 56 manifest-owned files. The device-contract
-digest is `85ccb8e46e71ee66e2320022ac13228124d6efcea5abdd800b8c18bd190f73cd`
+The card currently selects the bounded Stage 4 direct-flash launcher candidate
+`v6.23-flash-launcher-12b8ff6`, built from clean source
+`12b8ff6906eebe86eac9431d690769fcc94db1c1`. Its previous selector is the
+physically accepted media-control checkpoint
+`v6.23-mpv-complete-controls-813226d`, not a rejected experiment. The selected
+candidate's canonical manifest digest is
+`44ce41ac87cea8f84a36ea1934c28b2d9ed3821d76bf8b864d2bc484ecececd5`,
+and independent post-deployment verification passed all 56 manifest-owned
+files. The device-contract digest is
+`85ccb8e46e71ee66e2320022ac13228124d6efcea5abdd800b8c18bd190f73cd`
 and the generated-catalog digest is
 `7e29e491bb43191ca9ae6c18bd566b6ba0c984bf43d1d0103eddd6e534306e62`.
-It retains the Stage 3A early-shell subtraction and one fixed media-lifetime
-input owner. The RG34XX-SP media-control gate passed on boot ID `347650ca`; this
-tuple is the accepted Stage 4 MPV-control checkpoint. It does not replace the
-broader source/behavior baseline or immutable fallback named above.
+The accepted MPV checkpoint passed on boot ID `347650ca`; the direct-flash
+candidate has passed host, build and deployment gates but still requires its
+RG34XX-SP functional and timing gate. Neither tuple replaces the broader
+source/behavior baseline or immutable fallback named above.
 
 ## Authority
 
@@ -244,8 +246,10 @@ True power-loss recovery requires the later U-Boot A/B design in the roadmap.
    full-stack attempt. Previous initramfs images keep
    their original top-level hook, so changing the extlinux selector is the only
    runtime activation boundary. The selected mount helper then publishes the
-   fixed ROM/BIOS view. Runtime files copied into the writable storage image
-   have their exact modes repaired by the pinned BusyBox in the already-mounted
+   fixed ROM/BIOS view. The replacement launcher now executes from the selected
+   immutable `/flash/bird` tree and is neither copied nor rewritten on p6.
+   Remaining compatibility files copied into the writable storage image have
+   their exact modes repaired by the pinned BusyBox in the already-mounted
    SYSTEM tree; the smaller initramfs BusyBox intentionally has no `chmod`
    applet. Init checks the selected mount helper's result explicitly. A failed
    storage transaction leaves the interactive early launcher in control and
@@ -257,7 +261,8 @@ True power-loss recovery requires the later U-Boot A/B design in the roadmap.
    mounts move. The same process remains the input owner across `switch_root`.
 6. **Final-root supervision:** systemd starts the stable birdOS supervisor at
    the graphical boundary. It adopts the early launcher through the PID waiter
-   or starts a replacement when adoption is unavailable. Launcher health races
+   or starts a replacement directly from `/flash/bird/bird-launcher` when
+   adoption is unavailable. Launcher health races
    first-frame readiness against child exit and uses bounded local recovery for
    recoverable startup failures. A usable early launcher may complete an
    authoritative content, shutdown or PortMaster handoff before
@@ -448,6 +453,37 @@ launcher published the MPV request at 7.558 s; the content session began at
 retained-frame usable menu at 74.377 s. These kernel-relative stages do not
 substitute for button-to-photon or first-content-photon measurement.
 
+### Direct-flash replacement-launcher candidate
+
+The next bounded Stage 4 candidate changes only the final-root replacement
+path. The original initramfs launcher remains `/opt/bird/bird-launcher` and
+retains framebuffer, input and storage ownership through `switch_root` exactly
+as before. If adoption or content return needs another launcher, the supervisor
+now executes `/flash/bird/bird-launcher` from the selected immutable release.
+`mount-storage.sh` no longer copies, chmods or verifies a second writable
+launcher under `/storage/.config/bird`. An old writable copy may remain as
+inert data; ordinary boot neither executes nor deletes it.
+
+Against the accepted MPV checkpoint, the per-boot writable copy set falls from
+19 regular-file copy operations and 817,170 source bytes to 18 operations and
+219,817 bytes. That is one fewer external `cp`, one fewer `chmod` operand, one
+fewer destination capability check and 597,353 fewer aggregate source bytes
+(73.1 percent); 597,336 bytes are the launcher itself and 17 bytes come from
+the shorter supervisor path. The final-root launcher remains exactly 597,336
+bytes with SHA-256
+`df44db7997c88cc1ee3d9cbcbf33bb56ca8b45712009299b8199d33b51725a18`.
+The early launcher remains exactly 600,600 bytes with SHA-256
+`2d82606ad6b4cc28ceebcdd5005bef54d13c3ad846ed7f7da945d9e2e91b1821`;
+both binaries are byte-identical to the accepted checkpoint. Profile-mode
+final-root and early variants also compile at 658,408 and 669,992 bytes.
+
+This is a storage/root-preparation and content-return candidate, not a launcher
+rendering change. Host launcher syscalls, dynamic instructions, framebuffer
+bytes, ELF sections and resident memory are unchanged by construction. It
+removes no resident task or idle timer. Device boot, UI/content interaction,
+transient memory and energy remain unmeasured; in particular, no boot or
+battery improvement is claimed until the RG34XX-SP gate passes.
+
 ## Launcher visual architecture
 
 The active 720x480 launcher presentation is inspired by Mister Menu's ES-DE
@@ -571,9 +607,9 @@ prewake was tested, reported success, produced no audible improvement and is
 not part of the active path.
 
 Kernel trimming, U-Boot timing, earlier LED/display assertion, emulator and
-PortMaster performance, final media controls, final boot effects and complete
-shim removal remain roadmap work. Their absence is not evidence that the
-active stock-root path is incomplete.
+PortMaster performance, remaining provider cold-load work, final boot effects
+and complete shim removal remain roadmap work. Their absence is not evidence
+that the active stock-root path is incomplete.
 
 ## Accepted v6.23 evidence
 

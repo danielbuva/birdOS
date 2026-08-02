@@ -601,6 +601,33 @@ analog amplifier/path, PipeWire suspension and UCM policy before changing
 residency or timing. The accepted path remains nonfatal state reconciliation at
 the provider boundary; it does not keep audio awake while the menu is idle.
 
+### Stage 4 direct-flash launcher candidate — 2026-08-02
+
+The first immutable-execution candidate moves only replacement launcher exec,
+not early ownership. Clean source
+`12b8ff6906eebe86eac9431d690769fcc94db1c1` is deployed as immutable release
+`v6.23-flash-launcher-12b8ff6` with canonical manifest
+`44ce41ac87cea8f84a36ea1934c28b2d9ed3821d76bf8b864d2bc484ecececd5`.
+All 56 manifest-owned files verified, and the physically accepted
+`v6.23-mpv-complete-controls-813226d` release is the previous selector.
+
+The initramfs launcher and its ownership/handoff contract are byte-identical.
+The supervisor executes a necessary replacement from
+`/flash/bird/bird-launcher`; root preparation no longer copies, chmods or
+verifies the 597,336-byte launcher under writable storage. Including the
+17-byte supervisor shrink, the per-boot copy payload falls from 817,170 to
+219,817 bytes (73.1 percent), with one fewer `cp` process, one fewer mode
+operand and one fewer destination capability check. Release and profile
+final-root/early launcher variants compile; the release launchers remain
+byte-identical to the accepted checkpoint.
+
+This targets final-root preparation and content return. It does not change
+launcher rendering, input, early-initramfs execution, resident tasks or idle
+timers. Hardware boot non-inferiority, launch/return behavior, content timing,
+transient memory and energy remain the gate; no RG34XX-SP latency or battery
+improvement is claimed yet. If accepted, move the next final-root executable to
+the immutable release as a separate candidate rather than widening this one.
+
 ## Stage 5 — Battery, suspend and memory closure
 
 Measure calibrated energy, wakeups, IRQs and CPU residency for short-label menu
