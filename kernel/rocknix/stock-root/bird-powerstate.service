@@ -1,6 +1,6 @@
 [Unit]
 Description=Bird fixed event-driven power policy
-After=local-fs.target essway.service
+After=local-fs.target
 Before=rocknix-autostart.service
 StartLimitIntervalSec=0
 

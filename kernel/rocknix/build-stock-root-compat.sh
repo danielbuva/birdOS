@@ -789,6 +789,12 @@ grep -q 'ExecStart=/storage/.config/bird/bird-fixed-controls$' \
 	"$OUTPUT/card/bird/bird-fixed-controls.service" || fail 'fixed controls unit missing'
 grep -q 'ExecStart=/storage/.config/bird/bird-powerstate$' \
 	"$OUTPUT/card/bird/bird-powerstate.service" || fail 'fixed powerstate unit missing'
+grep -q '^After=local-fs.target$' \
+	"$OUTPUT/card/bird/bird-powerstate.service" || fail 'fixed powerstate ordering changed'
+if grep -Eq '^(After|Before|Wants|Requires)=.*essway\.service' \
+	"$OUTPUT/card/bird/bird-powerstate.service"; then
+	fail 'fixed powerstate recreates the graphical target ordering cycle'
+fi
 grep -q '/flash/bird/bird-fixed-controls.service' \
 	"$OUTPUT/card/mount-storage.sh" || fail 'stock input replacement missing'
 grep -q '/flash/bird/bird-powerstate.service' \
