@@ -411,6 +411,21 @@ no resident task, timer or ordinary idle wakeup. Launcher code, framebuffer
 byte traffic and steady memory are unchanged. No boot, content, energy or
 memory improvement is claimed until the host and RG34XX-SP gates measure it.
 
+Returned hardware evidence for `v6.23-early-shell-24a364c` recorded
+launcher/input/usable milestones of 1217/1218/1229 ms and 1211/1212/1225 ms,
+with storage anchored at 3685 and 3739 ms. Menu, launch, return and shutdown
+behavior passed, but a movie pause press also selected the next audio track.
+The active and previous releases carry byte-identical MPV input policy, so that
+content-control defect is not attributed to the early-shell subtraction. It
+nevertheless blocks combined-candidate acceptance.
+
+The bounded correction makes the overlapping SDL action harmless with an
+explicit `GAMEPAD_ACTION_RIGHT ignore` override and moves the one audio-track
+binding to the independent Y action. It removes the redundant progress-only
+binding; seeking and pausing retain MPV's ordinary OSD feedback. The candidate
+changes only the final-root MPV policy and its focused test. It adds no boot
+work, resident process, timer, framebuffer traffic or menu-input work.
+
 ### 3B — Persistent freestanding coordinator
 
 `start` launches one long-lived coordinator. It owns a private

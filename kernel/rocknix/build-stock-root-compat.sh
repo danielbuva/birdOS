@@ -521,6 +521,14 @@ if grep -Fq 'rm -rf "$PORTMASTER"' \
 	fail 'PortMaster runtime still deletes an installed provider'
 fi
 grep -q '^VOLUME_UP ignore$' "$OUTPUT/card/bird/mpv-input.conf" || fail 'MPV volume policy missing'
+grep -q '^GAMEPAD_ACTION_RIGHT ignore$' "$OUTPUT/card/bird/mpv-input.conf" || \
+	fail 'MPV overlapping pause action is not neutralized'
+grep -q '^GAMEPAD_ACTION_UP cycle audio$' "$OUTPUT/card/bird/mpv-input.conf" || \
+	fail 'MPV independent audio-track action missing'
+if grep -Eq '^GAMEPAD_ACTION_(DOWN|RIGHT)[[:space:]].*cycle[[:space:]]+audio([[:space:]]|$)' \
+	"$OUTPUT/card/bird/mpv-input.conf"; then
+	fail 'MPV pause path still overlaps audio-track selection'
+fi
 grep -q "RESUME='save-position-on-quit=yes'" \
 	"$OUTPUT/card/bird/run-content.sh" || fail 'MPV resume policy missing'
 grep -q "RESUME_OPTIONS='watch-later-options=start'" \

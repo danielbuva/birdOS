@@ -26,9 +26,9 @@ ACTUAL_KEYS=$(awk 'NF && $1 !~ /^#/ { print $1 }' "$POLICY")
 
 for BINDING in \
 	'GAMEPAD_ACTION_DOWN cycle pause' \
-	'GAMEPAD_ACTION_RIGHT cycle audio' \
+	'GAMEPAD_ACTION_RIGHT ignore' \
 	'GAMEPAD_ACTION_LEFT cycle sub' \
-	'GAMEPAD_ACTION_UP show-progress' \
+	'GAMEPAD_ACTION_UP cycle audio' \
 	'GAMEPAD_DPAD_LEFT seek -5' \
 	'GAMEPAD_DPAD_RIGHT seek 5' \
 	'GAMEPAD_DPAD_DOWN seek -60' \
@@ -42,6 +42,14 @@ for BINDING in \
 		exit 1
 	}
 done
+
+# A physical pause press has produced both ACTION_DOWN and ACTION_RIGHT on the
+# retained MPV/SDL path. The secondary action must therefore be harmless, and
+# the audio-track command must have exactly one independent owner.
+[ "$(grep -Ec '^[^#]+[[:space:]]cycle[[:space:]]+pause([[:space:]]|$)' "$POLICY")" = 1 ]
+[ "$(grep -Ec '^[^#]+[[:space:]]cycle[[:space:]]+audio([[:space:]]|$)' "$POLICY")" = 1 ]
+! grep -Eq '^GAMEPAD_ACTION_(DOWN|RIGHT)[[:space:]].*cycle[[:space:]]+audio([[:space:]]|$)' \
+	"$POLICY"
 
 # MPV 0.38 on the retained ROCKNIX image can repeat a trigger command after
 # release. Keep both triggers absent rather than assigning a hazardous action.

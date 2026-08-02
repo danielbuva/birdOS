@@ -19,14 +19,16 @@ display geometry and hardware policy are deliberate. Older muOS stages,
 source-kernel challengers and clean-root experiments remain useful evidence,
 but they are not alternate active implementations.
 
-The card currently selects behaviorally accepted candidate
-`v6.23-framebuffer-watch-84a2435`, with
-`v6.23-suspend-recovery-103ce3b` preserved as its previous selector. The
+The card currently selects Stage 3A candidate
+`v6.23-early-shell-24a364c`, with
+`v6.23-framebuffer-watch-84a2435` preserved as its previous selector. The
 candidate manifest digest is
-`4e056a6f6d9a03525b79db5504f260499f1f8748000984b295b31f132239fd83`,
-and the returned installation verified all 54 of 54 manifest-owned files. This
-continued-work acceptance does not replace the source/behavior baseline or
-immutable fallback named above.
+`9a8dec40cbf61a0910e800f48098cd0d0a83db550e7949c7474b30f8d9cea802`,
+and deployment verified all 54 of 54 manifest-owned files. The returned gate
+passed the menu, launch and return paths but exposed an MPV face-button
+overlap, so Stage 3A remains a candidate until the separate media-control
+correction passes. This continued-work candidate does not replace the
+source/behavior baseline or immutable fallback named above.
 
 ## Authority
 
@@ -349,6 +351,15 @@ retirement and failure evidence remain unchanged. The target is one fewer
 pre-launch process and two fewer pre-launch writes plus seven fewer
 concurrent/later transient children. No boot, interaction, energy or memory
 improvement is claimed before host and RG34XX-SP gates.
+
+The returned Stage 3A boots recorded launcher/input/usable milestones of
+1217/1218/1229 ms and 1211/1212/1225 ms, with storage anchored at 3685 and
+3739 ms. The user verified the rest of the functional gate. The release and
+its previous selector contain byte-identical MPV input policies, so the newly
+observed pause-plus-audio-track action was not introduced by the shell
+subtraction. The pending media correction explicitly ignores the overlapping
+`GAMEPAD_ACTION_RIGHT` event and moves audio-track selection to the independent
+Y action; it changes no boot, launcher or idle path.
 
 ## Launcher visual architecture
 

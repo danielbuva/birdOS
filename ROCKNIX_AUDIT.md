@@ -300,6 +300,17 @@ children. It does not change launcher/framebuffer work or add a resident
 process, timer or idle wakeup, and remains pending host and physical proof with
 no performance or energy claim.
 
+Returned Stage 3A hardware evidence recorded launcher/input/usable values of
+1217/1218/1229 ms and 1211/1212/1225 ms, followed by storage at 3685 and
+3739 ms. The broad menu/content path passed except that one movie pause press
+also cycled the audio track. Both the Stage 3A and preceding framebuffer
+releases contain the same MPV policy digest, so the shell subtraction did not
+introduce that binding. The separate correction explicitly ignores
+`GAMEPAD_ACTION_RIGHT`, which is the overlapping action, and assigns the sole
+audio-track command to the independent Y action. This is final-root content
+policy only: it does not alter launcher dispatch, initramfs work, menu input,
+framebuffer traffic, resident memory or idle wakeups.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.
