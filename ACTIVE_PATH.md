@@ -19,6 +19,15 @@ display geometry and hardware policy are deliberate. Older muOS stages,
 source-kernel challengers and clean-root experiments remain useful evidence,
 but they are not alternate active implementations.
 
+The card currently selects behaviorally accepted candidate
+`v6.23-framebuffer-watch-84a2435`, with
+`v6.23-suspend-recovery-103ce3b` preserved as its previous selector. The
+candidate manifest digest is
+`4e056a6f6d9a03525b79db5504f260499f1f8748000984b295b31f132239fd83`,
+and the returned installation verified all 54 of 54 manifest-owned files. This
+continued-work acceptance does not replace the source/behavior baseline or
+immutable fallback named above.
+
 ## Authority
 
 | Responsibility | Canonical source |
@@ -183,7 +192,12 @@ True power-loss recovery requires the later U-Boot A/B design in the roadmap.
    overflow permits a complete rescan; unavailable inotify retains the bounded
    polling fallback. An H700 name match is accepted only when its complete
    input ID and event/key/absolute/force-feedback bitmaps match the generated
-   fixed-device contract; the retained legacy mapping remains name-based. Only
+   fixed-device contract; the retained legacy mapping remains name-based. The
+   launcher also installs a `/dev` watch before probing the one fixed `fb0`
+   node, accepts only its create/move events and uses the prior 1 ms polling
+   path only when inotify is unavailable. Queue overflow permits one exact
+   reprobe. Geometry, stride, format and mapping are still validated before
+   use. Only
    after input is open does it paint interactive rows, execute the framebuffer
    barrier and publish first-frame readiness. From that marker,
    every zero-time input poll and complete drain may advance at most one deferred
@@ -270,6 +284,11 @@ True power-loss recovery requires the later U-Boot A/B design in the roadmap.
    UI-mismatched or unsupported state takes the full-render path without trusting
    snapshot data. The descriptor lives only in `/run`, cannot authorize a
    content launch and is cleared after startup or any failed handoff.
+   Returned hardware evidence on `v6.23-framebuffer-watch-84a2435` exercised
+   this path: the replacement launcher started at 32033 ms, reopened H700 input
+   at 32034 ms and published at 32091 ms with `render=recovery`, a restored
+   snapshot, zero visible-region mismatches, stable unused X bytes and exact
+   matching bound hashes.
 9. **Fixed controls and power:** the separate controls and power workers own
    system volume, brightness, lid/power suspend and the low-battery LED policy.
    The kernel/PMIC owns charging state; the launcher only observes and displays
@@ -305,6 +324,31 @@ True power-loss recovery requires the later U-Boot A/B design in the roadmap.
     aliases, then the loop filesystem, and finally p6 without a mount/backing-
     filesystem cycle. The next boot archives the prior shutdown trace before a
     later request can overwrite it.
+
+The two returned cold boots for the current framebuffer candidate recorded
+launcher-start/input-ready/usable-frame values of 1221/1221/1224 ms and
+1222/1223/1227 ms. The preceding release's three usable-frame observations
+were 1226, 1229 and 1227 ms. The functional screen passed and no framebuffer
+error appeared, but the late-registration inotify branch was not explicitly
+instrumented on those boots. These values establish behavioral
+non-regression, not a measured boot improvement. One lid-suspend attempt ended
+in a reboot with an incomplete retained suspend trace; its cause is unproven
+and remains deferred.
+
+## Pending Stage 3A candidate
+
+The next candidate is not part of the active path yet. It subtracts only
+normal-success work from `bird-early.sh`: a shell builtin `read` replaces the
+pre-launch BusyBox `cat` of fixed maximum brightness; two brightness diagnostic
+writes, three concurrent/later uptime `cut` children and four normal
+root-ready/handoff LED `cat` children are removed; LED inspection remains
+failure-only. Exact
+brightness writes and strike timing, endpoint setup, module loading,
+launcher/PID publication, storage acknowledgement, ownership checks, timeout
+retirement and failure evidence remain unchanged. The target is one fewer
+pre-launch process and two fewer pre-launch writes plus seven fewer
+concurrent/later transient children. No boot, interaction, energy or memory
+improvement is claimed before host and RG34XX-SP gates.
 
 ## Launcher visual architecture
 

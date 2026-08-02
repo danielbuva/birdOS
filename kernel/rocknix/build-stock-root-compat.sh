@@ -632,15 +632,19 @@ grep -Fq 'commit_first_usable_frame || FIRST_FRAME_COMMIT_RESULT=$?' \
 	"$OUTPUT/card/post-flash.sh" || fail 'usable-frame boot-health commit missing'
 grep -Fq 'write_attempts 0' \
 	"$OUTPUT/card/post-flash.sh" || fail 'usable-frame attempt reset missing'
-grep -q 'persistent-owner' \
+grep -Fq '$BUSYBOX kill -0 "$PID"' \
 	"$OUTPUT/build/early-initramfs/payload/bird-early.sh" || \
-	fail 'persistent early owner missing'
-grep -q 'storage anchor acknowledged' \
+	fail 'persistent early owner validation missing'
+grep -Fq '[ -s "$STORAGE_MARKER" ]' \
 	"$OUTPUT/build/early-initramfs/payload/bird-early.sh" || \
 	fail 'storage anchor readiness barrier missing'
-grep -q 'final-root storage signalled' \
+grep -Fq "printf '%s\\n' ready >&4" \
 	"$OUTPUT/build/early-initramfs/payload/bird-early.sh" || \
 	fail 'explicit storage readiness signal missing'
+if grep -Eq 'final-root storage signalled|storage anchor acknowledged|persistent-owner uptime|log_leds root-ready|log_leds handoff([[:space:]]|$)' \
+	"$OUTPUT/build/early-initramfs/payload/bird-early.sh"; then
+	fail 'normal-success early diagnostics remained'
+fi
 grep -q 'final-root timeout retired' \
 	"$OUTPUT/build/early-initramfs/payload/bird-early.sh" || \
 	fail 'failed early launcher retirement missing'

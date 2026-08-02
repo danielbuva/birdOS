@@ -257,15 +257,48 @@ grew by 3,688 bytes. Transient peak memory and device timing and energy remain
 unmeasured. No framebuffer, input, UI-instruction or launcher-memory delta is
 attributed to the repair, and its residual suspend quirks are accepted for now.
 
-The current Stage 2 candidate is a separate launcher framebuffer-discovery
-change pending physical proof. It installs a `/dev` watch before the exact
-`fb0` probe, accepts only `fb0` create/move events, reprobes once on queue
-overflow, and retains the bounded 1 ms polling path only when inotify is
-unavailable. Geometry, stride, format, mapping validation, rendering and
-ownership remain unchanged. A late-registering node avoids repeated failed
-opens and sleeps; an already-present node pays inotify setup and close instead.
-RG34XX-SP boot non-inferiority is therefore required, and no improvement is yet
-claimed.
+Stage 2 is now behaviorally complete on the active card. Its selected release
+is `v6.23-framebuffer-watch-84a2435`, with
+`v6.23-suspend-recovery-103ce3b` preserved as the previous selector. The
+selected canonical manifest digest is
+`4e056a6f6d9a03525b79db5504f260499f1f8748000984b295b31f132239fd83`,
+and all 54 of 54 deployed files verified. The launcher installs a `/dev` watch
+before the exact `fb0` probe, accepts only `fb0` create/move events, reprobes
+once on queue overflow and retains the bounded 1 ms polling path only when
+inotify is unavailable. Geometry, stride, format, mapping validation,
+rendering and ownership remain unchanged.
+
+Two returned boot records reported launcher-start/input-ready/usable-frame
+milestones of 1221/1221/1224 ms and 1222/1223/1227 ms. The preceding release's
+three usable-frame samples were 1226, 1229 and 1227 ms. No framebuffer error
+appeared and the complete functional screen passed. These unpaired samples are
+functional non-regression evidence, not a boot-time improvement claim. The
+late-registration inotify branch has focused host coverage, but these device
+logs do not instrument whether that branch activated.
+
+The same release physically exercised application-return frame reuse. A
+replacement launcher started at 32033 ms, reopened H700 input at 32034 ms and
+published a usable frame at 32091 ms with `render=recovery`. Its snapshot was
+restored, all three visible region hashes matched, the unused X byte remained
+stable and both bound hashes matched exactly. This is behavioral proof of the
+retained-frame contract, not a promotion-grade return-latency distribution.
+
+One lid-suspend attempt rebooted the device and left no matching completion in
+the retained suspend trace. That incomplete record cannot attribute the cause
+to the coordinator, provider, kernel or another power path. The quirk remains
+unproven and explicitly deferred while the plan advances.
+
+The next pending Stage 3A candidate subtracts only normal-success early-shell
+work. It replaces the pre-launch BusyBox maximum-brightness `cat` with a shell
+builtin `read`, removes two brightness diagnostic writes, removes three
+concurrent/later uptime `cut` children and four normal root-ready/handoff LED
+`cat` children, and reserves LED inspection for failure evidence. Exact
+launcher/PID, storage acknowledgement, ownership, timeout, retirement and
+failure boundaries remain unchanged. This targets one fewer pre-launch child
+and two fewer pre-launch writes, plus seven fewer concurrent/later transient
+children. It does not change launcher/framebuffer work or add a resident
+process, timer or idle wakeup, and remains pending host and physical proof with
+no performance or energy claim.
 
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
@@ -354,7 +387,8 @@ The v6.15 audit found the following generic work and defects. Only items marked
 
 ## Next active order
 
-1. Complete race-free event-driven launcher and fixed-control device discovery.
+1. Complete the Stage 3A normal-success early-shell subtraction and physical
+   non-regression gate.
 2. Audit udev coldplug output and let its manager exit if no retained feature
    needs runtime hotplug; keep fixed hardware initialization separate from
    Bird.

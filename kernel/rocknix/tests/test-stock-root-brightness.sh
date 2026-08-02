@@ -36,10 +36,11 @@ PY
 sh -n "$EARLY_FUNCTION"
 EARLY_BUSYBOX=$TMP/early-busybox.sh
 EARLY_SETTLE_LOG=$TMP/early-settle.log
+EARLY_BUSYBOX_CALLS=$TMP/early-busybox.calls
 cat >"$EARLY_BUSYBOX" <<'EOF'
 #!/bin/sh
+printf '%s\n' "$1" >>"$BIRD_TEST_BUSYBOX_CALLS"
 case "$1" in
-	cat) shift; exec cat "$@" ;;
 	usleep)
 		printf '%s:%s\n' "$2" "$(cat "$BIRD_TEST_BACKLIGHT/brightness")" \
 			>>"$BIRD_TEST_SETTLE_LOG"
@@ -53,25 +54,34 @@ chmod 0755 "$EARLY_BUSYBOX"
 	BUSYBOX=$EARLY_BUSYBOX
 	BIRD_TEST_BACKLIGHT=$BACKLIGHT
 	BIRD_TEST_SETTLE_LOG=$EARLY_SETTLE_LOG
-	export BIRD_TEST_BACKLIGHT BIRD_TEST_SETTLE_LOG
+	BIRD_TEST_BUSYBOX_CALLS=$EARLY_BUSYBOX_CALLS
+	export BIRD_TEST_BACKLIGHT BIRD_TEST_SETTLE_LOG BIRD_TEST_BUSYBOX_CALLS
 	set_early_brightness
 ) >"$TMP/early.log"
 [ "$(cat "$BACKLIGHT/bl_power")" = 0 ]
 [ "$(cat "$BACKLIGHT/brightness")" = 124 ]
 [ "$(cat "$EARLY_SETTLE_LOG")" = 50000:250 ]
-grep -q 'stage=wake-strike raw=250 max=2499' "$TMP/early.log"
-grep -q 'stage=restored raw=124 max=2499' "$TMP/early.log"
+[ "$(cat "$EARLY_BUSYBOX_CALLS")" = usleep ]
+[ ! -s "$TMP/early.log" ]
+grep -Fq 'IFS= read -r MAX <"$BACKLIGHT/max_brightness"' "$EARLY_SOURCE"
+! grep -Fq '$BUSYBOX cat "$BACKLIGHT/max_brightness"' "$EARLY_SOURCE"
 
 # Normal start must dispatch the launcher without probing diagnostic LEDs.
-# Post-usable root/handoff inspection remains available for retained evidence.
+# LED inspection and verbose uptime evidence remain failure-only.
 ! grep -q 'Bird early-init start uptime' "$EARLY_SOURCE"
 ! grep -q 'log_leds start' "$EARLY_SOURCE"
 ! grep -q 'early_storage_fifo=%s' "$EARLY_SOURCE"
 ! grep -q 'early_input_module=loaded' "$EARLY_SOURCE"
 grep -Fq "'early_storage_fifo=failed'" "$EARLY_SOURCE"
 grep -Fq "'early_input_module=failed'" "$EARLY_SOURCE"
-[ "$(grep -c 'log_leds root-ready' "$EARLY_SOURCE")" = 1 ]
-[ "$(grep -c 'log_leds handoff' "$EARLY_SOURCE")" = 1 ]
+! grep -q 'log_leds root-ready' "$EARLY_SOURCE"
+! grep -Eq 'log_leds handoff([[:space:]]|$)' "$EARLY_SOURCE"
+[ "$(grep -c 'log_leds root-timeout' "$EARLY_SOURCE")" = 1 ]
+[ "$(grep -c 'log_leds handoff-missing' "$EARLY_SOURCE")" = 1 ]
+! grep -q 'final-root storage signalled' "$EARLY_SOURCE"
+! grep -q 'storage anchor acknowledged' "$EARLY_SOURCE"
+! grep -q 'persistent-owner uptime' "$EARLY_SOURCE"
+[ "$(grep -c '/proc/uptime' "$EARLY_SOURCE")" = 2 ]
 
 printf '0\n' >"$BACKLIGHT/bl_power"
 

@@ -27,7 +27,7 @@ log_leds() {
 }
 
 set_early_brightness() {
-	MAX=$($BUSYBOX cat "$BACKLIGHT/max_brightness")
+	IFS= read -r MAX <"$BACKLIGHT/max_brightness"
 	RAW=$((5 * MAX / 100))
 	[ "$RAW" -lt 1 ] && RAW=1
 	# This panel cannot reliably leave a powered-off state at the retained
@@ -40,12 +40,9 @@ set_early_brightness() {
 	fi
 	if [ "$RAW" -lt "$STRIKE" ]; then
 		printf '%s\n' "$STRIKE" >"$BACKLIGHT/brightness"
-		printf 'early_brightness stage=wake-strike raw=%s max=%s\n' \
-			"$STRIKE" "$MAX"
 		$BUSYBOX usleep 50000
 	fi
 	printf '%s\n' "$RAW" >"$BACKLIGHT/brightness"
-	printf 'early_brightness stage=restored raw=%s max=%s\n' "$RAW" "$MAX"
 }
 
 case "${1:-}" in
@@ -77,9 +74,9 @@ case "${1:-}" in
 				$BUSYBOX usleep 1000
 				COUNT=$((COUNT + 1))
 			done
-			# LED state is diagnostic-only. Keep inspection after the usable-frame
-			# boundary in root-ready/handoff, never between display preparation and
-			# launcher dispatch.
+			# LED state is diagnostic-only. Inspect it only on later storage or
+			# ownership failure, never between display preparation and launcher
+			# dispatch.
 		} >"$LOG" 2>&1
 		"$LAUNCHER" >>"$LOG" 2>&1 &
 		printf '%s\n' "$!" >"$PID_FILE"
@@ -93,18 +90,12 @@ case "${1:-}" in
 			# wait, so the byte remains queued even if Bird opens a moment later.
 			exec 4<>"$STORAGE_SIGNAL"
 			printf '%s\n' ready >&4
-			printf 'Bird final-root storage signalled uptime=' >>"$LOG"
-			$BUSYBOX cut -d ' ' -f 1 /proc/uptime >>"$LOG"
 		else
 			printf '%s\n' 'Bird final-root storage FIFO missing' >>"$LOG"
 		fi
 		COUNT=0
 		while [ "$COUNT" -lt 500 ]; do
 			if [ -s "$STORAGE_MARKER" ]; then
-				printf 'Bird storage anchor acknowledged wait_ms=%s uptime=' \
-					"$COUNT" >>"$LOG"
-				$BUSYBOX cut -d ' ' -f 1 /proc/uptime >>"$LOG"
-				log_leds root-ready >>"$LOG" 2>&1
 				exit 0
 			fi
 			$BUSYBOX usleep 1000
@@ -112,6 +103,7 @@ case "${1:-}" in
 		done
 		printf 'Bird final-root storage timeout wait_ms=%s uptime=' "$COUNT" >>"$LOG"
 		$BUSYBOX cut -d ' ' -f 1 /proc/uptime >>"$LOG"
+		log_leds root-timeout >>"$LOG" 2>&1
 		# Never preserve a launcher that cannot reach content. Its framebuffer
 		# remains visible while the normal final-root supervisor takes over.
 		if [ -s "$PID_FILE" ]; then
@@ -127,16 +119,14 @@ case "${1:-}" in
 		exit 0
 		;;
 	handoff)
-		log_leds handoff >>"$LOG" 2>&1
 		if [ -s "$PID_FILE" ]; then
 			PID=$($BUSYBOX cat "$PID_FILE")
 			case "$PID" in *[!0-9]*|'') PID= ;; esac
 			if [ -n "$PID" ] && $BUSYBOX kill -0 "$PID" 2>/dev/null; then
-				printf 'Bird early-init persistent-owner uptime=' >>"$LOG"
-				$BUSYBOX cut -d ' ' -f 1 /proc/uptime >>"$LOG"
 				exit 0
 			fi
 		fi
+		log_leds handoff-missing >>"$LOG" 2>&1
 		printf '%s\n' 'Bird early-init owner missing before mount move' >>"$LOG"
 		;;
 	*)

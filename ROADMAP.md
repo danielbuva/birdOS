@@ -320,9 +320,9 @@ variation is release-identity noise, not an optimization claim. Transient peak
 memory and RG34XX-SP timing and energy remain unmeasured. The remaining suspend
 quirks are accepted for now and are not a gate on the next bounded candidate.
 
-### Stage 2 framebuffer-discovery candidate — pending physical gate
+### Stage 2 framebuffer discovery and retained-return result — 2026-08-01
 
-The next bounded candidate changes only how the launcher waits for the fixed
+The bounded framebuffer candidate changes only how the launcher waits for the fixed
 `/dev/fb0` node. It installs a `/dev` inotify watch before the first exact
 `fb0` probe, accepts only `fb0` create or move events, and performs one exact
 reprobe after queue overflow. The previous bounded 1 ms polling loop remains
@@ -332,10 +332,40 @@ mapping validation, framebuffer ownership and all render paths are unchanged.
 When `fb0` registers late, this removes repeated failed opens and 1 ms sleeps
 from the power-to-usable path. When `fb0` is already present, it adds inotify
 setup and close work to the prior single-open path. It therefore targets
-priority 1 only for delayed framebuffer registration and requires RG34XX-SP
-boot non-inferiority before promotion. It adds no ordinary-idle polling and
-makes no boot, interaction, battery or memory improvement claim before that
-physical gate.
+priority 1 only for delayed framebuffer registration and adds no ordinary-idle
+polling.
+
+The returned card selected
+`v6.23-framebuffer-watch-84a2435`; its previous selector remained
+`v6.23-suspend-recovery-103ce3b`. The selected release's canonical manifest
+digest is
+`4e056a6f6d9a03525b79db5504f260499f1f8748000984b295b31f132239fd83`,
+and deployment verification covered all 54 of 54 manifest-owned files. Two
+returned cold-boot records reported launcher-start/input-ready/usable-frame
+milestones of 1221/1221/1224 ms and 1222/1223/1227 ms after kernel start. The
+immediately preceding release's three usable-frame samples were 1226, 1229 and
+1227 ms. These small unpaired sets establish functional non-regression only;
+they do not support a boot-time improvement claim.
+
+No framebuffer wait, ioctl, mapping or format error appeared. The returned
+boots do not carry an explicit counter proving whether the inotify wait branch
+ran, so late-registration branch activation remains host-tested but
+uninstrumented on hardware. The complete functional screen passed.
+
+Application return also exercised retained-frame reuse on this exact release.
+The replacement launcher started at 32033 ms, reopened the exact H700 input at
+32034 ms and published its usable frame at 32091 ms. It recorded
+`render=recovery`, restored the saved snapshot, found zero
+header/content/footer region mismatches, observed a stable unused X byte and
+produced exact matching expected and actual bound hashes. The user verified
+the returned menu and content behavior. This completes Stage 2 behaviorally;
+it is not a promotion-grade interaction-latency distribution.
+
+One lid-suspend attempt on the returned release ended in a reboot. Its retained
+suspend evidence ends before a matching completion record, but that does not
+prove whether the reboot originated in Bird's coordinator, the retained
+provider, the kernel or a separate power path. The cause is unproven and the
+remaining suspend quirk stays explicitly deferred rather than gating Stage 3.
 
 ## Stage 3 — Bootstrap progression
 
@@ -352,6 +382,34 @@ release verification, storage, noncritical module, audio and provider work
 separately. Concurrency promotes only if boot and UI interaction remain
 non-inferior, failed probes/contention do not increase and content readiness
 improves.
+
+#### Stage 3A normal-success shell subtraction — pending host and physical gates
+
+The first Stage 3A candidate changes diagnostics and shell mechanics only. On
+the current normal-success path, the early hook spawns BusyBox `cat` to read the
+fixed backlight maximum, writes two brightness-diagnostic records before launcher
+dispatch, then spawns three BusyBox `cut` children for concurrent/later uptime
+records and four BusyBox `cat` children to inspect the two LEDs at root-ready
+and handoff. The
+candidate replaces the fixed maximum read with a shell builtin `read`, removes
+the two pre-launch success writes and removes those seven later success-only
+children. LED inspection moves to failure evidence only.
+
+The candidate must preserve the exact backlight writes and 50 ms strike,
+endpoint creation, H700 module load, launcher start and PID publication,
+storage notification and acknowledgement wait, ownership verification,
+timeouts, launcher retirement and all failure records. It does not reorder
+launcher, module or brightness work and does not introduce a trace-mode branch
+or helper into the critical path.
+
+Its priority-1 target is the removal of one pre-launch child process, two
+pre-launch diagnostic writes and one root-ready uptime child that can execute
+concurrently with launcher startup. Removing the remaining six later transient
+children may reduce root-handoff CPU, I/O and transient memory/energy and may
+help later application readiness; it does not target menu interaction and adds
+no resident task, timer or ordinary idle wakeup. Launcher code, framebuffer
+byte traffic and steady memory are unchanged. No boot, content, energy or
+memory improvement is claimed until the host and RG34XX-SP gates measure it.
 
 ### 3B — Persistent freestanding coordinator
 
