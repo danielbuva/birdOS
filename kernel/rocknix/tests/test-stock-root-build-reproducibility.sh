@@ -31,8 +31,9 @@ grep -Fq 'chmod 0644 "$OUTPUT/card/SYSTEM"' "$BUILDER" ||
 	fail 'SYSTEM mode is not explicit'
 grep -Fq 'SYSTEM_BUSYBOX_SHA=b90f5f58dd5c39348f7be9bbef79b349f51e6ac0117b217691e2701d73714b38' \
 	"$BUILDER" || fail 'SYSTEM BusyBox identity is not pinned'
-grep -Fq 'exact SYSTEM BusyBox lacks required chmod applet' "$BUILDER" ||
-	fail 'SYSTEM chmod capability is not verified during preflight'
+grep -Fq 'for APPLET in awk chmod cmp cp mv rm stat; do' "$BUILDER" &&
+	grep -Fq 'exact SYSTEM BusyBox lacks required $APPLET applet' "$BUILDER" ||
+	fail 'SYSTEM policy applet capabilities are not verified during preflight'
 grep -Fq "grep -Fq '/sysroot/usr/bin/busybox chmod 0755'" "$BUILDER" ||
 	fail 'generated mount hook executable modes are not validated'
 grep -Fq "grep -Fq '/sysroot/usr/bin/busybox chmod 0644'" "$BUILDER" ||

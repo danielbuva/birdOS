@@ -205,8 +205,10 @@ is_regular_file "$PORTMASTER_ARCHIVE" || fail 'exact PortMaster archive missing 
 [ "$(sha256 "$JOYPAD")" = "$JOYPAD_SHA" ] || fail 'exact H700 input module changed'
 [ "$(sha256 "$INIT_BUSYBOX")" = "$INIT_BUSYBOX_SHA" ] || fail 'exact initramfs BusyBox changed'
 [ "$(sha256 "$SYSTEM_BUSYBOX")" = "$SYSTEM_BUSYBOX_SHA" ] || fail 'extracted exact SYSTEM BusyBox changed'
-strings -a -n 2 "$SYSTEM_BUSYBOX" | grep -Fqx chmod || \
-	fail 'exact SYSTEM BusyBox lacks required chmod applet'
+for APPLET in awk chmod cmp cp mv rm stat; do
+	strings -a -n 2 "$SYSTEM_BUSYBOX" | grep -Fqx "$APPLET" || \
+		fail "exact SYSTEM BusyBox lacks required $APPLET applet"
+done
 [ "$(sha256 "$PORTMASTER_ARCHIVE")" = "$PORTMASTER_ARCHIVE_SHA" ] || fail 'exact PortMaster archive changed'
 [ "$(sha256 "$FALLBACK_KERNEL")" = "$FALLBACK_KERNEL_SHA" ] || fail 'preserved v5.4 fallback KERNEL changed'
 [ "$(file_bytes "$FALLBACK_KERNEL")" = 29939720 ] || fail 'preserved v5.4 fallback KERNEL size changed'
@@ -215,7 +217,11 @@ strings -a -n 2 "$SYSTEM_BUSYBOX" | grep -Fqx chmod || \
 [ -x "$READELF" ] || fail 'LLVM readelf missing'
 python3 "$ROOT/generate-device-contract.py" \
 	"$ROOT/bird-device-contract.tsv" \
-	"$ROOT/launcher/bird-device-contract.h" --check || \
+	"$ROOT/launcher/bird-device-contract.h" --check \
+	--suspend-policy-output \
+		"$ROOT/kernel/rocknix/stock-root/bird-suspend-policy.generated.sh" \
+	--sleep-policy-output "$ROOT/kernel/rocknix/stock-root/bird-sleep.conf" \
+	--logind-policy-output "$ROOT/kernel/rocknix/stock-root/bird-logind.conf" || \
 	fail 'generated fixed-device contract is stale or invalid'
 if [ "$BIRD_BUILD_PREFLIGHT_ONLY" = 1 ]; then
 	printf 'Canonical pinned-input preflight passed for release %s.\n' "$RELEASE_ID"
@@ -405,7 +411,8 @@ for FILE in 090-ui_service 999-export essway.service rocknix.target \
 	capture-boot-state.sh bird-network.sh bird-fixed-control-exit.sh \
 	bird-save-config.sh bird-save-config.service bird-suspend.sh bird-volume.sh bird-control-osd.sh bird-autostart-noop \
 	bird-fixed-sway.sh bird-fixed-platform.sh \
-	bird-swap.conf; do
+	bird-swap.conf bird-suspend-policy.generated.sh bird-sleep.conf \
+	bird-logind.conf; do
 	cp -fp "$ROOT/kernel/rocknix/stock-root/$FILE" "$OUTPUT/card/bird/$FILE"
 done
 cp -fp "$ROOT/kernel/rocknix/stock-root/mpv-input.conf" \
@@ -469,11 +476,22 @@ for SCRIPT in "$OUTPUT/card/post-flash.sh" \
 	"$OUTPUT/card/bird/bird-fixed-platform.sh"; do
 	bash -n "$SCRIPT" || fail "shell syntax failed: $SCRIPT"
 done
+bash -n "$OUTPUT/card/bird/bird-suspend-policy.generated.sh" || \
+	fail 'generated suspend policy shell syntax failed'
 chmod 0644 "$OUTPUT/card/bird/portmaster-provider.manifest.tsv"
+chmod 0644 "$OUTPUT/card/bird/bird-suspend-policy.generated.sh" \
+	"$OUTPUT/card/bird/bird-sleep.conf" \
+	"$OUTPUT/card/bird/bird-logind.conf"
 [ "$(file_mode "$OUTPUT/card/bird/verify-portmaster-provider.sh")" = 755 ] || \
 	fail 'PortMaster provider verifier mode changed'
 [ "$(file_mode "$OUTPUT/card/bird/portmaster-provider.manifest.tsv")" = 644 ] || \
 	fail 'PortMaster provider manifest mode changed'
+[ "$(file_mode "$OUTPUT/card/bird/bird-suspend-policy.generated.sh")" = 644 ] || \
+	fail 'generated suspend policy mode changed'
+[ "$(file_mode "$OUTPUT/card/bird/bird-sleep.conf")" = 644 ] || \
+	fail 'systemd sleep policy mode changed'
+[ "$(file_mode "$OUTPUT/card/bird/bird-logind.conf")" = 644 ] || \
+	fail 'systemd logind policy mode changed'
 
 [ "$(sha256 "$OUTPUT/card/KERNEL")" = "$KERNEL_SHA" ] || fail 'copied KERNEL changed'
 [ "$(sha256 "$OUTPUT/card/dtb.img")" = "$DTB_SHA" ] || fail 'copied DTB changed'
@@ -932,6 +950,23 @@ grep -q '/flash/bird/bird-fixed-sway.sh' \
 	"$OUTPUT/card/mount-storage.sh" || fail 'fixed Sway profile missing'
 grep -q '/flash/bird/bird-fixed-platform.sh' \
 	"$OUTPUT/card/mount-storage.sh" || fail 'fixed H700 profile missing'
+grep -Fq 'print "system.suspendmode=" mode' \
+	"$OUTPUT/card/mount-storage.sh" || fail 'pre-systemd fake-suspend mode enforcement missing'
+grep -Fq '/flash/bird/bird-suspend-policy.generated.sh' \
+	"$OUTPUT/card/mount-storage.sh" || fail 'generated suspend policy is not consumed'
+grep -Fq '009-sleepmode' \
+	"$OUTPUT/card/mount-storage.sh" || fail 'generic real-suspend writer remained active'
+grep -Fq '030-suspend_mode' \
+	"$OUTPUT/card/mount-storage.sh" || fail 'late H700 suspend writer remained active'
+grep -Fxq 'AllowSuspend=no' \
+	"$OUTPUT/card/bird/bird-sleep.conf" || fail 'kernel suspend disable policy missing'
+grep -Fxq 'HandleLidSwitch=ignore' \
+	"$OUTPUT/card/bird/bird-logind.conf" || fail 'logind lid ownership policy missing'
+grep -Fxq 'HandlePowerKey=ignore' \
+	"$OUTPUT/card/bird/bird-logind.conf" || fail 'logind power ownership policy missing'
+grep -Fxq 'BIRD_SUSPEND_PROVIDER_MODE=off' \
+	"$OUTPUT/card/bird/bird-suspend-policy.generated.sh" || \
+	fail 'generated fake-suspend provider policy missing'
 grep -q 'DEVICE_TEMP_SENSOR=.*thermal_zone2/temp' \
 	"$OUTPUT/card/bird/bird-fixed-platform.sh" || fail 'fixed thermal profile missing'
 grep -q '001-sync-modules' \

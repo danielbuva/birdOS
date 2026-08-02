@@ -12,11 +12,21 @@ INIT_BUSYBOX=$ROOT/kernel/work/rocknix-official-initramfs-20260701/ramdisk/usr/b
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/bird-mount-storage.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT INT TERM HUP
 
+PREFIX_RAW=$TMP/mount-storage-prefix-raw.sh
 PREFIX=$TMP/mount-storage-prefix.sh
 awk '
 	/^# These are deliberately copied after \/storage exists\./ { exit }
 	{ print }
-' "$MOUNT_STORAGE" >"$PREFIX"
+' "$MOUNT_STORAGE" >"$PREFIX_RAW"
+sed \
+	-e 's#^SUSPEND_CONFIG=.*#SUSPEND_CONFIG=$TEST_SUSPEND_CONFIG#' \
+	-e 's#^SUSPEND_SLEEP_CONFIG=.*#SUSPEND_SLEEP_CONFIG=$TEST_SLEEP_CONFIG#' \
+	-e 's#^SUSPEND_LOGIND_CONFIG=.*#SUSPEND_LOGIND_CONFIG=$TEST_LOGIND_CONFIG#' \
+	-e 's#^FIXED_SLEEP_CONFIG=.*#FIXED_SLEEP_CONFIG=$TEST_FIXED_SLEEP_CONFIG#' \
+	-e 's#^FIXED_LOGIND_CONFIG=.*#FIXED_LOGIND_CONFIG=$TEST_FIXED_LOGIND_CONFIG#' \
+	-e 's#^FIXED_SUSPEND_POLICY=.*#FIXED_SUSPEND_POLICY=$TEST_FIXED_SUSPEND_POLICY#' \
+	-e 's#^SYSTEM_BUSYBOX=.*#SYSTEM_BUSYBOX=$TEST_SYSTEM_BUSYBOX#' \
+	"$PREFIX_RAW" >"$PREFIX"
 
 grep -q '^STORAGE_IMAGE=/birddata/MUOS/runtime/ROCKNIX-STORAGE$' "$PREFIX"
 grep -q '^mount --move /birddata /run/bird-data || {$' "$PREFIX"
@@ -48,6 +58,64 @@ grep -Fq 'mount-storage-latest.log' "$EARLY_BUILDER"
 
 EVENTS=$TMP/events
 FAIL_OPERATION=
+TEST_SUSPEND_CONFIG=$TMP/storage/system.cfg
+TEST_SLEEP_CONFIG=$TMP/storage/sleep.conf.d/sleep.conf
+TEST_LOGIND_CONFIG=$TMP/storage/logind.conf.d/login.conf
+TEST_FIXED_SLEEP_CONFIG=$ROOT/kernel/rocknix/stock-root/bird-sleep.conf
+TEST_FIXED_LOGIND_CONFIG=$ROOT/kernel/rocknix/stock-root/bird-logind.conf
+TEST_FIXED_SUSPEND_POLICY=$ROOT/kernel/rocknix/stock-root/bird-suspend-policy.generated.sh
+TEST_SYSTEM_BUSYBOX=$TMP/system-busybox-policy
+POLICY_EVENTS=$TMP/policy-events
+/bin/mkdir -p "${TEST_SUSPEND_CONFIG%/*}" \
+	"${TEST_SLEEP_CONFIG%/*}" "${TEST_LOGIND_CONFIG%/*}"
+cat >"$TEST_SUSPEND_CONFIG" <<'EOF'
+system.suspendmode=mem
+system.suspendmode=off
+system.suspend.enable=1
+system.suspend.enable=0
+system.suspend.enable_timed_shutdown=0
+system.suspend.enable_timed_shutdown=1
+system.suspend.park_cores=1
+system.suspend.park_cores=0
+unrelated.setting=preserved
+EOF
+printf '%s\n' stale-sleep >"$TEST_SLEEP_CONFIG"
+printf '%s\n' stale-logind >"$TEST_LOGIND_CONFIG"
+printf '%s\n' '[Sleep]' 'AllowSuspend=yes' \
+	>"${TEST_SLEEP_CONFIG%/*}/zz-override.conf"
+printf '%s\n' '[Login]' 'HandleLidSwitch=suspend' \
+	>"${TEST_LOGIND_CONFIG%/*}/zz-override.conf"
+printf '%s\n' 'must remain' >"$TMP/outside-policy-target"
+ln -s "$TMP/outside-policy-target" \
+	"${TEST_LOGIND_CONFIG%/*}/zzz-symlink.conf"
+cat >"$TEST_SYSTEM_BUSYBOX" <<'EOF'
+#!/bin/bash
+printf '%s\n' "$*" >>"$POLICY_EVENTS"
+APPLET=$1
+shift
+case "$APPLET" in
+	awk) exec /usr/bin/awk "$@" ;;
+	cmp) exec /usr/bin/cmp "$@" ;;
+	cp) exec /bin/cp "$@" ;;
+	chmod) exec /bin/chmod "$@" ;;
+	mv) exec /bin/mv "$@" ;;
+	rm) exec /bin/rm "$@" ;;
+	stat)
+		[ "$1" = -t ] || exit 2
+		MODE=$(/usr/bin/stat -f %Lp "$2" 2>/dev/null || /usr/bin/stat -c %a "$2") || exit 1
+		case "$MODE" in
+			644) HEX_MODE=81a4 ;;
+			600) HEX_MODE=8180 ;;
+			755) HEX_MODE=81ed ;;
+			*) exit 2 ;;
+		esac
+		printf '%s 0 0 %s 0 0 0 0\n' "$2" "$HEX_MODE"
+		;;
+	*) exit 2 ;;
+esac
+EOF
+/bin/chmod 0755 "$TEST_SYSTEM_BUSYBOX"
+export POLICY_EVENTS
 
 mkdir() {
 	printf 'mkdir|%s\n' "$*" >>"$EVENTS"
@@ -88,10 +156,27 @@ run_prefix() {
 # initramfs name. The real p6 mount then moves outside /storage, its bind alias
 # is published below /storage, and only then may ROM and BIOS aliases appear.
 FAIL_OPERATION=
+: >"$POLICY_EVENTS"
 run_prefix
 [ "$STATUS" -eq 0 ]
+grep -Fxq 'system.suspendmode=off' "$TEST_SUSPEND_CONFIG"
+grep -Fxq 'system.suspend.enable=1' "$TEST_SUSPEND_CONFIG"
+grep -Fxq 'system.suspend.enable_timed_shutdown=1' "$TEST_SUSPEND_CONFIG"
+grep -Fxq 'system.suspend.park_cores=1' "$TEST_SUSPEND_CONFIG"
+[ "$(grep -c '^system\.suspendmode=' "$TEST_SUSPEND_CONFIG")" -eq 1 ]
+[ "$(grep -c '^system\.suspend\.enable=' "$TEST_SUSPEND_CONFIG")" -eq 1 ]
+[ "$(grep -c '^system\.suspend\.enable_timed_shutdown=' "$TEST_SUSPEND_CONFIG")" -eq 1 ]
+[ "$(grep -c '^system\.suspend\.park_cores=' "$TEST_SUSPEND_CONFIG")" -eq 1 ]
+grep -Fxq 'unrelated.setting=preserved' "$TEST_SUSPEND_CONFIG"
+cmp "$TEST_FIXED_SLEEP_CONFIG" "$TEST_SLEEP_CONFIG"
+cmp "$TEST_FIXED_LOGIND_CONFIG" "$TEST_LOGIND_CONFIG"
+[ ! -e "${TEST_SLEEP_CONFIG%/*}/zz-override.conf" ]
+[ ! -e "${TEST_LOGIND_CONFIG%/*}/zz-override.conf" ]
+[ ! -L "${TEST_LOGIND_CONFIG%/*}/zzz-symlink.conf" ]
+[ "$(cat "$TMP/outside-policy-target")" = 'must remain' ]
 cat >"$TMP/expected-success" <<'EOF'
 loop|/birddata/MUOS/runtime/ROCKNIX-STORAGE|/storage|loop,rw,noatime
+mkdir|-p TEST_SLEEP_DIR TEST_LOGIND_DIR
 mkdir|-p /run/bird-data /storage/bird-data /storage/roms /storage/.config/bird
 mount|--move /birddata /run/bird-data
 mount|--bind /run/bird-data /storage/bird-data
@@ -99,7 +184,67 @@ mount|--bind /storage/bird-data/ROMS /storage/roms
 mkdir|-p /storage/roms/bios
 mount|--bind /storage/bird-data/MUOS/bios /storage/roms/bios
 EOF
-cmp "$TMP/expected-success" "$EVENTS"
+sed -e "s#TEST_SLEEP_DIR#${TEST_SLEEP_CONFIG%/*}#" \
+	-e "s#TEST_LOGIND_DIR#${TEST_LOGIND_CONFIG%/*}#" \
+	"$TMP/expected-success" >"$TMP/expected-success.resolved"
+cmp "$TMP/expected-success.resolved" "$EVENTS"
+
+# Reverse the duplicate order to prove the canonical transaction agrees with
+# ROCKNIX's first-match get_setting semantics in either corruption pattern.
+cat >"$TEST_SUSPEND_CONFIG" <<'EOF'
+system.suspendmode=off
+system.suspendmode=mem
+system.suspend.enable=0
+system.suspend.enable=1
+system.suspend.enable_timed_shutdown=1
+system.suspend.enable_timed_shutdown=0
+system.suspend.park_cores=0
+system.suspend.park_cores=1
+unrelated.setting=preserved
+EOF
+# Equal bytes with stale modes must still take the replacement transaction.
+/bin/chmod 0600 "$TEST_SLEEP_CONFIG" "$TEST_LOGIND_CONFIG"
+: >"$POLICY_EVENTS"
+run_prefix
+[ "$STATUS" -eq 0 ]
+for SETTING in \
+	'system.suspendmode=off' \
+	'system.suspend.enable=1' \
+	'system.suspend.enable_timed_shutdown=1' \
+	'system.suspend.park_cores=1'; do
+	grep -Fxq "$SETTING" "$TEST_SUSPEND_CONFIG"
+	[ "$(grep -Fxc "$SETTING" "$TEST_SUSPEND_CONFIG")" -eq 1 ]
+done
+[ "$(/usr/bin/stat -f %Lp "$TEST_SLEEP_CONFIG" 2>/dev/null || /usr/bin/stat -c %a "$TEST_SLEEP_CONFIG")" = 644 ]
+[ "$(/usr/bin/stat -f %Lp "$TEST_LOGIND_CONFIG" 2>/dev/null || /usr/bin/stat -c %a "$TEST_LOGIND_CONFIG")" = 644 ]
+grep -q '^awk ' "$POLICY_EVENTS"
+[ "$(grep -c '^chmod 0644 ' "$POLICY_EVENTS")" -eq 3 ]
+
+# The accepted policy causes no configuration or file-copy write on the next
+# boot; only the two read-only comparisons and mode reads remain.
+cp "$TEST_SUSPEND_CONFIG" "$TMP/system.cfg.accepted"
+: >"$POLICY_EVENTS"
+run_prefix
+[ "$STATUS" -eq 0 ]
+cmp "$TMP/system.cfg.accepted" "$TEST_SUSPEND_CONFIG"
+[ "$(grep -c '^cmp -s ' "$POLICY_EVENTS")" -eq 2 ]
+! grep -Eq '^(awk|cp|chmod|mv|rm) ' "$POLICY_EVENTS"
+
+# A competing *.conf that cannot be removed must fail before final-root policy
+# can become ambiguous. In particular, rm -f must not turn an unexpected
+# directory into a silently accepted override boundary.
+/bin/mkdir "${TEST_SLEEP_CONFIG%/*}/zzz-directory.conf"
+: >"$POLICY_EVENTS"
+FAIL_OPERATION=
+run_prefix 2>"$TMP/expected-policy-directory-failure.err"
+[ "$STATUS" -eq 1 ]
+[ -s "$TMP/expected-policy-directory-failure.err" ]
+grep -Fxq "rm -f ${TEST_SLEEP_CONFIG%/*}/zzz-directory.conf" "$POLICY_EVENTS"
+if grep -Fq 'mount|--move /birddata /run/bird-data' "$EVENTS"; then
+	printf '%s\n' 'ambiguous sleep policy continued into final-root setup' >&2
+	exit 1
+fi
+/bin/rmdir "${TEST_SLEEP_CONFIG%/*}/zzz-directory.conf"
 
 # A failed move must stop before any data, ROM, or BIOS bind is attempted.
 FAIL_OPERATION=move
@@ -107,11 +252,15 @@ run_prefix
 [ "$STATUS" -eq 1 ]
 cat >"$TMP/expected-move-failure" <<'EOF'
 loop|/birddata/MUOS/runtime/ROCKNIX-STORAGE|/storage|loop,rw,noatime
+mkdir|-p TEST_SLEEP_DIR TEST_LOGIND_DIR
 mkdir|-p /run/bird-data /storage/bird-data /storage/roms /storage/.config/bird
 mount|--move /birddata /run/bird-data
 error|bird-data-move|Could not move large Bird data volume to its final mount
 EOF
-cmp "$TMP/expected-move-failure" "$EVENTS"
+sed -e "s#TEST_SLEEP_DIR#${TEST_SLEEP_CONFIG%/*}#" \
+	-e "s#TEST_LOGIND_DIR#${TEST_LOGIND_CONFIG%/*}#" \
+	"$TMP/expected-move-failure" >"$TMP/expected-move-failure.resolved"
+cmp "$TMP/expected-move-failure.resolved" "$EVENTS"
 
 # A failed publication bind must stop with the real filesystem still at its
 # safe /run mount, without attempting either nested library bind.
@@ -120,12 +269,16 @@ run_prefix
 [ "$STATUS" -eq 1 ]
 cat >"$TMP/expected-bind-failure" <<'EOF'
 loop|/birddata/MUOS/runtime/ROCKNIX-STORAGE|/storage|loop,rw,noatime
+mkdir|-p TEST_SLEEP_DIR TEST_LOGIND_DIR
 mkdir|-p /run/bird-data /storage/bird-data /storage/roms /storage/.config/bird
 mount|--move /birddata /run/bird-data
 mount|--bind /run/bird-data /storage/bird-data
 error|bird-data-bind|Could not publish the large Bird data volume
 EOF
-cmp "$TMP/expected-bind-failure" "$EVENTS"
+sed -e "s#TEST_SLEEP_DIR#${TEST_SLEEP_CONFIG%/*}#" \
+	-e "s#TEST_LOGIND_DIR#${TEST_LOGIND_CONFIG%/*}#" \
+	"$TMP/expected-bind-failure" >"$TMP/expected-bind-failure.resolved"
+cmp "$TMP/expected-bind-failure.resolved" "$EVENTS"
 
 # Execute the exact runtime-copy block against a temporary ext4-like tree.
 # A hostile chmod function proves the block has no hidden dependency on the

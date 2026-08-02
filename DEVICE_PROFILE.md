@@ -107,9 +107,11 @@ The active boot path has no animation or startup sound while earliest
 interaction is being optimized. The fixed controls worker owns manual
 brightness. Its stable low-end ticks are 5, 3 and 1 percent; lid/power wake
 briefly starts the panel at the measured 10-percent threshold, then restores
-the exact saved dim level. A late generic brightness reset is not part of the
-contract. Final effects will be designed only after the fixed init/kernel path
-is complete.
+the exact saved dim level. Suspend is the retained H700 fake-suspend policy:
+CPU0 remains online, CPU1--CPU3 park, systemd real suspend is disabled and
+logind never owns the power key or lid switch. A late generic brightness or
+suspend-policy reset is not part of the contract. Final effects will be
+designed only after the fixed init/kernel path is complete.
 
 ## Efficiency contract
 

@@ -241,18 +241,41 @@ shutdown or restart. Anonymous shell scheduling could not establish ownership
 before another helper was dispatched, so that mechanism was removed rather
 than promoted.
 
-The successor candidate puts transaction ownership in the persistent fixed-
-controls process that remains available on CPU0. It identifies a power resume
-from ROCKNIX's active-state flag, records at most one cancellable power or lid-
-close intent while resume is in flight, and dispatches that intent only after
-the Bird wrapper publishes an explicit completion marker following retained
-provider cleanup and exact-brightness restoration. A ten-second failure bound
-drops rather than dispatches an ambiguous intent. Transition-only O_DSYNC
-records under the Bird data log preserve the last dispatched/queued/completed
-boundary across a forced reset. This adds no ordinary idle timer:
-the 25 ms marker check exists only during an active resume transaction. It is a
-correctness and priority-2 suspend-interaction candidate pending physical proof;
-it makes no boot, battery or latency claim.
+The first successor, release `v6.23-suspend-coordinator-7c332d5`, moved pending-
+intent ownership into the persistent fixed-controls process on CPU0. Its device
+trace proved lid resume reached wrapper completion in 92--167 ms, ruling out
+the ten-second failure bound as the ordinary cooldown. It also exposed the
+remaining defect: no power resume entered the coordinator. Every power edge was
+dispatched as a new helper because the hot path still asked ROCKNIX's transient
+power flag whether the edge meant suspend or resume. Rapid series consequently
+contained only `dispatched` records and no `queued` or `complete` record. The
+physical gate rejected that candidate as a cooldown fix.
+
+Read-only inspection after that rejection found the lower-level split owner.
+The live writable ROCKNIX image contained `system.suspendmode=mem`,
+`AllowSuspend=yes` and no logind lid override. The retained H700 fake-suspend
+provider exits immediately in that mode, while logind can independently request
+the H700 real suspend path that upstream itself labels broken. File timestamps
+showed the H700 policy writer at 14:38:28 and the later generic
+`009-sleepmode` rewrite to `mem` at 14:38:29. Bird controls had already started
+at 5.308 seconds, while compatibility autostart did not begin until 9.397
+seconds, so even a correct late writer could not protect a quick post-menu
+suspend. The next candidate therefore installs `off`, `AllowSuspend=no` and
+power/suspend/lid `ignore` policy during initramfs root preparation, before
+systemd, removes competing sleep/logind `*.conf` drop-ins, and suppresses both
+late policy writers. The policy files are generated from the device contract;
+accepted files are compared and not rewritten on later ordinary boots.
+
+The immediate physical candidate is deliberately policy-only. Root preparation
+canonicalizes exactly one copy of each fixed `system.suspendmode=off`, fake-
+suspend, timed-shutdown and core-parking key; installs generated sleep/logind
+drop-ins; removes competing drop-ins; and suppresses both late writers. It does
+not modify the rejected coordinator, provider, wrapper, controls binary or
+their writable execution paths. This isolates whether the observed cooldown
+and reboot came from split real/fake-suspend ownership. It is a correctness
+candidate pending physical proof and makes no boot, interaction, battery or
+memory claim. If it passes, later coordinator work resumes as a separate,
+independently measured change.
 
 ## Stage 3 — Bootstrap progression
 

@@ -184,6 +184,28 @@ creates a real post-visible completion window. Bird's fixed-controls process on
 CPU0 is consequently the durable transaction owner; the wrapper's explicit
 completion marker, not panel visibility, releases a queued follow-up request.
 
+The first hardware trace of release `v6.23-suspend-coordinator-7c332d5`
+showed lid completion in 92--167 ms, ruling out its ten-second failure bound as
+the ordinary cooldown. Power edges never entered coordinator state: every edge
+was dispatched because the existing hot path still classified it from
+ROCKNIX's transient power flag. That release is therefore rejected as a
+cooldown fix, and the policy-only successor intentionally leaves its controls,
+wrapper and provider behavior unchanged.
+
+Read-only inspection of the returned card exposed a lower-level split owner.
+The active writable image held `system.suspendmode=mem`, `AllowSuspend=yes` and
+no logind lid override. The retained H700 fake-suspend provider exits before
+doing any work unless that mode is `off`, while logind could independently
+request the unsupported H700 real-suspend path. Timestamps showed H700
+`030-suspend_mode` writing first and common `009-sleepmode` rewriting `mem` one
+second later. Controls started several seconds before either writer, so a quick
+post-menu suspend could race both. The policy-only candidate canonicalizes the
+four fixed `system.cfg` keys and installs generated no-real-suspend and
+no-logind-input policy during root preparation, before systemd, then suppresses
+both late writers and removes competing drop-ins. It adds no coordinator,
+provider, wrapper, trace or executable-path change, so the next physical gate
+isolates this authority correction.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.

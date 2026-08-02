@@ -9,6 +9,152 @@ mount_part "$STORAGE_IMAGE" /storage "loop,rw,noatime" || {
 	return 1
 }
 
+# The H700's retained policy is fake suspend: CPU0 keeps running Bird while the
+# provider parks CPU1--CPU3. Establish that authority before final-root systemd
+# can consume power/lid events. The late generic 009-sleepmode job has been
+# observed rewriting this card back to unsupported real `mem` suspend after the
+# H700 policy ran, so both late writers are suppressed below.
+SUSPEND_CONFIG=/storage/.config/system/configs/system.cfg
+SUSPEND_SLEEP_CONFIG=/storage/.config/sleep.conf.d/sleep.conf
+SUSPEND_LOGIND_CONFIG=/storage/.config/logind.conf.d/login.conf
+FIXED_SLEEP_CONFIG=/flash/bird/bird-sleep.conf
+FIXED_LOGIND_CONFIG=/flash/bird/bird-logind.conf
+FIXED_SUSPEND_POLICY=/flash/bird/bird-suspend-policy.generated.sh
+SYSTEM_BUSYBOX=/sysroot/usr/bin/busybox
+PARK_CORES_SETTING=
+SUSPEND_MODE_SETTING=
+FAKE_SUSPEND_SETTING=
+TIMED_SHUTDOWN_SETTING=
+PARK_CORES_COUNT=0
+SUSPEND_MODE_COUNT=0
+FAKE_SUSPEND_COUNT=0
+TIMED_SHUTDOWN_COUNT=0
+SUSPEND_CONFIG_REPAIR=0
+
+# This generated fixed-device subset is verified by the release manifest and
+# by the host build before it is copied to /flash. Keep the runtime shell free
+# of a TSV parser while making the shipped policy derive from one authority.
+[ -r "$FIXED_SUSPEND_POLICY" ] && . "$FIXED_SUSPEND_POLICY" || {
+	error bird-suspend-policy "Generated fixed suspend policy is missing"
+	return 1
+}
+
+if [ ! -r "$SUSPEND_CONFIG" ]; then
+	error bird-suspend-policy "Fixed suspend configuration is missing"
+	return 1
+else
+	while IFS= read -r CONFIG_LINE; do
+		case "$CONFIG_LINE" in
+			system.suspendmode=*)
+				SUSPEND_MODE_COUNT=$((SUSPEND_MODE_COUNT + 1))
+				SUSPEND_MODE_SETTING=${CONFIG_LINE#*=}
+				;;
+			system.suspend.enable=*)
+				FAKE_SUSPEND_COUNT=$((FAKE_SUSPEND_COUNT + 1))
+				FAKE_SUSPEND_SETTING=${CONFIG_LINE#*=}
+				;;
+			system.suspend.enable_timed_shutdown=*)
+				TIMED_SHUTDOWN_COUNT=$((TIMED_SHUTDOWN_COUNT + 1))
+				TIMED_SHUTDOWN_SETTING=${CONFIG_LINE#*=}
+				;;
+			system.suspend.park_cores=*)
+				PARK_CORES_COUNT=$((PARK_CORES_COUNT + 1))
+				PARK_CORES_SETTING=${CONFIG_LINE#*=}
+				;;
+		esac
+	done <"$SUSPEND_CONFIG"
+	[ "$SUSPEND_MODE_COUNT" -eq 1 ] &&
+		[ "$SUSPEND_MODE_SETTING" = "$BIRD_SUSPEND_PROVIDER_MODE" ] ||
+		SUSPEND_CONFIG_REPAIR=1
+	[ "$FAKE_SUSPEND_COUNT" -eq 1 ] &&
+		[ "$FAKE_SUSPEND_SETTING" = "$BIRD_SUSPEND_FAKE_ENABLED" ] ||
+		SUSPEND_CONFIG_REPAIR=1
+	[ "$TIMED_SHUTDOWN_COUNT" -eq 1 ] &&
+		[ "$TIMED_SHUTDOWN_SETTING" = "$BIRD_SUSPEND_TIMED_SHUTDOWN_ENABLED" ] ||
+		SUSPEND_CONFIG_REPAIR=1
+	[ "$PARK_CORES_COUNT" -eq 1 ] &&
+		[ "$PARK_CORES_SETTING" = "$BIRD_SUSPEND_CORE_PARKING_REQUIRED" ] ||
+		SUSPEND_CONFIG_REPAIR=1
+	if [ "$SUSPEND_CONFIG_REPAIR" -eq 1 ]; then
+		SUSPEND_CONFIG_TEMP=$SUSPEND_CONFIG.bird-new
+		"$SYSTEM_BUSYBOX" rm -f "$SUSPEND_CONFIG_TEMP"
+		if "$SYSTEM_BUSYBOX" awk \
+			-v mode="$BIRD_SUSPEND_PROVIDER_MODE" \
+			-v fake="$BIRD_SUSPEND_FAKE_ENABLED" \
+			-v timed="$BIRD_SUSPEND_TIMED_SHUTDOWN_ENABLED" \
+			-v park="$BIRD_SUSPEND_CORE_PARKING_REQUIRED" '
+			/^system\.suspendmode=/ { next }
+			/^system\.suspend\.enable=/ { next }
+			/^system\.suspend\.enable_timed_shutdown=/ { next }
+			/^system\.suspend\.park_cores=/ { next }
+			{ print }
+			END {
+				print "system.suspendmode=" mode
+				print "system.suspend.enable=" fake
+				print "system.suspend.enable_timed_shutdown=" timed
+				print "system.suspend.park_cores=" park
+			}' "$SUSPEND_CONFIG" >"$SUSPEND_CONFIG_TEMP" &&
+			"$SYSTEM_BUSYBOX" chmod 0644 "$SUSPEND_CONFIG_TEMP" &&
+			"$SYSTEM_BUSYBOX" mv -f "$SUSPEND_CONFIG_TEMP" "$SUSPEND_CONFIG"; then
+			:
+		else
+			"$SYSTEM_BUSYBOX" rm -f "$SUSPEND_CONFIG_TEMP"
+			return 1
+		fi
+	fi
+fi
+
+mkdir -p "${SUSPEND_SLEEP_CONFIG%/*}" "${SUSPEND_LOGIND_CONFIG%/*}"
+for FIXED_POLICY in \
+	"$FIXED_SLEEP_CONFIG:$SUSPEND_SLEEP_CONFIG" \
+	"$FIXED_LOGIND_CONFIG:$SUSPEND_LOGIND_CONFIG"; do
+	POLICY_SOURCE=${FIXED_POLICY%%:*}
+	POLICY_TARGET=${FIXED_POLICY#*:}
+	POLICY_TEMP=$POLICY_TARGET.bird-new
+	POLICY_MODE=
+	if "$SYSTEM_BUSYBOX" cmp -s "$POLICY_SOURCE" "$POLICY_TARGET"; then
+		# The exact BusyBox stat -t record is: path, bytes, blocks, hex mode,
+		# followed by ownership/device fields. 0x81a4 is a regular 0644 file.
+		POLICY_MODE=$("$SYSTEM_BUSYBOX" stat -t "$POLICY_TARGET" 2>/dev/null ||
+			printf '')
+		POLICY_MODE=${POLICY_MODE#* }
+		POLICY_MODE=${POLICY_MODE#* }
+		POLICY_MODE=${POLICY_MODE#* }
+		POLICY_MODE=${POLICY_MODE%% *}
+	fi
+	if [ "$POLICY_MODE" = 81a4 ]; then
+		:
+	else
+		"$SYSTEM_BUSYBOX" rm -f "$POLICY_TEMP" || return 1
+		"$SYSTEM_BUSYBOX" cp -f "$POLICY_SOURCE" "$POLICY_TEMP" &&
+			"$SYSTEM_BUSYBOX" chmod 0644 "$POLICY_TEMP" &&
+			"$SYSTEM_BUSYBOX" mv -f "$POLICY_TEMP" "$POLICY_TARGET" || {
+				"$SYSTEM_BUSYBOX" rm -f "$POLICY_TEMP"
+				return 1
+			}
+	fi
+done
+
+# systemd merges every direct *.conf child in these persistent drop-in
+# directories. Close the fixed-device policy boundary before PID 1 starts:
+# keeping a second drop-in would let lexicographic ordering silently restore
+# real suspend or logind input ownership even though Bird's canonical file is
+# correct. Remove only competing *.conf entries; README and other non-policy
+# artifacts remain untouched. A directory or otherwise unremovable entry fails
+# the boot transaction instead of allowing ambiguous policy.
+for FIXED_POLICY in \
+	"${SUSPEND_SLEEP_CONFIG%/*}:$SUSPEND_SLEEP_CONFIG" \
+	"${SUSPEND_LOGIND_CONFIG%/*}:$SUSPEND_LOGIND_CONFIG"; do
+	POLICY_DIRECTORY=${FIXED_POLICY%%:*}
+	POLICY_TARGET=${FIXED_POLICY#*:}
+	for POLICY_ENTRY in "$POLICY_DIRECTORY"/*.conf; do
+		[ "$POLICY_ENTRY" = "$POLICY_TARGET" ] && continue
+		if [ -e "$POLICY_ENTRY" ] || [ -L "$POLICY_ENTRY" ]; then
+			"$SYSTEM_BUSYBOX" rm -f "$POLICY_ENTRY" || return 1
+		fi
+	done
+done
+
 # Keep the owning p6 mount outside the loop filesystem that its image backs.
 # Only a bind alias lives below /storage, so shutdown can unmount the aliases,
 # then the loop, then p6 without a mount/backing-filesystem dependency cycle.
@@ -131,7 +277,7 @@ mount --bind /flash/bird/bird-save-config.service \
 # hardware/features absent from this one-user RG34XX-SP profile. The remaining
 # autostart sequence is unchanged for this physical gate.
 for SCRIPT in 001-emulationstation 001-sync-modules 002-device-switch \
-	003-upgrade 006-display 007-rootpw 009-bluetooth 010-moonlight \
+	003-upgrade 006-display 007-rootpw 009-bluetooth 009-sleepmode 010-moonlight \
 	010-uimode 020-configs 020-set_audio_latency 055-hdmi-check \
 	080-dual_screen_mode 080-network 081-usbgadget 098-deviceutils \
 	099-networkservices; do
@@ -154,7 +300,7 @@ mount --bind /flash/bird/bird-fixed-platform.sh \
 	return 1
 }
 for SCRIPT in 002-turbo-mode_config 010-governors 010-led_control \
-	020-fan_control 030-analog_leds 050-modifiers 091-ui_shader; do
+	020-fan_control 030-analog_leds 030-suspend_mode 050-modifiers 091-ui_shader; do
 	mount --bind /flash/bird/bird-autostart-noop \
 		"/sysroot/usr/lib/autostart/quirks/platforms/H700/$SCRIPT" || {
 		error bird-fixed-platform "Could not suppress H700 $SCRIPT"

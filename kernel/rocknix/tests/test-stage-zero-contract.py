@@ -21,8 +21,16 @@ def run(*command: str, ok: bool = True) -> subprocess.CompletedProcess[str]:
 
 
 def main() -> None:
-    run("python3", "generate-device-contract.py", "bird-device-contract.tsv",
-        "launcher/bird-device-contract.h", "--check")
+    policy_shell = "kernel/rocknix/stock-root/bird-suspend-policy.generated.sh"
+    sleep_policy = "kernel/rocknix/stock-root/bird-sleep.conf"
+    logind_policy = "kernel/rocknix/stock-root/bird-logind.conf"
+    run(
+        "python3", "generate-device-contract.py", "bird-device-contract.tsv",
+        "launcher/bird-device-contract.h", "--check",
+        "--suspend-policy-output", policy_shell,
+        "--sleep-policy-output", sleep_policy,
+        "--logind-policy-output", logind_policy,
+    )
     header = (ROOT / "launcher/bird-device-contract.h").read_text()
     assert "BIRD_DEVICE_FB_MAPPING_BYTES 1382400U" in header
     assert "BIRD_DEVICE_INPUT_NAME \"H700 Gamepad\"" in header
@@ -30,9 +38,37 @@ def main() -> None:
     assert "0x0000000107030000UL" in header
     assert "BIRD_DEVICE_BACKLIGHT_MAXIMUM_RAW 2499U" in header
     assert "deploy-manifest" not in (ROOT / "bird-device-contract.tsv").read_text()
+    assert "BIRD_SUSPEND_PROVIDER_MODE=off" in (ROOT / policy_shell).read_text()
+    assert "AllowSuspend=no" in (ROOT / sleep_policy).read_text()
+    assert "HandleLidSwitch=ignore" in (ROOT / logind_policy).read_text()
 
     with tempfile.TemporaryDirectory(prefix="bird-stage-zero-") as temporary:
         temporary_path = pathlib.Path(temporary)
+        # Generate a changed header from a modified contract, then prove the
+        # unchanged runtime policy artifacts cannot pass the same check. This
+        # prevents the manifest's device authority from drifting away from the
+        # shell and systemd policy that the release actually installs.
+        changed_contract = temporary_path / "changed-device-contract.tsv"
+        changed_contract.write_text(
+            (ROOT / "bird-device-contract.tsv").read_text(encoding="utf-8").replace(
+                "suspend.provider_mode\tstring\toff\n",
+                "suspend.provider_mode\tstring\tmem\n",
+            ),
+            encoding="utf-8",
+        )
+        changed_header = temporary_path / "changed-device-contract.h"
+        run(
+            "python3", "generate-device-contract.py", str(changed_contract),
+            str(changed_header),
+        )
+        run(
+            "python3", "generate-device-contract.py", str(changed_contract),
+            str(changed_header), "--check",
+            "--suspend-policy-output", policy_shell,
+            "--sleep-policy-output", sleep_policy,
+            "--logind-policy-output", logind_policy,
+            ok=False,
+        )
         contract_digest = hashlib.sha256((ROOT / "bird-device-contract.tsv").read_bytes()).hexdigest()
         catalog_digest = hashlib.sha256((ROOT / "launcher/catalog.generated.h").read_bytes()).hexdigest()
         source = run("git", "rev-parse", "HEAD").stdout.strip()
