@@ -5275,10 +5275,11 @@ static int framebuffer_event_name_matches(const char *name, u32 length) {
 }
 
 static int try_fixed_framebuffer(void) {
-    fb_fd = (int)sys_open(BIRD_DEVICE_FRAMEBUFFER_NODE, O_RDWR);
-    if (fb_fd >= 0) return 0;
-    fb_fd = -1;
-    return -1;
+    int fd = (int)sys_open(BIRD_DEVICE_FRAMEBUFFER_NODE, O_RDWR);
+
+    if (fd < 0) return -1;
+    fb_fd = fd;
+    return 0;
 }
 
 static int open_fixed_framebuffer_watch(void) {
