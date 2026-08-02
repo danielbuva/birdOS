@@ -344,6 +344,17 @@ Menu+bumper MPV-local brightness. Physical B remains the documented frame-step
 action; its pause-and-one-frame behavior is not a second pause owner. This
 follow-up remains final-root media-only and cannot alter boot or menu idle.
 
+The follow-up is deployed as clean source
+`813226d4c1b0fe9715bdae3f37d44485e4ad815f`, immutable release
+`v6.23-mpv-complete-controls-813226d` and canonical manifest
+`05f20822324d62be334a290f9567d341efc6f08243c14ab88adda43073d975a6`.
+Deployment verified all 56 manifest-owned files and retained the rejected
+single-input tuple as the previous selector. Host tests explicitly cover one
+B edge producing one frame-step, both global-exit chord orders, shoulder-use
+suppression, reconnect snapshots and `SYN_DROPPED`. The launcher is
+byte-identical; the final-root helper's 280-byte file and six-byte loadable
+section increases do not create a boot or menu-idle cost.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.

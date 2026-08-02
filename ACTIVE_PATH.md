@@ -19,17 +19,19 @@ display geometry and hardware policy are deliberate. Older muOS stages,
 source-kernel challengers and clean-root experiments remain useful evidence,
 but they are not alternate active implementations.
 
-The card currently selects the Stage 4 media-control candidate
-`v6.23-mpv-single-input-f866fe7`, built from clean source
-`f866fe7dbeaec3e3ee0d3937296968c804b77665`, with
-`v6.23-mpv-controls-659594b` preserved as its previous selector. The candidate
-manifest digest is
-`475e786077d54d7247dbd11d463fcb8b8bd1377c7315e5913644f58bdb9fe017`,
-and deployment verified all 56 of 56 manifest-owned files. It retains the
-Stage 3A early-shell subtraction and replaces the two overlapping MPV input
-owners with one fixed media-lifetime controller. The candidate remains pending
-the RG34XX-SP physical gate and does not replace the source/behavior baseline
-or immutable fallback named above.
+The card currently selects the Stage 4 media-control correction
+`v6.23-mpv-complete-controls-813226d`, built from clean source
+`813226d4c1b0fe9715bdae3f37d44485e4ad815f`, with the physically rejected
+`v6.23-mpv-single-input-f866fe7` retained as its previous selector. The current
+candidate manifest digest is
+`05f20822324d62be334a290f9567d341efc6f08243c14ab88adda43073d975a6`,
+and deployment verified all 56 of 56 manifest-owned files. The device-contract
+digest is `85ccb8e46e71ee66e2320022ac13228124d6efcea5abdd800b8c18bd190f73cd`
+and the generated-catalog digest is
+`7e29e491bb43191ca9ae6c18bd566b6ba0c984bf43d1d0103eddd6e534306e62`.
+It retains the Stage 3A early-shell subtraction and one fixed media-lifetime
+input owner. The candidate remains pending the RG34XX-SP physical gate and does
+not replace the source/behavior baseline or immutable fallback named above.
 
 ## Authority
 
@@ -412,6 +414,19 @@ MPV-local picture brightness; and L2/R2 remain chapter navigation with OSD
 feedback where chapter metadata exists. Dedicated volume and Menu+volume stay
 system-volume and panel-backlight controls. No SDL, `mpv_sense`, per-press
 process, boot-time executable, or menu-idle wakeup returns.
+
+That successor is deployed as clean source
+`813226d4c1b0fe9715bdae3f37d44485e4ad815f`, immutable release
+`v6.23-mpv-complete-controls-813226d` and canonical manifest
+`05f20822324d62be334a290f9567d341efc6f08243c14ab88adda43073d975a6`.
+All 56 manifest-owned files verified and
+`v6.23-mpv-single-input-f866fe7` is the previous selector. Focused tests prove
+that one physical B press queues one `frame-step` and no pause command, both
+Select+Start orders suppress media actions, and modifier/reconnect paths cannot
+leak a bumper-volume action. The helper is 6,704 bytes, 280 bytes larger than
+the rejected helper; its loadable section total excluding `.comment` is 8,294
+bytes, six bytes larger. The launcher is byte-identical to the rejected
+release. These are host binary facts, not RG34XX-SP timing claims.
 
 ## Launcher visual architecture
 

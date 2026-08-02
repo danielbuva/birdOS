@@ -478,6 +478,17 @@ volume action and retains the one-handed layer. Menu+L1/R1 changes MPV-local
 video brightness by one point. L2/R2 retain chapter navigation and the
 shoulder-modified trigger path retains playlist navigation.
 
+The correction is deployed for physical gating as clean source
+`813226d4c1b0fe9715bdae3f37d44485e4ad815f`, immutable release
+`v6.23-mpv-complete-controls-813226d` and canonical manifest
+`05f20822324d62be334a290f9567d341efc6f08243c14ab88adda43073d975a6`.
+All 56 manifest-owned files verified and the rejected
+`v6.23-mpv-single-input-f866fe7` tuple remains the previous selector. The
+launcher is byte-identical. The final-root helper grows by 280 file bytes and
+six loadable-section bytes; it adds no boot executable, menu task, timer or
+wakeup. Physical controls, media suspend, launch, exit and return remain the
+gate before promotion.
+
 ### 3B — Persistent freestanding coordinator
 
 `start` launches one long-lived coordinator. It owns a private
