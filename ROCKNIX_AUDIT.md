@@ -311,11 +311,12 @@ failed: west and east each emitted an intended action plus audio-track change.
 The retained provider explains the overlap. `start_mplayer.sh` starts
 `mpv.service`, whose Bash `mpv_sense` discovers devices, runs multiple `evtest`
 readers and forks `echo | socat` for actions; the wrapper simultaneously passes
-`--input-gamepad=yes` to MPV. The pending correction bypasses that wrapper with
-a Bird wrapper that preserves fullscreen geometry and hardware decoding but
-disables SDL/default bindings. One 6,424-byte static AArch64 helper validates the
-fixed H700 name, ID and capability bitmaps, uses event-driven reconnect, and
-resynchronizes evdev state after overflow before sending direct JSON IPC
+`--input-gamepad=yes` to MPV. The deployed Stage 4 candidate bypasses that
+wrapper with a Bird wrapper that preserves fullscreen geometry and hardware
+decoding but disables SDL/default bindings. One 6,424-byte static AArch64
+helper validates the fixed H700 name, ID and capability bitmaps, uses
+event-driven reconnect, and resynchronizes evdev state after overflow before
+sending direct JSON IPC
 commands. IPC loss reconnects without stale queued actions. The wrapper retains
 the `mpv` process-name publication used by fake suspend and removes it at
 provider return. The helper runs only for Listen/Watch content and blocks in
@@ -324,6 +325,15 @@ tests cover every regular/one-handed command, chapters, playlists,
 subtitle/audio chords, Select+Start suppression, picture adjustments,
 `SYN_DROPPED`, bounded queuing and wrapper cleanup. Physical command mapping,
 content interaction and media-session task/wakeup/memory effects remain gated.
+
+The candidate is clean source
+`f866fe7dbeaec3e3ee0d3937296968c804b77665`, immutable release
+`v6.23-mpv-single-input-f866fe7`, canonical manifest
+`475e786077d54d7247dbd11d463fcb8b8bd1377c7315e5913644f58bdb9fe017`
+and 56 verified files. Menu+D-pad adjusts contrast or saturation by exactly one
+point per press. The helper and wrapper exist only in the final-root media
+payload, so this deployment adds no executable to the boot-critical path and
+makes no boot-time claim before the RG34XX-SP gate.
 
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full

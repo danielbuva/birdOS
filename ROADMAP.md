@@ -428,10 +428,10 @@ tracks. A second policy-only move cannot establish one-command ownership.
 Active-path inspection found the cause: retained `start_mplayer.sh` starts the
 raw-evdev `mpv_sense` service and also enables MPV's SDL gamepad reader. Both
 consume the H700 event stream, and the shell service additionally forks
-`evtest`, `udevadm`, `echo` and `socat` work. The Stage 4 correction therefore
-uses one media-lifetime freestanding process to validate the fixed input
-contract and send MPV JSON IPC directly. The player wrapper starts neither
-`mpv_sense` nor SDL/default input handling, but preserves the provider's
+`evtest`, `udevadm`, `echo` and `socat` work. The deployed Stage 4 candidate
+therefore uses one media-lifetime freestanding process to validate the fixed
+input contract and send MPV JSON IPC directly. The player wrapper starts
+neither `mpv_sense` nor SDL/default input handling, but preserves the provider's
 `set_kill set "mpv"` fake-suspend freeze contract and clears it on return.
 Ordinary media idle blocks in `ppoll`; an IPC retry timer exists only before
 the MPV socket is available or while reconnecting. Evdev overflow is discarded
@@ -443,11 +443,23 @@ The candidate restores the complete documented regular and one-handed control
 set: face actions, short/long seeks, chapters, playlists, subtitles and
 shoulder+Select audio-track cycling. Select+Start emits no media command and
 remains owned by the global exit worker. Menu+D-pad contrast and saturation
-steps are explicit Bird extensions. This final-root media path adds no boot or
-menu-idle work. Its priority-2 target is one command per physical edge without
-per-press process creation; its secondary priority-3/4 targets are fewer
+steps of exactly one point per press are explicit Bird extensions. This
+final-root media path adds no boot or menu-idle work. Its priority-2 target is
+one command per physical edge without per-press process creation; its secondary
+priority-3/4 targets are fewer
 media-session tasks, wakeups and resident bytes. No device latency, energy or
 memory improvement is claimed before measurement.
+
+Clean source `f866fe7dbeaec3e3ee0d3937296968c804b77665` is deployed for
+this physical gate as immutable release `v6.23-mpv-single-input-f866fe7` with
+canonical manifest
+`475e786077d54d7247dbd11d463fcb8b8bd1377c7315e5913644f58bdb9fe017`.
+All 56 manifest-owned files verified, and
+`v6.23-mpv-controls-659594b` remains the previous selector. The final-root
+helper adds no launcher or early-initramfs executable. Its 6,424-byte file and
+8,288-byte text/data/BSS footprint are host binary measurements only. The
+launcher is byte-identical to the previous release, so boot timing remains a
+hardware non-inferiority check rather than a claimed improvement.
 
 ### 3B — Persistent freestanding coordinator
 

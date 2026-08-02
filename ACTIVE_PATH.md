@@ -19,16 +19,17 @@ display geometry and hardware policy are deliberate. Older muOS stages,
 source-kernel challengers and clean-root experiments remain useful evidence,
 but they are not alternate active implementations.
 
-The card currently selects Stage 3A candidate
-`v6.23-early-shell-24a364c`, with
-`v6.23-framebuffer-watch-84a2435` preserved as its previous selector. The
-candidate manifest digest is
-`9a8dec40cbf61a0910e800f48098cd0d0a83db550e7949c7474b30f8d9cea802`,
-and deployment verified all 54 of 54 manifest-owned files. The returned gate
-passed the menu, launch and return paths but exposed an MPV face-button
-overlap, so Stage 3A remains a candidate until the separate media-control
-correction passes. This continued-work candidate does not replace the
-source/behavior baseline or immutable fallback named above.
+The card currently selects the Stage 4 media-control candidate
+`v6.23-mpv-single-input-f866fe7`, built from clean source
+`f866fe7dbeaec3e3ee0d3937296968c804b77665`, with
+`v6.23-mpv-controls-659594b` preserved as its previous selector. The candidate
+manifest digest is
+`475e786077d54d7247dbd11d463fcb8b8bd1377c7315e5913644f58bdb9fe017`,
+and deployment verified all 56 of 56 manifest-owned files. It retains the
+Stage 3A early-shell subtraction and replaces the two overlapping MPV input
+owners with one fixed media-lifetime controller. The candidate remains pending
+the RG34XX-SP physical gate and does not replace the source/behavior baseline
+or immutable fallback named above.
 
 ## Authority
 
@@ -337,10 +338,10 @@ non-regression, not a measured boot improvement. One lid-suspend attempt ended
 in a reboot with an incomplete retained suspend trace; its cause is unproven
 and remains deferred.
 
-## Pending Stage 3A candidate
+## Deployed Stage 3A and Stage 4 media candidate
 
-The next candidate is not part of the active path yet. It subtracts only
-normal-success work from `bird-early.sh`: a shell builtin `read` replaces the
+The retained Stage 3A change subtracts only normal-success work from
+`bird-early.sh`: a shell builtin `read` replaces the
 pre-launch BusyBox `cat` of fixed maximum brightness; two brightness diagnostic
 writes, three concurrent/later uptime `cut` children and four normal
 root-ready/handoff LED `cat` children are removed; LED inspection remains
@@ -349,8 +350,9 @@ brightness writes and strike timing, endpoint setup, module loading,
 launcher/PID publication, storage acknowledgement, ownership checks, timeout
 retirement and failure evidence remain unchanged. The target is one fewer
 pre-launch process and two fewer pre-launch writes plus seven fewer
-concurrent/later transient children. No boot, interaction, energy or memory
-improvement is claimed before host and RG34XX-SP gates.
+concurrent/later transient children. Its returned timings established
+functional non-regression but did not establish a boot, interaction, energy or
+memory improvement.
 
 The returned Stage 3A boots recorded launcher/input/usable milestones of
 1217/1218/1229 ms and 1211/1212/1225 ms, with storage anchored at 3685 and
@@ -365,7 +367,7 @@ tracks.
 Inspection found two simultaneous owners in the retained provider. ROCKNIX's
 `start_mplayer.sh` starts `mpv.service`/`mpv_sense`, which reads raw evdev and
 spawns `socat` commands, while the same wrapper starts MPV with
-`--input-gamepad=yes`. The pending Stage 4 correction replaces both media-only
+`--input-gamepad=yes`. The deployed Stage 4 candidate replaces both media-only
 translation paths with one 6,424-byte freestanding `bird-mpv-controls` process.
 It validates the complete H700 contract, uses watch-before-scan discovery,
 discards overflowed evdev records through `SYN_REPORT`, resynchronizes held
@@ -374,10 +376,20 @@ sends direct JSON commands without per-press processes. The wrapper disables
 MPV default/SDL gamepad bindings and never starts `mpv_sense`, while retaining
 the provider's `mpv` freeze publication for fake suspend. The documented
 regular and one-handed controls, chapter, playlist, subtitle and
-shoulder+Select audio-track actions are preserved;
-Menu+D-pad adds isolated contrast and saturation steps. This candidate is
+shoulder+Select audio-track actions are preserved; Menu+D-pad adds isolated
+contrast and saturation steps of exactly one point per press. This candidate is
 loaded only after media selection and adds no initramfs, launcher, boot-time
 process, timer, framebuffer traffic or ordinary menu-idle work.
+
+The exact deployed tuple is clean source
+`f866fe7dbeaec3e3ee0d3937296968c804b77665`, immutable release
+`v6.23-mpv-single-input-f866fe7` and manifest
+`475e786077d54d7247dbd11d463fcb8b8bd1377c7315e5913644f58bdb9fe017`.
+The final-root helper is 6,424 bytes with 5,320 bytes of text, 32 bytes of data
+and 2,936 bytes of BSS. The launcher is byte-identical to the previous release,
+and the compressed early overlay is two bytes smaller; neither host fact is a
+device boot-time claim. Physical command mapping, suspend integration, launch
+and return behavior remain the promotion gate.
 
 ## Launcher visual architecture
 
