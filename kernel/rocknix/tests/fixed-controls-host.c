@@ -196,14 +196,14 @@ int main(int argc, char **argv) {
         {102, POWER_NAME},
         {103, LID_NAME},
     };
-    struct control_state state = {1, 1, 1, 1, 1, 1, 1, 1234};
+    struct control_state state = {0};
     struct suspend_state suspend = {0, 0, 0};
     struct input_source read_source = {100, GAMEPAD_NAME};
     u64 delay;
     unsigned step;
     int ok = 1;
     struct input_event key = {0};
-    struct control_state discovery_state = {0, 0, 0, 0, 0, 0, 0, 0};
+    struct control_state discovery_state = {0};
     struct input_source discovery_sources[SOURCE_COUNT] = {
         {-1, GAMEPAD_NAME},
         {-1, VOLUME_NAME},
@@ -229,6 +229,7 @@ int main(int argc, char **argv) {
     state.select_held = 0;
     state.start_held = 0;
     state.exit_latched = 0;
+    state.emergency_latched = 0;
     key.type = EV_KEY;
     key.value = 1;
     key.code = BTN_MODE;
@@ -237,6 +238,16 @@ int main(int argc, char **argv) {
     handle_gamepad(&key, &state);
     ok &= check(!state.exit_latched,
                 "native Menu+Start incorrectly triggered Bird exit");
+
+    key.code = BTN_SELECT;
+    handle_gamepad(&key, &state);
+    ok &= check(state.exit_latched && state.emergency_latched,
+                "Menu+Select+Start did not trigger emergency recovery");
+    key.value = 0;
+    key.code = BTN_SELECT;
+    handle_gamepad(&key, &state);
+    ok &= check(!state.exit_latched && !state.emergency_latched,
+                "emergency recovery latch did not clear on chord release");
     key.value = 0;
     key.code = BTN_MODE;
     handle_gamepad(&key, &state);
@@ -245,6 +256,11 @@ int main(int argc, char **argv) {
     handle_gamepad(&key, &state);
     ok &= check(state.exit_latched,
                 "Select+Start did not trigger Bird exit");
+
+    key.code = BTN_MODE;
+    handle_gamepad(&key, &state);
+    ok &= check(state.emergency_latched,
+                "late Menu edge did not upgrade held exit chord to recovery");
     clear_gamepad_state(&state);
 
     ok &= check(brightness_raw_target(125, 2499, -1) == 75,
@@ -312,6 +328,7 @@ int main(int argc, char **argv) {
                     sources[2].fd < 0 && sources[3].fd < 0 &&
                     !state.menu_held && !state.select_held &&
                     !state.start_held && !state.exit_latched &&
+                    !state.emergency_latched &&
                     !state.volume_up_held && !state.volume_down_held &&
                     !state.repeat_direction && !state.repeat_at_ns,
                 "poll recovery retained descriptors or held-key state");

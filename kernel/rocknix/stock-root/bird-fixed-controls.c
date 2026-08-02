@@ -10,7 +10,8 @@
  *   - Menu + volume for direct fixed-panel brightness steps, including stable
  *     three-percent and one-percent low-end levels;
  *   - power and lid events through ROCKNIX's proven fake-suspend helper; and
- *   - Select + Start through Bird's foreground-session exit contract.
+ *   - Select + Start through Bird's foreground-session exit contract; and
+ *   - Menu + Select + Start through an on-demand logged UI recovery contract.
  *
  * It never grabs the H700 gamepad, so Bird and selected applications continue
  * to receive their normal controls.  Event numbers are treated only as a fast
@@ -82,6 +83,7 @@ typedef signed long s64;
 #define SUSPEND_RESUME_READY "/run/muos/bird-suspend-resume-ready"
 #define POWER_SUSPEND_ACTIVE "/var/run/power-fake-suspend-active.flag"
 #define EXIT_HELPER "/storage/.config/bird/bird-fixed-control-exit.sh"
+#define EMERGENCY_HELPER "/flash/bird/bird-emergency-recover.sh"
 #define KMSG_DEVICE "/dev/kmsg"
 #define SUSPEND_TRACE "/storage/bird-data/MUOS/Bird/log/suspend-events.tsv"
 
@@ -152,6 +154,7 @@ struct control_state {
     int select_held;
     int start_held;
     int exit_latched;
+    int emergency_latched;
     int volume_up_held;
     int volume_down_held;
     int repeat_direction;
@@ -580,6 +583,17 @@ static void run_exit(void) {
         log_text("bird-fixed-controls: content-exit-spawn-failed\n");
 }
 
+static void run_emergency(void) {
+    int result = spawn_action(EMERGENCY_HELPER, 0, 0);
+
+    if (result == SPAWN_DISPATCHED)
+        log_text("bird-fixed-controls: emergency-recovery\n");
+    else if (result == SPAWN_EXEC_FAILED)
+        log_text("bird-fixed-controls: emergency-recovery-exec-failed\n");
+    else
+        log_text("bird-fixed-controls: emergency-recovery-spawn-failed\n");
+}
+
 static void event_path(char *path, int index) {
     static const char prefix[] = "/dev/input/event";
     int position = 0;
@@ -754,6 +768,7 @@ static void clear_gamepad_state(struct control_state *state) {
     state->select_held = 0;
     state->start_held = 0;
     state->exit_latched = 0;
+    state->emergency_latched = 0;
 }
 
 static void clear_volume_state(struct control_state *state) {
@@ -802,13 +817,20 @@ static u64 recover_poll_failure(struct input_source *sources,
 }
 
 static void update_exit_combo(struct control_state *state) {
-    if (state->select_held && state->start_held) {
-        if (!state->exit_latched) {
-            state->exit_latched = 1;
-            run_exit();
-        }
-    } else {
+    if (!state->select_held || !state->start_held) {
         state->exit_latched = 0;
+        state->emergency_latched = 0;
+        return;
+    }
+    if (state->menu_held) {
+        if (!state->emergency_latched) {
+            state->emergency_latched = 1;
+            state->exit_latched = 1;
+            run_emergency();
+        }
+    } else if (!state->exit_latched) {
+        state->exit_latched = 1;
+        run_exit();
     }
 }
 
@@ -1039,7 +1061,7 @@ static void application(void) {
         {-1, POWER_NAME},
         {-1, LID_NAME},
     };
-    struct control_state state = {0, 0, 0, 0, 0, 0, 0, 0};
+    struct control_state state = {0};
     struct suspend_state suspend = {0, 0, 0};
     struct pollfd polls[SOURCE_COUNT + 1];
     u64 poll_error_delay_ns = 1000000UL;

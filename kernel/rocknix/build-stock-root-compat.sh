@@ -429,6 +429,7 @@ for FILE in 090-ui_service 999-export essway.service rocknix.target \
 	prepare-ports.sh verify-portmaster-provider.sh \
 	portmaster-provider.manifest.tsv fixed-storage.sh first-frame-prep.sh \
 	capture-boot-state.sh bird-network.sh bird-fixed-control-exit.sh \
+	bird-emergency-recover.sh \
 	bird-save-config.sh bird-save-config.service bird-suspend.sh \
 	bird-restore-suspend-policy.sh bird-volume.sh bird-control-osd.sh bird-autostart-noop \
 	bird-fixed-sway.sh bird-fixed-platform.sh \
@@ -466,6 +467,7 @@ chmod 0755 "$OUTPUT/card/post-flash.sh" "$OUTPUT/card/mount-storage.sh" \
 	"$OUTPUT/card/bird/capture-boot-state.sh" \
 	"$OUTPUT/card/bird/bird-network.sh" \
 	"$OUTPUT/card/bird/bird-fixed-control-exit.sh" \
+	"$OUTPUT/card/bird/bird-emergency-recover.sh" \
 	"$OUTPUT/card/bird/bird-save-config.sh" \
 	"$OUTPUT/card/bird/bird-suspend.sh" \
 	"$OUTPUT/card/bird/bird-restore-suspend-policy.sh" \
@@ -489,6 +491,7 @@ for SCRIPT in "$OUTPUT/card/post-flash.sh" \
 	"$OUTPUT/card/bird/capture-boot-state.sh" \
 	"$OUTPUT/card/bird/bird-network.sh" \
 	"$OUTPUT/card/bird/bird-fixed-control-exit.sh" \
+	"$OUTPUT/card/bird/bird-emergency-recover.sh" \
 	"$OUTPUT/card/bird/bird-save-config.sh" \
 	"$OUTPUT/card/bird/bird-suspend.sh" \
 	"$OUTPUT/card/bird/bird-restore-suspend-policy.sh" \
@@ -790,8 +793,18 @@ grep -q '/flash/bird/bird-fixed-controls.service' \
 	"$OUTPUT/card/mount-storage.sh" || fail 'stock input replacement missing'
 grep -q '/flash/bird/bird-powerstate.service' \
 	"$OUTPUT/card/mount-storage.sh" || fail 'stock powerstate replacement missing'
-grep -q 'state->select_held && state->start_held' \
+grep -Fq '!state->select_held || !state->start_held' \
 	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'Bird exit chord missing'
+grep -Fq '#define EMERGENCY_HELPER "/flash/bird/bird-emergency-recover.sh"' \
+	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'Bird emergency helper path missing'
+grep -Fq 'state->menu_held' \
+	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'Bird emergency chord missing'
+grep -Fq 'restart --no-block essway.service' \
+	"$OUTPUT/card/bird/bird-emergency-recover.sh" || fail 'Bird emergency UI restart missing'
+if sed -n '/^for FILE in bird-pidwait/,/^done$/p' \
+	"$OUTPUT/card/mount-storage.sh" | grep -Fq 'bird-emergency-recover.sh'; then
+	fail 'immutable emergency helper is copied to writable storage'
+fi
 grep -Fq '#define VOLUME_PROGRAM "/storage/.config/bird/bird-volume.sh"' \
 	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'unmuting volume wrapper missing'
 grep -Fq 'set-sink-mute @DEFAULT_SINK@ 0' \
