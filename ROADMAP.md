@@ -628,6 +628,29 @@ transient memory and energy remain the gate; no RG34XX-SP latency or battery
 improvement is claimed yet. If accepted, move the next final-root executable to
 the immutable release as a separate candidate rather than widening this one.
 
+The direct-flash candidate passed the RG34XX-SP functional gate. Boot ID
+`a4886df4` recorded launcher start/input/usable-frame at 1220/1221/1224 ms,
+only +2 ms in each unpaired observation versus the accepted MPV checkpoint;
+this is non-regression evidence, not a boot improvement. An early game request
+also exposed the next priority-two interval: launcher exit at 3.996 s left its
+last pixels visible without input until provider start at 14.50 s. Optimize
+that attributed 10.5-second content-readiness gap one boundary at a time.
+
+The next correctness/instrumentation candidate is clean source
+`e2c46b278c19974c2983aadc1249bcce9353f709`, immutable release
+`v6.23-emergency-recovery-e2c46b2` and canonical manifest
+`cfe5864bd9a21805d14b625bc17945dd14eb38a5206593f22072ffcf1e640f91`.
+Menu+Select+Start captures bounded volatile diagnostics to persistent storage,
+syncs them, cancels pending foreground state, exits only the managed foreground
+tree, validates any inherited launcher by exact executable identity and asks
+the existing supervisor to restore the menu. It adds no ordinary boot work,
+resident process, idle timer or wakeup. Fixed controls add 256 file bytes with
+unchanged BSS; the immutable emergency-only helper adds 6,254 release bytes.
+The physical gate is logged recovery plus unchanged ordinary launch, exit,
+brightness, volume and suspend behavior. This candidate does not block later
+content-readiness investigation if the reported early-selection fault remains
+intermittent.
+
 ## Stage 5 — Battery, suspend and memory closure
 
 Measure calibrated energy, wakeups, IRQs and CPU residency for short-label menu

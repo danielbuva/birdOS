@@ -382,6 +382,28 @@ benefit is less post-launch storage work and a shorter path to replacement
 launcher availability; boot, UI/content timing, transient memory and energy
 remain physical measurements rather than claims.
 
+The returned direct-flash gate is functionally accepted. Boot ID `a4886df4`
+recorded launcher start, validated input and usable frame at 1220, 1221 and
+1224 ms, compared with 1218, 1219 and 1222 ms for the preceding checkpoint.
+Those unpaired +2 ms samples support non-regression only. The same log explains
+one apparent early-selection freeze: selection/request/launcher-exit occurred
+at 3.606/3.956/3.996 s, but the provider did not begin until 14.50 s. No failed
+unit, OOM, release fallback or launcher adoption fault was recorded; the old
+pixels were noninteractive during a roughly 10.5-second content-readiness gap.
+
+Clean source `e2c46b278c19974c2983aadc1249bcce9353f709` is deployed as
+`v6.23-emergency-recovery-e2c46b2`, manifest
+`cfe5864bd9a21805d14b625bc17945dd14eb38a5206593f22072ffcf1e640f91`.
+Menu+Select+Start now runs a final-root, emergency-only helper directly from
+`/flash`. It snapshots unit/process/memory/Bird state and bounded journal/kernel
+evidence into `/storage/bird-data/MUOS/Bird/log/emergency/`, syncs before
+mutation, invokes the existing managed foreground exit, cancels pending state,
+validates an inherited launcher before signalling it and requests one UI
+supervisor restart. This adds no boot executable, resident task, timer, ordinary
+syscall or idle wakeup. The controls binary adds 256 file bytes (`.text` +60,
+`.rodata` +192, `.bss` unchanged); the helper adds 6,254 immutable release
+bytes. Physical recovery and log-survival remain unclaimed until tested.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.

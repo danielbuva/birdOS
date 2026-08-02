@@ -19,22 +19,21 @@ display geometry and hardware policy are deliberate. Older muOS stages,
 source-kernel challengers and clean-root experiments remain useful evidence,
 but they are not alternate active implementations.
 
-The card currently selects the bounded Stage 4 direct-flash launcher candidate
-`v6.23-flash-launcher-12b8ff6`, built from clean source
-`12b8ff6906eebe86eac9431d690769fcc94db1c1`. Its previous selector is the
-physically accepted media-control checkpoint
-`v6.23-mpv-complete-controls-813226d`, not a rejected experiment. The selected
+The card currently selects the bounded Stage 4 emergency-recovery candidate
+`v6.23-emergency-recovery-e2c46b2`, built from clean source
+`e2c46b278c19974c2983aadc1249bcce9353f709`. Its previous selector is the
+physically accepted direct-flash checkpoint
+`v6.23-flash-launcher-12b8ff6`, not a rejected experiment. The selected
 candidate's canonical manifest digest is
-`44ce41ac87cea8f84a36ea1934c28b2d9ed3821d76bf8b864d2bc484ecececd5`,
-and independent post-deployment verification passed all 56 manifest-owned
-files. The device-contract digest is
+`cfe5864bd9a21805d14b625bc17945dd14eb38a5206593f22072ffcf1e640f91`,
+and deployment verified all 57 manifest-owned files. The device-contract digest is
 `85ccb8e46e71ee66e2320022ac13228124d6efcea5abdd800b8c18bd190f73cd`
 and the generated-catalog digest is
 `7e29e491bb43191ca9ae6c18bd566b6ba0c984bf43d1d0103eddd6e534306e62`.
-The accepted MPV checkpoint passed on boot ID `347650ca`; the direct-flash
-candidate has passed host, build and deployment gates but still requires its
-RG34XX-SP functional and timing gate. Neither tuple replaces the broader
-source/behavior baseline or immutable fallback named above.
+The direct-flash checkpoint passed launch, return and broad functionality on
+boot ID `a4886df4`; the emergency-recovery candidate has passed host, build and
+deployment gates but still requires its RG34XX-SP recovery gate. Neither tuple
+replaces the broader source/behavior baseline or immutable fallback named above.
 
 ## Authority
 
@@ -149,8 +148,12 @@ of inactive releases needed, including each `.complete` marker, canonical
 manifest, file set, modes, sizes and hashes; packages those exact installed
 bytes; and publishes every one as an attested release in the private GitHub
 archive repository. Only after each release's published assets, attestation and
-downloaded canonical manifest verify does it remove that exact inactive
-directory. If the byte-identical pinned fallback selector is active, no
+downloaded canonical manifest verify does it safely inventory and extract the
+published archive, then validate every archived path and byte against that same
+manifest before removing the exact inactive directory. Archive tar-header
+identity is deliberately not an authority: directory timestamps can change tar
+bytes without changing the canonical release payload. If the byte-identical
+pinned fallback selector is active, no
 versioned Bird release is boot-selected, but the selected fallback runtime
 remains on-card and its selector hash is rechecked before every archive and
 removal. When that build needs an immutable release kernel, the fully verified
@@ -483,6 +486,38 @@ bytes, ELF sections and resident memory are unchanged by construction. It
 removes no resident task or idle timer. Device boot, UI/content interaction,
 transient memory and energy remain unmeasured; in particular, no boot or
 battery improvement is claimed until the RG34XX-SP gate passes.
+
+The RG34XX-SP functional gate passed direct `/flash` replacement launch and
+return. Boot ID `a4886df4` recorded launcher start/input/usable-frame at
+1220/1221/1224 ms, versus 1218/1219/1222 ms for the preceding MPV checkpoint.
+The unpaired +2 ms observations are boot non-regression evidence only, not a
+latency claim. An early selection at 3606 ms was queued before storage at
+3889 ms, published at 3956 ms and relinquished the launcher at 3996 ms. The
+provider did not start until 14.50 s. The unchanged menu pixels were therefore
+visible but noninteractive for about 10.5 seconds: a real content-readiness UX
+gap, not evidence that the kernel or launcher process was still hung.
+
+### Logged emergency UI recovery candidate
+
+Menu+Select+Start now invokes one operator-only recovery transaction. It first
+writes a unique mode-0600 snapshot below
+`/storage/bird-data/MUOS/Bird/log/emergency/`, including boot identity, unit and
+process state, memory pressure, Bird state files, bounded journal/dmesg output
+and the existing early/supervisor/content logs. It syncs that evidence before
+using the existing foreground-exit helper, cancelling one pending request,
+terminating only an exactly validated inherited launcher when necessary and
+requesting a nonblocking `essway.service` restart. The chord is latched until
+Select or Start is released, and a late Menu edge upgrades an already-issued
+Select+Start exit to logged recovery.
+
+The helper is executed directly from immutable `/flash` and is never copied
+per boot. It is 6,254 bytes. The fixed-controls binary grows from 10,352 to
+10,608 bytes: `.text` +60 bytes, `.rodata` +192 bytes and `.bss` unchanged at
+8 bytes. There is no new resident task, syscall, timer, framebuffer traffic or
+ordinary idle wakeup; diagnostics and sync cost occur only when the emergency
+chord is deliberately invoked. Host dynamic-instruction counts are unavailable
+because Valgrind is not installed. Physical chord recovery, preserved logs and
+ordinary Select+Start behavior remain the device gate.
 
 ## Launcher visual architecture
 
