@@ -202,9 +202,11 @@ mount --bind /storage/bird-data/MUOS/bios /storage/roms/bios || {
 }
 
 # These are deliberately copied after /storage exists. The first Bird process
-# already runs from initramfs; this is the persistent final-root toolset used
-# by its supervisor, content sessions and fixed hardware workers.
-for FILE in bird-launcher bird-pidwait bird-fixed-controls bird-powerstate \
+# already runs from initramfs. Replacement launchers execute from the selected
+# immutable /flash/bird release, while this remaining final-root toolset is
+# retained under writable storage for the existing service and recovery
+# contracts.
+for FILE in bird-pidwait bird-fixed-controls bird-powerstate \
 	bird-fixed-control-exit.sh bird-save-config.sh supervisor.sh run-content.sh prepare-ports.sh \
 		verify-portmaster-provider.sh portmaster-provider.manifest.tsv \
 		fixed-storage.sh first-frame-prep.sh capture-boot-state.sh \
@@ -218,7 +220,6 @@ cp -f /flash/bird/bird-swap.conf /storage/.config/swap.conf || return 1
 # chmod. Use that exact applet so an existing ext4 destination with stale mode
 # bits is repaired deterministically instead of inheriting its previous mode.
 /sysroot/usr/bin/busybox chmod 0755 \
-	/storage/.config/bird/bird-launcher \
 	/storage/.config/bird/bird-pidwait \
 	/storage/.config/bird/bird-fixed-controls \
 	/storage/.config/bird/bird-powerstate \
@@ -240,7 +241,7 @@ cp -f /flash/bird/bird-swap.conf /storage/.config/swap.conf || return 1
 	/storage/.config/swap.conf || return 1
 
 # Verify the capabilities consumed in final root after the mode transaction.
-for FILE in bird-launcher bird-pidwait bird-fixed-controls bird-powerstate \
+for FILE in bird-pidwait bird-fixed-controls bird-powerstate \
 	bird-fixed-control-exit.sh bird-save-config.sh bird-suspend.sh bird-volume.sh \
 	bird-control-osd.sh supervisor.sh run-content.sh prepare-ports.sh \
 	verify-portmaster-provider.sh fixed-storage.sh first-frame-prep.sh \

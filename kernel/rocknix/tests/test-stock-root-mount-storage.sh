@@ -7,6 +7,7 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../../.." && pwd)
 MOUNT_STORAGE=$ROOT/kernel/rocknix/stock-root/mount-storage.sh
+SUPERVISOR=$ROOT/kernel/rocknix/stock-root/supervisor.sh
 EARLY_BUILDER=$ROOT/kernel/rocknix/build-stock-root-early-initramfs.sh
 INIT_BUSYBOX=$ROOT/kernel/work/rocknix-official-initramfs-20260701/ramdisk/usr/bin/busybox
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/bird-mount-storage.XXXXXX")
@@ -54,6 +55,12 @@ grep -Fq '/sysroot/usr/bin/busybox chmod 0755' "$MOUNT_STORAGE"
 grep -Fq '/sysroot/usr/bin/busybox chmod 0644' "$MOUNT_STORAGE"
 grep -Fq '[ -x "/storage/.config/bird/$FILE" ] || return 1' \
 	"$MOUNT_STORAGE"
+grep -Fq 'LAUNCHER=/flash/bird/bird-launcher' "$SUPERVISOR"
+if sed -n '/^for FILE in bird-pidwait/,/^done$/p' "$MOUNT_STORAGE" |
+	grep -Fq 'bird-launcher'; then
+	printf '%s\n' 'immutable final-root launcher is still copied per boot' >&2
+	exit 1
+fi
 grep -Fq 'print "  if [ \"${BOOT_STEP}\" = \"mount_storage\" ]; then"' \
 	"$EARLY_BUILDER"
 grep -Fq 'mount-storage-latest.log' "$EARLY_BUILDER"
@@ -338,13 +345,15 @@ DEST_SWAP=$TMP/dest-swap.conf
 SYSTEM_BUSYBOX=$TMP/system-busybox
 MODE_EVENTS=$TMP/mode-events
 /bin/mkdir -p "$SOURCE_BIRD" "$DEST_BIRD"
-EXECUTABLE_FILES='bird-launcher bird-pidwait bird-fixed-controls bird-powerstate bird-fixed-control-exit.sh bird-save-config.sh supervisor.sh run-content.sh prepare-ports.sh verify-portmaster-provider.sh fixed-storage.sh first-frame-prep.sh capture-boot-state.sh bird-network.sh bird-suspend.sh bird-volume.sh bird-control-osd.sh'
-MODE_EXECUTABLE_FILES='bird-launcher bird-pidwait bird-fixed-controls bird-powerstate bird-fixed-control-exit.sh bird-save-config.sh bird-suspend.sh bird-volume.sh bird-control-osd.sh supervisor.sh run-content.sh prepare-ports.sh verify-portmaster-provider.sh fixed-storage.sh first-frame-prep.sh capture-boot-state.sh bird-network.sh'
+EXECUTABLE_FILES='bird-pidwait bird-fixed-controls bird-powerstate bird-fixed-control-exit.sh bird-save-config.sh supervisor.sh run-content.sh prepare-ports.sh verify-portmaster-provider.sh fixed-storage.sh first-frame-prep.sh capture-boot-state.sh bird-network.sh bird-suspend.sh bird-volume.sh bird-control-osd.sh'
+MODE_EXECUTABLE_FILES='bird-pidwait bird-fixed-controls bird-powerstate bird-fixed-control-exit.sh bird-save-config.sh bird-suspend.sh bird-volume.sh bird-control-osd.sh supervisor.sh run-content.sh prepare-ports.sh verify-portmaster-provider.sh fixed-storage.sh first-frame-prep.sh capture-boot-state.sh bird-network.sh'
 for FILE in $EXECUTABLE_FILES portmaster-provider.manifest.tsv; do
 	printf 'fixture %s\n' "$FILE" >"$SOURCE_BIRD/$FILE"
 done
+printf '%s\n' 'immutable launcher fixture' >"$SOURCE_BIRD/bird-launcher"
 printf '%s\n' 'fixture swap' >"$SOURCE_BIRD/bird-swap.conf"
 /bin/chmod 0644 "$SOURCE_BIRD"/*
+/bin/chmod 0755 "$SOURCE_BIRD/bird-launcher"
 cat >"$SYSTEM_BUSYBOX" <<'EOF'
 #!/bin/bash
 printf '%s\n' "$*" >>"$MODE_EVENTS"
@@ -392,6 +401,8 @@ for FILE in $EXECUTABLE_FILES; do
 	[ "$(file_mode "$DEST_BIRD/$FILE")" = 755 ]
 	cmp "$SOURCE_BIRD/$FILE" "$DEST_BIRD/$FILE"
 done
+[ -x "$SOURCE_BIRD/bird-launcher" ]
+[ ! -e "$DEST_BIRD/bird-launcher" ]
 [ -r "$DEST_BIRD/portmaster-provider.manifest.tsv" ]
 [ -r "$DEST_SWAP" ]
 [ "$(file_mode "$DEST_BIRD/portmaster-provider.manifest.tsv")" = 644 ]
@@ -411,7 +422,7 @@ STATUS=$?
 set -e
 [ "$STATUS" -eq 1 ]
 [ "$(wc -l <"$MODE_EVENTS" | tr -d ' ')" -eq 1 ]
-[ ! -x "$DEST_BIRD/bird-launcher" ]
+[ ! -x "$DEST_BIRD/bird-pidwait" ]
 
 /bin/rm -rf "$DEST_BIRD" "$DEST_SWAP"
 /bin/mkdir -p "$DEST_BIRD"
@@ -424,7 +435,7 @@ STATUS=$?
 set -e
 [ "$STATUS" -eq 1 ]
 cmp "$EXPECTED_MODE_EVENTS" "$MODE_EVENTS"
-[ ! -x "$DEST_BIRD/bird-launcher" ]
+[ ! -x "$DEST_BIRD/bird-pidwait" ]
 [ ! -e "$CHMOD_CALLED" ]
 
 # Exercise the exact init-rewrite AWK program against a minimal pinned-init

@@ -10,6 +10,8 @@ SUPERVISOR=$ROOT/kernel/rocknix/stock-root/supervisor.sh
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/bird-supervisor.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT INT TERM HUP
 
+grep -Fq 'LAUNCHER=/flash/bird/bird-launcher' "$SUPERVISOR"
+
 FUNCTIONS=$TMP/supervisor-functions.sh
 awk '
 	/^poweroff_client\(\) \{/ { emit = 1 }
