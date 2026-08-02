@@ -1211,3 +1211,16 @@ suspend/resume with the lid open and lid-open wake. All three cases passed on
 v6.2. V6.3 removes the release's duplicate MPV volume ownership without
 replacing its player; measured H700 video-frame tuning remains after the
 provider compatibility gate.
+
+The `v6.23-suspend-policy-92abfe8` physical gate later proved that pre-systemd
+policy alone is insufficient while retained common/001 recovery remains.
+`chksysconfig verify` found a missing RetroArch configuration file and restored
+the complete stock `/usr/config` tree seven seconds after Bird installed its
+fixed policy. That removed `system.suspendmode=off` and restored
+`AllowSuspend=yes`; fixed controls still dispatched correctly, but the retained
+provider's non-`off` guard exited without suspending while logind ignored the
+same input. The corrective release seeds only the two missing RetroArch
+prerequisites before PID 1 and installs a manifest-owned common/009 verifier
+after common/001. Accepted boots make read-only comparisons; a recovery boot
+atomically restores the fixed mode and sleep policy. H700/030 and the generic
+common/009 implementation remain suppressed.

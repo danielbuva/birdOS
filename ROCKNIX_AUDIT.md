@@ -206,6 +206,31 @@ both late writers and removes competing drop-ins. It adds no coordinator,
 provider, wrapper, trace or executable-path change, so the next physical gate
 isolates this authority correction.
 
+That gate rejected `v6.23-suspend-policy-92abfe8`: lid and power events were
+dispatched but produced no suspend effect. The release and manifest verified,
+and inode evidence localized the failure after root preparation. Retained
+common/001 `chksysconfig verify` found `retroarch.cfg` absent and used its broad
+`rsync -a /usr/config/ /storage/.config` recovery. The newly created RetroArch
+file and overwritten stock sleep file share the same 17:52:48 inode time and
+archived source timestamps; Bird's generated policy had been installed at
+17:52:41. The same recovery restored a stock `system.cfg` containing the three
+fake-suspend enable values but no `system.suspendmode`. The provider therefore
+exited through its non-`off` hardware-suspend guard, while generated logind
+policy left no second input owner.
+
+The corrective boundary preserves common/001 recovery but removes its ordinary
+reason to bulk-restore: root preparation copies either missing RetroArch
+prerequisite individually before PID 1. A manifest-owned common/009 verifier
+runs after common/001, restores an absent/non-`off` provider mode and repairs a
+stale sleep file atomically. It is comparison-only in the accepted steady state;
+generic common/009 behavior and H700/030 remain suppressed. This closes both
+the observed first-boot overwrite and later policy drift without changing the
+controls, coordinator, wrapper, or provider transaction under test.
+The retained autostart loop does not propagate a common-hook failure, so a
+future bounded candidate must either replace the broad common/001 recovery or
+add an explicit fail-closed consumer. That fault-injection boundary is not part
+of this returned-card correctness repair.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.

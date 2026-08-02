@@ -260,13 +260,13 @@ showed the H700 policy writer at 14:38:28 and the later generic
 `009-sleepmode` rewrite to `mem` at 14:38:29. Bird controls had already started
 at 5.308 seconds, while compatibility autostart did not begin until 9.397
 seconds, so even a correct late writer could not protect a quick post-menu
-suspend. The next candidate therefore installs `off`, `AllowSuspend=no` and
+suspend. The next candidate therefore installed `off`, `AllowSuspend=no` and
 power/suspend/lid `ignore` policy during initramfs root preparation, before
-systemd, removes competing sleep/logind `*.conf` drop-ins, and suppresses both
+systemd, removed competing sleep/logind `*.conf` drop-ins, and suppressed both
 late policy writers. The policy files are generated from the device contract;
 accepted files are compared and not rewritten on later ordinary boots.
 
-The immediate physical candidate is deliberately policy-only. Root preparation
+Release `v6.23-suspend-policy-92abfe8` was deliberately policy-only. Root preparation
 canonicalizes exactly one copy of each fixed `system.suspendmode=off`, fake-
 suspend, timed-shutdown and core-parking key; installs generated sleep/logind
 drop-ins; removes competing drop-ins; and suppresses both late writers. It does
@@ -274,8 +274,24 @@ not modify the rejected coordinator, provider, wrapper, controls binary or
 their writable execution paths. This isolates whether the observed cooldown
 and reboot came from split real/fake-suspend ownership. It is a correctness
 candidate pending physical proof and makes no boot, interaction, battery or
-memory claim. If it passes, later coordinator work resumes as a separate,
-independently measured change.
+memory claim.
+
+The returned physical gate rejected that release: both lid and power became
+no-ops. Read-only ext4 evidence proved root preparation installed the candidate
+at 17:52:41, then retained common/001 `chksysconfig` found a missing
+`retroarch.cfg` and ran its broad `rsync -a /usr/config/ /storage/.config` at
+17:52:48. That copied the stock `AllowSuspend=yes` file and a stock
+`system.cfg` with no `system.suspendmode`. With both later writers suppressed,
+the fake-suspend provider treated the absent key as hardware suspend enabled
+and exited successfully before doing work, while logind correctly ignored the
+same events. The corrective candidate seeds only missing RetroArch prerequisites
+before PID 1 and replaces common/009 with a fixed post-recovery verifier. It
+reasserts `off` and the generated sleep policy after any retained recovery but
+performs only comparisons in the accepted steady state. H700/030 remains
+suppressed. This is a correctness fix pending a new physical suspend gate, not
+a performance claim. Its ordinary path removes the returned-card recovery
+trigger; fail-closed handling for a separately fault-injected common/001
+recovery failure remains a later retained-userspace hardening candidate.
 
 ## Stage 3 — Bootstrap progression
 

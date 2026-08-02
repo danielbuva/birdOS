@@ -280,8 +280,13 @@ True power-loss recovery requires the later U-Boot A/B design in the roadmap.
    responsibilities are not linked into the launcher. Before systemd starts,
    root preparation canonicalizes `system.suspendmode=off`, installs generated
    no-real-suspend and no-logind-input policy, and removes every competing
-   `*.conf` drop-in before PID 1 starts; the later generic and H700 policy
-   writers are no-ops. This prevents split ownership with the H700 real-suspend
+   `*.conf` drop-in before PID 1 starts. It also seeds either missing RetroArch
+   configuration prerequisite individually, preventing retained
+   `chksysconfig` recovery from restoring the complete stock configuration over
+   Bird-owned policy. The generic H700 writers remain disabled; a fixed
+   common/009 verifier runs after retained common/001 recovery and repairs mode
+   or sleep-policy drift without writing on an accepted ordinary boot. This
+   prevents split ownership with the H700 real-suspend
    path that the retained provider explicitly does not support. The persistent
    controls process continues to own the retained ROCKNIX resume transaction
    from the first accepted wake request until the wrapper explicitly reports

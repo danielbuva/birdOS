@@ -109,9 +109,12 @@ brightness. Its stable low-end ticks are 5, 3 and 1 percent; lid/power wake
 briefly starts the panel at the measured 10-percent threshold, then restores
 the exact saved dim level. Suspend is the retained H700 fake-suspend policy:
 CPU0 remains online, CPU1--CPU3 park, systemd real suspend is disabled and
-logind never owns the power key or lid switch. A late generic brightness or
-suspend-policy reset is not part of the contract. Final effects will be
-designed only after the fixed init/kernel path is complete.
+logind never owns the power key or lid switch. Missing application defaults are
+recovered individually so they cannot reset this policy. A fixed post-recovery
+verifier may reassert `off` and `AllowSuspend=no`; on an accepted ordinary boot
+it performs read-only checks. A late generic brightness or suspend-policy reset
+is not part of the contract. Final effects will be designed only after the
+fixed init/kernel path is complete.
 
 ## Efficiency contract
 

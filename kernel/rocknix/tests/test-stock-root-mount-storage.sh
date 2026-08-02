@@ -26,6 +26,8 @@ sed \
 	-e 's#^FIXED_LOGIND_CONFIG=.*#FIXED_LOGIND_CONFIG=$TEST_FIXED_LOGIND_CONFIG#' \
 	-e 's#^FIXED_SUSPEND_POLICY=.*#FIXED_SUSPEND_POLICY=$TEST_FIXED_SUSPEND_POLICY#' \
 	-e 's#^SYSTEM_BUSYBOX=.*#SYSTEM_BUSYBOX=$TEST_SYSTEM_BUSYBOX#' \
+	-e 's#^RETROARCH_CONFIG_DIR=.*#RETROARCH_CONFIG_DIR=$TEST_RETROARCH_CONFIG_DIR#' \
+	-e 's#^FIXED_RETROARCH_CONFIG_DIR=.*#FIXED_RETROARCH_CONFIG_DIR=$TEST_FIXED_RETROARCH_CONFIG_DIR#' \
 	"$PREFIX_RAW" >"$PREFIX"
 
 grep -q '^STORAGE_IMAGE=/birddata/MUOS/runtime/ROCKNIX-STORAGE$' "$PREFIX"
@@ -55,6 +57,15 @@ grep -Fq '[ -x "/storage/.config/bird/$FILE" ] || return 1' \
 grep -Fq 'print "  if [ \"${BOOT_STEP}\" = \"mount_storage\" ]; then"' \
 	"$EARLY_BUILDER"
 grep -Fq 'mount-storage-latest.log' "$EARLY_BUILDER"
+grep -Fq 'mount --bind /flash/bird/bird-restore-suspend-policy.sh \' \
+	"$MOUNT_STORAGE"
+grep -Fq '/sysroot/usr/lib/autostart/common/009-sleepmode || {' \
+	"$MOUNT_STORAGE"
+if sed -n '/^for SCRIPT in 001-emulationstation/,/^done$/p' "$MOUNT_STORAGE" |
+	grep -Fq '009-sleepmode'; then
+	printf '%s\n' 'common suspend recovery is still suppressed as a no-op' >&2
+	exit 1
+fi
 
 EVENTS=$TMP/events
 FAIL_OPERATION=
@@ -64,10 +75,17 @@ TEST_LOGIND_CONFIG=$TMP/storage/logind.conf.d/login.conf
 TEST_FIXED_SLEEP_CONFIG=$ROOT/kernel/rocknix/stock-root/bird-sleep.conf
 TEST_FIXED_LOGIND_CONFIG=$ROOT/kernel/rocknix/stock-root/bird-logind.conf
 TEST_FIXED_SUSPEND_POLICY=$ROOT/kernel/rocknix/stock-root/bird-suspend-policy.generated.sh
+TEST_RETROARCH_CONFIG_DIR=$TMP/storage/retroarch
+TEST_FIXED_RETROARCH_CONFIG_DIR=$TMP/fixed-retroarch
 TEST_SYSTEM_BUSYBOX=$TMP/system-busybox-policy
 POLICY_EVENTS=$TMP/policy-events
 /bin/mkdir -p "${TEST_SUSPEND_CONFIG%/*}" \
-	"${TEST_SLEEP_CONFIG%/*}" "${TEST_LOGIND_CONFIG%/*}"
+	"${TEST_SLEEP_CONFIG%/*}" "${TEST_LOGIND_CONFIG%/*}" \
+	"$TEST_RETROARCH_CONFIG_DIR" "$TEST_FIXED_RETROARCH_CONFIG_DIR"
+printf '%s\n' 'fixed core options' \
+	>"$TEST_FIXED_RETROARCH_CONFIG_DIR/retroarch-core-options.cfg"
+printf '%s\n' 'fixed retroarch config' \
+	>"$TEST_FIXED_RETROARCH_CONFIG_DIR/retroarch.cfg"
 cat >"$TEST_SUSPEND_CONFIG" <<'EOF'
 system.suspendmode=mem
 system.suspendmode=off
@@ -77,6 +95,7 @@ system.suspend.enable_timed_shutdown=0
 system.suspend.enable_timed_shutdown=1
 system.suspend.park_cores=1
 system.suspend.park_cores=0
+system.hostname=H700
 unrelated.setting=preserved
 EOF
 printf '%s\n' stale-sleep >"$TEST_SLEEP_CONFIG"
@@ -170,6 +189,15 @@ grep -Fxq 'system.suspend.park_cores=1' "$TEST_SUSPEND_CONFIG"
 grep -Fxq 'unrelated.setting=preserved' "$TEST_SUSPEND_CONFIG"
 cmp "$TEST_FIXED_SLEEP_CONFIG" "$TEST_SLEEP_CONFIG"
 cmp "$TEST_FIXED_LOGIND_CONFIG" "$TEST_LOGIND_CONFIG"
+cmp "$TEST_FIXED_RETROARCH_CONFIG_DIR/retroarch-core-options.cfg" \
+	"$TEST_RETROARCH_CONFIG_DIR/retroarch-core-options.cfg"
+cmp "$TEST_FIXED_RETROARCH_CONFIG_DIR/retroarch.cfg" \
+	"$TEST_RETROARCH_CONFIG_DIR/retroarch.cfg"
+# These are the exact three retained chksysconfig prerequisites. With all of
+# them present, common/001 must not enter its broad stock-tree restore branch.
+[ -s "$TEST_RETROARCH_CONFIG_DIR/retroarch-core-options.cfg" ]
+[ -s "$TEST_RETROARCH_CONFIG_DIR/retroarch.cfg" ]
+grep -q '^system[.]hostname=' "$TEST_SUSPEND_CONFIG"
 [ ! -e "${TEST_SLEEP_CONFIG%/*}/zz-override.conf" ]
 [ ! -e "${TEST_LOGIND_CONFIG%/*}/zz-override.conf" ]
 [ ! -L "${TEST_LOGIND_CONFIG%/*}/zzz-symlink.conf" ]
@@ -177,6 +205,7 @@ cmp "$TEST_FIXED_LOGIND_CONFIG" "$TEST_LOGIND_CONFIG"
 cat >"$TMP/expected-success" <<'EOF'
 loop|/birddata/MUOS/runtime/ROCKNIX-STORAGE|/storage|loop,rw,noatime
 mkdir|-p TEST_SLEEP_DIR TEST_LOGIND_DIR
+mkdir|-p TEST_RETROARCH_DIR
 mkdir|-p /run/bird-data /storage/bird-data /storage/roms /storage/.config/bird
 mount|--move /birddata /run/bird-data
 mount|--bind /run/bird-data /storage/bird-data
@@ -186,6 +215,7 @@ mount|--bind /storage/bird-data/MUOS/bios /storage/roms/bios
 EOF
 sed -e "s#TEST_SLEEP_DIR#${TEST_SLEEP_CONFIG%/*}#" \
 	-e "s#TEST_LOGIND_DIR#${TEST_LOGIND_CONFIG%/*}#" \
+	-e "s#TEST_RETROARCH_DIR#$TEST_RETROARCH_CONFIG_DIR#" \
 	"$TMP/expected-success" >"$TMP/expected-success.resolved"
 cmp "$TMP/expected-success.resolved" "$EVENTS"
 
@@ -200,6 +230,7 @@ system.suspend.enable_timed_shutdown=1
 system.suspend.enable_timed_shutdown=0
 system.suspend.park_cores=0
 system.suspend.park_cores=1
+system.hostname=H700
 unrelated.setting=preserved
 EOF
 # Equal bytes with stale modes must still take the replacement transaction.
@@ -253,12 +284,14 @@ run_prefix
 cat >"$TMP/expected-move-failure" <<'EOF'
 loop|/birddata/MUOS/runtime/ROCKNIX-STORAGE|/storage|loop,rw,noatime
 mkdir|-p TEST_SLEEP_DIR TEST_LOGIND_DIR
+mkdir|-p TEST_RETROARCH_DIR
 mkdir|-p /run/bird-data /storage/bird-data /storage/roms /storage/.config/bird
 mount|--move /birddata /run/bird-data
 error|bird-data-move|Could not move large Bird data volume to its final mount
 EOF
 sed -e "s#TEST_SLEEP_DIR#${TEST_SLEEP_CONFIG%/*}#" \
 	-e "s#TEST_LOGIND_DIR#${TEST_LOGIND_CONFIG%/*}#" \
+	-e "s#TEST_RETROARCH_DIR#$TEST_RETROARCH_CONFIG_DIR#" \
 	"$TMP/expected-move-failure" >"$TMP/expected-move-failure.resolved"
 cmp "$TMP/expected-move-failure.resolved" "$EVENTS"
 
@@ -270,6 +303,7 @@ run_prefix
 cat >"$TMP/expected-bind-failure" <<'EOF'
 loop|/birddata/MUOS/runtime/ROCKNIX-STORAGE|/storage|loop,rw,noatime
 mkdir|-p TEST_SLEEP_DIR TEST_LOGIND_DIR
+mkdir|-p TEST_RETROARCH_DIR
 mkdir|-p /run/bird-data /storage/bird-data /storage/roms /storage/.config/bird
 mount|--move /birddata /run/bird-data
 mount|--bind /run/bird-data /storage/bird-data
@@ -277,6 +311,7 @@ error|bird-data-bind|Could not publish the large Bird data volume
 EOF
 sed -e "s#TEST_SLEEP_DIR#${TEST_SLEEP_CONFIG%/*}#" \
 	-e "s#TEST_LOGIND_DIR#${TEST_LOGIND_CONFIG%/*}#" \
+	-e "s#TEST_RETROARCH_DIR#$TEST_RETROARCH_CONFIG_DIR#" \
 	"$TMP/expected-bind-failure" >"$TMP/expected-bind-failure.resolved"
 cmp "$TMP/expected-bind-failure.resolved" "$EVENTS"
 

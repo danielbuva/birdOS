@@ -13,7 +13,8 @@ mount_part "$STORAGE_IMAGE" /storage "loop,rw,noatime" || {
 # provider parks CPU1--CPU3. Establish that authority before final-root systemd
 # can consume power/lid events. The late generic 009-sleepmode job has been
 # observed rewriting this card back to unsupported real `mem` suspend after the
-# H700 policy ran, so both late writers are suppressed below.
+# H700 policy ran. The generic writers are suppressed below; common/009 becomes
+# a fixed post-recovery verifier because retained common/001 may restore defaults.
 SUSPEND_CONFIG=/storage/.config/system/configs/system.cfg
 SUSPEND_SLEEP_CONFIG=/storage/.config/sleep.conf.d/sleep.conf
 SUSPEND_LOGIND_CONFIG=/storage/.config/logind.conf.d/login.conf
@@ -21,6 +22,8 @@ FIXED_SLEEP_CONFIG=/flash/bird/bird-sleep.conf
 FIXED_LOGIND_CONFIG=/flash/bird/bird-logind.conf
 FIXED_SUSPEND_POLICY=/flash/bird/bird-suspend-policy.generated.sh
 SYSTEM_BUSYBOX=/sysroot/usr/bin/busybox
+RETROARCH_CONFIG_DIR=/storage/.config/retroarch
+FIXED_RETROARCH_CONFIG_DIR=/sysroot/usr/config/retroarch
 PARK_CORES_SETTING=
 SUSPEND_MODE_SETTING=
 FAKE_SUSPEND_SETTING=
@@ -130,6 +133,27 @@ for FIXED_POLICY in \
 			"$SYSTEM_BUSYBOX" chmod 0644 "$POLICY_TEMP" &&
 			"$SYSTEM_BUSYBOX" mv -f "$POLICY_TEMP" "$POLICY_TARGET" || {
 				"$SYSTEM_BUSYBOX" rm -f "$POLICY_TEMP"
+				return 1
+			}
+	fi
+done
+
+# common/001-setup invokes a broad stock-config recovery when either of these
+# application prerequisites is absent. Seed only the missing file now, after
+# Bird is already usable but before systemd, so that recovery cannot overwrite
+# Bird-owned system, sleep, or logind policy during the interactive session.
+mkdir -p "$RETROARCH_CONFIG_DIR"
+for RETROARCH_CONFIG in retroarch-core-options.cfg retroarch.cfg; do
+	RETROARCH_SOURCE=$FIXED_RETROARCH_CONFIG_DIR/$RETROARCH_CONFIG
+	RETROARCH_TARGET=$RETROARCH_CONFIG_DIR/$RETROARCH_CONFIG
+	if [ ! -s "$RETROARCH_TARGET" ]; then
+		RETROARCH_TEMP=$RETROARCH_TARGET.bird-new
+		[ -s "$RETROARCH_SOURCE" ] || return 1
+		"$SYSTEM_BUSYBOX" rm -f "$RETROARCH_TEMP" || return 1
+		"$SYSTEM_BUSYBOX" cp -f "$RETROARCH_SOURCE" "$RETROARCH_TEMP" &&
+			"$SYSTEM_BUSYBOX" chmod 0644 "$RETROARCH_TEMP" &&
+			"$SYSTEM_BUSYBOX" mv -f "$RETROARCH_TEMP" "$RETROARCH_TARGET" || {
+				"$SYSTEM_BUSYBOX" rm -f "$RETROARCH_TEMP"
 				return 1
 			}
 	fi
@@ -277,7 +301,7 @@ mount --bind /flash/bird/bird-save-config.service \
 # hardware/features absent from this one-user RG34XX-SP profile. The remaining
 # autostart sequence is unchanged for this physical gate.
 for SCRIPT in 001-emulationstation 001-sync-modules 002-device-switch \
-	003-upgrade 006-display 007-rootpw 009-bluetooth 009-sleepmode 010-moonlight \
+	003-upgrade 006-display 007-rootpw 009-bluetooth 010-moonlight \
 	010-uimode 020-configs 020-set_audio_latency 055-hdmi-check \
 	080-dual_screen_mode 080-network 081-usbgadget 098-deviceutils \
 	099-networkservices; do
@@ -287,6 +311,18 @@ for SCRIPT in 001-emulationstation 001-sync-modules 002-device-switch \
 		return 1
 	}
 done
+
+# common/001-setup is retained for its configuration-recovery contract. If an
+# unrelated RetroArch file is absent, its chksysconfig transaction restores the
+# complete stock /usr/config tree and can overwrite the pre-systemd suspend
+# policy. Replace the immediately following common/009 hook with one fixed,
+# manifest-verified repair. On ordinary boots the requested mode already
+# matches, so ROCKNIX's suspendmode helper performs no write or logind restart.
+mount --bind /flash/bird/bird-restore-suspend-policy.sh \
+	/sysroot/usr/lib/autostart/common/009-sleepmode || {
+	error bird-suspend-policy "Could not install post-recovery suspend policy"
+	return 1
+}
 
 # The pinned STORAGE already contains the release-matched 54-file module tree,
 # the EmulationStation compatibility link and no applicable platform/device

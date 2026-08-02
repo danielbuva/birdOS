@@ -409,7 +409,8 @@ for FILE in 090-ui_service 999-export essway.service rocknix.target \
 	prepare-ports.sh verify-portmaster-provider.sh \
 	portmaster-provider.manifest.tsv fixed-storage.sh first-frame-prep.sh \
 	capture-boot-state.sh bird-network.sh bird-fixed-control-exit.sh \
-	bird-save-config.sh bird-save-config.service bird-suspend.sh bird-volume.sh bird-control-osd.sh bird-autostart-noop \
+	bird-save-config.sh bird-save-config.service bird-suspend.sh \
+	bird-restore-suspend-policy.sh bird-volume.sh bird-control-osd.sh bird-autostart-noop \
 	bird-fixed-sway.sh bird-fixed-platform.sh \
 	bird-swap.conf bird-suspend-policy.generated.sh bird-sleep.conf \
 	bird-logind.conf; do
@@ -446,6 +447,7 @@ chmod 0755 "$OUTPUT/card/post-flash.sh" "$OUTPUT/card/mount-storage.sh" \
 	"$OUTPUT/card/bird/bird-fixed-control-exit.sh" \
 	"$OUTPUT/card/bird/bird-save-config.sh" \
 	"$OUTPUT/card/bird/bird-suspend.sh" \
+	"$OUTPUT/card/bird/bird-restore-suspend-policy.sh" \
 	"$OUTPUT/card/bird/bird-volume.sh" \
 	"$OUTPUT/card/bird/bird-control-osd.sh" \
 	"$OUTPUT/card/bird/bird-autostart-noop" \
@@ -468,6 +470,7 @@ for SCRIPT in "$OUTPUT/card/post-flash.sh" \
 	"$OUTPUT/card/bird/bird-fixed-control-exit.sh" \
 	"$OUTPUT/card/bird/bird-save-config.sh" \
 	"$OUTPUT/card/bird/bird-suspend.sh" \
+	"$OUTPUT/card/bird/bird-restore-suspend-policy.sh" \
 	"$OUTPUT/card/bird/bird-volume.sh" \
 	"$OUTPUT/card/bird/bird-control-osd.sh" \
 	"$OUTPUT/card/bird/bird-autostart-noop" \
@@ -954,8 +957,11 @@ grep -Fq 'print "system.suspendmode=" mode' \
 	"$OUTPUT/card/mount-storage.sh" || fail 'pre-systemd fake-suspend mode enforcement missing'
 grep -Fq '/flash/bird/bird-suspend-policy.generated.sh' \
 	"$OUTPUT/card/mount-storage.sh" || fail 'generated suspend policy is not consumed'
-grep -Fq '009-sleepmode' \
-	"$OUTPUT/card/mount-storage.sh" || fail 'generic real-suspend writer remained active'
+grep -Fq '/flash/bird/bird-restore-suspend-policy.sh' \
+	"$OUTPUT/card/mount-storage.sh" || fail 'post-recovery suspend policy missing'
+grep -Fq '/usr/bin/suspendmode' \
+	"$OUTPUT/card/bird/bird-restore-suspend-policy.sh" || \
+	fail 'fixed suspendmode transaction missing'
 grep -Fq '030-suspend_mode' \
 	"$OUTPUT/card/mount-storage.sh" || fail 'late H700 suspend writer remained active'
 grep -Fxq 'AllowSuspend=no' \
