@@ -773,9 +773,15 @@ grep -q 'ExecStart=/storage/.config/bird/supervisor.sh' \
 	"$OUTPUT/card/bird/essway.service" || fail 'Bird UI unit missing'
 grep -Fq 'LAUNCHER=/flash/bird/bird-launcher' \
 	"$OUTPUT/card/bird/supervisor.sh" || fail 'immutable final-root launcher path missing'
+grep -Fq 'RUNNER=/flash/bird/run-content.sh' \
+	"$OUTPUT/card/bird/supervisor.sh" || fail 'immutable content dispatcher path missing'
 if sed -n '/^for FILE in bird-pidwait/,/^done$/p' \
 	"$OUTPUT/card/mount-storage.sh" | grep -Fq 'bird-launcher'; then
 	fail 'immutable final-root launcher is still copied to writable storage'
+fi
+if sed -n '/^for FILE in bird-pidwait/,/^done$/p' \
+	"$OUTPUT/card/mount-storage.sh" | grep -Fq 'run-content.sh'; then
+	fail 'immutable content dispatcher is still copied to writable storage'
 fi
 grep -q '^UI_SERVICE="essway.service"$' \
 	"$OUTPUT/card/bird/090-ui_service" || fail 'boot compositor deferral missing'

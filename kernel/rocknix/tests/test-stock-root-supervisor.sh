@@ -11,6 +11,7 @@ TMP=$(mktemp -d "${TMPDIR:-/tmp}/bird-supervisor.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT INT TERM HUP
 
 grep -Fq 'LAUNCHER=/flash/bird/bird-launcher' "$SUPERVISOR"
+grep -Fq 'RUNNER=/flash/bird/run-content.sh' "$SUPERVISOR"
 
 FUNCTIONS=$TMP/supervisor-functions.sh
 awk '

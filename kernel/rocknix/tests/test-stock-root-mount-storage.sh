@@ -345,15 +345,17 @@ DEST_SWAP=$TMP/dest-swap.conf
 SYSTEM_BUSYBOX=$TMP/system-busybox
 MODE_EVENTS=$TMP/mode-events
 /bin/mkdir -p "$SOURCE_BIRD" "$DEST_BIRD"
-EXECUTABLE_FILES='bird-pidwait bird-fixed-controls bird-powerstate bird-fixed-control-exit.sh bird-save-config.sh supervisor.sh run-content.sh prepare-ports.sh verify-portmaster-provider.sh fixed-storage.sh first-frame-prep.sh capture-boot-state.sh bird-network.sh bird-suspend.sh bird-volume.sh bird-control-osd.sh'
-MODE_EXECUTABLE_FILES='bird-pidwait bird-fixed-controls bird-powerstate bird-fixed-control-exit.sh bird-save-config.sh bird-suspend.sh bird-volume.sh bird-control-osd.sh supervisor.sh run-content.sh prepare-ports.sh verify-portmaster-provider.sh fixed-storage.sh first-frame-prep.sh capture-boot-state.sh bird-network.sh'
+EXECUTABLE_FILES='bird-pidwait bird-fixed-controls bird-powerstate bird-fixed-control-exit.sh bird-save-config.sh supervisor.sh prepare-ports.sh verify-portmaster-provider.sh fixed-storage.sh first-frame-prep.sh capture-boot-state.sh bird-network.sh bird-suspend.sh bird-volume.sh bird-control-osd.sh'
+MODE_EXECUTABLE_FILES='bird-pidwait bird-fixed-controls bird-powerstate bird-fixed-control-exit.sh bird-save-config.sh bird-suspend.sh bird-volume.sh bird-control-osd.sh supervisor.sh prepare-ports.sh verify-portmaster-provider.sh fixed-storage.sh first-frame-prep.sh capture-boot-state.sh bird-network.sh'
 for FILE in $EXECUTABLE_FILES portmaster-provider.manifest.tsv; do
 	printf 'fixture %s\n' "$FILE" >"$SOURCE_BIRD/$FILE"
 done
 printf '%s\n' 'immutable launcher fixture' >"$SOURCE_BIRD/bird-launcher"
+printf '%s\n' 'immutable content dispatcher fixture' >"$SOURCE_BIRD/run-content.sh"
 printf '%s\n' 'fixture swap' >"$SOURCE_BIRD/bird-swap.conf"
 /bin/chmod 0644 "$SOURCE_BIRD"/*
 /bin/chmod 0755 "$SOURCE_BIRD/bird-launcher"
+/bin/chmod 0755 "$SOURCE_BIRD/run-content.sh"
 cat >"$SYSTEM_BUSYBOX" <<'EOF'
 #!/bin/bash
 printf '%s\n' "$*" >>"$MODE_EVENTS"
@@ -403,6 +405,8 @@ for FILE in $EXECUTABLE_FILES; do
 done
 [ -x "$SOURCE_BIRD/bird-launcher" ]
 [ ! -e "$DEST_BIRD/bird-launcher" ]
+[ -x "$SOURCE_BIRD/run-content.sh" ]
+[ ! -e "$DEST_BIRD/run-content.sh" ]
 [ -r "$DEST_BIRD/portmaster-provider.manifest.tsv" ]
 [ -r "$DEST_SWAP" ]
 [ "$(file_mode "$DEST_BIRD/portmaster-provider.manifest.tsv")" = 644 ]

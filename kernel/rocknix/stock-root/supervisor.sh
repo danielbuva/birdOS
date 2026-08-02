@@ -6,7 +6,7 @@
 set -u
 
 LAUNCHER=/flash/bird/bird-launcher
-RUNNER=/storage/.config/bird/run-content.sh
+RUNNER=/flash/bird/run-content.sh
 REQUEST=/run/muos/bird-launch-request
 FIRST_FRAME=/run/muos/bird-first-frame-ready
 HANDOFF_ACTION=/run/muos/bird-launch-action
