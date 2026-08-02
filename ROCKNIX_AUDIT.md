@@ -335,6 +335,15 @@ point per press. The helper and wrapper exist only in the final-root media
 payload, so this deployment adds no executable to the boot-critical path and
 makes no boot-time claim before the RG34XX-SP gate.
 
+Hardware rejected this tuple for media-control completeness while confirming
+that the one-point contrast and saturation commands work. The successor keeps
+the single event-driven helper but replaces mute with direct audio-language
+cycling, restores the preceding player-relative volume contract on bare
+bumper taps, preserves held bumpers as one-handed modifiers, and adds
+Menu+bumper MPV-local brightness. Physical B remains the documented frame-step
+action; its pause-and-one-frame behavior is not a second pause owner. This
+follow-up remains final-root media-only and cannot alter boot or menu idle.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.

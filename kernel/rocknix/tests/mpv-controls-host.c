@@ -72,7 +72,7 @@ int main(void) {
     static const char *const regular[] = {
         command_pause,
         command_frame_step,
-        command_mute,
+        command_audio,
         command_progress,
         command_seek_backward_short,
         command_seek_forward_short,
@@ -82,10 +82,10 @@ int main(void) {
         command_chapter_next,
     };
     static const u16 regular_codes[] = {
-        BTN_EAST,
-        BTN_SOUTH,
-        BTN_WEST,
-        BTN_NORTH,
+        BIRD_BUTTON_A,
+        BIRD_BUTTON_B,
+        BIRD_BUTTON_X,
+        BIRD_BUTTON_Y,
         BTN_DPAD_LEFT,
         BTN_DPAD_RIGHT,
         BTN_DPAD_DOWN,
@@ -96,7 +96,7 @@ int main(void) {
     static const char *const flipped_commands[] = {
         command_pause,
         command_frame_step,
-        command_mute,
+        command_audio,
         command_progress,
         command_seek_forward_short,
         command_seek_backward_long,
@@ -138,6 +138,11 @@ int main(void) {
                     BTN_DPAD_UP == 544 && BTN_DPAD_DOWN == 545 &&
                     BTN_DPAD_LEFT == 546 && BTN_DPAD_RIGHT == 547,
                 "fixed H700 raw button codes changed");
+    ok &= check(BIRD_BUTTON_A == BTN_EAST &&
+                    BIRD_BUTTON_B == BTN_SOUTH &&
+                    BIRD_BUTTON_X == BTN_WEST &&
+                    BIRD_BUTTON_Y == BTN_NORTH,
+                "physical RG34XX-SP face labels changed");
     ok &= check(strcmp(command_contrast_down,
                        "{\"command\":[\"osd-auto\",\"add\",\"contrast\",-1]}\n") == 0 &&
                     strcmp(command_contrast_up,
@@ -145,8 +150,19 @@ int main(void) {
                     strcmp(command_saturation_down,
                            "{\"command\":[\"osd-auto\",\"add\",\"saturation\",-1]}\n") == 0 &&
                     strcmp(command_saturation_up,
-                           "{\"command\":[\"osd-auto\",\"add\",\"saturation\",1]}\n") == 0,
+                           "{\"command\":[\"osd-auto\",\"add\",\"saturation\",1]}\n") == 0 &&
+                    strcmp(command_brightness_down,
+                           "{\"command\":[\"osd-auto\",\"add\",\"brightness\",-1]}\n") == 0 &&
+                    strcmp(command_brightness_up,
+                           "{\"command\":[\"osd-auto\",\"add\",\"brightness\",1]}\n") == 0,
                 "picture adjustments are not one point per press");
+    ok &= check(strcmp(command_audio,
+                       "{\"command\":[\"osd-auto\",\"cycle\",\"audio\"]}\n") == 0 &&
+                    strcmp(command_volume_down,
+                           "{\"command\":[\"osd-auto\",\"add\",\"volume\",-2]}\n") == 0 &&
+                    strcmp(command_volume_up,
+                           "{\"command\":[\"osd-auto\",\"add\",\"volume\",2]}\n") == 0,
+                "audio or player-volume command changed");
 
     reset_fixture(&state, &queue);
     {
@@ -157,7 +173,9 @@ int main(void) {
         bits[BTN_START / 64U] |= 1UL << (BTN_START % 64U);
         apply_key_snapshot(&state, bits);
         ok &= check(state.menu_held && state.left_shoulder_held &&
-                        !state.right_shoulder_held && state.select_held &&
+                        state.left_shoulder_used &&
+                        !state.right_shoulder_held &&
+                        !state.right_shoulder_used && state.select_held &&
                         state.start_held && state.exit_chord_latched &&
                         state.select_pending == PENDING_BUTTON_NONE &&
                         state.start_pending == PENDING_BUTTON_NONE,
@@ -173,6 +191,27 @@ int main(void) {
     ok &= commands_equal(&queue, regular,
                          (u32)(sizeof(regular) / sizeof(regular[0])),
                          "regular control mapping changed");
+
+    reset_fixture(&state, &queue);
+    key(&state, &queue, BIRD_BUTTON_B, 1);
+    key(&state, &queue, BIRD_BUTTON_B, 0);
+    ok &= commands_equal(&queue,
+                         (const char *const[]){command_frame_step}, 1U,
+                         "physical B emitted pause or more than one frame step");
+
+    reset_fixture(&state, &queue);
+    key(&state, &queue, BTN_TL, 1);
+    ok &= check(queue.count == 0U,
+                "left bumper adjusted volume before chord resolution");
+    key(&state, &queue, BTN_TL, 0);
+    key(&state, &queue, BTN_TR, 1);
+    ok &= check(queue.count == 1U,
+                "right bumper adjusted volume before chord resolution");
+    key(&state, &queue, BTN_TR, 0);
+    ok &= commands_equal(
+        &queue,
+        (const char *const[]){command_volume_down, command_volume_up}, 2U,
+        "bumper taps did not restore player-relative volume");
 
     reset_fixture(&state, &queue);
     key(&state, &queue, BTN_SELECT, 1);
@@ -198,6 +237,22 @@ int main(void) {
                 "Select+Start leaked a media action before global exit");
 
     reset_fixture(&state, &queue);
+    key(&state, &queue, BTN_START, 1);
+    key(&state, &queue, BTN_SELECT, 1);
+    key(&state, &queue, BTN_START, 0);
+    key(&state, &queue, BTN_SELECT, 0);
+    ok &= check(queue.count == 0U,
+                "reverse Start+Select leaked a media action before global exit");
+
+    reset_fixture(&state, &queue);
+    key(&state, &queue, BTN_SELECT, 1);
+    key(&state, &queue, BTN_START, 1);
+    key(&state, &queue, BTN_START, 0);
+    key(&state, &queue, BTN_SELECT, 0);
+    ok &= check(queue.count == 0U,
+                "Select+Start reverse release leaked a media action");
+
+    reset_fixture(&state, &queue);
     key(&state, &queue, BTN_TL, 1);
     for (index = 0U;
          index < sizeof(flipped_codes) / sizeof(flipped_codes[0]); index++) {
@@ -217,6 +272,25 @@ int main(void) {
     }
 
     reset_fixture(&state, &queue);
+    key(&state, &queue, BTN_TL, 1);
+    key(&state, &queue, BTN_START, 1);
+    key(&state, &queue, BTN_START, 0);
+    key(&state, &queue, BTN_TL, 0);
+    ok &= commands_equal(
+        &queue, (const char *const[]){command_subtitle_visibility}, 1U,
+        "shoulder+Start leaked tap volume or changed subtitle behavior");
+
+    reset_fixture(&state, &queue);
+    key(&state, &queue, BTN_TL, 1);
+    key(&state, &queue, BTN_SELECT, 1);
+    key(&state, &queue, BTN_START, 1);
+    key(&state, &queue, BTN_START, 0);
+    key(&state, &queue, BTN_SELECT, 0);
+    key(&state, &queue, BTN_TL, 0);
+    ok &= check(queue.count == 0U,
+                "shoulder+Select+Start leaked audio, subtitle, or volume");
+
+    reset_fixture(&state, &queue);
     key(&state, &queue, BTN_MODE, 1);
     for (index = 0U; index < sizeof(picture_codes) / sizeof(picture_codes[0]);
          index++)
@@ -226,6 +300,49 @@ int main(void) {
                          "Menu picture-adjustment mapping changed");
 
     reset_fixture(&state, &queue);
+    key(&state, &queue, BTN_MODE, 1);
+    key(&state, &queue, BTN_TL, 1);
+    key(&state, &queue, BTN_TL, 0);
+    key(&state, &queue, BTN_TR, 1);
+    key(&state, &queue, BTN_TR, 0);
+    key(&state, &queue, BTN_MODE, 0);
+    ok &= commands_equal(
+        &queue,
+        (const char *const[]){command_brightness_down, command_brightness_up},
+        2U, "Menu+bumper changed volume or missed player brightness");
+
+    reset_fixture(&state, &queue);
+    key(&state, &queue, BTN_TL, 1);
+    key(&state, &queue, BTN_MODE, 1);
+    key(&state, &queue, BTN_MODE, 0);
+    key(&state, &queue, BTN_TL, 0);
+    ok &= commands_equal(&queue,
+                         (const char *const[]){command_brightness_down}, 1U,
+                         "bumper-first brightness chord leaked player volume");
+
+    reset_fixture(&state, &queue);
+    key(&state, &queue, BTN_TL, 1);
+    key(&state, &queue, BTN_MODE, 1);
+    key(&state, &queue, BTN_DPAD_LEFT, 1);
+    key(&state, &queue, BTN_DPAD_LEFT, 0);
+    key(&state, &queue, BTN_MODE, 0);
+    key(&state, &queue, BTN_TL, 0);
+    ok &= commands_equal(
+        &queue,
+        (const char *const[]){command_brightness_down, command_contrast_down},
+        2U, "shoulder+Menu+D-pad leaked player volume");
+
+    reset_fixture(&state, &queue);
+    {
+        u64 bits[BIRD_DEVICE_INPUT_KEY_BITMAP_WORD_COUNT] = {0U};
+        bits[BTN_TR / 64U] |= 1UL << (BTN_TR % 64U);
+        apply_key_snapshot(&state, bits);
+    }
+    key(&state, &queue, BTN_TR, 0);
+    ok &= check(queue.count == 0U,
+                "reconnect snapshot emitted phantom bumper volume");
+
+    reset_fixture(&state, &queue);
     key(&state, &queue, BTN_TR, 1);
     {
         struct input_event dropped;
@@ -233,19 +350,19 @@ int main(void) {
         dropped.type = EV_SYN;
         dropped.code = SYN_DROPPED;
         handle_gamepad(&dropped, &state, &queue);
-        key(&state, &queue, BTN_EAST, 1);
+        key(&state, &queue, BIRD_BUTTON_A, 1);
         ok &= check(queue.count == 0U,
                     "event after SYN_DROPPED was not discarded");
         dropped.code = SYN_REPORT;
         handle_gamepad(&dropped, &state, &queue);
     }
-    key(&state, &queue, BTN_EAST, 1);
+    key(&state, &queue, BIRD_BUTTON_A, 1);
     ok &= commands_equal(&queue, (const char *const[]){command_pause}, 1U,
                          "SYN_DROPPED left the one-handed layer latched");
 
     reset_fixture(&state, &queue);
     for (index = 0U; index < COMMAND_QUEUE_COUNT + 1U; index++)
-        key(&state, &queue, BTN_EAST, 1);
+        key(&state, &queue, BIRD_BUTTON_A, 1);
     ok &= check(queue.count == COMMAND_QUEUE_COUNT,
                 "bounded command queue exceeded its fixed capacity");
 

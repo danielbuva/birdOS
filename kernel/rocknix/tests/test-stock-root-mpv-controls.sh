@@ -33,23 +33,30 @@ if awk '$1 !~ /^#/ { print }' "$PLAYER" | \
 fi
 grep -Fq 'run_managed "$MPV_PLAYER" "$CONTENT"' "$RUNNER"
 
-# Fixed physical map from the accepted RG34XX-SP labels. Audio selection is a
-# shoulder+Select chord, never a face-button alias. Menu+D-pad picture controls
-# are Bird extensions and cannot overlap ordinary seeking.
+# Fixed physical map from the accepted RG34XX-SP labels. X and
+# shoulder+Select cycle audio; a bumper tap changes player-relative volume,
+# while a held bumper remains the one-handed modifier. Menu+D-pad and
+# Menu+bumper picture controls cannot overlap ordinary seeking or volume.
 for TOKEN in \
-	'code == BTN_EAST' \
-	'code == BTN_SOUTH' \
-	'code == BTN_WEST' \
-	'code == BTN_NORTH' \
+	'#define BIRD_BUTTON_A BTN_EAST' \
+	'#define BIRD_BUTTON_B BTN_SOUTH' \
+	'#define BIRD_BUTTON_X BTN_WEST' \
+	'#define BIRD_BUTTON_Y BTN_NORTH' \
 	'command_pause' \
 	'command_frame_step' \
-	'command_mute' \
+	'command_audio' \
 	'command_progress' \
+	'command_volume_down' \
+	'command_volume_up' \
+	'command_brightness_down' \
+	'command_brightness_up' \
 	'command_chapter_previous' \
 	'command_chapter_next' \
 	'command_playlist_previous' \
 	'command_playlist_next' \
 	'PENDING_BUTTON_AUDIO' \
+	'handle_shoulder' \
+	'use_held_shoulders' \
 	'command_contrast_down' \
 	'command_contrast_up' \
 	'command_saturation_down' \

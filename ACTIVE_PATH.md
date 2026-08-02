@@ -391,6 +391,28 @@ and the compressed early overlay is two bytes smaller; neither host fact is a
 device boot-time claim. Physical command mapping, suspend integration, launch
 and return behavior remain the promotion gate.
 
+The returned gate rejects this exact tuple as the accepted media-control
+candidate. Contrast and saturation passed, but bumper taps lost the preceding
+player-relative volume contract, audio-language cycling was no longer directly
+reachable, and chapter actions gave no feedback on the tested files. Physical
+B was correctly reaching MPV's `frame-step` command: when invoked during
+playback, that command pauses and advances one frame, which can look like a
+rapid play/pause rather than a distinct control.
+
+Host `ffprobe` inspection found zero chapter records in the two tested files,
+`12 Angry Men.mp4` and `Akira (1988).mp4`. The retained trigger mapping must be
+verified with chaptered content: the card's `Angel's Egg.mkv` has seven chapter
+records and `The Godfather.mp4` has 23. Silence on a zero-chapter file is not
+evidence that the raw L2/R2 codes were missed.
+
+The bounded successor retains the single raw-evdev owner. Physical X cycles
+audio instead of mute; L1/R1 taps restore MPV-local volume while a bumper used
+with another control remains the one-handed modifier; Menu+L1/R1 changes
+MPV-local picture brightness; and L2/R2 remain chapter navigation with OSD
+feedback where chapter metadata exists. Dedicated volume and Menu+volume stay
+system-volume and panel-backlight controls. No SDL, `mpv_sense`, per-press
+process, boot-time executable, or menu-idle wakeup returns.
+
 ## Launcher visual architecture
 
 The active 720x480 launcher presentation is inspired by Mister Menu's ES-DE

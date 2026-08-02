@@ -461,6 +461,23 @@ helper adds no launcher or early-initramfs executable. Its 6,424-byte file and
 launcher is byte-identical to the previous release, so boot timing remains a
 hardware non-inferiority check rather than a claimed improvement.
 
+The physical gate rejects that exact tuple for content-control completeness.
+The one-point contrast/saturation extensions worked, but bumper taps no longer
+changed MPV-local volume and direct audio-language cycling was absent. Physical
+B reached the configured `frame-step` action; MPV pauses and advances one frame
+when it receives that command during playback, explaining the apparent rapid
+play/pause. Trigger chapter commands remain silent on content without chapters.
+Host `ffprobe` found zero chapters in both tested files; the next physical gate
+uses `Angel's Egg.mkv` or `The Godfather.mp4`, which contain seven and 23 chapter
+records respectively.
+
+The next bounded correction keeps one raw input owner and adds no boot work.
+Physical X cycles audio instead of mute. A bare L1/R1 press resolves on release
+to MPV-local volume -/+2; using that bumper with another control suppresses the
+volume action and retains the one-handed layer. Menu+L1/R1 changes MPV-local
+video brightness by one point. L2/R2 retain chapter navigation and the
+shoulder-modified trigger path retains playlist navigation.
+
 ### 3B — Persistent freestanding coordinator
 
 `start` launches one long-lived coordinator. It owns a private

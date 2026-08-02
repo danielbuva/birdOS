@@ -100,11 +100,12 @@ RG34XX-SP layout without SDL aliases:
 | Control | Regular action | While L1 or R1 is held |
 | --- | --- | --- |
 | A | Pause/play | Seek forward 5 seconds |
-| B | Frame step | Seek backward 60 seconds |
-| X | Mute | Seek forward 60 seconds |
+| B | Advance one frame and remain paused | Seek backward 60 seconds |
+| X | Cycle audio language/off | Seek forward 60 seconds |
 | Y | Playback time/details | Seek backward 5 seconds |
 | D-pad left/right | Seek backward/forward 5 seconds | Pause/playback details |
-| D-pad down/up | Seek backward/forward 60 seconds | Frame step/mute |
+| D-pad down/up | Seek backward/forward 60 seconds | Frame step/cycle audio |
+| L1/R1 | Tap for player volume -/+2; hold for one-handed mode | Modifier |
 | L2/R2 | Previous/next chapter | Previous/next playlist item |
 | Select | Cycle subtitles | Cycle audio track |
 | Start | Toggle subtitles | Toggle subtitles |
@@ -113,7 +114,9 @@ RG34XX-SP layout without SDL aliases:
 Dedicated volume keys change system volume, and Menu+volume changes display
 brightness. Bird adds two non-overlapping picture-control chords: Menu+D-pad
 left/right changes contrast by -/+1, and Menu+D-pad down/up changes saturation
-by -/+1. These extensions are not represented as historical muOS controls.
+by -/+1. Menu+L1/R1 changes MPV's player-local video brightness by -/+1
+without changing display backlight or system volume. These extensions are not
+represented as historical muOS controls.
 
 PortMaster is an explicit network boundary: its selected session may acquire
 Wi-Fi, resolver and time services, then release them before returning. Saved

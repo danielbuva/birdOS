@@ -57,6 +57,12 @@ typedef signed long s64;
 #define BTN_DPAD_LEFT 546
 #define BTN_DPAD_RIGHT 547
 
+/* H700's Linux cardinal names do not match the RG34XX-SP legends. */
+#define BIRD_BUTTON_A BTN_EAST
+#define BIRD_BUTTON_B BTN_SOUTH
+#define BIRD_BUTTON_X BTN_WEST
+#define BIRD_BUTTON_Y BTN_NORTH
+
 #define EVIOCGNAME_128 0x80804506UL
 #define EVIOCGID 0x80084502UL
 #define EVIOCGBIT_EV 0x80084520UL
@@ -134,6 +140,8 @@ struct control_state {
     int menu_held;
     int left_shoulder_held;
     int right_shoulder_held;
+    int left_shoulder_used;
+    int right_shoulder_used;
     int select_held;
     int start_held;
     int exit_chord_latched;
@@ -148,8 +156,6 @@ static const char command_pause[] =
     "{\"command\":[\"cycle\",\"pause\"]}\n";
 static const char command_frame_step[] =
     "{\"command\":[\"frame-step\"]}\n";
-static const char command_mute[] =
-    "{\"command\":[\"cycle\",\"mute\"]}\n";
 static const char command_progress[] =
     "{\"command\":[\"show-progress\"]}\n";
 static const char command_seek_forward_short[] =
@@ -161,9 +167,9 @@ static const char command_seek_forward_long[] =
 static const char command_seek_backward_long[] =
     "{\"command\":[\"seek\",-60]}\n";
 static const char command_chapter_previous[] =
-    "{\"command\":[\"add\",\"chapter\",-1]}\n";
+    "{\"command\":[\"osd-auto\",\"add\",\"chapter\",-1]}\n";
 static const char command_chapter_next[] =
-    "{\"command\":[\"add\",\"chapter\",1]}\n";
+    "{\"command\":[\"osd-auto\",\"add\",\"chapter\",1]}\n";
 static const char command_playlist_previous[] =
     "{\"command\":[\"playlist-prev\",\"weak\"]}\n";
 static const char command_playlist_next[] =
@@ -173,7 +179,15 @@ static const char command_subtitle[] =
 static const char command_subtitle_visibility[] =
     "{\"command\":[\"cycle\",\"sub-visibility\"]}\n";
 static const char command_audio[] =
-    "{\"command\":[\"cycle\",\"audio\"]}\n";
+    "{\"command\":[\"osd-auto\",\"cycle\",\"audio\"]}\n";
+static const char command_volume_down[] =
+    "{\"command\":[\"osd-auto\",\"add\",\"volume\",-2]}\n";
+static const char command_volume_up[] =
+    "{\"command\":[\"osd-auto\",\"add\",\"volume\",2]}\n";
+static const char command_brightness_down[] =
+    "{\"command\":[\"osd-auto\",\"add\",\"brightness\",-1]}\n";
+static const char command_brightness_up[] =
+    "{\"command\":[\"osd-auto\",\"add\",\"brightness\",1]}\n";
 static const char command_contrast_down[] =
     "{\"command\":[\"osd-auto\",\"add\",\"contrast\",-1]}\n";
 static const char command_contrast_up[] =
@@ -465,6 +479,8 @@ static void clear_control_state(struct control_state *state) {
     state->menu_held = 0;
     state->left_shoulder_held = 0;
     state->right_shoulder_held = 0;
+    state->left_shoulder_used = 0;
+    state->right_shoulder_used = 0;
     state->select_held = 0;
     state->start_held = 0;
     state->exit_chord_latched = 0;
@@ -482,6 +498,8 @@ static void apply_key_snapshot(struct control_state *state, const u64 *bits) {
     state->menu_held = key_bit(bits, BTN_MODE);
     state->left_shoulder_held = key_bit(bits, BTN_TL);
     state->right_shoulder_held = key_bit(bits, BTN_TR);
+    state->left_shoulder_used = state->left_shoulder_held;
+    state->right_shoulder_used = state->right_shoulder_held;
     state->select_held = key_bit(bits, BTN_SELECT);
     state->start_held = key_bit(bits, BTN_START);
     state->exit_chord_latched = state->select_held && state->start_held;
@@ -507,6 +525,11 @@ static int open_synchronized_input(struct control_state *state) {
 
 static int flipped(const struct control_state *state) {
     return state->left_shoulder_held || state->right_shoulder_held;
+}
+
+static void use_held_shoulders(struct control_state *state) {
+    if (state->left_shoulder_held) state->left_shoulder_used = 1;
+    if (state->right_shoulder_held) state->right_shoulder_used = 1;
 }
 
 static void queue_pending(struct command_queue *queue,
@@ -536,6 +559,7 @@ static void handle_select(const struct input_event *event,
         state->select_held = 1;
         state->select_pending = flipped(state) ? PENDING_BUTTON_AUDIO
                                                : PENDING_BUTTON_SUBTITLE;
+        if (flipped(state)) use_held_shoulders(state);
         update_exit_chord(state);
     } else if (event->value == 0 && state->select_held) {
         enum pending_button_action pending = state->select_pending;
@@ -553,6 +577,7 @@ static void handle_start(const struct input_event *event,
     if (event->value == 1) {
         state->start_held = 1;
         state->start_pending = PENDING_BUTTON_SUBTITLE_VISIBILITY;
+        if (flipped(state)) use_held_shoulders(state);
         update_exit_chord(state);
     } else if (event->value == 0 && state->start_held) {
         enum pending_button_action pending = state->start_pending;
@@ -576,13 +601,13 @@ static void handle_picture_dpad(u16 code, struct command_queue *queue) {
 }
 
 static void handle_regular(u16 code, struct command_queue *queue) {
-    if (code == BTN_EAST)
+    if (code == BIRD_BUTTON_A)
         (void)queue_command(queue, command_pause);
-    else if (code == BTN_SOUTH)
+    else if (code == BIRD_BUTTON_B)
         (void)queue_command(queue, command_frame_step);
-    else if (code == BTN_WEST)
-        (void)queue_command(queue, command_mute);
-    else if (code == BTN_NORTH)
+    else if (code == BIRD_BUTTON_X)
+        (void)queue_command(queue, command_audio);
+    else if (code == BIRD_BUTTON_Y)
         (void)queue_command(queue, command_progress);
     else if (code == BTN_DPAD_LEFT)
         (void)queue_command(queue, command_seek_backward_short);
@@ -604,21 +629,46 @@ static void handle_flipped(u16 code, struct command_queue *queue) {
     else if (code == BTN_DPAD_DOWN)
         (void)queue_command(queue, command_frame_step);
     else if (code == BTN_DPAD_UP)
-        (void)queue_command(queue, command_mute);
+        (void)queue_command(queue, command_audio);
     else if (code == BTN_DPAD_RIGHT)
         (void)queue_command(queue, command_progress);
-    else if (code == BTN_EAST)
+    else if (code == BIRD_BUTTON_A)
         (void)queue_command(queue, command_seek_forward_short);
-    else if (code == BTN_SOUTH)
+    else if (code == BIRD_BUTTON_B)
         (void)queue_command(queue, command_seek_backward_long);
-    else if (code == BTN_WEST)
+    else if (code == BIRD_BUTTON_X)
         (void)queue_command(queue, command_seek_forward_long);
-    else if (code == BTN_NORTH)
+    else if (code == BIRD_BUTTON_Y)
         (void)queue_command(queue, command_seek_backward_short);
     else if (code == BTN_TL2)
         (void)queue_command(queue, command_playlist_previous);
     else if (code == BTN_TR2)
         (void)queue_command(queue, command_playlist_next);
+}
+
+static void handle_shoulder(const struct input_event *event,
+                            struct control_state *state,
+                            struct command_queue *queue, int left) {
+    int *held = left ? &state->left_shoulder_held
+                     : &state->right_shoulder_held;
+    int *used = left ? &state->left_shoulder_used
+                     : &state->right_shoulder_used;
+
+    if (event->value == 1) {
+        *held = 1;
+        *used = 0;
+        if (state->menu_held) {
+            *used = 1;
+            (void)queue_command(queue, left ? command_brightness_down
+                                            : command_brightness_up);
+        }
+    } else if (event->value == 0 && *held) {
+        if (!*used)
+            (void)queue_command(queue,
+                                left ? command_volume_down : command_volume_up);
+        *held = 0;
+        *used = 0;
+    }
 }
 
 static int handle_gamepad(const struct input_event *event,
@@ -650,22 +700,36 @@ static int handle_gamepad(const struct input_event *event,
     pressed = event->value != 0;
     if (event->code == BTN_MODE) {
         state->menu_held = pressed;
+        if (event->value == 1) {
+            if (state->left_shoulder_held &&
+                !state->left_shoulder_used) {
+                state->left_shoulder_used = 1;
+                (void)queue_command(queue, command_brightness_down);
+            }
+            if (state->right_shoulder_held &&
+                !state->right_shoulder_used) {
+                state->right_shoulder_used = 1;
+                (void)queue_command(queue, command_brightness_up);
+            }
+        }
         return 0;
     }
     if (event->code == BTN_TL) {
-        state->left_shoulder_held = pressed;
+        handle_shoulder(event, state, queue, 1);
         return 0;
     }
     if (event->code == BTN_TR) {
-        state->right_shoulder_held = pressed;
+        handle_shoulder(event, state, queue, 0);
         return 0;
     }
     if (event->value != 1) return 0;
     if (state->menu_held &&
         (event->code == BTN_DPAD_LEFT || event->code == BTN_DPAD_RIGHT ||
          event->code == BTN_DPAD_DOWN || event->code == BTN_DPAD_UP)) {
+        use_held_shoulders(state);
         handle_picture_dpad(event->code, queue);
     } else if (flipped(state)) {
+        use_held_shoulders(state);
         handle_flipped(event->code, queue);
     } else {
         handle_regular(event->code, queue);
