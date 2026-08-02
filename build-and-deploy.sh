@@ -309,12 +309,13 @@ validate_completed_release() {
 	VALIDATED_DIR=$1
 	VALIDATED_ID=$2
 	VALIDATED_PURPOSE=$3
+	VALIDATED_ROOT=${4:-$BIRD/bird-releases}
 	case "$VALIDATED_ID" in
 		''|[![:alnum:]]*|*[![:alnum:]._-]*) fail "$VALIDATED_PURPOSE has an unsafe release ID" ;;
 	esac
 	[ -d "$VALIDATED_DIR" ] && [ ! -L "$VALIDATED_DIR" ] || \
 		fail "$VALIDATED_PURPOSE is not a safe directory: $VALIDATED_DIR"
-	[ "$VALIDATED_DIR" = "$BIRD/bird-releases/$VALIDATED_ID" ] || \
+	[ "$VALIDATED_DIR" = "$VALIDATED_ROOT/$VALIDATED_ID" ] || \
 		fail "$VALIDATED_PURPOSE path does not match its release ID"
 	is_regular_file "$VALIDATED_DIR/deploy-manifest.tsv" || \
 		fail "$VALIDATED_PURPOSE manifest is missing or unsafe: $VALIDATED_ID"
@@ -1119,16 +1120,50 @@ verify_published_archive() {
 		grep -Fqx "$REQUIRED_ASSET" "$VERIFY_ASSETS" || \
 			fail "archived release is missing required asset: $REQUIRED_ASSET"
 	done
-	"$GH" release verify-asset "$VERIFY_TAG" "$VERIFY_LOCAL_ARCHIVE" \
-		--repo "$ARCHIVE_REPOSITORY" >/dev/null || \
-		fail "published archive differs from the verified card release: $VERIFY_TAG"
 	VERIFY_DOWNLOAD=$RUN_TEMP/archive-download
 	mkdir -p "$VERIFY_DOWNLOAD"
 	"$GH" release download "$VERIFY_TAG" --repo "$ARCHIVE_REPOSITORY" \
+		--pattern "$VERIFY_ARCHIVE_ASSET" --dir "$VERIFY_DOWNLOAD" >/dev/null || \
+		fail "could not download archived release for verification: $VERIFY_TAG"
+	"$GH" release download "$VERIFY_TAG" --repo "$ARCHIVE_REPOSITORY" \
 		--pattern "$VERIFY_MANIFEST_ASSET" --dir "$VERIFY_DOWNLOAD" >/dev/null || \
 		fail "could not download archived manifest for verification: $VERIFY_TAG"
+	VERIFY_DOWNLOADED_ARCHIVE=$VERIFY_DOWNLOAD/$VERIFY_ARCHIVE_ASSET
+	"$GH" release verify-asset "$VERIFY_TAG" "$VERIFY_DOWNLOADED_ARCHIVE" \
+		--repo "$ARCHIVE_REPOSITORY" >/dev/null || \
+		fail "published archive failed attestation verification: $VERIFY_TAG"
 	cmp "$VERIFY_LOCAL_MANIFEST" "$VERIFY_DOWNLOAD/$VERIFY_MANIFEST_ASSET" >/dev/null || \
 		fail "published archive manifest differs from the card release: $VERIFY_TAG"
+	VERIFY_ARCHIVE_PATHS=$RUN_TEMP/archive-paths
+	VERIFY_ARCHIVE_LIST=$RUN_TEMP/archive-list
+	tar -tf "$VERIFY_DOWNLOADED_ARCHIVE" >"$VERIFY_ARCHIVE_PATHS" 2>/dev/null || \
+		fail "published archive differs from the verified card release: $VERIFY_TAG"
+	awk -v release="$RETIRED_ID" '
+		$0 == "" || substr($0, 1, 1) == "/" || index($0, "\\") {exit 1}
+		{
+			path=$0
+			sub(/\/$/, "", path)
+			parts=split(path, component, "/")
+			if (component[1] != release) exit 1
+			for (i=1; i<=parts; i++)
+				if (component[i] == "" || component[i] == "." || component[i] == "..") exit 1
+		}
+	' "$VERIFY_ARCHIVE_PATHS" || \
+		fail "published archive contains an unsafe path: $VERIFY_TAG"
+	tar -tvf "$VERIFY_DOWNLOADED_ARCHIVE" >"$VERIFY_ARCHIVE_LIST" 2>/dev/null || \
+		fail "published archive inventory is unreadable: $VERIFY_TAG"
+	awk 'substr($1, 1, 1) != "-" && substr($1, 1, 1) != "d" {exit 1}' \
+		"$VERIFY_ARCHIVE_LIST" || \
+		fail "published archive contains a special node: $VERIFY_TAG"
+	VERIFY_EXTRACT_ROOT=$RUN_TEMP/archive-extract
+	mkdir -p "$VERIFY_EXTRACT_ROOT"
+	COPYFILE_DISABLE=1 tar -xf "$VERIFY_DOWNLOADED_ARCHIVE" \
+		-C "$VERIFY_EXTRACT_ROOT" || \
+		fail "published archive could not be extracted safely: $VERIFY_TAG"
+	validate_completed_release "$VERIFY_EXTRACT_ROOT/$RETIRED_ID" "$RETIRED_ID" \
+		'published archive' "$VERIFY_EXTRACT_ROOT"
+	[ "$VALIDATED_MANIFEST_SHA" = "$RETIRED_MANIFEST_SHA" ] || \
+		fail "published archive differs from the verified card release: $VERIFY_TAG"
 }
 
 archive_and_remove_retired_release() {

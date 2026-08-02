@@ -1304,6 +1304,29 @@ grep -q 'published archive differs from the verified card release: card-retired'
 [ ! -e "$TEST_STATE/builder-release-id" ]
 [ ! -e "$TEST_STATE/updater-ran" ]
 
+new_case archive-published-equivalent-tar-metadata
+create_completed_release active
+create_completed_release retired 5242880
+select_fixture_release active
+PUBLISHED_ASSETS=$TEST_STATE/gh-release-card-retired-assets
+mkdir -p "$PUBLISHED_ASSETS"
+printf '%s\n' false >"$TEST_STATE/gh-release-card-retired-state"
+COPYFILE_DISABLE=1 tar -cf \
+	"$PUBLISHED_ASSETS/birdOS-RG34XX-SP-retired.tar" \
+	-C "$BIRD/bird-releases" retired
+cp "$BIRD/bird-releases/retired/deploy-manifest.tsv" \
+	"$PUBLISHED_ASSETS/retired.deploy-manifest.tsv"
+printf '%s\n' 'fixture checksum asset' >"$PUBLISHED_ASSETS/retired.SHA256SUMS"
+# Change only archive-header metadata after publication. The canonical payload
+# and manifest remain identical, so retirement must not depend on rebuilt tar
+# byte identity.
+touch -t 202001010000 "$BIRD/bird-releases/retired"
+BIRD_TEST_BIRD_FREE_BYTES=1
+run_command --release >"$CASE_ROOT/out"
+[ ! -e "$BIRD/bird-releases/retired" ]
+grep -q 'Archived inactive release retired' "$CASE_ROOT/out"
+[ -e "$TEST_STATE/updater-ran" ]
+
 new_case archive-changed-marker
 create_completed_release active
 create_completed_release retired 5242880
