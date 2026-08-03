@@ -260,69 +260,9 @@ mount --bind /flash/bird/bird-save-config.service \
 	return 1
 }
 
-# These generic jobs either duplicate fixed Bird ownership or configure
-# hardware/features absent from this one-user RG34XX-SP profile. The remaining
-# autostart sequence is unchanged for this physical gate.
-for SCRIPT in 001-emulationstation 001-sync-modules 002-device-switch \
-	003-upgrade 006-display 007-rootpw 009-bluetooth 010-moonlight \
-	010-uimode 020-configs 020-set_audio_latency 055-hdmi-check \
-	080-dual_screen_mode 080-network 081-usbgadget 098-deviceutils \
-	099-networkservices; do
-	mount --bind /flash/bird/bird-autostart-noop \
-		"/sysroot/usr/lib/autostart/common/$SCRIPT" || {
-		error bird-fixed-autostart "Could not suppress $SCRIPT"
-		return 1
-	}
-done
-
-# common/001-setup is retained for its configuration-recovery contract. If an
-# unrelated RetroArch file is absent, its chksysconfig transaction restores the
-# complete stock /usr/config tree and can overwrite the pre-systemd suspend
-# policy. Replace the immediately following common/009 hook with one fixed,
-# manifest-verified repair. On ordinary boots the requested mode already
-# matches, so ROCKNIX's suspendmode helper performs no write or logind restart.
-mount --bind /flash/bird/bird-restore-suspend-policy.sh \
-	/sysroot/usr/lib/autostart/common/009-sleepmode || {
-	error bird-suspend-policy "Could not install post-recovery suspend policy"
-	return 1
-}
-
-# The pinned STORAGE already contains the release-matched 54-file module tree,
-# the EmulationStation compatibility link and no applicable platform/device
-# config overlay. Avoid re-copying 548 KiB or forking a known-empty rsync job.
-
-# Seven H700 scripts only rewrite immutable profile constants. Publish those
-# constants once and replace the remaining writers with the common no-op.
-mount --bind /flash/bird/bird-fixed-platform.sh \
-	/sysroot/usr/lib/autostart/quirks/platforms/H700/001-device_config || {
-	error bird-fixed-platform "Could not install fixed H700 profile"
-	return 1
-}
-for SCRIPT in 002-turbo-mode_config 010-governors 010-led_control \
-	020-fan_control 030-analog_leds 030-suspend_mode 050-modifiers 091-ui_shader; do
-	mount --bind /flash/bird/bird-autostart-noop \
-		"/sysroot/usr/lib/autostart/quirks/platforms/H700/$SCRIPT" || {
-		error bird-fixed-platform "Could not suppress H700 $SCRIPT"
-		return 1
-	}
-done
-
-# Replace the 11.5 KiB multi-product DRM/EDID generator with the already-proven
-# card1/DSI-1 contract. It does not touch essway.service, so Bird ownership is
-# not restarted while the menu is live.
-mount --bind /flash/bird/bird-fixed-sway.sh \
-	/sysroot/usr/lib/autostart/common/111-sway-init || {
-	error bird-fixed-sway "Could not install fixed internal-panel profile"
-	return 1
-}
-
-# H700 repeats the same mismatched latency read/write as the common script.
-# The pinned writable image already contains the required global value of 64.
-mount --bind /flash/bird/bird-autostart-noop \
-	/sysroot/usr/lib/autostart/quirks/platforms/H700/020-set_audio_latency || {
-	error bird-fixed-audio-latency "Could not suppress duplicate latency write"
-	return 1
-}
+# The fixed post-frame coordinator calls the proven H700/common responsibilities
+# directly from immutable paths. No generic directory scan, no no-op script
+# launch, and no per-script autostart bind replacement is needed here.
 
 # The four network providers keep their exact implementations but their boot
 # jobs are condition-gated. Bird raises the request only around PortMaster.
@@ -346,6 +286,15 @@ mount --bind /flash/bird/systemd-rfkill.service \
 mount --bind /flash/bird/rocknix-report-stats.service \
 	/sysroot/usr/lib/systemd/system/rocknix-report-stats.service || {
 	error bird-boot-snapshot "Could not install post-frame snapshot service"
+	return 1
+}
+
+# The accepted image already journals to /run. Make that bounded volatile
+# contract explicit, then remove the empty persistent flush/catalog jobs.
+# Journald itself remains active for recovery evidence.
+mount --bind /flash/bird/bird-journald.conf \
+	/sysroot/etc/systemd/journald.conf || {
+	error bird-journal-policy "Could not install volatile journal policy"
 	return 1
 }
 
@@ -379,19 +328,11 @@ for UNIT in \
 	video.service \
 	sixaxis@.service \
 	systemd-rfkill.socket \
+	systemd-journal-flush.service \
+	systemd-journal-catalog-update.service \
 	rocknix-report-stats.timer; do
 	mount --bind /dev/null "/sysroot/usr/lib/systemd/system/$UNIT" || {
 		error bird-unused-unit "Could not mask $UNIT"
 		return 1
 	}
 done
-mount --bind /flash/bird/090-ui_service \
-	/sysroot/usr/lib/autostart/quirks/platforms/H700/090-ui_service || {
-	error bird-ui-selection "Could not select Bird as the only boot UI"
-	return 1
-}
-mount --bind /flash/bird/999-export \
-	/sysroot/usr/lib/autostart/common/999-export || {
-	error bird-application-ready "Could not install Bird application milestone"
-	return 1
-}

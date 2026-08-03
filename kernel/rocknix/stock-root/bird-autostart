@@ -1,0 +1,71 @@
+#!/bin/bash
+# Fixed post-frame application coordinator for the one RG34XX-SP profile.
+# The pinned generic coordinator remains a build input so changes to its
+# upstream responsibility set are detected, but release boots do not rescan or
+# launch scripts which this fixed profile has already proven unnecessary.
+
+BIRD_AUTOSTART_REVISION=bird-fixed-autostart-v1
+FLASH_ROOT=${BIRD_FLASH_ROOT:-/flash/bird}
+AUTOSTART_ROOT=${BIRD_AUTOSTART_ROOT:-/usr/lib/autostart}
+CUSTOM_ROOT=${BIRD_CUSTOM_ROOT:-/storage/.config/autostart}
+BOOTLOG=${BIRD_BOOTLOG:-/var/log/boot.log}
+START_GAMES_LOCK=${BIRD_START_GAMES_LOCK:-/var/lock/start.games}
+
+log_failure() {
+	printf 'Bird autostart step failed: %s status=%s\n' "$1" "$2" \
+		>>"$BOOTLOG" 2>&1
+}
+
+# Match the accepted generic coordinator's tolerant semantics. Application
+# readiness is published only by 999-export after it validates all fixed
+# profile outputs, so an earlier failure cannot become a false ready marker.
+run_step() {
+	STEP_NAME=$1
+	STEP_PATH=$2
+	"$STEP_PATH" >>"$BOOTLOG" 2>&1
+	STEP_STATUS=$?
+	[ "$STEP_STATUS" -eq 0 ] || log_failure "$STEP_NAME" "$STEP_STATUS"
+}
+
+performance 2>/dev/null || log_failure performance "$?"
+
+# Exact H700 and common-script order from the pinned v6.23 SYSTEM.
+run_step fixed-platform "$FLASH_ROOT/bird-fixed-platform.sh"
+run_step ui-selection "$FLASH_ROOT/090-ui_service"
+run_step gpu-overclock \
+	"$AUTOSTART_ROOT/quirks/platforms/H700/400-set_gpu_overclock"
+
+run_step controller "$AUTOSTART_ROOT/common/001-controller"
+run_step setup "$AUTOSTART_ROOT/common/001-setup"
+run_step logging "$AUTOSTART_ROOT/common/003-logging"
+run_step perfmode "$AUTOSTART_ROOT/common/008-perfmode"
+run_step suspend-policy "$FLASH_ROOT/bird-restore-suspend-policy.sh"
+run_step pico8 "$AUTOSTART_ROOT/common/010-pico8"
+run_step rumble "$AUTOSTART_ROOT/common/020-rumble"
+run_step audio "$AUTOSTART_ROOT/common/050-audio"
+run_step turbo-mode "$AUTOSTART_ROOT/common/095-turbo-mode"
+run_step fixed-sway "$FLASH_ROOT/bird-fixed-sway.sh"
+run_step application-ready "$FLASH_ROOT/999-export"
+
+# Preserve the accepted optional user hook without scanning generic platform,
+# device, or common directories. The pinned card has no custom hook today.
+if [ -d "$CUSTOM_ROOT" ]; then
+	for CUSTOM_SCRIPT in "$CUSTOM_ROOT"/*; do
+		[ -f "$CUSTOM_SCRIPT" ] || continue
+		run_step "custom:${CUSTOM_SCRIPT##*/}" "$CUSTOM_SCRIPT"
+	done
+fi
+
+rm -f "$START_GAMES_LOCK" >>"$BOOTLOG" 2>&1
+touch "$START_GAMES_LOCK" >>"$BOOTLOG" 2>&1 || \
+	log_failure start-games-lock "$?"
+
+DEVICE_CPU_GOVERNOR=$(get_setting system.cpugovernor)
+if [ -n "$DEVICE_CPU_GOVERNOR" ]; then
+	$DEVICE_CPU_GOVERNOR >>"$BOOTLOG" 2>&1
+	GOVERNOR_STATUS=$?
+	[ "$GOVERNOR_STATUS" -eq 0 ] || \
+		log_failure cpu-governor "$GOVERNOR_STATUS"
+fi
+
+exit 0

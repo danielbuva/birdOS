@@ -66,15 +66,13 @@ grep -Fq 'RUNNER=/flash/bird/run-content.sh' "$SUPERVISOR"
 grep -Fq 'print "  if [ \"${BOOT_STEP}\" = \"mount_storage\" ]; then"' \
 	"$EARLY_BUILDER"
 grep -Fq 'mount-storage-latest.log' "$EARLY_BUILDER"
-grep -Fq 'mount --bind /flash/bird/bird-restore-suspend-policy.sh \' \
-	"$MOUNT_STORAGE"
-grep -Fq '/sysroot/usr/lib/autostart/common/009-sleepmode || {' \
-	"$MOUNT_STORAGE"
-if sed -n '/^for SCRIPT in 001-emulationstation/,/^done$/p' "$MOUNT_STORAGE" |
-	grep -Fq '009-sleepmode'; then
-	printf '%s\n' 'common suspend recovery is still suppressed as a no-op' >&2
+if grep -Fq '/usr/lib/autostart' "$MOUNT_STORAGE"; then
+	printf '%s\n' 'per-script autostart bind replacement remained' >&2
 	exit 1
 fi
+grep -Fq '/flash/bird/bird-journald.conf \' "$MOUNT_STORAGE"
+grep -Fq 'systemd-journal-flush.service' "$MOUNT_STORAGE"
+grep -Fq 'systemd-journal-catalog-update.service' "$MOUNT_STORAGE"
 
 EVENTS=$TMP/events
 FAIL_OPERATION=

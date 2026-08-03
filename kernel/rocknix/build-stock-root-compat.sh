@@ -298,19 +298,6 @@ extract_portmaster_input mod_ROCKNIX.txt 0644 895 "$PORTMASTER_MOD_SHA"
 extract_portmaster_input funcs.txt 0644 4281 "$PORTMASTER_FUNCS_SHA"
 extract_portmaster_input harbourmaster 0755 18807 "$PORTMASTER_HARBOURMASTER_SHA"
 
-# Keep the exact compatibility coordinator for this gate, but remove requests
-# for fixed storage and Bird that systemd has already completed. Application
-# Sway remains on demand and the coordinator retains its compatibility work.
-awk '
-	$0 == "### Start the automount service" { next }
-	$0 == "tocon \"Starting storage services...\"" { next }
-	$0 == "systemctl start rocknix-automount" { next }
-	$0 == "log \"Starting ${UI_SERVICE}...\"" { next }
-	$0 == "systemctl start ${UI_SERVICE} 2>&1 >>${BOOTLOG} &" { next }
-	$0 == "clear >/dev/console" { next }
-	{ print }
-' "$SYSTEM_TREE/usr/bin/autostart" >"$OUTPUT/card/bird/bird-autostart"
-
 "$CLANG" --target=aarch64-linux-gnu -mcpu=cortex-a53 -O2 \
 	-ffreestanding -ffunction-sections -fdata-sections \
 	-fno-builtin -fno-stack-protector -fno-unwind-tables \
@@ -419,7 +406,8 @@ cp -fp "$ROOT/kernel/rocknix/stock-root/post-flash.sh" \
 	"$OUTPUT/card/post-flash.sh"
 cp -fp "$ROOT/kernel/rocknix/stock-root/mount-storage.sh" \
 	"$OUTPUT/card/mount-storage.sh"
-for FILE in 090-ui_service 999-export essway.service rocknix.target \
+for FILE in 090-ui_service 999-export bird-autostart bird-journald.conf \
+	essway.service rocknix.target \
 	rocknix-automount.service rocknix-autostart.service \
 	rocknix-report-stats.service \
 	NetworkManager.service iwd.service systemd-resolved.service \
@@ -431,7 +419,7 @@ for FILE in 090-ui_service 999-export essway.service rocknix.target \
 	capture-boot-state.sh bird-network.sh bird-fixed-control-exit.sh \
 	bird-emergency-recover.sh \
 	bird-save-config.sh bird-save-config.service bird-suspend.sh \
-	bird-restore-suspend-policy.sh bird-volume.sh bird-control-osd.sh bird-autostart-noop \
+	bird-restore-suspend-policy.sh bird-volume.sh bird-control-osd.sh \
 	bird-fixed-sway.sh bird-fixed-platform.sh \
 	bird-swap.conf bird-suspend-policy.generated.sh bird-sleep.conf \
 	bird-logind.conf; do
@@ -473,7 +461,6 @@ chmod 0755 "$OUTPUT/card/post-flash.sh" "$OUTPUT/card/mount-storage.sh" \
 	"$OUTPUT/card/bird/bird-restore-suspend-policy.sh" \
 	"$OUTPUT/card/bird/bird-volume.sh" \
 	"$OUTPUT/card/bird/bird-control-osd.sh" \
-	"$OUTPUT/card/bird/bird-autostart-noop" \
 	"$OUTPUT/card/bird/bird-autostart" \
 	"$OUTPUT/card/bird/bird-fixed-sway.sh" \
 	"$OUTPUT/card/bird/bird-fixed-platform.sh"
@@ -497,7 +484,6 @@ for SCRIPT in "$OUTPUT/card/post-flash.sh" \
 	"$OUTPUT/card/bird/bird-restore-suspend-policy.sh" \
 	"$OUTPUT/card/bird/bird-volume.sh" \
 	"$OUTPUT/card/bird/bird-control-osd.sh" \
-	"$OUTPUT/card/bird/bird-autostart-noop" \
 	"$OUTPUT/card/bird/bird-autostart" \
 	"$OUTPUT/card/bird/bird-fixed-sway.sh" \
 	"$OUTPUT/card/bird/bird-fixed-platform.sh"; do
@@ -508,7 +494,8 @@ bash -n "$OUTPUT/card/bird/bird-suspend-policy.generated.sh" || \
 chmod 0644 "$OUTPUT/card/bird/portmaster-provider.manifest.tsv"
 chmod 0644 "$OUTPUT/card/bird/bird-suspend-policy.generated.sh" \
 	"$OUTPUT/card/bird/bird-sleep.conf" \
-	"$OUTPUT/card/bird/bird-logind.conf"
+	"$OUTPUT/card/bird/bird-logind.conf" \
+	"$OUTPUT/card/bird/bird-journald.conf"
 [ "$(file_mode "$OUTPUT/card/bird/verify-portmaster-provider.sh")" = 755 ] || \
 	fail 'PortMaster provider verifier mode changed'
 [ "$(file_mode "$OUTPUT/card/bird/portmaster-provider.manifest.tsv")" = 644 ] || \
@@ -519,6 +506,8 @@ chmod 0644 "$OUTPUT/card/bird/bird-suspend-policy.generated.sh" \
 	fail 'systemd sleep policy mode changed'
 [ "$(file_mode "$OUTPUT/card/bird/bird-logind.conf")" = 644 ] || \
 	fail 'systemd logind policy mode changed'
+[ "$(file_mode "$OUTPUT/card/bird/bird-journald.conf")" = 644 ] || \
+	fail 'journald policy mode changed'
 
 [ "$(sha256 "$OUTPUT/card/KERNEL")" = "$KERNEL_SHA" ] || fail 'copied KERNEL changed'
 [ "$(sha256 "$OUTPUT/card/dtb.img")" = "$DTB_SHA" ] || fail 'copied DTB changed'
@@ -590,13 +579,17 @@ grep -q '^BindPaths=/dev/null:/dev/console$' \
 	"$OUTPUT/card/bird/rocknix-autostart.service" || fail 'autostart console isolation missing'
 grep -q 'exec /flash/bird/bird-autostart' \
 	"$OUTPUT/card/bird/rocknix-autostart.service" || fail 'fixed autostart coordinator missing'
-grep -q '### Run common start scripts' \
-	"$OUTPUT/card/bird/bird-autostart" || fail 'exact autostart body missing'
-if grep -q 'systemctl start ${UI_SERVICE}' "$OUTPUT/card/bird/bird-autostart"; then
-	fail 'redundant final UI start remained'
-fi
-if grep -q 'systemctl start rocknix-automount' "$OUTPUT/card/bird/bird-autostart"; then
-	fail 'redundant fixed storage start remained'
+grep -q '^BIRD_AUTOSTART_REVISION=bird-fixed-autostart-v1$' \
+	"$OUTPUT/card/bird/bird-autostart" || fail 'fixed autostart revision missing'
+grep -q '400-set_gpu_overclock' "$OUTPUT/card/bird/bird-autostart" || \
+	fail 'fixed H700 GPU policy missing'
+grep -q 'common/050-audio' "$OUTPUT/card/bird/bird-autostart" || \
+	fail 'fixed audio preparation missing'
+grep -q '\$FLASH_ROOT/999-export' "$OUTPUT/card/bird/bird-autostart" || \
+	fail 'application milestone coordinator step missing'
+if grep -Eq 'autostart/(common|quirks)/\[\*\]|(^|[^[:alnum:]_])date([^[:alnum:]_]|$)|tocon|systemctl' \
+	"$OUTPUT/card/bird/bird-autostart"; then
+	fail 'generic autostart discovery or helper remained'
 fi
 grep -q '^ConditionPathExists=/run/bird/network-request$' \
 	"$OUTPUT/card/bird/NetworkManager.service" || fail 'NetworkManager gate missing'
@@ -1049,12 +1042,19 @@ grep -q 'brightness_write=none' \
 	"$OUTPUT/card/bird/first-frame-prep.sh" || fail 'brightness ownership missing'
 grep -q '^DEVICE_HAS_DUAL_SCREEN=false$' \
 	"$OUTPUT/card/bird/999-export" || fail 'fixed panel profile missing'
-grep -q 'bird-autostart-noop' \
-	"$OUTPUT/card/mount-storage.sh" || fail 'fixed autostart profile missing'
-grep -q '/flash/bird/bird-fixed-sway.sh' \
-	"$OUTPUT/card/mount-storage.sh" || fail 'fixed Sway profile missing'
-grep -q '/flash/bird/bird-fixed-platform.sh' \
-	"$OUTPUT/card/mount-storage.sh" || fail 'fixed H700 profile missing'
+if grep -q '/usr/lib/autostart' "$OUTPUT/card/mount-storage.sh"; then
+	fail 'autostart bind replacement remained'
+fi
+grep -q '\$FLASH_ROOT/bird-fixed-sway.sh' \
+	"$OUTPUT/card/bird/bird-autostart" || fail 'fixed Sway step missing'
+grep -q '\$FLASH_ROOT/bird-fixed-platform.sh' \
+	"$OUTPUT/card/bird/bird-autostart" || fail 'fixed H700 step missing'
+grep -q '^Storage=volatile$' "$OUTPUT/card/bird/bird-journald.conf" || \
+	fail 'explicit volatile journal policy missing'
+grep -q 'systemd-journal-flush.service' \
+	"$OUTPUT/card/mount-storage.sh" || fail 'journal flush mask missing'
+grep -q 'systemd-journal-catalog-update.service' \
+	"$OUTPUT/card/mount-storage.sh" || fail 'journal catalog mask missing'
 grep -Fq 'print "system.suspendmode=" mode' \
 	"$OUTPUT/card/mount-storage.sh" || fail 'pre-systemd fake-suspend mode enforcement missing'
 grep -Fq '/flash/bird/bird-suspend-policy.generated.sh' \

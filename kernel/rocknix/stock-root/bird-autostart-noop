@@ -1,4 +1,0 @@
-#!/bin/sh
-# Intentional fixed-device replacement for generic ROCKNIX autostart jobs whose
-# facilities are absent, deferred, or owned explicitly by Bird.
-exit 0
