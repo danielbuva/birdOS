@@ -890,6 +890,41 @@ deliberately armed boot-ID snapshot, absence of expansion warnings, immediate
 and pre-storage launch, normal and forced return classification, providers,
 controls, suspend, shutdown and boot/UI non-inferiority.
 
+The returned gate passed. Boots `d86b5a36` and `ce9da31c` recorded direct input
+at 1223/1219 ms and usable readiness at 1229/1222 ms, ordinary snapshot absence,
+correct 0/143/137 exit classification, matched recovery and durable shutdown.
+This accepts the exact content-shell release as the next candidate's rollback;
+1222 ms is a best sample, not a distribution-level boot claim.
+
+### Stage 4 fixed-autostart/journal candidate — 2026-08-02
+
+The generic coordinator existed to preserve the full ROCKNIX product matrix
+while the fixed-device closure was being proven. It still scanned platform and
+common directories, launched 26 no-op shells, forked approximately 45 timestamp
+helpers and depended on 31 per-script bind substitutions. Journald was already
+effectively volatile, but empty flush and catalog-update jobs still ran after
+the menu.
+
+The fixed coordinator calls the 14 retained duties in exact pinned order,
+continues after individual failures, preserves optional custom hooks and
+publishes application readiness only through validating `999-export`. Fixed
+producers execute from `/flash/bird`; retained stock producers execute from
+exact SYSTEM paths. No-op launches and autostart binds are removed. Journald
+remains available under an explicit volatile 2 MiB policy; only empty flush and
+catalog jobs are masked.
+
+Clean source `133834108ee66a6ad965c44441b6e09690eb8369` is deployed as
+`v6.23-fixed-autostart-1338341`, manifest
+`2c9553b94c7fffd25dff2f45b764c342c134ca6564ed3f9ae9a040ca0149d198`,
+with accepted `v6.23-content-shell-e87e491` as previous. All 57 files verified.
+Release/profile final-root and early-initramfs builds pass; launcher binaries,
+sections, framebuffer metrics and host dynamic-instruction metrics are
+unchanged. The mount hook shrinks 2,719 bytes and the manifest-owned release
+shrinks 1,789 bytes; gzip grows seven bytes to 615,258. The expected gain is
+post-frame application/content readiness and lower late CPU/I/O. Boot and UI
+must remain non-inferior. HDMI, Bluetooth, udev, seatd, logind and warm audio
+are unchanged.
+
 ## Stage 5 — Battery, suspend and memory closure
 
 Measure calibrated energy, wakeups, IRQs and CPU residency for short-label menu

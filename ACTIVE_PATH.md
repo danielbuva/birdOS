@@ -19,20 +19,20 @@ display geometry and hardware policy are deliberate. Older muOS stages,
 source-kernel challengers and clean-root experiments remain useful evidence,
 but they are not alternate active implementations.
 
-The card currently selects the Stage 4 requested-diagnostics/content-shell
-candidate `v6.23-content-shell-e87e491`, built from clean public source
-`e87e4910459b953b7a1f2ebd19a0efee35fe9e57`. Its previous selector is the
-physically accepted complete immutable-toolset checkpoint
-`v6.23-flash-toolset-61c51dd`. The selected candidate's canonical manifest
+The card currently selects the Stage 4 fixed-autostart/journal candidate
+`v6.23-fixed-autostart-1338341`, built from clean public source
+`133834108ee66a6ad965c44441b6e09690eb8369`. Its previous selector is the
+physically accepted requested-diagnostics/content-shell checkpoint
+`v6.23-content-shell-e87e491`. The selected candidate's canonical manifest
 digest is
-`28e2372b36cef01c5f49b584c8896b00ce6969299a30eebb1d40a367d960c70c`,
+`2c9553b94c7fffd25dff2f45b764c342c134ca6564ed3f9ae9a040ca0149d198`,
 and deployment verified all 57 manifest-owned files. The device-contract digest is
 `85ccb8e46e71ee66e2320022ac13228124d6efcea5abdd800b8c18bd190f73cd`
 and the generated-catalog digest is
 `7e29e491bb43191ca9ae6c18bd566b6ba0c984bf43d1d0103eddd6e534306e62`.
 The immutable-dispatcher, immutable-supervisor, first-frame-preparation and
-boot-snapshot checkpoints and the complete-toolset batch passed their full
-RG34XX-SP gates. The selected content-shell batch has passed host, build and
+boot-snapshot, complete-toolset and content-shell batches passed their full
+RG34XX-SP gates. The selected fixed-autostart batch has passed host, build and
 deployment gates but still requires its RG34XX-SP behavior gate. HDMI and
 Bluetooth remain unchanged; retention or removal of either is an explicit
 later product decision. None of these tuples
@@ -843,6 +843,41 @@ complete and correctly attributed, systemd expansion warnings are absent,
 immediate/pre-storage and normal content launch/return work, deliberate force
 quit is classified, and boot/UI timing, providers, controls, suspend and
 shutdown remain non-inferior. HDMI and Bluetooth are not part of this change.
+
+The returned content-shell gate passed the complete behavior matrix. Boots
+`d86b5a36` and `ce9da31c` opened direct input at 1223/1219 ms and published
+usable frames at 1229/1222 ms. The latter is a new best sample but remains a
+non-regression, not a distribution-level speed claim. Ordinary boots produced
+no broad snapshot, content exits were correctly classified as 0, 143 or the
+deliberate 137, retained frames matched and shutdown checkpoints completed.
+
+### Fixed post-frame coordinator and volatile-journal candidate
+
+The generic coordinator existed to preserve the ROCKNIX product matrix while
+fixed-device consumers were still being audited. It still scanned H700/common
+directories, launched 26 release-provided no-op scripts, forked approximately
+45 `date` helpers and required 31 per-script bind substitutions. The accepted
+journal was already bounded under `/run`, but systemd still launched an empty
+persistent flush and message-catalog update after the menu.
+
+Clean source `133834108ee66a6ad965c44441b6e09690eb8369` replaces that scan with
+one fixed coordinator. It calls the 14 proven responsibilities in their exact
+pinned order, preserves tolerant failure semantics and optional custom hooks,
+and lets `999-export` validate application readiness. Fixed Bird producers run
+from `/flash/bird`; retained stock producers run from exact SYSTEM paths. The
+no-op helper and all autostart bind substitutions are gone. Journald remains
+available with an explicit volatile 2 MiB/128 KiB policy; only the empty flush
+and catalog jobs are masked.
+
+Release `v6.23-fixed-autostart-1338341`, manifest
+`2c9553b94c7fffd25dff2f45b764c342c134ca6564ed3f9ae9a040ca0149d198`,
+is deployed with the accepted content-shell release as previous. Launcher and
+profile binaries/sections are unchanged. The mount hook shrinks 2,719 bytes,
+the manifest-owned release shrinks 1,789 bytes, and the release overlay changes
+from 615,251 to 615,258 bytes. This is post-usable work: no first-frame gain is
+claimed. The physical target is earlier application/content readiness and less
+late CPU/I/O with boot/UI non-inferior. HDMI, Bluetooth, udev, seatd, logind and
+the warm audio policy are unchanged.
 
 ## Launcher visual architecture
 

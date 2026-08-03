@@ -591,6 +591,22 @@ physical gate covers ordinary and armed diagnostics, expansion-warning
 absence, immediate/queued launches, forced-exit classification, providers,
 controls, suspend, shutdown and boot/UI non-inferiority.
 
+The returned content-shell gate passed on boots `d86b5a36` and `ce9da31c` with
+usable readiness at 1229/1222 ms, ordinary snapshot absence, correct exit
+classification, matched recovery and durable shutdown. It is now the accepted
+rollback for the fixed-coordinator candidate.
+
+The retained coordinator audit is closed in candidate source
+`133834108ee66a6ad965c44441b6e09690eb8369`. One fixed coordinator replaces 26
+no-op process launches, approximately 45 timestamp helpers, generic directory
+scans and 31 autostart bind substitutions while calling the 14 retained duties
+in the same pinned order. Optional custom hooks and tolerant failure behavior
+remain; the validating application marker is still authoritative. Journald is
+explicitly volatile and bounded, with empty flush/catalog jobs masked but the
+daemon retained. Release `v6.23-fixed-autostart-1338341` has manifest
+`2c9553b94c7fffd25dff2f45b764c342c134ca6564ed3f9ae9a040ca0149d198`.
+This is post-usable subtraction and makes no first-frame claim.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.
@@ -675,21 +691,22 @@ The v6.15 audit found the following generic work and defects. Only items marked
 6. **Closed in v6.15:** `098-deviceutils` and `099-networkservices` repeatedly
    started or stopped device-family service sets already expressed by the fixed
    target and unit gates. Both slots are bind-replaced by the fixed no-op.
-7. **Open:** the retained autostart coordinator still serially visits platform,
-   device and common script slots, then joins background work. Replace it only
-   after every retained output and application consumer is catalogued.
+7. **Closed in fixed-autostart candidate:** the retained coordinator visited
+   every platform/common slot. The fixed coordinator calls only the catalogued
+   responsibilities and retains the validated application marker.
 
 ## Next active order
 
-1. Complete the requested-diagnostics/content-shell physical gate while
-   retaining the accepted immutable-toolset checkpoint as previous.
-2. Audit the retained coordinator, udev coldplug and session/logging managers
-   one independently measurable boundary at a time.
+1. Complete the fixed-autostart/journal physical gate while retaining the
+   accepted content-shell checkpoint as previous.
+2. Audit udev coldplug and session managers one independently measurable
+   boundary at a time.
 3. Preserve HDMI and Bluetooth until their explicit product decision.
 4. Audit udev coldplug output and let its manager exit if no retained feature
    needs runtime hotplug; keep fixed hardware initialization separate from
    Bird.
-5. Audit logind versus seatd, journald policy, and remaining idle wakeups.
+5. Audit logind versus seatd and remaining idle wakeups; journald removal is a
+   later independent candidate now that its volatile policy is explicit.
 6. Remove the muOS-to-ROCKNIX compatibility namespace as an explicit migration:
    canonical `/storage/roms`, `/run/bird`, Bird-owned data/config directories,
    native BIOS/Ports paths and no launcher-time path rewriting.
