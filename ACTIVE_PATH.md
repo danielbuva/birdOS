@@ -981,6 +981,19 @@ and limits retain adjustable core count, every captured CPU/GPU governor, the
 Bluetooth and audio are unchanged. Each policy remains independently tested
 and revertible even though the batch shares one hardware cycle.
 
+Clean public source `01e8119ac9953f87442f1627bfd2032485cf9aa5` implements that
+boundary. Release `v6.23-fixed-performance-01e8119`, canonical manifest
+`70bfa8c408e1f939c3a678ba506ca65e3a5aebdbf33eaa2e5ca370ae2734cc6a`,
+is selected with physically accepted fixed-profiles as its on-card rollback;
+all 65 files and `.complete` verify. The fixed-housekeeping release was verified,
+published to the private release archive and only then reclaimed. Release and
+profile variants both compile; release launchers are byte-identical to the
+rollback. `bird-autostart` shrinks 172 bytes, the four explicit policy scripts
+total 4,544 bytes, manifest-owned bytes grow 5,239, and the compressed release
+overlay shrinks four bytes. Production remains the no-serial entry; diagnostic
+fallback retains `console=ttyS0,115200`. Because all policy execution remains
+after usable readiness, no first-frame timing change is expected or claimed.
+
 ## Launcher visual architecture
 
 The active 720x480 launcher presentation is inspired by Mister Menu's ES-DE

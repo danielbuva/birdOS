@@ -667,6 +667,19 @@ governors, 600 MHz normal and 648 MHz overclocked GPU maxima, CPU boost and the
 joypad driver's PWM vibrator. These are retained capabilities, not feature
 deletion candidates. HDMI, Bluetooth and audio are outside this batch.
 
+Clean source `01e8119ac9953f87442f1627bfd2032485cf9aa5` replaces the four
+wrappers without changing the accepted values. Release
+`v6.23-fixed-performance-01e8119`, manifest
+`70bfa8c408e1f939c3a678ba506ca65e3a5aebdbf33eaa2e5ca370ae2734cc6a`,
+is deployed with fixed-profiles as rollback and all 65 files verified. The
+steady path removes recursive `find`, general profile loading and external
+`seq`, `wc`, `ls`, `grep` and `tee` helpers. Shell parsing reads each exact key
+without a child process, malformed values take fixed safe defaults without a
+persistent rewrite, and each policy has independent fault-injection coverage.
+The launcher binary and framebuffer metrics are unchanged; no host A53
+instruction or device latency/power claim is made. HDMI, Bluetooth, audio,
+suspend and the production no-serial policy are unchanged.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.

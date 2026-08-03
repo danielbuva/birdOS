@@ -1019,6 +1019,18 @@ the built-in PWM vibrator remain product features. Independent host fault
 injection and rollback boundaries are required for each policy. HDMI,
 Bluetooth and audio are unchanged.
 
+Clean public source `01e8119ac9953f87442f1627bfd2032485cf9aa5` is deployed as
+`v6.23-fixed-performance-01e8119`, manifest
+`70bfa8c408e1f939c3a678ba506ca65e3a5aebdbf33eaa2e5ca370ae2734cc6a`,
+with accepted fixed-profiles as rollback. All 65 files verify. The launcher is
+byte-identical, `bird-autostart` shrinks 172 bytes, explicit policy payloads
+total 4,544 bytes, manifest-owned bytes grow 5,239 and the compressed release
+overlay shrinks four bytes. The full 30-executable host matrix and the catalog,
+provider and Stage-0 Python checks pass. This remains post-usable work: device
+boot/UI must be non-inferior, while CPU/core, GPU/overclock, turbo and rumble
+behavior require the physical gate. Production remains no-serial and the
+diagnostic entry retains serial.
+
 ## Stage 5 — Battery, suspend and memory closure
 
 Measure calibrated energy, wakeups, IRQs and CPU residency for short-label menu
