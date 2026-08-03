@@ -428,6 +428,24 @@ worker remain byte-identical. This adds no boot executable, process, timer,
 wakeup, framebuffer traffic or binary memory. Hardware must now show both
 services active and repeated first-game dispatch without an ordering cycle.
 
+That hardware gate passes. Six returned boots recorded usable-frame times of
+1229, 1225, 1222, 1222, 1224 and 1218 ms, with a descriptive median of 1223 ms.
+All captured final-root snapshots had both units active and none contained the
+ordering cycle or deleted UI job. Repeated content dispatch/return, shutdown
+and logged UI recovery also passed; the samples establish non-regression only.
+
+The next retained-userspace subtraction moves only `run-content.sh` from the
+per-boot writable preparation set to direct execution from `/flash`. Clean
+source `0b438f52b767e3c8ec008c1a5e7c342c0d503643` is deployed as
+`v6.23-flash-runner-0b438f5`, canonical manifest
+`2ca0ba49a33e0a62f9abbe73419696a32943af70fbc266659ad59bd08cf75ec6`.
+The dispatcher remains byte-identical at 65,346 bytes. The copy set shrinks
+from 18 files/220,067 bytes to 17 files/154,715 bytes, removing one `cp`, one
+mode operand, one destination check and 65,352 source plus destination bytes.
+This changes no launcher/input/framebuffer path, resident service, idle timer or
+memory footprint. RG34XX-SP boot non-inferiority and complete content
+launch/return behavior remain unclaimed until the card returns.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.

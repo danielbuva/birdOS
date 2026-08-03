@@ -675,6 +675,29 @@ memory changes. The hardware gate requires both services active, no ordering
 cycle, repeated cold first-game launches and unchanged boot/UI behavior before
 the next content-latency subtraction.
 
+That gate passes. Six returned boots recorded usable-frame times of 1229, 1225,
+1222, 1222, 1224 and 1218 ms, with a descriptive median of 1223 ms. Both
+`essway.service` and `powerstate.service` were active in every captured
+final-root snapshot; no ordering-cycle/job-deletion event remained. Repeated
+first-game launch, normal provider return, shutdown and a second logged
+emergency restart passed. This is boot non-regression evidence, not a new
+distribution claim.
+
+The next independently bounded Stage 4 candidate executes the immutable
+content dispatcher directly as `/flash/bird/run-content.sh`. Clean source
+`0b438f52b767e3c8ec008c1a5e7c342c0d503643` is deployed as
+`v6.23-flash-runner-0b438f5`, manifest
+`2ca0ba49a33e0a62f9abbe73419696a32943af70fbc266659ad59bd08cf75ec6`,
+with all 57 manifest-owned files verified and the accepted ordering checkpoint
+as previous. Root preparation no longer copies, chmods or verifies a writable
+dispatcher duplicate. The copy set falls from 18 files/220,067 source bytes to
+17 files/154,715 bytes: one fewer `cp` child, one fewer mode operand, one fewer
+destination check and 65,352 fewer source and destination bytes per boot. The
+65,346-byte dispatcher and both launcher variants are byte-identical; no
+framebuffer, input, task, timer or resident-memory behavior changes. Boot and
+content timing, energy and the complete launch/return gate remain physical
+measurements rather than claims.
+
 ## Stage 5 — Battery, suspend and memory closure
 
 Measure calibrated energy, wakeups, IRQs and CPU residency for short-label menu

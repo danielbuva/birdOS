@@ -19,18 +19,18 @@ display geometry and hardware policy are deliberate. Older muOS stages,
 source-kernel challengers and clean-root experiments remain useful evidence,
 but they are not alternate active implementations.
 
-The card currently selects the bounded Stage 4 final-root ordering candidate
-`v6.23-ui-order-895e6a7`, built from clean source
-`895e6a7ae557df3b202e6ac7b78234441b705c0e`. Its previous selector is the
-physically accepted emergency-recovery checkpoint
-`v6.23-emergency-recovery-e2c46b2`, not a rejected experiment. The selected
-candidate's canonical manifest digest is
-`fdf3e466ef85682c4b6de977ff8484c5bb9b24eddf953f4f6981eb206aa6e149`,
+The card currently selects the bounded Stage 4 immutable-dispatcher candidate
+`v6.23-flash-runner-0b438f5`, built from clean source
+`0b438f52b767e3c8ec008c1a5e7c342c0d503643`. Its previous selector is the
+physically accepted final-root ordering checkpoint
+`v6.23-ui-order-895e6a7`, not a rejected experiment. The selected candidate's
+canonical manifest digest is
+`2ca0ba49a33e0a62f9abbe73419696a32943af70fbc266659ad59bd08cf75ec6`,
 and deployment verified all 57 manifest-owned files. The device-contract digest is
 `85ccb8e46e71ee66e2320022ac13228124d6efcea5abdd800b8c18bd190f73cd`
 and the generated-catalog digest is
 `7e29e491bb43191ca9ae6c18bd566b6ba0c984bf43d1d0103eddd6e534306e62`.
-The emergency-recovery checkpoint passed on boot ID `bf45b45b`; the ordering
+The ordering checkpoint passed its full RG34XX-SP gate; the immutable-dispatcher
 candidate has passed host, build and deployment gates but still requires its
 RG34XX-SP boot/content gate. Neither tuple
 replaces the broader source/behavior baseline or immutable fallback named above.
@@ -549,8 +549,45 @@ Clean source `895e6a7ae557df3b202e6ac7b78234441b705c0e` is deployed as
 `v6.23-ui-order-895e6a7`, canonical manifest
 `fdf3e466ef85682c4b6de977ff8484c5bb9b24eddf953f4f6981eb206aa6e149`.
 All 57 manifest-owned files verified, with the accepted emergency checkpoint as
-the previous selector. Repeated cold first-game launch, both active unit states,
-ordinary recovery and boot non-inferiority remain the RG34XX-SP gate.
+the previous selector. That RG34XX-SP gate passes. Six returned boots recorded
+usable-frame times of 1229, 1225, 1222, 1222, 1224 and 1218 ms, a descriptive
+median of 1223 ms; the latest sample was the fastest. Every captured final-root
+snapshot had both `essway.service` and `powerstate.service` active, and no
+ordering-cycle/job-deletion event remained. Repeated cold first-game launch,
+content return, media controls, suspend, shutdown and a second logged emergency
+restart also passed. These observations establish functional and boot
+non-regression, not a new latency distribution claim.
+
+### Immutable content-dispatcher candidate
+
+The next bounded Stage 4 candidate moves only the final-root content dispatcher
+to the selected immutable release. The supervisor now executes
+`/flash/bird/run-content.sh`; `mount-storage.sh` no longer copies, chmods or
+verifies a writable duplicate under `/storage/.config/bird`. An old writable
+copy may remain as inert data, but ordinary boot neither executes nor deletes
+it. Provider selection, storage handoff, one-pending-intent behavior and the
+dispatcher itself are unchanged. The deployed dispatcher remains exactly
+65,346 bytes with SHA-256
+`9a471700d333f1d22f5c55066c1ce1683b560ea42081c1b97b3534106432e6d9`,
+byte-identical to the accepted ordering checkpoint.
+
+Against that checkpoint, the writable preparation set falls from 18 files and
+220,067 source bytes to 17 files and 154,715 bytes. This removes one external
+`cp` child, one `chmod` operand, one destination capability check and 65,352
+source bytes plus 65,352 destination bytes per boot, a 29.7 percent reduction
+of that remaining payload and an 81.1 percent cumulative reduction from the
+original 817,170-byte set. The final and early launchers, fixed controls and
+power worker are byte-identical. The release initramfs differs by one compressed
+byte solely because of release metadata. There is no launcher syscall,
+framebuffer, input, resident-task, idle-timer or memory change.
+
+Clean source `0b438f52b767e3c8ec008c1a5e7c342c0d503643` is deployed as
+`v6.23-flash-runner-0b438f5`, canonical manifest
+`2ca0ba49a33e0a62f9abbe73419696a32943af70fbc266659ad59bd08cf75ec6`.
+All 57 manifest-owned files verified, with the accepted ordering checkpoint as
+the previous selector. Hardware boot timing, first content launch, provider
+return and shutdown remain the RG34XX-SP gate; no device latency or energy
+improvement is claimed before that test.
 
 ## Launcher visual architecture
 
