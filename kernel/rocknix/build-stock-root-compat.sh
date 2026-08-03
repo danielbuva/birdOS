@@ -420,9 +420,9 @@ for FILE in 090-ui_service 999-export bird-autostart bird-journald.conf \
 	bird-emergency-recover.sh \
 	bird-save-config.sh bird-save-config.service bird-suspend.sh \
 	bird-restore-suspend-policy.sh bird-volume.sh bird-control-osd.sh \
-	bird-fixed-sway.sh bird-fixed-platform.sh \
-	bird-swap.conf bird-suspend-policy.generated.sh bird-sleep.conf \
-	bird-logind.conf; do
+	bird-fixed-sway.sh bird-fixed-platform.sh bird-fixed-logging.sh \
+	bird-fixed-pico8.sh \
+	bird-swap.conf bird-suspend-policy.generated.sh bird-sleep.conf; do
 	cp -fp "$ROOT/kernel/rocknix/stock-root/$FILE" "$OUTPUT/card/bird/$FILE"
 done
 cp -fp "$ROOT/kernel/rocknix/stock-root/mpv-input.conf" \
@@ -463,7 +463,9 @@ chmod 0755 "$OUTPUT/card/post-flash.sh" "$OUTPUT/card/mount-storage.sh" \
 	"$OUTPUT/card/bird/bird-control-osd.sh" \
 	"$OUTPUT/card/bird/bird-autostart" \
 	"$OUTPUT/card/bird/bird-fixed-sway.sh" \
-	"$OUTPUT/card/bird/bird-fixed-platform.sh"
+	"$OUTPUT/card/bird/bird-fixed-platform.sh" \
+	"$OUTPUT/card/bird/bird-fixed-logging.sh" \
+	"$OUTPUT/card/bird/bird-fixed-pico8.sh"
 
 for SCRIPT in "$OUTPUT/card/post-flash.sh" \
 	"$OUTPUT/card/mount-storage.sh" \
@@ -486,7 +488,9 @@ for SCRIPT in "$OUTPUT/card/post-flash.sh" \
 	"$OUTPUT/card/bird/bird-control-osd.sh" \
 	"$OUTPUT/card/bird/bird-autostart" \
 	"$OUTPUT/card/bird/bird-fixed-sway.sh" \
-	"$OUTPUT/card/bird/bird-fixed-platform.sh"; do
+	"$OUTPUT/card/bird/bird-fixed-platform.sh" \
+	"$OUTPUT/card/bird/bird-fixed-logging.sh" \
+	"$OUTPUT/card/bird/bird-fixed-pico8.sh"; do
 	bash -n "$SCRIPT" || fail "shell syntax failed: $SCRIPT"
 done
 bash -n "$OUTPUT/card/bird/bird-suspend-policy.generated.sh" || \
@@ -494,7 +498,6 @@ bash -n "$OUTPUT/card/bird/bird-suspend-policy.generated.sh" || \
 chmod 0644 "$OUTPUT/card/bird/portmaster-provider.manifest.tsv"
 chmod 0644 "$OUTPUT/card/bird/bird-suspend-policy.generated.sh" \
 	"$OUTPUT/card/bird/bird-sleep.conf" \
-	"$OUTPUT/card/bird/bird-logind.conf" \
 	"$OUTPUT/card/bird/bird-journald.conf"
 [ "$(file_mode "$OUTPUT/card/bird/verify-portmaster-provider.sh")" = 755 ] || \
 	fail 'PortMaster provider verifier mode changed'
@@ -504,8 +507,6 @@ chmod 0644 "$OUTPUT/card/bird/bird-suspend-policy.generated.sh" \
 	fail 'generated suspend policy mode changed'
 [ "$(file_mode "$OUTPUT/card/bird/bird-sleep.conf")" = 644 ] || \
 	fail 'systemd sleep policy mode changed'
-[ "$(file_mode "$OUTPUT/card/bird/bird-logind.conf")" = 644 ] || \
-	fail 'systemd logind policy mode changed'
 [ "$(file_mode "$OUTPUT/card/bird/bird-journald.conf")" = 644 ] || \
 	fail 'journald policy mode changed'
 
@@ -1049,6 +1050,14 @@ grep -q '\$FLASH_ROOT/bird-fixed-sway.sh' \
 	"$OUTPUT/card/bird/bird-autostart" || fail 'fixed Sway step missing'
 grep -q '\$FLASH_ROOT/bird-fixed-platform.sh' \
 	"$OUTPUT/card/bird/bird-autostart" || fail 'fixed H700 step missing'
+grep -q '\$FLASH_ROOT/bird-fixed-logging.sh' \
+	"$OUTPUT/card/bird/bird-autostart" || fail 'fixed logging step missing'
+grep -q '\$FLASH_ROOT/bird-fixed-pico8.sh' \
+	"$OUTPUT/card/bird/bird-autostart" || fail 'fixed Pico-8 step missing'
+if grep -q 'common/003-logging\|common/010-pico8' \
+	"$OUTPUT/card/bird/bird-autostart"; then
+	fail 'write-heavy generic housekeeping remained active'
+fi
 grep -q '^Storage=volatile$' "$OUTPUT/card/bird/bird-journald.conf" || \
 	fail 'explicit volatile journal policy missing'
 grep -q 'systemd-journal-flush.service' \
@@ -1081,10 +1090,9 @@ if grep -Fq '030-suspend_mode' "$OUTPUT/card/mount-storage.sh" \
 fi
 grep -Fxq 'AllowSuspend=no' \
 	"$OUTPUT/card/bird/bird-sleep.conf" || fail 'kernel suspend disable policy missing'
-grep -Fxq 'HandleLidSwitch=ignore' \
-	"$OUTPUT/card/bird/bird-logind.conf" || fail 'logind lid ownership policy missing'
-grep -Fxq 'HandlePowerKey=ignore' \
-	"$OUTPUT/card/bird/bird-logind.conf" || fail 'logind power ownership policy missing'
+if [ -e "$OUTPUT/card/bird/bird-logind.conf" ]; then
+	fail 'unused logind runtime policy remained in release'
+fi
 grep -Fxq 'BIRD_SUSPEND_PROVIDER_MODE=off' \
 	"$OUTPUT/card/bird/bird-suspend-policy.generated.sh" || \
 	fail 'generated fake-suspend provider policy missing'

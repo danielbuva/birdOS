@@ -17,9 +17,7 @@ mount_part "$STORAGE_IMAGE" /storage "loop,rw,noatime" || {
 # a fixed post-recovery verifier because retained common/001 may restore defaults.
 SUSPEND_CONFIG=/storage/.config/system/configs/system.cfg
 SUSPEND_SLEEP_CONFIG=/storage/.config/sleep.conf.d/sleep.conf
-SUSPEND_LOGIND_CONFIG=/storage/.config/logind.conf.d/login.conf
 FIXED_SLEEP_CONFIG=/flash/bird/bird-sleep.conf
-FIXED_LOGIND_CONFIG=/flash/bird/bird-logind.conf
 FIXED_SUSPEND_POLICY=/flash/bird/bird-suspend-policy.generated.sh
 SYSTEM_BUSYBOX=/sysroot/usr/bin/busybox
 RETROARCH_CONFIG_DIR=/storage/.config/retroarch
@@ -107,10 +105,8 @@ else
 	fi
 fi
 
-mkdir -p "${SUSPEND_SLEEP_CONFIG%/*}" "${SUSPEND_LOGIND_CONFIG%/*}"
-for FIXED_POLICY in \
-	"$FIXED_SLEEP_CONFIG:$SUSPEND_SLEEP_CONFIG" \
-	"$FIXED_LOGIND_CONFIG:$SUSPEND_LOGIND_CONFIG"; do
+mkdir -p "${SUSPEND_SLEEP_CONFIG%/*}"
+for FIXED_POLICY in "$FIXED_SLEEP_CONFIG:$SUSPEND_SLEEP_CONFIG"; do
 	POLICY_SOURCE=${FIXED_POLICY%%:*}
 	POLICY_TARGET=${FIXED_POLICY#*:}
 	POLICY_TEMP=$POLICY_TARGET.bird-new
@@ -141,7 +137,7 @@ done
 # common/001-setup invokes a broad stock-config recovery when either of these
 # application prerequisites is absent. Seed only the missing file now, after
 # Bird is already usable but before systemd, so that recovery cannot overwrite
-# Bird-owned system, sleep, or logind policy during the interactive session.
+# Bird-owned system or sleep policy during the interactive session.
 mkdir -p "$RETROARCH_CONFIG_DIR"
 for RETROARCH_CONFIG in retroarch-core-options.cfg retroarch.cfg; do
 	RETROARCH_SOURCE=$FIXED_RETROARCH_CONFIG_DIR/$RETROARCH_CONFIG
@@ -162,13 +158,13 @@ done
 # systemd merges every direct *.conf child in these persistent drop-in
 # directories. Close the fixed-device policy boundary before PID 1 starts:
 # keeping a second drop-in would let lexicographic ordering silently restore
-# real suspend or logind input ownership even though Bird's canonical file is
-# correct. Remove only competing *.conf entries; README and other non-policy
+# real suspend even though Bird's canonical file is correct. Logind is masked,
+# so its old writable policy is inert and is not compared, copied or cleaned.
+# Remove only competing sleep *.conf entries; README and other non-policy
 # artifacts remain untouched. A directory or otherwise unremovable entry fails
 # the boot transaction instead of allowing ambiguous policy.
 for FIXED_POLICY in \
-	"${SUSPEND_SLEEP_CONFIG%/*}:$SUSPEND_SLEEP_CONFIG" \
-	"${SUSPEND_LOGIND_CONFIG%/*}:$SUSPEND_LOGIND_CONFIG"; do
+	"${SUSPEND_SLEEP_CONFIG%/*}:$SUSPEND_SLEEP_CONFIG"; do
 	POLICY_DIRECTORY=${FIXED_POLICY%%:*}
 	POLICY_TARGET=${FIXED_POLICY#*:}
 	for POLICY_ENTRY in "$POLICY_DIRECTORY"/*.conf; do

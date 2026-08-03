@@ -22,9 +22,7 @@ awk '
 sed \
 	-e 's#^SUSPEND_CONFIG=.*#SUSPEND_CONFIG=$TEST_SUSPEND_CONFIG#' \
 	-e 's#^SUSPEND_SLEEP_CONFIG=.*#SUSPEND_SLEEP_CONFIG=$TEST_SLEEP_CONFIG#' \
-	-e 's#^SUSPEND_LOGIND_CONFIG=.*#SUSPEND_LOGIND_CONFIG=$TEST_LOGIND_CONFIG#' \
 	-e 's#^FIXED_SLEEP_CONFIG=.*#FIXED_SLEEP_CONFIG=$TEST_FIXED_SLEEP_CONFIG#' \
-	-e 's#^FIXED_LOGIND_CONFIG=.*#FIXED_LOGIND_CONFIG=$TEST_FIXED_LOGIND_CONFIG#' \
 	-e 's#^FIXED_SUSPEND_POLICY=.*#FIXED_SUSPEND_POLICY=$TEST_FIXED_SUSPEND_POLICY#' \
 	-e 's#^SYSTEM_BUSYBOX=.*#SYSTEM_BUSYBOX=$TEST_SYSTEM_BUSYBOX#' \
 	-e 's#^RETROARCH_CONFIG_DIR=.*#RETROARCH_CONFIG_DIR=$TEST_RETROARCH_CONFIG_DIR#' \
@@ -84,7 +82,6 @@ TEST_SUSPEND_CONFIG=$TMP/storage/system.cfg
 TEST_SLEEP_CONFIG=$TMP/storage/sleep.conf.d/sleep.conf
 TEST_LOGIND_CONFIG=$TMP/storage/logind.conf.d/login.conf
 TEST_FIXED_SLEEP_CONFIG=$ROOT/kernel/rocknix/stock-root/bird-sleep.conf
-TEST_FIXED_LOGIND_CONFIG=$ROOT/kernel/rocknix/stock-root/bird-logind.conf
 TEST_FIXED_SUSPEND_POLICY=$ROOT/kernel/rocknix/stock-root/bird-suspend-policy.generated.sh
 TEST_RETROARCH_CONFIG_DIR=$TMP/storage/retroarch
 TEST_FIXED_RETROARCH_CONFIG_DIR=$TMP/fixed-retroarch
@@ -199,7 +196,7 @@ grep -Fxq 'system.suspend.park_cores=1' "$TEST_SUSPEND_CONFIG"
 [ "$(grep -c '^system\.suspend\.park_cores=' "$TEST_SUSPEND_CONFIG")" -eq 1 ]
 grep -Fxq 'unrelated.setting=preserved' "$TEST_SUSPEND_CONFIG"
 cmp "$TEST_FIXED_SLEEP_CONFIG" "$TEST_SLEEP_CONFIG"
-cmp "$TEST_FIXED_LOGIND_CONFIG" "$TEST_LOGIND_CONFIG"
+[ "$(cat "$TEST_LOGIND_CONFIG")" = stale-logind ]
 cmp "$TEST_FIXED_RETROARCH_CONFIG_DIR/retroarch-core-options.cfg" \
 	"$TEST_RETROARCH_CONFIG_DIR/retroarch-core-options.cfg"
 cmp "$TEST_FIXED_RETROARCH_CONFIG_DIR/retroarch.cfg" \
@@ -210,12 +207,12 @@ cmp "$TEST_FIXED_RETROARCH_CONFIG_DIR/retroarch.cfg" \
 [ -s "$TEST_RETROARCH_CONFIG_DIR/retroarch.cfg" ]
 grep -q '^system[.]hostname=' "$TEST_SUSPEND_CONFIG"
 [ ! -e "${TEST_SLEEP_CONFIG%/*}/zz-override.conf" ]
-[ ! -e "${TEST_LOGIND_CONFIG%/*}/zz-override.conf" ]
-[ ! -L "${TEST_LOGIND_CONFIG%/*}/zzz-symlink.conf" ]
+[ -e "${TEST_LOGIND_CONFIG%/*}/zz-override.conf" ]
+[ -L "${TEST_LOGIND_CONFIG%/*}/zzz-symlink.conf" ]
 [ "$(cat "$TMP/outside-policy-target")" = 'must remain' ]
 cat >"$TMP/expected-success" <<'EOF'
 loop|/birddata/MUOS/runtime/ROCKNIX-STORAGE|/storage|loop,rw,noatime
-mkdir|-p TEST_SLEEP_DIR TEST_LOGIND_DIR
+mkdir|-p TEST_SLEEP_DIR
 mkdir|-p TEST_RETROARCH_DIR
 mkdir|-p /run/bird-data /storage/bird-data /storage/roms /storage/.config/bird
 mount|--move /birddata /run/bird-data
@@ -225,7 +222,6 @@ mkdir|-p /storage/roms/bios
 mount|--bind /storage/bird-data/MUOS/bios /storage/roms/bios
 EOF
 sed -e "s#TEST_SLEEP_DIR#${TEST_SLEEP_CONFIG%/*}#" \
-	-e "s#TEST_LOGIND_DIR#${TEST_LOGIND_CONFIG%/*}#" \
 	-e "s#TEST_RETROARCH_DIR#$TEST_RETROARCH_CONFIG_DIR#" \
 	"$TMP/expected-success" >"$TMP/expected-success.resolved"
 cmp "$TMP/expected-success.resolved" "$EVENTS"
@@ -258,18 +254,18 @@ for SETTING in \
 	[ "$(grep -Fxc "$SETTING" "$TEST_SUSPEND_CONFIG")" -eq 1 ]
 done
 [ "$(/usr/bin/stat -f %Lp "$TEST_SLEEP_CONFIG" 2>/dev/null || /usr/bin/stat -c %a "$TEST_SLEEP_CONFIG")" = 644 ]
-[ "$(/usr/bin/stat -f %Lp "$TEST_LOGIND_CONFIG" 2>/dev/null || /usr/bin/stat -c %a "$TEST_LOGIND_CONFIG")" = 644 ]
+[ "$(/usr/bin/stat -f %Lp "$TEST_LOGIND_CONFIG" 2>/dev/null || /usr/bin/stat -c %a "$TEST_LOGIND_CONFIG")" = 600 ]
 grep -q '^awk ' "$POLICY_EVENTS"
-[ "$(grep -c '^chmod 0644 ' "$POLICY_EVENTS")" -eq 3 ]
+[ "$(grep -c '^chmod 0644 ' "$POLICY_EVENTS")" -eq 2 ]
 
 # The accepted policy causes no configuration or file-copy write on the next
-# boot; only the two read-only comparisons and mode reads remain.
+# boot; only the sleep-policy read-only comparison and mode read remain.
 cp "$TEST_SUSPEND_CONFIG" "$TMP/system.cfg.accepted"
 : >"$POLICY_EVENTS"
 run_prefix
 [ "$STATUS" -eq 0 ]
 cmp "$TMP/system.cfg.accepted" "$TEST_SUSPEND_CONFIG"
-[ "$(grep -c '^cmp -s ' "$POLICY_EVENTS")" -eq 2 ]
+[ "$(grep -c '^cmp -s ' "$POLICY_EVENTS")" -eq 1 ]
 ! grep -Eq '^(awk|cp|chmod|mv|rm) ' "$POLICY_EVENTS"
 
 # A competing *.conf that cannot be removed must fail before final-root policy
@@ -294,14 +290,13 @@ run_prefix
 [ "$STATUS" -eq 1 ]
 cat >"$TMP/expected-move-failure" <<'EOF'
 loop|/birddata/MUOS/runtime/ROCKNIX-STORAGE|/storage|loop,rw,noatime
-mkdir|-p TEST_SLEEP_DIR TEST_LOGIND_DIR
+mkdir|-p TEST_SLEEP_DIR
 mkdir|-p TEST_RETROARCH_DIR
 mkdir|-p /run/bird-data /storage/bird-data /storage/roms /storage/.config/bird
 mount|--move /birddata /run/bird-data
 error|bird-data-move|Could not move large Bird data volume to its final mount
 EOF
 sed -e "s#TEST_SLEEP_DIR#${TEST_SLEEP_CONFIG%/*}#" \
-	-e "s#TEST_LOGIND_DIR#${TEST_LOGIND_CONFIG%/*}#" \
 	-e "s#TEST_RETROARCH_DIR#$TEST_RETROARCH_CONFIG_DIR#" \
 	"$TMP/expected-move-failure" >"$TMP/expected-move-failure.resolved"
 cmp "$TMP/expected-move-failure.resolved" "$EVENTS"
@@ -313,7 +308,7 @@ run_prefix
 [ "$STATUS" -eq 1 ]
 cat >"$TMP/expected-bind-failure" <<'EOF'
 loop|/birddata/MUOS/runtime/ROCKNIX-STORAGE|/storage|loop,rw,noatime
-mkdir|-p TEST_SLEEP_DIR TEST_LOGIND_DIR
+mkdir|-p TEST_SLEEP_DIR
 mkdir|-p TEST_RETROARCH_DIR
 mkdir|-p /run/bird-data /storage/bird-data /storage/roms /storage/.config/bird
 mount|--move /birddata /run/bird-data
@@ -321,7 +316,6 @@ mount|--bind /run/bird-data /storage/bird-data
 error|bird-data-bind|Could not publish the large Bird data volume
 EOF
 sed -e "s#TEST_SLEEP_DIR#${TEST_SLEEP_CONFIG%/*}#" \
-	-e "s#TEST_LOGIND_DIR#${TEST_LOGIND_CONFIG%/*}#" \
 	-e "s#TEST_RETROARCH_DIR#$TEST_RETROARCH_CONFIG_DIR#" \
 	"$TMP/expected-bind-failure" >"$TMP/expected-bind-failure.resolved"
 cmp "$TMP/expected-bind-failure.resolved" "$EVENTS"

@@ -34,10 +34,10 @@ make_step "$FLASH/090-ui_service" ui-selection
 make_step "$AUTOSTART/quirks/platforms/H700/400-set_gpu_overclock" gpu-overclock
 make_step "$AUTOSTART/common/001-controller" controller
 make_step "$AUTOSTART/common/001-setup" setup 7
-make_step "$AUTOSTART/common/003-logging" logging
+make_step "$FLASH/bird-fixed-logging.sh" logging
 make_step "$AUTOSTART/common/008-perfmode" perfmode
 make_step "$FLASH/bird-restore-suspend-policy.sh" suspend-policy
-make_step "$AUTOSTART/common/010-pico8" pico8
+make_step "$FLASH/bird-fixed-pico8.sh" pico8
 make_step "$AUTOSTART/common/020-rumble" rumble
 make_step "$AUTOSTART/common/050-audio" audio
 make_step "$AUTOSTART/common/095-turbo-mode" turbo-mode

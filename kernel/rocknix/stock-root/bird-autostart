@@ -37,10 +37,10 @@ run_step gpu-overclock \
 
 run_step controller "$AUTOSTART_ROOT/common/001-controller"
 run_step setup "$AUTOSTART_ROOT/common/001-setup"
-run_step logging "$AUTOSTART_ROOT/common/003-logging"
+run_step logging "$FLASH_ROOT/bird-fixed-logging.sh"
 run_step perfmode "$AUTOSTART_ROOT/common/008-perfmode"
 run_step suspend-policy "$FLASH_ROOT/bird-restore-suspend-policy.sh"
-run_step pico8 "$AUTOSTART_ROOT/common/010-pico8"
+run_step pico8 "$FLASH_ROOT/bird-fixed-pico8.sh"
 run_step rumble "$AUTOSTART_ROOT/common/020-rumble"
 run_step audio "$AUTOSTART_ROOT/common/050-audio"
 run_step turbo-mode "$AUTOSTART_ROOT/common/095-turbo-mode"
