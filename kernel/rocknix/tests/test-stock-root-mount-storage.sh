@@ -73,6 +73,10 @@ fi
 grep -Fq '/flash/bird/bird-journald.conf \' "$MOUNT_STORAGE"
 grep -Fq 'systemd-journal-flush.service' "$MOUNT_STORAGE"
 grep -Fq 'systemd-journal-catalog-update.service' "$MOUNT_STORAGE"
+grep -Fq 'systemd-logind.service' "$MOUNT_STORAGE"
+grep -Fq 'systemd-tmpfiles-clean.timer' "$MOUNT_STORAGE"
+grep -Fq 'systemd-update-utmp.service' "$MOUNT_STORAGE"
+grep -Fq 'systemd-update-utmp-runlevel.service' "$MOUNT_STORAGE"
 
 EVENTS=$TMP/events
 FAIL_OPERATION=

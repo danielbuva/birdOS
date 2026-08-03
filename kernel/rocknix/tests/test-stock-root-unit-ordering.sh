@@ -15,6 +15,10 @@ UI=$ROOT/kernel/rocknix/stock-root/essway.service
 TARGET=$ROOT/kernel/rocknix/stock-root/rocknix.target
 REPORT=$ROOT/kernel/rocknix/stock-root/rocknix-report-stats.service
 CAPTURE=$ROOT/kernel/rocknix/stock-root/capture-boot-state.sh
+MOUNT_STORAGE=$ROOT/kernel/rocknix/stock-root/mount-storage.sh
+RUNNER=$ROOT/kernel/rocknix/stock-root/run-content.sh
+SUSPEND=$ROOT/kernel/rocknix/stock-root/bird-suspend.sh
+CONTROLS_SOURCE=$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c
 
 grep -Fqx 'After=local-fs.target' "$POWER"
 grep -Fqx 'WantedBy=multi-user.target' "$POWER"
@@ -41,3 +45,19 @@ grep -Fq 'stock-root-boot-state-$BOOT_ID.log' "$CAPTURE"
 grep -Fq 'cp -f "$LOG" "$LATEST"' "$CAPTURE"
 grep -Fq 'trap cleanup EXIT' "$CAPTURE"
 grep -Fq "trap 'exit 1' HUP INT TERM" "$CAPTURE"
+
+# Bird owns the one-user power/session policy without a login manager. The
+# direct control process consumes both switch sources, the retained provider
+# has no login1 client, and content explicitly joins seatd before Sway.
+grep -Fq 'systemd-logind.service' "$MOUNT_STORAGE"
+grep -Fq 'systemd-tmpfiles-clean.timer' "$MOUNT_STORAGE"
+grep -Fq 'systemd-update-utmp.service' "$MOUNT_STORAGE"
+grep -Fq 'systemd-update-utmp-runlevel.service' "$MOUNT_STORAGE"
+grep -Fq 'systemctl start seatd.service' "$RUNNER"
+grep -Fq 'SOURCE_POWER' "$CONTROLS_SOURCE"
+grep -Fq 'SOURCE_LID' "$CONTROLS_SOURCE"
+if grep -Eq 'loginctl|org[.]freedesktop[.]login1|systemd-inhibit' \
+	"$RUNNER" "$SUSPEND" "$CONTROLS_SOURCE"; then
+	printf '%s\n' 'active fixed-device path regained a login1 consumer' >&2
+	exit 1
+fi

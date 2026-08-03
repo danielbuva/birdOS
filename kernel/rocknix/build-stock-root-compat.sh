@@ -1055,6 +1055,16 @@ grep -q 'systemd-journal-flush.service' \
 	"$OUTPUT/card/mount-storage.sh" || fail 'journal flush mask missing'
 grep -q 'systemd-journal-catalog-update.service' \
 	"$OUTPUT/card/mount-storage.sh" || fail 'journal catalog mask missing'
+grep -q 'systemd-logind.service' \
+	"$OUTPUT/card/mount-storage.sh" || fail 'unused logind mask missing'
+grep -q 'systemd-tmpfiles-clean.timer' \
+	"$OUTPUT/card/mount-storage.sh" || fail 'tmpfiles wakeup mask missing'
+grep -q 'systemd-update-utmp.service' \
+	"$OUTPUT/card/mount-storage.sh" || fail 'volatile UTMP boot mask missing'
+grep -q 'systemd-update-utmp-runlevel.service' \
+	"$OUTPUT/card/mount-storage.sh" || fail 'volatile UTMP runlevel mask missing'
+grep -Fq 'systemctl start seatd.service' \
+	"$OUTPUT/card/bird/run-content.sh" || fail 'explicit seat provider join missing'
 grep -Fq 'print "system.suspendmode=" mode' \
 	"$OUTPUT/card/mount-storage.sh" || fail 'pre-systemd fake-suspend mode enforcement missing'
 grep -Fq '/flash/bird/bird-suspend-policy.generated.sh' \

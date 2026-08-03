@@ -313,7 +313,12 @@ mount --bind /flash/bird/rocknix.target \
 
 # These units serve features absent from this one-user hardware profile. Mask
 # their immutable definitions before systemd starts; no shell or resident
-# compatibility daemon is needed to keep them stopped.
+# compatibility daemon is needed to keep them stopped. Bird's direct control
+# process owns lid/power and its retained fake-suspend provider never calls
+# login1; Sway explicitly joins seatd. The writable roots cleaned by the daily
+# tmpfiles timer are fresh tmpfs on every boot, so its 15-minute/daily wake has
+# no persistent fixed-device work. UTMP boot/runlevel records likewise live
+# only in volatile `/var`; Bird's durable boot/shutdown evidence is separate.
 for UNIT in \
 	debug-shell.service \
 	show-version.service \
@@ -330,6 +335,10 @@ for UNIT in \
 	systemd-rfkill.socket \
 	systemd-journal-flush.service \
 	systemd-journal-catalog-update.service \
+	systemd-logind.service \
+	systemd-tmpfiles-clean.timer \
+	systemd-update-utmp.service \
+	systemd-update-utmp-runlevel.service \
 	rocknix-report-stats.timer; do
 	mount --bind /dev/null "/sysroot/usr/lib/systemd/system/$UNIT" || {
 		error bird-unused-unit "Could not mask $UNIT"
