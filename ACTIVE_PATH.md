@@ -1018,6 +1018,18 @@ retaining both activation sockets for later hardware events. Content timing is
 a higher-priority gate: seatd-on-demand promotes only if Sway readiness remains
 non-inferior. HDMI and Bluetooth capability are unchanged.
 
+Clean public source `d2e064928727a0580f4c07085d2b8eb46be0a4ee` is deployed as
+`v6.23-fixed-managers-d2e0649`, canonical manifest
+`0c13e8d8a35042b3853b8debf1f1be05e78df4e7682e3a48cfeca53cf6a09463`,
+with accepted fixed-performance as the on-card rollback. All 67 files and the
+completion digest verify. Release/profile final-root and early-initramfs
+variants compile; release launchers and the 615,254-byte compressed overlay are
+byte-identical to rollback. The two policy files plus lease/cleanup logic add
+2,316 manifest-owned bytes. A retained older manager snapshot observed 1,556
+KiB RSS for seatd and 8,548 KiB for udevd before worker memory, but current PSS,
+wakeups and energy remain unmeasured. Production remains no-serial; diagnostic
+fallback retains serial.
+
 ## Launcher visual architecture
 
 The active 720x480 launcher presentation is inspired by Mister Menu's ES-DE

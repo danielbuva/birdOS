@@ -1048,6 +1048,16 @@ interaction; udev must reactivate on a later event. Each manager has an
 independent host-test and rollback boundary. Menu boot code, providers, HDMI,
 Bluetooth and the kernel are unchanged.
 
+Clean public source `d2e064928727a0580f4c07085d2b8eb46be0a4ee`, release
+`v6.23-fixed-managers-d2e0649` and manifest
+`0c13e8d8a35042b3853b8debf1f1be05e78df4e7682e3a48cfeca53cf6a09463`
+are deployed with accepted fixed-performance as rollback. All 67 files verify;
+both launcher modes compile and the release launcher/615,254-byte overlay are
+unchanged. Manifest-owned bytes grow 2,316. The target is up to two fewer
+menu-idle managers, but PSS, wakeups, energy and content-start non-inferiority
+require the RG34XX-SP gate. Production remains no-serial; diagnostics retain
+serial.
+
 ## Stage 5 — Battery, suspend and memory closure
 
 Measure calibrated energy, wakeups, IRQs and CPU residency for short-label menu

@@ -697,6 +697,16 @@ remain available to reactivate it. This tests one fewer steady menu-idle task
 per manager without deleting rules, hwdb, hotplug capability, HDMI or Bluetooth.
 Any measurable content-start regression rejects the seatd half independently.
 
+Clean source `d2e064928727a0580f4c07085d2b8eb46be0a4ee` implements both
+independent lifetimes. Release `v6.23-fixed-managers-d2e0649`, manifest
+`0c13e8d8a35042b3853b8debf1f1be05e78df4e7682e3a48cfeca53cf6a09463`,
+is deployed with fixed-performance as rollback and all 67 files verified. The
+launcher and compressed overlay are byte-identical; explicit policy/lease code
+adds 2,316 manifest bytes. Host tests prove failure retention, Sway rollback,
+ownership transfer, external-guard release, udev settle/stop/state rejection
+and retained socket activation. Device manager PSS, wakeups and energy are not
+claimed before measurement.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.
