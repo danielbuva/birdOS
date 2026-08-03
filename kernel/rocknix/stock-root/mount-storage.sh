@@ -207,7 +207,7 @@ mount --bind /storage/bird-data/MUOS/bios /storage/roms/bios || {
 # retained under writable storage for the existing service and recovery
 # contracts.
 for FILE in bird-pidwait bird-fixed-controls bird-powerstate \
-	bird-fixed-control-exit.sh bird-save-config.sh supervisor.sh prepare-ports.sh \
+	bird-fixed-control-exit.sh bird-save-config.sh prepare-ports.sh \
 		verify-portmaster-provider.sh portmaster-provider.manifest.tsv \
 		fixed-storage.sh first-frame-prep.sh capture-boot-state.sh \
 		bird-network.sh bird-suspend.sh bird-volume.sh bird-control-osd.sh; do
@@ -228,7 +228,6 @@ cp -f /flash/bird/bird-swap.conf /storage/.config/swap.conf || return 1
 	/storage/.config/bird/bird-suspend.sh \
 	/storage/.config/bird/bird-volume.sh \
 	/storage/.config/bird/bird-control-osd.sh \
-	/storage/.config/bird/supervisor.sh \
 	/storage/.config/bird/prepare-ports.sh \
 	/storage/.config/bird/verify-portmaster-provider.sh \
 	/storage/.config/bird/fixed-storage.sh \
@@ -242,7 +241,7 @@ cp -f /flash/bird/bird-swap.conf /storage/.config/swap.conf || return 1
 # Verify the capabilities consumed in final root after the mode transaction.
 for FILE in bird-pidwait bird-fixed-controls bird-powerstate \
 	bird-fixed-control-exit.sh bird-save-config.sh bird-suspend.sh bird-volume.sh \
-	bird-control-osd.sh supervisor.sh prepare-ports.sh \
+	bird-control-osd.sh prepare-ports.sh \
 	verify-portmaster-provider.sh fixed-storage.sh first-frame-prep.sh \
 	capture-boot-state.sh bird-network.sh; do
 	[ -f "/storage/.config/bird/$FILE" ] && \

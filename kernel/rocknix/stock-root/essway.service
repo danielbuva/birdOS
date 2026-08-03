@@ -11,7 +11,7 @@ Type=simple
 Environment=HOME=/storage
 Environment=XDG_RUNTIME_DIR=/var/run/0-runtime-dir
 ExecStartPre=/storage/.config/bird/first-frame-prep.sh
-ExecStart=/storage/.config/bird/supervisor.sh
+ExecStart=/flash/bird/supervisor.sh
 Restart=always
 RestartSec=1
 StandardOutput=journal

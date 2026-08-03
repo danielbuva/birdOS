@@ -769,7 +769,7 @@ grep -q 'contract_revision=$APPLICATION_CONTRACT_REVISION' \
 	"$OUTPUT/card/bird/run-content.sh" || fail 'dispatcher revision validation missing'
 grep -Fq 'wait_application_contract && . /etc/profile; then' \
 	"$OUTPUT/card/bird/run-content.sh" || fail 'post-contract profile refresh missing'
-grep -q 'ExecStart=/storage/.config/bird/supervisor.sh' \
+grep -q 'ExecStart=/flash/bird/supervisor.sh' \
 	"$OUTPUT/card/bird/essway.service" || fail 'Bird UI unit missing'
 grep -Fq 'LAUNCHER=/flash/bird/bird-launcher' \
 	"$OUTPUT/card/bird/supervisor.sh" || fail 'immutable final-root launcher path missing'
@@ -782,6 +782,10 @@ fi
 if sed -n '/^for FILE in bird-pidwait/,/^done$/p' \
 	"$OUTPUT/card/mount-storage.sh" | grep -Fq 'run-content.sh'; then
 	fail 'immutable content dispatcher is still copied to writable storage'
+fi
+if sed -n '/^for FILE in bird-pidwait/,/^done$/p' \
+	"$OUTPUT/card/mount-storage.sh" | grep -Fq 'supervisor.sh'; then
+	fail 'immutable supervisor is still copied to writable storage'
 fi
 grep -q '^UI_SERVICE="essway.service"$' \
 	"$OUTPUT/card/bird/090-ui_service" || fail 'boot compositor deferral missing'

@@ -56,9 +56,15 @@ grep -Fq '/sysroot/usr/bin/busybox chmod 0644' "$MOUNT_STORAGE"
 grep -Fq '[ -x "/storage/.config/bird/$FILE" ] || return 1' \
 	"$MOUNT_STORAGE"
 grep -Fq 'LAUNCHER=/flash/bird/bird-launcher' "$SUPERVISOR"
+grep -Fq 'RUNNER=/flash/bird/run-content.sh' "$SUPERVISOR"
 if sed -n '/^for FILE in bird-pidwait/,/^done$/p' "$MOUNT_STORAGE" |
 	grep -Fq 'bird-launcher'; then
 	printf '%s\n' 'immutable final-root launcher is still copied per boot' >&2
+	exit 1
+fi
+if sed -n '/^for FILE in bird-pidwait/,/^done$/p' "$MOUNT_STORAGE" |
+	grep -Fq 'supervisor.sh'; then
+	printf '%s\n' 'immutable supervisor is still copied per boot' >&2
 	exit 1
 fi
 grep -Fq 'print "  if [ \"${BOOT_STEP}\" = \"mount_storage\" ]; then"' \
@@ -345,17 +351,19 @@ DEST_SWAP=$TMP/dest-swap.conf
 SYSTEM_BUSYBOX=$TMP/system-busybox
 MODE_EVENTS=$TMP/mode-events
 /bin/mkdir -p "$SOURCE_BIRD" "$DEST_BIRD"
-EXECUTABLE_FILES='bird-pidwait bird-fixed-controls bird-powerstate bird-fixed-control-exit.sh bird-save-config.sh supervisor.sh prepare-ports.sh verify-portmaster-provider.sh fixed-storage.sh first-frame-prep.sh capture-boot-state.sh bird-network.sh bird-suspend.sh bird-volume.sh bird-control-osd.sh'
-MODE_EXECUTABLE_FILES='bird-pidwait bird-fixed-controls bird-powerstate bird-fixed-control-exit.sh bird-save-config.sh bird-suspend.sh bird-volume.sh bird-control-osd.sh supervisor.sh prepare-ports.sh verify-portmaster-provider.sh fixed-storage.sh first-frame-prep.sh capture-boot-state.sh bird-network.sh'
+EXECUTABLE_FILES='bird-pidwait bird-fixed-controls bird-powerstate bird-fixed-control-exit.sh bird-save-config.sh prepare-ports.sh verify-portmaster-provider.sh fixed-storage.sh first-frame-prep.sh capture-boot-state.sh bird-network.sh bird-suspend.sh bird-volume.sh bird-control-osd.sh'
+MODE_EXECUTABLE_FILES='bird-pidwait bird-fixed-controls bird-powerstate bird-fixed-control-exit.sh bird-save-config.sh bird-suspend.sh bird-volume.sh bird-control-osd.sh prepare-ports.sh verify-portmaster-provider.sh fixed-storage.sh first-frame-prep.sh capture-boot-state.sh bird-network.sh'
 for FILE in $EXECUTABLE_FILES portmaster-provider.manifest.tsv; do
 	printf 'fixture %s\n' "$FILE" >"$SOURCE_BIRD/$FILE"
 done
 printf '%s\n' 'immutable launcher fixture' >"$SOURCE_BIRD/bird-launcher"
 printf '%s\n' 'immutable content dispatcher fixture' >"$SOURCE_BIRD/run-content.sh"
+printf '%s\n' 'immutable supervisor fixture' >"$SOURCE_BIRD/supervisor.sh"
 printf '%s\n' 'fixture swap' >"$SOURCE_BIRD/bird-swap.conf"
 /bin/chmod 0644 "$SOURCE_BIRD"/*
 /bin/chmod 0755 "$SOURCE_BIRD/bird-launcher"
 /bin/chmod 0755 "$SOURCE_BIRD/run-content.sh"
+/bin/chmod 0755 "$SOURCE_BIRD/supervisor.sh"
 cat >"$SYSTEM_BUSYBOX" <<'EOF'
 #!/bin/bash
 printf '%s\n' "$*" >>"$MODE_EVENTS"
@@ -407,6 +415,8 @@ done
 [ ! -e "$DEST_BIRD/bird-launcher" ]
 [ -x "$SOURCE_BIRD/run-content.sh" ]
 [ ! -e "$DEST_BIRD/run-content.sh" ]
+[ -x "$SOURCE_BIRD/supervisor.sh" ]
+[ ! -e "$DEST_BIRD/supervisor.sh" ]
 [ -r "$DEST_BIRD/portmaster-provider.manifest.tsv" ]
 [ -r "$DEST_SWAP" ]
 [ "$(file_mode "$DEST_BIRD/portmaster-provider.manifest.tsv")" = 644 ]
