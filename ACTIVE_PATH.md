@@ -19,19 +19,21 @@ display geometry and hardware policy are deliberate. Older muOS stages,
 source-kernel challengers and clean-root experiments remain useful evidence,
 but they are not alternate active implementations.
 
-The card currently selects the physically accepted Stage 4 immutable
-first-frame-preparation checkpoint `v6.23-flash-firstframe-094be8b`, built from
-clean source `094be8be0555c4ab51f2968b21f13993b63de96f`. Its previous selector is the
-physically accepted immutable-supervisor checkpoint
-`v6.23-flash-supervisor-f06686a`, not a rejected experiment. The selected candidate's
+The card currently selects the bounded Stage 4 immutable boot-snapshot
+candidate `v6.23-flash-snapshot-9c4250e`, built from clean source
+`9c4250ee50afd37c720a25b7cf109a64bd1a1303`. Its previous selector is the
+physically accepted first-frame-preparation checkpoint
+`v6.23-flash-firstframe-094be8b`, not a rejected experiment. The selected candidate's
 canonical manifest digest is
-`c90a4b6b5b21fd5cedabdb58f0756ec8ceb810adf18c39efae017becde8dff20`,
+`4d854a95edbea36e0e23e26ce7fa76c6a559b790ffcf30e0a852c98d0f877b93`,
 and deployment verified all 57 manifest-owned files. The device-contract digest is
 `85ccb8e46e71ee66e2320022ac13228124d6efcea5abdd800b8c18bd190f73cd`
 and the generated-catalog digest is
 `7e29e491bb43191ca9ae6c18bd566b6ba0c984bf43d1d0103eddd6e534306e62`.
-The immutable-dispatcher, immutable-supervisor and selected
-first-frame-preparation checkpoints passed their full RG34XX-SP gates.
+The immutable-dispatcher, immutable-supervisor and first-frame-preparation
+checkpoints passed their full RG34XX-SP gates. The selected boot-snapshot
+candidate has passed host, build and deployment gates but still requires its
+RG34XX-SP boot/snapshot/content gate.
 None of these tuples
 replaces the broader source/behavior baseline or immutable fallback named above.
 
@@ -717,6 +719,19 @@ timers, tasks and resident memory are unchanged. This is post-usable storage
 work reduction; it cannot claim a first-frame improvement. Its physical gate is
 boot non-inferiority, a fresh complete snapshot after 25 seconds, normal content
 return and shutdown.
+
+Clean source `9c4250ee50afd37c720a25b7cf109a64bd1a1303` is deployed as
+`v6.23-flash-snapshot-9c4250e`, canonical manifest
+`4d854a95edbea36e0e23e26ce7fa76c6a559b790ffcf30e0a852c98d0f877b93`.
+All 57 manifest-owned files and the `.complete` digest verified, with the
+accepted first-frame-preparation checkpoint as the previous selector. The final
+and early release launchers and their ELF sections remain byte-identical at
+597,336 and 600,600 bytes. Profile variants remain 658,408 and 669,992 bytes.
+The early overlay remains 615,256 compressed bytes but has a new digest because
+the initramfs copy list changed. The inactive immutable-supervisor release was
+archived, published and independently verified in the private GitHub release
+archive before its card copy was reclaimed. Hardware behavior and timing remain
+unclaimed until the card returns from this candidate's physical gate.
 
 ## Launcher visual architecture
 

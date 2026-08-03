@@ -511,6 +511,18 @@ suspend, audio, task, timer or resident-memory behavior, and is not a boot-time
 claim. A fresh complete snapshot, boot non-regression, content return and
 shutdown remain the physical gate.
 
+Clean source `9c4250ee50afd37c720a25b7cf109a64bd1a1303` is deployed as
+`v6.23-flash-snapshot-9c4250e`, manifest
+`4d854a95edbea36e0e23e26ce7fa76c6a559b790ffcf30e0a852c98d0f877b93`,
+with all 57 manifest files and the `.complete` digest verified. The accepted
+first-frame-preparation checkpoint is the previous selector. Final and early
+release launchers and their ELF sections remain byte-identical at
+597,336/600,600 bytes; profile sizes remain 658,408/669,992 bytes. The overlay
+remains 615,256 compressed bytes with changed content from the copy-list
+subtraction. The inactive supervisor release was archived, published and
+independently verified on GitHub before its card copy was removed. This
+candidate now waits only for its physical boot/snapshot/content/shutdown gate.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.

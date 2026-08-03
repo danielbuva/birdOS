@@ -775,6 +775,17 @@ and cannot improve the first usable frame because the work is already
 post-usable. The hardware gate is boot non-inferiority, a fresh complete
 post-autostart snapshot, content return and shutdown.
 
+Clean source `9c4250ee50afd37c720a25b7cf109a64bd1a1303` is deployed as
+`v6.23-flash-snapshot-9c4250e`, manifest
+`4d854a95edbea36e0e23e26ce7fa76c6a559b790ffcf30e0a852c98d0f877b93`,
+with all 57 files verified and the accepted first-frame-preparation checkpoint
+as previous. Release launchers and their ELF sections remain byte-identical at
+597,336/600,600 bytes; profile launchers remain 658,408/669,992 bytes. The
+615,256-byte overlay is unchanged in size but changed in content as expected
+from the initramfs copy-list subtraction. The inactive supervisor release was
+archived and independently verified on GitHub before card reclamation. The
+RG34XX-SP gate remains pending.
+
 ## Stage 5 — Battery, suspend and memory closure
 
 Measure calibrated energy, wakeups, IRQs and CPU residency for short-label menu
