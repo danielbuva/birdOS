@@ -19,6 +19,8 @@ MOUNT_STORAGE=$ROOT/kernel/rocknix/stock-root/mount-storage.sh
 RUNNER=$ROOT/kernel/rocknix/stock-root/run-content.sh
 SUSPEND=$ROOT/kernel/rocknix/stock-root/bird-suspend.sh
 CONTROLS_SOURCE=$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c
+SEAT=$ROOT/kernel/rocknix/stock-root/bird-seatd.service
+UDEV_IDLE=$ROOT/kernel/rocknix/stock-root/bird-udev-idle.sh
 
 grep -Fqx 'After=local-fs.target' "$POWER"
 grep -Fqx 'WantedBy=multi-user.target' "$POWER"
@@ -54,6 +56,11 @@ grep -Fq 'systemd-tmpfiles-clean.timer' "$MOUNT_STORAGE"
 grep -Fq 'systemd-update-utmp.service' "$MOUNT_STORAGE"
 grep -Fq 'systemd-update-utmp-runlevel.service' "$MOUNT_STORAGE"
 grep -Fq 'systemctl start seatd.service' "$RUNNER"
+grep -Fq 'systemctl stop seatd.service' "$RUNNER"
+grep -Fqx 'ConditionPathExists=/run/bird/seat-request' "$SEAT"
+grep -Fqx 'ExecStart=/usr/bin/seatd -u root' "$SEAT"
+grep -Fq 'stop systemd-udevd.service' "$UDEV_IDLE"
+grep -Fq 'sockets=retained' "$UDEV_IDLE"
 grep -Fq 'SOURCE_POWER' "$CONTROLS_SOURCE"
 grep -Fq 'SOURCE_LID' "$CONTROLS_SOURCE"
 if grep -Eq 'loginctl|org[.]freedesktop[.]login1|systemd-inhibit' \

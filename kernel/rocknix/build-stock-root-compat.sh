@@ -407,7 +407,7 @@ cp -fp "$ROOT/kernel/rocknix/stock-root/post-flash.sh" \
 cp -fp "$ROOT/kernel/rocknix/stock-root/mount-storage.sh" \
 	"$OUTPUT/card/mount-storage.sh"
 for FILE in 090-ui_service 999-export bird-autostart bird-journald.conf \
-	essway.service rocknix.target \
+	essway.service rocknix.target bird-seatd.service \
 	rocknix-automount.service rocknix-autostart.service \
 	rocknix-report-stats.service \
 	NetworkManager.service iwd.service systemd-resolved.service \
@@ -424,6 +424,7 @@ for FILE in 090-ui_service 999-export bird-autostart bird-journald.conf \
 	bird-fixed-pico8.sh bird-fixed-controller.sh bird-fixed-setup.sh \
 	bird-fixed-performance.sh bird-fixed-gpu-overclock.sh \
 	bird-fixed-rumble.sh bird-fixed-turbo.sh \
+	bird-udev-idle.sh \
 	bird-controller-profile \
 	bird-swap.conf bird-suspend-policy.generated.sh bird-sleep.conf; do
 	cp -fp "$ROOT/kernel/rocknix/stock-root/$FILE" "$OUTPUT/card/bird/$FILE"
@@ -474,7 +475,8 @@ chmod 0755 "$OUTPUT/card/post-flash.sh" "$OUTPUT/card/mount-storage.sh" \
 	"$OUTPUT/card/bird/bird-fixed-performance.sh" \
 	"$OUTPUT/card/bird/bird-fixed-gpu-overclock.sh" \
 	"$OUTPUT/card/bird/bird-fixed-rumble.sh" \
-	"$OUTPUT/card/bird/bird-fixed-turbo.sh"
+	"$OUTPUT/card/bird/bird-fixed-turbo.sh" \
+	"$OUTPUT/card/bird/bird-udev-idle.sh"
 
 for SCRIPT in "$OUTPUT/card/post-flash.sh" \
 	"$OUTPUT/card/mount-storage.sh" \
@@ -505,7 +507,8 @@ for SCRIPT in "$OUTPUT/card/post-flash.sh" \
 	"$OUTPUT/card/bird/bird-fixed-performance.sh" \
 	"$OUTPUT/card/bird/bird-fixed-gpu-overclock.sh" \
 	"$OUTPUT/card/bird/bird-fixed-rumble.sh" \
-	"$OUTPUT/card/bird/bird-fixed-turbo.sh"; do
+	"$OUTPUT/card/bird/bird-fixed-turbo.sh" \
+	"$OUTPUT/card/bird/bird-udev-idle.sh"; do
 	bash -n "$SCRIPT" || fail "shell syntax failed: $SCRIPT"
 done
 bash -n "$OUTPUT/card/bird/bird-suspend-policy.generated.sh" || \
@@ -514,6 +517,7 @@ chmod 0644 "$OUTPUT/card/bird/portmaster-provider.manifest.tsv"
 chmod 0644 "$OUTPUT/card/bird/bird-suspend-policy.generated.sh" \
 	"$OUTPUT/card/bird/bird-sleep.conf" \
 	"$OUTPUT/card/bird/bird-journald.conf" \
+	"$OUTPUT/card/bird/bird-seatd.service" \
 	"$OUTPUT/card/bird/bird-controller-profile"
 [ "$(file_mode "$OUTPUT/card/bird/verify-portmaster-provider.sh")" = 755 ] || \
 	fail 'PortMaster provider verifier mode changed'
@@ -598,7 +602,7 @@ grep -q '^BindPaths=/dev/null:/dev/console$' \
 	"$OUTPUT/card/bird/rocknix-autostart.service" || fail 'autostart console isolation missing'
 grep -q 'exec /flash/bird/bird-autostart' \
 	"$OUTPUT/card/bird/rocknix-autostart.service" || fail 'fixed autostart coordinator missing'
-grep -q '^BIRD_AUTOSTART_REVISION=bird-fixed-autostart-v2$' \
+grep -q '^BIRD_AUTOSTART_REVISION=bird-fixed-autostart-v3$' \
 	"$OUTPUT/card/bird/bird-autostart" || fail 'fixed autostart revision missing'
 grep -q '\$FLASH_ROOT/bird-fixed-gpu-overclock.sh' \
 	"$OUTPUT/card/bird/bird-autostart" || \
@@ -607,6 +611,8 @@ grep -q 'common/050-audio' "$OUTPUT/card/bird/bird-autostart" || \
 	fail 'fixed audio preparation missing'
 grep -q '\$FLASH_ROOT/999-export' "$OUTPUT/card/bird/bird-autostart" || \
 	fail 'application milestone coordinator step missing'
+grep -q '\$FLASH_ROOT/bird-udev-idle.sh' \
+	"$OUTPUT/card/bird/bird-autostart" || fail 'udev idle step missing'
 if grep -Eq 'autostart/(common|quirks)/\[\*\]|(^|[^[:alnum:]_])date([^[:alnum:]_]|$)|tocon|systemctl' \
 	"$OUTPUT/card/bird/bird-autostart"; then
 	fail 'generic autostart discovery or helper remained'
@@ -1111,6 +1117,18 @@ grep -q 'systemd-update-utmp-runlevel.service' \
 	"$OUTPUT/card/mount-storage.sh" || fail 'volatile UTMP runlevel mask missing'
 grep -Fq 'systemctl start seatd.service' \
 	"$OUTPUT/card/bird/run-content.sh" || fail 'explicit seat provider join missing'
+grep -Fq 'ConditionPathExists=/run/bird/seat-request' \
+	"$OUTPUT/card/bird/bird-seatd.service" || fail 'on-demand seat policy missing'
+grep -Fq '/flash/bird/bird-seatd.service' \
+	"$OUTPUT/card/mount-storage.sh" || fail 'fixed seat policy install missing'
+grep -Fq 'systemctl stop seatd.service' \
+	"$OUTPUT/card/bird/run-content.sh" || fail 'seat provider release missing'
+grep -Fq 'stop systemd-udevd.service' \
+	"$OUTPUT/card/bird/bird-udev-idle.sh" || fail 'udev manager quiesce missing'
+if grep -Fq 'systemd-udevd-kernel.socket' \
+	"$OUTPUT/card/mount-storage.sh"; then
+	fail 'udev kernel socket was removed from fixed hotplug closure'
+fi
 grep -Fq 'print "system.suspendmode=" mode' \
 	"$OUTPUT/card/mount-storage.sh" || fail 'pre-systemd fake-suspend mode enforcement missing'
 grep -Fq '/flash/bird/bird-suspend-policy.generated.sh' \

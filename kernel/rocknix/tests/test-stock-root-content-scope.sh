@@ -706,6 +706,7 @@ MODE=$2
 CASE_DIR=$3
 EVENTS=$CASE_DIR/events
 SWAY_OWNER=$CASE_DIR/sway.owner
+SEAT_REQUEST=$CASE_DIR/seat.request
 SWAY_SOCKET=/tmp/bird-sway-start-$$.sock
 SESSION_TOKEN=test-session
 SWAY_OWNED=0
@@ -724,6 +725,7 @@ stop_sway() {
 	printf '%s\n' rollback >>"$EVENTS"
 	SWAY_OWNED=0
 	rm -f "$SWAY_OWNER"
+	release_seatd || :
 }
 systemctl() {
 	printf 'systemctl-%s\n' "$*" >>"$EVENTS"
@@ -767,12 +769,14 @@ case "$MODE" in
 		[ "$SWAY_OWNED" -eq 0 ]
 		[ "$(grep -c '^claim$' "$EVENTS" || :)" -eq 0 ]
 		[ "$(grep -c '^rollback$' "$EVENTS" || :)" -eq 0 ]
+		[ ! -e "$SEAT_REQUEST" ]
 		;;
 	sway-fail|socket-timeout)
 		[ "$START_STATUS" -eq 1 ]
 		[ "$SWAY_OWNED" -eq 0 ]
 		[ ! -e "$SWAY_OWNER" ]
 		[ "$(grep -c '^rollback$' "$EVENTS")" -eq 1 ]
+		[ ! -e "$SEAT_REQUEST" ]
 		;;
 	success)
 		[ "$START_STATUS" -eq 0 ]
@@ -781,6 +785,7 @@ case "$MODE" in
 		[ "$(grep -c '^rollback$' "$EVENTS" || :)" -eq 0 ]
 		grep -q '^systemctl-start --no-block sway.service$' "$EVENTS"
 		grep -q '^stage-sway-ready$' "$EVENTS"
+		[ -s "$SEAT_REQUEST" ]
 		;;
 esac
 EOF

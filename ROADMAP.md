@@ -1031,6 +1031,23 @@ boot/UI must be non-inferior, while CPU/core, GPU/overclock, turbo and rumble
 behavior require the physical gate. Production remains no-serial and the
 diagnostic entry retains serial.
 
+The returned RG34XX-SP gate passed every tested function. One preserved boot
+recorded launcher start at 1218 ms, input at 1219 ms and usable readiness at
+1222 ms, accepting fixed-performance as the next rollback without claiming a
+faster distribution.
+
+The observed `12 Angry Men` file starts AAC 125.125 ms before its H.264 stream.
+No Bird/MPV audio-delay option is active. MPV's reported A/V clock stayed close
+to zero but the seek-heavy 1200x720 session dropped video frames, so no global
+sync correction is authorized from this single-file result.
+
+The next separable Stage 4 batch moves seatd from graphical-boot residency to
+an explicit Sway/content lease and stops udevd after coldplug while retaining
+its control/kernel activation sockets. Seatd startup must not regress content
+interaction; udev must reactivate on a later event. Each manager has an
+independent host-test and rollback boundary. Menu boot code, providers, HDMI,
+Bluetooth and the kernel are unchanged.
+
 ## Stage 5 — Battery, suspend and memory closure
 
 Measure calibrated energy, wakeups, IRQs and CPU residency for short-label menu

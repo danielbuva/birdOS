@@ -44,6 +44,7 @@ make_step "$AUTOSTART/common/050-audio" audio
 make_step "$FLASH/bird-fixed-turbo.sh" turbo-mode
 make_step "$FLASH/bird-fixed-sway.sh" fixed-sway
 make_step "$FLASH/999-export" application-ready
+make_step "$FLASH/bird-udev-idle.sh" udev-idle
 make_step "$CUSTOM/010-first" custom-first
 make_step "$CUSTOM/020-second" custom-second
 
@@ -75,6 +76,7 @@ audio
 turbo-mode
 fixed-sway
 application-ready
+udev-idle
 custom-first
 custom-second
 performance-governor
@@ -83,7 +85,7 @@ cmp "$TMP/expected" "$EVENTS"
 grep -Fxq 'Bird autostart step failed: setup status=7' "$BOOTLOG"
 [ ! -e "$TMP/start.games" ]
 
-grep -q '^BIRD_AUTOSTART_REVISION=bird-fixed-autostart-v2$' "$SCRIPT"
+grep -q '^BIRD_AUTOSTART_REVISION=bird-fixed-autostart-v3$' "$SCRIPT"
 if grep -Eq 'autostart/(common|quirks)/[*]|common/001-(controller|setup)|start[.]games|(^|[^[:alnum:]_])date([^[:alnum:]_]|$)|tocon|systemctl' \
 	"$SCRIPT"; then
 	printf '%s\n' 'fixed coordinator regained generic discovery or helpers' >&2

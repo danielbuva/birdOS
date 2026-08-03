@@ -994,6 +994,30 @@ overlay shrinks four bytes. Production remains the no-serial entry; diagnostic
 fallback retains `console=ttyS0,115200`. Because all policy execution remains
 after usable readiness, no first-frame timing change is expected or claimed.
 
+The returned hardware gate accepts the fixed-performance tuple. All tested
+hardware and application behavior passed, including retained rumble and the
+fixed performance closure. The preserved boot started the launcher at 1218 ms,
+validated input at 1219 ms and published usable readiness at 1222 ms. This is
+inside the accepted range and supports non-regression, not a faster
+distribution.
+
+One `12 Angry Men` observation reported imperfect lip sync. Its MP4 metadata
+starts AAC audio at 0 while H.264 video starts 125.125 ms later; Bird has no
+global or per-file `audio-delay`. MPV's cleaner observed run held its reported
+A/V clock between -42 and +33 ms, but accumulated 155 dropped video frames
+during a seek-heavy 1200x720/23.976 fps session. This evidence does not justify
+a global offset that would desynchronize healthy media. The file-specific
+observation remains open for comparison with other movies.
+
+The next Stage 4 manager candidate independently makes seatd content-scoped and
+quiesces udevd after successful coldplug. A fixed seatd unit requires an exact
+`/run/bird/seat-request` lease; the content owner publishes it before Sway and
+releases it only after Sway is proven stopped, including external-guard cleanup.
+The udev step waits for settlement and stops only the resident manager while
+retaining both activation sockets for later hardware events. Content timing is
+a higher-priority gate: seatd-on-demand promotes only if Sway readiness remains
+non-inferior. HDMI and Bluetooth capability are unchanged.
+
 ## Launcher visual architecture
 
 The active 720x480 launcher presentation is inspired by Mister Menu's ES-DE

@@ -680,6 +680,23 @@ The launcher binary and framebuffer metrics are unchanged; no host A53
 instruction or device latency/power claim is made. HDMI, Bluetooth, audio,
 suspend and the production no-serial policy are unchanged.
 
+The returned fixed-performance gate passed all tested hardware and content.
+Launcher start/input/usable readiness were 1218/1219/1222 ms, inside the
+accepted range. That exact release is the rollback for manager-lifetime work.
+
+The media follow-up found no active MPV audio-delay override. `12 Angry Men`
+has AAC start time 0 and H.264 start time 0.125125 seconds; MPV's reported A/V
+error remained small while its log recorded substantial dropped video frames
+after seeks. This is retained as source-file/decode evidence and does not alter
+the global player policy.
+
+The next audit separates two managers. Seatd becomes an on-demand content
+provider under an exact lease that spans Sway ownership and forced cleanup.
+Udevd completes coldplug and then exits, but its systemd kernel/control sockets
+remain available to reactivate it. This tests one fewer steady menu-idle task
+per manager without deleting rules, hwdb, hotplug capability, HDMI or Bluetooth.
+Any measurable content-start regression rejects the seatd half independently.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.
