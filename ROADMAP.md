@@ -698,6 +698,34 @@ framebuffer, input, task, timer or resident-memory behavior changes. Boot and
 content timing, energy and the complete launch/return gate remain physical
 measurements rather than claims.
 
+That gate passes. Three surviving usable-frame records are 1224, 1232 and
+1239 ms, a descriptive median of 1232 ms versus 1223 ms for the preceding six
+boots. The early launcher is byte-identical and the external stopwatch remained
+about 2.7 seconds, so the sparse observations establish non-regression only.
+Content launch/return, media, emergency recovery and shutdown remained
+functional.
+
+One suspend stress boot reset during an in-flight power resume. Four cycles had
+completed; the persistent trace then recorded power dispatch at 29.623 and
+30.566 seconds without a subsequent resume-complete marker. No shutdown,
+panic/Oops, pstore or PMIC reset cause survived, and the following boot passed
+repeated cycles. With no attributable failing layer, a cooldown or provider
+change would be speculative; the quirk remains deferred for finer phase/reset
+instrumentation and does not block Stage 4.
+
+The next independently bounded candidate starts the generated supervisor as
+`/flash/bird/supervisor.sh` and removes only its writable duplicate. Clean
+source `f06686ab0cf80676733de800809c39765aadfc6e` is deployed as
+`v6.23-flash-supervisor-f06686a`, manifest
+`e69a5c90fae8479161819b5797984d03e9d8a15e0c96f23a75c4647c6582bb37`,
+with all 57 manifest files verified and the accepted dispatcher checkpoint as
+previous. Preparation falls from 17 files/154,715 bytes to 16 files/136,973
+bytes: one fewer `cp`, mode operand and destination check, plus 17,742 fewer
+source and destination bytes. Launcher, input, framebuffer, provider, suspend,
+audio, resident tasks, timers and memory are unchanged. Boot non-inferiority,
+both service states, quick launch/return, emergency restart and shutdown remain
+the physical gate.
+
 ## Stage 5 — Battery, suspend and memory closure
 
 Measure calibrated energy, wakeups, IRQs and CPU residency for short-label menu

@@ -443,8 +443,29 @@ The dispatcher remains byte-identical at 65,346 bytes. The copy set shrinks
 from 18 files/220,067 bytes to 17 files/154,715 bytes, removing one `cp`, one
 mode operand, one destination check and 65,352 source plus destination bytes.
 This changes no launcher/input/framebuffer path, resident service, idle timer or
-memory footprint. RG34XX-SP boot non-inferiority and complete content
-launch/return behavior remain unclaimed until the card returns.
+memory footprint. The RG34XX-SP gate passes complete content launch/return,
+media, recovery and shutdown. Three surviving usable-frame records are 1224,
+1232 and 1239 ms, a descriptive median of 1232 ms; the external stopwatch
+remained about 2.7 seconds. The small unpaired set and byte-identical early
+launcher establish non-regression only.
+
+One stress boot reset during a power resume after four completed suspend cycles.
+The O_DSYNC trace ends with dispatches at 29.623 and 30.566 seconds and no
+resume-complete marker. No panic, ordered shutdown, pstore or reset-cause record
+survived; the following boot completed repeated cycles. No retained-service or
+coordinator change is supported by that evidence, so the quirk remains deferred
+for finer phase/reset instrumentation.
+
+The next subtraction starts the same generated supervisor directly from
+`/flash/bird/supervisor.sh`. Clean source
+`f06686ab0cf80676733de800809c39765aadfc6e` is deployed as
+`v6.23-flash-supervisor-f06686a`, canonical manifest
+`e69a5c90fae8479161819b5797984d03e9d8a15e0c96f23a75c4647c6582bb37`.
+The writable set falls from 17 files/154,715 bytes to 16 files/136,973 bytes,
+removing one `cp`, one mode operand, one destination check and 17,742 source
+plus destination bytes. This changes no retained process or launcher, provider,
+suspend, audio, timer, wakeup or memory behavior. Hardware service state,
+boot timing, content return, recovery and shutdown remain the gate.
 
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full

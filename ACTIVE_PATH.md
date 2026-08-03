@@ -19,18 +19,18 @@ display geometry and hardware policy are deliberate. Older muOS stages,
 source-kernel challengers and clean-root experiments remain useful evidence,
 but they are not alternate active implementations.
 
-The card currently selects the bounded Stage 4 immutable-dispatcher candidate
-`v6.23-flash-runner-0b438f5`, built from clean source
-`0b438f52b767e3c8ec008c1a5e7c342c0d503643`. Its previous selector is the
-physically accepted final-root ordering checkpoint
-`v6.23-ui-order-895e6a7`, not a rejected experiment. The selected candidate's
+The card currently selects the bounded Stage 4 immutable-supervisor candidate
+`v6.23-flash-supervisor-f06686a`, built from clean source
+`f06686ab0cf80676733de800809c39765aadfc6e`. Its previous selector is the
+physically accepted immutable-dispatcher checkpoint
+`v6.23-flash-runner-0b438f5`, not a rejected experiment. The selected candidate's
 canonical manifest digest is
-`2ca0ba49a33e0a62f9abbe73419696a32943af70fbc266659ad59bd08cf75ec6`,
+`e69a5c90fae8479161819b5797984d03e9d8a15e0c96f23a75c4647c6582bb37`,
 and deployment verified all 57 manifest-owned files. The device-contract digest is
 `85ccb8e46e71ee66e2320022ac13228124d6efcea5abdd800b8c18bd190f73cd`
 and the generated-catalog digest is
 `7e29e491bb43191ca9ae6c18bd566b6ba0c984bf43d1d0103eddd6e534306e62`.
-The ordering checkpoint passed its full RG34XX-SP gate; the immutable-dispatcher
+The immutable-dispatcher checkpoint passed its full RG34XX-SP gate; the immutable-supervisor
 candidate has passed host, build and deployment gates but still requires its
 RG34XX-SP boot/content gate. Neither tuple
 replaces the broader source/behavior baseline or immutable fallback named above.
@@ -585,9 +585,53 @@ Clean source `0b438f52b767e3c8ec008c1a5e7c342c0d503643` is deployed as
 `v6.23-flash-runner-0b438f5`, canonical manifest
 `2ca0ba49a33e0a62f9abbe73419696a32943af70fbc266659ad59bd08cf75ec6`.
 All 57 manifest-owned files verified, with the accepted ordering checkpoint as
-the previous selector. Hardware boot timing, first content launch, provider
-return and shutdown remain the RG34XX-SP gate; no device latency or energy
-improvement is claimed before that test.
+the previous selector. That RG34XX-SP gate passes: first content launch,
+provider return, media controls, emergency recovery and shutdown remained
+functional. Three surviving boot records reported usable-frame times of 1224,
+1232 and 1239 ms, a descriptive median of 1232 ms. This is 9 ms above the
+preceding six-boot median, but the early executable is byte-identical and the
+external stopwatch remained about 2.7 seconds. The small unpaired set supports
+non-regression only, not either a speedup or regression claim.
+
+Suspend stress produced one non-blocking abrupt reboot after several successful
+cycles. Its O_DSYNC trace completed four cycles, then ended with power dispatches
+at 29.623 and 30.566 seconds without the normal resume-complete record before
+the sequence reset on the next boot. No ordered shutdown, panic, Oops, OOM,
+pstore record or reset reason survived, and the following boot completed repeated
+suspend cycles normally. The evidence locates interruption inside an in-flight
+resume but cannot attribute the provider, kernel or power hardware. No cooldown
+or behavior change is justified; the quirk remains deferred for finer provider-
+phase and reset-cause instrumentation.
+
+### Immutable final-root supervisor candidate
+
+The next bounded Stage 4 candidate changes only the final-root UI service exec
+path. `essway.service` now starts `/flash/bird/supervisor.sh`, and
+`mount-storage.sh` no longer copies, chmods or verifies a writable supervisor
+duplicate. The same generated Bash supervisor, launcher adoption, content
+dispatch, boot-attempt, recovery and shutdown behavior remain in place. The
+manifest-verified `/flash/bird` mount is established before this service starts
+and remains stable until the service is stopped for shutdown.
+
+Against the accepted dispatcher checkpoint, writable preparation falls from 17
+files/154,715 bytes to 16 files/136,973 bytes. This removes one `cp` child, one
+mode operand, one destination capability check and 17,742 source plus 17,742
+destination bytes, 11.47 percent of the remaining payload and 83.24 percent
+cumulatively from the original 817,170-byte set. `essway.service` shrinks ten
+bytes. The generated supervisor grows four immutable bytes only because the new
+release ID is longer. Final and early launchers are byte-identical at 597,336
+and 600,600 bytes; profile variants remain 658,408 and 669,992 bytes. The
+615,251-byte early overlay differs from the accepted overlay by one compressed
+metadata byte. There is no launcher, framebuffer, input, provider, suspend,
+audio, task, timer, wakeup or resident-memory change.
+
+Clean source `f06686ab0cf80676733de800809c39765aadfc6e` is deployed as
+`v6.23-flash-supervisor-f06686a`, canonical manifest
+`e69a5c90fae8479161819b5797984d03e9d8a15e0c96f23a75c4647c6582bb37`.
+All 57 manifest-owned files verified, with the accepted immutable-dispatcher
+checkpoint as previous. Hardware boot timing, both retained service states,
+quick first-content launch, return, emergency restart and shutdown remain the
+RG34XX-SP gate; no device latency or energy improvement is claimed yet.
 
 ## Launcher visual architecture
 
