@@ -8,7 +8,7 @@ StartLimitIntervalSec=0
 [Service]
 Type=simple
 Environment=HOME=/storage
-ExecStart=/storage/.config/bird/bird-fixed-controls
+ExecStart=/flash/bird/bird-fixed-controls
 Restart=always
 RestartSec=250ms
 StandardOutput=journal

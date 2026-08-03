@@ -11,6 +11,12 @@ TIMEOUT_PROGRAM=$(command -v timeout)
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/bird-content-scope.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT INT TERM HUP
 
+grep -Fq 'PORT_PREP=/flash/bird/prepare-ports.sh' "$RUNNER"
+grep -Fq 'NETWORK=/flash/bird/bird-network.sh' "$RUNNER"
+grep -Fq '/flash/bird/bird-volume.sh restore' "$RUNNER"
+grep -Fq 'bird-content-guard /flash/bird/bird-pidwait' "$RUNNER"
+grep -Fq '/flash/bird/bird-fixed-control-exit.sh "$NETWORK"' "$RUNNER"
+
 wait_pid_bounded() {
 	WAIT_TARGET=$1
 	WAIT_SECONDS=$2

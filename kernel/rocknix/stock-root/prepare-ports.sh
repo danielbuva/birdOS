@@ -11,9 +11,9 @@ LEGACY=/storage/bird-data/MUOS/PortMaster
 MARKER=/run/bird/ports-ready
 PROVIDER_MARKER=$PORTMASTER/.bird-release-complete
 FIXED_PORT_ROOT=/storage/bird-data/ROMS/Ports
-FIXED_STORAGE=/storage/.config/bird/fixed-storage.sh
-PROVIDER_MANIFEST=/storage/.config/bird/portmaster-provider.manifest.tsv
-PROVIDER_VERIFIER=/storage/.config/bird/verify-portmaster-provider.sh
+FIXED_STORAGE=/flash/bird/fixed-storage.sh
+PROVIDER_MANIFEST=/flash/bird/portmaster-provider.manifest.tsv
+PROVIDER_VERIFIER=/flash/bird/verify-portmaster-provider.sh
 PROVIDER_READY_CHECKPOINT=
 
 manifest_checkpoint() {

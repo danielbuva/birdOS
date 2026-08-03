@@ -6,7 +6,7 @@ StartLimitIntervalSec=0
 
 [Service]
 Type=simple
-ExecStart=/storage/.config/bird/bird-powerstate
+ExecStart=/flash/bird/bird-powerstate
 Restart=on-failure
 RestartSec=1
 

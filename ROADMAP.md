@@ -24,12 +24,20 @@ Optimize in this lexicographic order:
 5. Fixed-device kernel work after userspace promotion.
 6. U-Boot performance and frame production last.
 
-Each candidate names one target and changes one attributable boundary. It may
-promote only when its target improves beyond a margin frozen from A/A variation
-and instrument resolution, every higher-priority metric is non-inferior, and
-accepted behavior remains intact. Cosmetic continuity may not delay honest
-usability at all. Neutral correctness, measurement, rollback and readiness
-infrastructure may promote with no measurable regression.
+Each promotion cycle names one target. At the operator's direction it may batch
+as many independently reviewable changes as practical, provided every active
+path, baseline, delta, assertion, host test and rollback boundary remains
+explicit. The batch promotes or rejects as a whole on hardware, while its
+components remain independently revertible in source. It may promote only when
+its target improves beyond a margin frozen from A/A variation and instrument
+resolution, every higher-priority metric is non-inferior, and accepted behavior
+remains intact. Cosmetic continuity may not delay honest usability at all.
+Neutral correctness, measurement, rollback and readiness infrastructure may
+promote with no measurable regression.
+
+Every implementation summary reports in this order: current stage, a short
+reason the previous implementation existed, what changed, lexicographic
+priority effects, boot-log timing, tests, hardware verification and next work.
 
 Use randomized or ABBA paired acquisition in controlled charge, temperature,
 brightness, card and content-state blocks. Use 20 boots for screening, at least
@@ -784,7 +792,30 @@ as previous. Release launchers and their ELF sections remain byte-identical at
 615,256-byte overlay is unchanged in size but changed in content as expected
 from the initramfs copy-list subtraction. The inactive supervisor release was
 archived and independently verified on GitHub before card reclamation. The
-RG34XX-SP gate remains pending.
+RG34XX-SP gate passes on boot `02d6aba1`: input 1222 ms, usable frame 1229 ms
+and storage 3713 ms. The usable result remains inside the prior 1221--1229 ms
+range. The complete 47,325-byte/786-line snapshot executed from immutable
+`/flash`, reported zero failed units and no pending jobs, and game, music,
+movie, PortMaster/network cleanup, suspend/resume, launcher return and durable
+shutdown passed.
+
+The next aggressive Stage 4 batch removes the complete remaining immutable
+runtime-publication layer. That layer existed to give the first stock-root
+integration one conventional writable execution namespace, normalize modes
+that FAT could not carry and reject partial destination installation. Every
+consumer now names the manifest-verified, session-stable `/flash/bird` release:
+PID waiter, controls, power, exit, shutdown, PortMaster preparation/verifier/
+manifest, storage, network, suspend, volume and OSD. The only retained copy is
+the mutable 260-byte ROCKNIX memory policy.
+
+Preparation falls from 14 files/131,331 bytes to 1 file/260 bytes: 13 fewer
+`cp` invocations, 131,071 fewer source-read and destination-write bytes, no
+executable chmod transaction and 13 fewer destination checks. It changes no
+launcher/render/task/timer behavior and is post-usable, so boot improvement is
+not claimed. Each consumer has its own path assertion and host coverage; the
+combined hardware gate exercises controls, normal/forced content cleanup,
+providers, PortMaster Wi-Fi teardown, suspend, quick/changed shutdown and
+rollback.
 
 ## Stage 5 — Battery, suspend and memory closure
 

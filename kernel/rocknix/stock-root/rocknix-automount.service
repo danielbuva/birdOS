@@ -7,7 +7,7 @@ Before=shutdown.target
 [Service]
 Type=oneshot
 Environment=HOME=/storage
-ExecStart=/storage/.config/bird/fixed-storage.sh
+ExecStart=/flash/bird/fixed-storage.sh
 RemainAfterExit=yes
 
 [Install]

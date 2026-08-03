@@ -9,6 +9,12 @@ MANIFEST_SOURCE=$ROOT/kernel/rocknix/stock-root/portmaster-provider.manifest.tsv
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/bird-prepare-ports.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT INT TERM HUP
 
+grep -Fq 'FIXED_STORAGE=/flash/bird/fixed-storage.sh' "$SOURCE"
+grep -Fq 'PROVIDER_MANIFEST=/flash/bird/portmaster-provider.manifest.tsv' \
+	"$SOURCE"
+grep -Fq 'PROVIDER_VERIFIER=/flash/bird/verify-portmaster-provider.sh' \
+	"$SOURCE"
+
 PORT_ROOT=$TMP/ports
 PROVIDER=$PORT_ROOT/PortMaster
 CONFIG=$TMP/config

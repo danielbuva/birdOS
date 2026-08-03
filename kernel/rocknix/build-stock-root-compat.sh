@@ -524,9 +524,15 @@ chmod 0644 "$OUTPUT/card/bird/bird-suspend-policy.generated.sh" \
 [ "$(sha256 "$OUTPUT/card/dtb.img")" = "$DTB_SHA" ] || fail 'copied DTB changed'
 grep -q 'runemu.sh' "$OUTPUT/card/bird/run-content.sh" || fail 'ROCKNIX dispatcher missing'
 grep -q 'PortMaster.zip' "$OUTPUT/card/bird/prepare-ports.sh" || fail 'exact PortMaster bootstrap missing'
-grep -Fq '/storage/.config/bird/verify-portmaster-provider.sh' \
+grep -Fq 'FIXED_STORAGE=/flash/bird/fixed-storage.sh' \
 	"$OUTPUT/card/bird/prepare-ports.sh" || \
-	fail 'exact PortMaster provider verifier integration missing'
+	fail 'immutable fixed storage repair path missing'
+grep -Fq 'PROVIDER_MANIFEST=/flash/bird/portmaster-provider.manifest.tsv' \
+	"$OUTPUT/card/bird/prepare-ports.sh" || \
+	fail 'immutable PortMaster provider manifest integration missing'
+grep -Fq 'PROVIDER_VERIFIER=/flash/bird/verify-portmaster-provider.sh' \
+	"$OUTPUT/card/bird/prepare-ports.sh" || \
+	fail 'immutable PortMaster provider verifier integration missing'
 grep -Fq 'schema	bird-portmaster-provider-v1' \
 	"$OUTPUT/card/bird/portmaster-provider.manifest.tsv" || \
 	fail 'exact PortMaster provider manifest missing'
@@ -569,7 +575,7 @@ grep -q "RESUME_OPTIONS='watch-later-options=start'" \
 	"$OUTPUT/card/bird/run-content.sh" || fail 'MPV position-only resume policy missing'
 grep -q "s#/mnt/mmc/MUOS/PortMaster#/storage/roms/ports/PortMaster#g" \
 	"$OUTPUT/card/bird/run-content.sh" || fail 'legacy PortMaster path translation missing'
-grep -q 'ExecStart=/storage/.config/bird/fixed-storage.sh' \
+grep -q 'ExecStart=/flash/bird/fixed-storage.sh' \
 	"$OUTPUT/card/bird/rocknix-automount.service" || fail 'fixed storage unit missing'
 grep -q '^DefaultDependencies=no$' \
 	"$OUTPUT/card/bird/essway.service" || fail 'early Bird ordering missing'
@@ -713,15 +719,20 @@ if grep -Eq '^[[:space:]]*chmod[[:space:]]' \
 	"$OUTPUT/card/mount-storage.sh"; then
 	fail 'mount-storage depends on unavailable initramfs chmod'
 fi
-grep -Fq '/sysroot/usr/bin/busybox chmod 0755' \
-	"$OUTPUT/card/mount-storage.sh" || \
-	fail 'SYSTEM BusyBox executable-mode transaction missing'
+if grep -Fq '/sysroot/usr/bin/busybox chmod 0755' \
+	"$OUTPUT/card/mount-storage.sh"; then
+	fail 'immutable executable publication transaction remained'
+fi
 grep -Fq '/sysroot/usr/bin/busybox chmod 0644' \
 	"$OUTPUT/card/mount-storage.sh" || \
 	fail 'SYSTEM BusyBox data-mode transaction missing'
-grep -Fq '[ -x "/storage/.config/bird/$FILE" ] || return 1' \
+grep -Fq 'cp -f /flash/bird/bird-swap.conf /storage/.config/swap.conf' \
 	"$OUTPUT/card/mount-storage.sh" || \
-	fail 'copied final-root executable capabilities are not verified'
+	fail 'mutable ROCKNIX memory policy publication missing'
+if grep -Fq '"/storage/.config/bird/$FILE"' \
+	"$OUTPUT/card/mount-storage.sh"; then
+	fail 'immutable final-root publication remained'
+fi
 grep -Fq 'if [ "${BOOT_STEP}" = "mount_storage" ]; then' \
 	"$OUTPUT/build/early-initramfs/payload/init" || \
 	fail 'mount-storage failure boundary missing'
@@ -781,18 +792,8 @@ grep -Fq 'LAUNCHER=/flash/bird/bird-launcher' \
 	"$OUTPUT/card/bird/supervisor.sh" || fail 'immutable final-root launcher path missing'
 grep -Fq 'RUNNER=/flash/bird/run-content.sh' \
 	"$OUTPUT/card/bird/supervisor.sh" || fail 'immutable content dispatcher path missing'
-if sed -n '/^for FILE in bird-pidwait/,/^done$/p' \
-	"$OUTPUT/card/mount-storage.sh" | grep -Fq 'bird-launcher'; then
-	fail 'immutable final-root launcher is still copied to writable storage'
-fi
-if sed -n '/^for FILE in bird-pidwait/,/^done$/p' \
-	"$OUTPUT/card/mount-storage.sh" | grep -Fq 'run-content.sh'; then
-	fail 'immutable content dispatcher is still copied to writable storage'
-fi
-if sed -n '/^for FILE in bird-pidwait/,/^done$/p' \
-	"$OUTPUT/card/mount-storage.sh" | grep -Fq 'supervisor.sh'; then
-	fail 'immutable supervisor is still copied to writable storage'
-fi
+grep -Fq 'PIDWAIT=/flash/bird/bird-pidwait' \
+	"$OUTPUT/card/bird/supervisor.sh" || fail 'immutable supervisor waiter path missing'
 grep -q '^UI_SERVICE="essway.service"$' \
 	"$OUTPUT/card/bird/090-ui_service" || fail 'boot compositor deferral missing'
 grep -q '^JobTimeoutAction=reboot-force$' \
@@ -801,9 +802,9 @@ grep -q 'queue_game_launch' \
 	"$ROOT/launcher/bird-launcher.c" || fail 'pre-storage selection queue missing'
 grep -q '^Wants=.*input.service.*powerstate.service' \
 	"$OUTPUT/card/bird/rocknix.target" || fail 'fixed control/power target requests missing'
-grep -q 'ExecStart=/storage/.config/bird/bird-fixed-controls$' \
+grep -q 'ExecStart=/flash/bird/bird-fixed-controls$' \
 	"$OUTPUT/card/bird/bird-fixed-controls.service" || fail 'fixed controls unit missing'
-grep -q 'ExecStart=/storage/.config/bird/bird-powerstate$' \
+grep -q 'ExecStart=/flash/bird/bird-powerstate$' \
 	"$OUTPUT/card/bird/bird-powerstate.service" || fail 'fixed powerstate unit missing'
 grep -q '^After=local-fs.target$' \
 	"$OUTPUT/card/bird/bird-powerstate.service" || fail 'fixed powerstate ordering changed'
@@ -823,12 +824,12 @@ grep -Fq 'state->menu_held' \
 	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'Bird emergency chord missing'
 grep -Fq 'restart --no-block essway.service' \
 	"$OUTPUT/card/bird/bird-emergency-recover.sh" || fail 'Bird emergency UI restart missing'
-if sed -n '/^for FILE in bird-pidwait/,/^done$/p' \
-	"$OUTPUT/card/mount-storage.sh" | grep -Fq 'bird-emergency-recover.sh'; then
-	fail 'immutable emergency helper is copied to writable storage'
-fi
-grep -Fq '#define VOLUME_PROGRAM "/storage/.config/bird/bird-volume.sh"' \
+grep -Fq '#define VOLUME_PROGRAM "/flash/bird/bird-volume.sh"' \
 	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'unmuting volume wrapper missing'
+grep -Fq '#define OSD_PROGRAM "/flash/bird/bird-control-osd.sh"' \
+	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'immutable control OSD path missing'
+grep -Fq '#define EXIT_HELPER "/flash/bird/bird-fixed-control-exit.sh"' \
+	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'immutable control exit path missing'
 grep -Fq 'set-sink-mute @DEFAULT_SINK@ 0' \
 	"$OUTPUT/card/bird/bird-volume.sh" || fail 'default audio sink unmute missing'
 grep -Fq "iface=CARD,name='Headphone Jack'" \
@@ -845,8 +846,16 @@ fi
 if grep -Fq 'bird-volume.sh' "$OUTPUT/card/bird/999-export"; then
 	fail 'application contract still performs an unnecessary audio restore'
 fi
-grep -Fq '/storage/.config/bird/bird-volume.sh restore' \
+grep -Fq '/flash/bird/bird-volume.sh restore' \
 	"$OUTPUT/card/bird/run-content.sh" || fail 'per-launch audio policy missing'
+grep -Fq 'PORT_PREP=/flash/bird/prepare-ports.sh' \
+	"$OUTPUT/card/bird/run-content.sh" || fail 'immutable PortMaster preparation path missing'
+grep -Fq 'NETWORK=/flash/bird/bird-network.sh' \
+	"$OUTPUT/card/bird/run-content.sh" || fail 'immutable network helper path missing'
+grep -Fq "bird-content-guard /flash/bird/bird-pidwait" \
+	"$OUTPUT/card/bird/run-content.sh" || fail 'immutable content guard waiter path missing'
+grep -Fq '/flash/bird/bird-fixed-control-exit.sh "$NETWORK"' \
+	"$OUTPUT/card/bird/run-content.sh" || fail 'immutable guard exit path missing'
 grep -Fq 'pactl get-sink-mute @DEFAULT_SINK@' \
 	"$OUTPUT/card/bird/capture-boot-state.sh" || fail 'effective audio mute diagnostic missing'
 grep -Fq 'h700_input ? BTN_NORTH : BUTTON_Y' \
@@ -999,7 +1008,7 @@ if grep -Eq -- '--rocknix|start_es[.]sh|start-interactive|stock_rocknix_diagnost
 	"$OUTPUT/card/bird/supervisor.sh" "$OUTPUT/card/bird/run-content.sh"; then
 	fail 'temporary stock frontend path returned'
 fi
-grep -q 'SUSPEND_PROGRAM "/storage/.config/bird/bird-suspend.sh"' \
+grep -q 'SUSPEND_PROGRAM "/flash/bird/bird-suspend.sh"' \
 	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'fixed suspend wrapper missing'
 grep -q 'brightness_raw_target(75, 2499, -1) == 25' \
 	"$ROOT/kernel/rocknix/tests/fixed-controls-host.c" || fail 'stable one-percent brightness test missing'
@@ -1104,6 +1113,9 @@ if grep -q 'systemctl .*--force.*poweroff' \
 fi
 grep -q '^TimeoutStartSec=15s$' \
 	"$OUTPUT/card/bird/bird-save-config.service" || fail 'bounded shutdown checkpoint missing'
+grep -q '^ExecStart=/flash/bird/bird-save-config.sh$' \
+	"$OUTPUT/card/bird/bird-save-config.service" || \
+	fail 'immutable shutdown checkpoint path missing'
 grep -q 'for PROPERTY in run pages_to_scan' \
 	"$OUTPUT/card/bird/capture-boot-state.sh" || fail 'KSM diagnostic missing'
 grep -q '^#define LOW_PERCENT 41$' \

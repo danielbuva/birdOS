@@ -16,7 +16,7 @@ trap 'rm -rf "$TMP"' EXIT INT TERM HUP
 PREFIX_RAW=$TMP/mount-storage-prefix-raw.sh
 PREFIX=$TMP/mount-storage-prefix.sh
 awk '
-	/^# These are deliberately copied after \/storage exists\./ { exit }
+	/^# The selected release is verified before \/flash\/bird is published/ { exit }
 	{ print }
 ' "$MOUNT_STORAGE" >"$PREFIX_RAW"
 sed \
@@ -39,9 +39,8 @@ if grep -Eq '^mount --move [^ ]+ /storage(/|[[:space:]])' "$PREFIX"; then
 	exit 1
 fi
 
-# The pinned initramfs has no chmod applet. Runtime installation must use the
-# pinned final-root BusyBox already mounted below /sysroot, and the generated
-# init must stop before stock UI startup if that transaction fails.
+# The pinned initramfs has no chmod applet. Only the mutable ROCKNIX memory
+# policy still needs mode normalization through the pinned final-root BusyBox.
 [ -f "$INIT_BUSYBOX" ]
 if strings -a -n 2 "$INIT_BUSYBOX" | grep -Fqx chmod; then
 	printf '%s\n' 'pinned initramfs unexpectedly gained chmod' >&2
@@ -51,32 +50,19 @@ if grep -Eq '^[[:space:]]*chmod[[:space:]]' "$MOUNT_STORAGE"; then
 	printf '%s\n' 'mount-storage still invokes unavailable chmod' >&2
 	exit 1
 fi
-grep -Fq '/sysroot/usr/bin/busybox chmod 0755' "$MOUNT_STORAGE"
+if grep -Fq '/sysroot/usr/bin/busybox chmod 0755' "$MOUNT_STORAGE"; then
+	printf '%s\n' 'immutable executable chmod transaction remained' >&2
+	exit 1
+fi
 grep -Fq '/sysroot/usr/bin/busybox chmod 0644' "$MOUNT_STORAGE"
-grep -Fq '[ -x "/storage/.config/bird/$FILE" ] || return 1' \
+grep -Fq 'cp -f /flash/bird/bird-swap.conf /storage/.config/swap.conf' \
 	"$MOUNT_STORAGE"
+if grep -Fq '"/storage/.config/bird/$FILE"' "$MOUNT_STORAGE"; then
+	printf '%s\n' 'immutable final-root publication remained' >&2
+	exit 1
+fi
 grep -Fq 'LAUNCHER=/flash/bird/bird-launcher' "$SUPERVISOR"
 grep -Fq 'RUNNER=/flash/bird/run-content.sh' "$SUPERVISOR"
-if sed -n '/^for FILE in bird-pidwait/,/^done$/p' "$MOUNT_STORAGE" |
-	grep -Fq 'bird-launcher'; then
-	printf '%s\n' 'immutable final-root launcher is still copied per boot' >&2
-	exit 1
-fi
-if sed -n '/^for FILE in bird-pidwait/,/^done$/p' "$MOUNT_STORAGE" |
-	grep -Fq 'supervisor.sh'; then
-	printf '%s\n' 'immutable supervisor is still copied per boot' >&2
-	exit 1
-fi
-if sed -n '/^for FILE in bird-pidwait/,/^done$/p' "$MOUNT_STORAGE" |
-	grep -Fq 'first-frame-prep.sh'; then
-	printf '%s\n' 'immutable first-frame preparation is still copied per boot' >&2
-	exit 1
-fi
-if sed -n '/^for FILE in bird-pidwait/,/^done$/p' "$MOUNT_STORAGE" |
-	grep -Fq 'capture-boot-state.sh'; then
-	printf '%s\n' 'immutable boot snapshot is still copied per boot' >&2
-	exit 1
-fi
 grep -Fq 'print "  if [ \"${BOOT_STEP}\" = \"mount_storage\" ]; then"' \
 	"$EARLY_BUILDER"
 grep -Fq 'mount-storage-latest.log' "$EARLY_BUILDER"
@@ -338,14 +324,13 @@ sed -e "s#TEST_SLEEP_DIR#${TEST_SLEEP_CONFIG%/*}#" \
 	"$TMP/expected-bind-failure" >"$TMP/expected-bind-failure.resolved"
 cmp "$TMP/expected-bind-failure.resolved" "$EVENTS"
 
-# Execute the exact runtime-copy block against a temporary ext4-like tree.
-# A hostile chmod function proves the block has no hidden dependency on the
-# applet missing from the device initramfs. Every program must remain
-# executable, while static data needs only to be readable.
+# Execute the exact remaining mutable-policy publication block against a
+# temporary ext4-like tree. Immutable programs and provider data must stay at
+# their verified release paths and never appear in the writable destination.
 COPY_BLOCK_RAW=$TMP/runtime-copy-raw.sh
 COPY_BLOCK=$TMP/runtime-copy.sh
 awk '
-	/^# These are deliberately copied after \/storage exists\./ { copy=1 }
+	/^# The selected release is verified before \/flash\/bird is published/ { copy=1 }
 	/^# Replace the generic partition scanner/ { exit }
 	copy { print }
 ' "$MOUNT_STORAGE" >"$COPY_BLOCK_RAW"
@@ -361,25 +346,12 @@ DEST_SWAP=$TMP/dest-swap.conf
 SYSTEM_BUSYBOX=$TMP/system-busybox
 MODE_EVENTS=$TMP/mode-events
 /bin/mkdir -p "$SOURCE_BIRD" "$DEST_BIRD"
-EXECUTABLE_FILES='bird-pidwait bird-fixed-controls bird-powerstate bird-fixed-control-exit.sh bird-save-config.sh prepare-ports.sh verify-portmaster-provider.sh fixed-storage.sh bird-network.sh bird-suspend.sh bird-volume.sh bird-control-osd.sh'
-MODE_EXECUTABLE_FILES='bird-pidwait bird-fixed-controls bird-powerstate bird-fixed-control-exit.sh bird-save-config.sh bird-suspend.sh bird-volume.sh bird-control-osd.sh prepare-ports.sh verify-portmaster-provider.sh fixed-storage.sh bird-network.sh'
-for FILE in $EXECUTABLE_FILES portmaster-provider.manifest.tsv; do
-	printf 'fixture %s\n' "$FILE" >"$SOURCE_BIRD/$FILE"
+IMMUTABLE_FILES='bird-pidwait bird-fixed-controls bird-powerstate bird-fixed-control-exit.sh bird-save-config.sh prepare-ports.sh verify-portmaster-provider.sh portmaster-provider.manifest.tsv fixed-storage.sh capture-boot-state.sh bird-network.sh bird-suspend.sh bird-volume.sh bird-control-osd.sh bird-launcher run-content.sh supervisor.sh first-frame-prep.sh'
+for FILE in $IMMUTABLE_FILES; do
+	printf 'immutable fixture %s\n' "$FILE" >"$SOURCE_BIRD/$FILE"
 done
-printf '%s\n' 'immutable launcher fixture' >"$SOURCE_BIRD/bird-launcher"
-printf '%s\n' 'immutable content dispatcher fixture' >"$SOURCE_BIRD/run-content.sh"
-printf '%s\n' 'immutable supervisor fixture' >"$SOURCE_BIRD/supervisor.sh"
-printf '%s\n' 'immutable first-frame preparation fixture' \
-	>"$SOURCE_BIRD/first-frame-prep.sh"
-printf '%s\n' 'immutable boot snapshot fixture' \
-	>"$SOURCE_BIRD/capture-boot-state.sh"
 printf '%s\n' 'fixture swap' >"$SOURCE_BIRD/bird-swap.conf"
 /bin/chmod 0644 "$SOURCE_BIRD"/*
-/bin/chmod 0755 "$SOURCE_BIRD/bird-launcher"
-/bin/chmod 0755 "$SOURCE_BIRD/run-content.sh"
-/bin/chmod 0755 "$SOURCE_BIRD/supervisor.sh"
-/bin/chmod 0755 "$SOURCE_BIRD/first-frame-prep.sh"
-/bin/chmod 0755 "$SOURCE_BIRD/capture-boot-state.sh"
 cat >"$SYSTEM_BUSYBOX" <<'EOF'
 #!/bin/bash
 printf '%s\n' "$*" >>"$MODE_EVENTS"
@@ -409,42 +381,20 @@ set -e
 [ "$STATUS" -eq 0 ]
 [ ! -e "$CHMOD_CALLED" ]
 EXPECTED_MODE_EVENTS=$TMP/expected-mode-events
-{
-	printf 'chmod 0755'
-	for FILE in $MODE_EXECUTABLE_FILES; do
-		printf ' %s/%s' "$DEST_BIRD" "$FILE"
-	done
-	printf '\nchmod 0644 %s %s\n' \
-		"$DEST_BIRD/portmaster-provider.manifest.tsv" "$DEST_SWAP"
-} >"$EXPECTED_MODE_EVENTS"
+printf 'chmod 0644 %s\n' "$DEST_SWAP" >"$EXPECTED_MODE_EVENTS"
 cmp "$EXPECTED_MODE_EVENTS" "$MODE_EVENTS"
 
 file_mode() {
 	stat -f '%Lp' "$1" 2>/dev/null || stat -c '%a' "$1"
 }
-for FILE in $EXECUTABLE_FILES; do
-	[ -x "$DEST_BIRD/$FILE" ]
-	[ "$(file_mode "$DEST_BIRD/$FILE")" = 755 ]
-	cmp "$SOURCE_BIRD/$FILE" "$DEST_BIRD/$FILE"
+for FILE in $IMMUTABLE_FILES; do
+	[ ! -e "$DEST_BIRD/$FILE" ]
 done
-[ -x "$SOURCE_BIRD/bird-launcher" ]
-[ ! -e "$DEST_BIRD/bird-launcher" ]
-[ -x "$SOURCE_BIRD/run-content.sh" ]
-[ ! -e "$DEST_BIRD/run-content.sh" ]
-[ -x "$SOURCE_BIRD/supervisor.sh" ]
-[ ! -e "$DEST_BIRD/supervisor.sh" ]
-[ -x "$SOURCE_BIRD/first-frame-prep.sh" ]
-[ ! -e "$DEST_BIRD/first-frame-prep.sh" ]
-[ -x "$SOURCE_BIRD/capture-boot-state.sh" ]
-[ ! -e "$DEST_BIRD/capture-boot-state.sh" ]
-[ -r "$DEST_BIRD/portmaster-provider.manifest.tsv" ]
 [ -r "$DEST_SWAP" ]
-[ "$(file_mode "$DEST_BIRD/portmaster-provider.manifest.tsv")" = 644 ]
 [ "$(file_mode "$DEST_SWAP")" = 644 ]
+cmp "$SOURCE_BIRD/bird-swap.conf" "$DEST_SWAP"
 
-# A failed final-root chmod must fail the transaction immediately. A defective
-# chmod that reports success without changing mode must also be rejected by
-# the executable-capability postcondition.
+# A failed final-root chmod must fail the mutable data transaction immediately.
 /bin/rm -rf "$DEST_BIRD" "$DEST_SWAP"
 /bin/mkdir -p "$DEST_BIRD"
 : >"$MODE_EVENTS"
@@ -456,20 +406,6 @@ STATUS=$?
 set -e
 [ "$STATUS" -eq 1 ]
 [ "$(wc -l <"$MODE_EVENTS" | tr -d ' ')" -eq 1 ]
-[ ! -x "$DEST_BIRD/bird-pidwait" ]
-
-/bin/rm -rf "$DEST_BIRD" "$DEST_SWAP"
-/bin/mkdir -p "$DEST_BIRD"
-: >"$MODE_EVENTS"
-CHMOD_BEHAVIOR=noop
-set +e
-# shellcheck source=/dev/null
-. "$COPY_BLOCK"
-STATUS=$?
-set -e
-[ "$STATUS" -eq 1 ]
-cmp "$EXPECTED_MODE_EVENTS" "$MODE_EVENTS"
-[ ! -x "$DEST_BIRD/bird-pidwait" ]
 [ ! -e "$CHMOD_CALLED" ]
 
 # Exercise the exact init-rewrite AWK program against a minimal pinned-init

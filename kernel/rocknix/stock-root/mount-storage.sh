@@ -201,52 +201,18 @@ mount --bind /storage/bird-data/MUOS/bios /storage/roms/bios || {
 	return 1
 }
 
-# These are deliberately copied after /storage exists. The first Bird process
-# already runs from initramfs. Replacement launchers execute from the selected
-# immutable /flash/bird release, while this remaining final-root toolset is
-# retained under writable storage for the existing service and recovery
-# contracts.
-for FILE in bird-pidwait bird-fixed-controls bird-powerstate \
-	bird-fixed-control-exit.sh bird-save-config.sh prepare-ports.sh \
-		verify-portmaster-provider.sh portmaster-provider.manifest.tsv \
-		fixed-storage.sh \
-		bird-network.sh bird-suspend.sh bird-volume.sh bird-control-osd.sh; do
-	cp -f "/flash/bird/$FILE" "/storage/.config/bird/$FILE" || return 1
-done
+# The selected release is verified before /flash/bird is published and remains
+# mounted for the complete final-root session. Immutable Bird executables and
+# provider data run directly from that release. Keep only ROCKNIX's writable
+# memory-manager policy in its established storage namespace.
 cp -f /flash/bird/bird-swap.conf /storage/.config/swap.conf || return 1
 
-# The exact initramfs BusyBox has cp but no chmod applet. SYSTEM is already
-# mounted at /sysroot before this hook runs, and its pinned BusyBox does provide
-# chmod. Use that exact applet so an existing ext4 destination with stale mode
-# bits is repaired deterministically instead of inheriting its previous mode.
-/sysroot/usr/bin/busybox chmod 0755 \
-	/storage/.config/bird/bird-pidwait \
-	/storage/.config/bird/bird-fixed-controls \
-	/storage/.config/bird/bird-powerstate \
-	/storage/.config/bird/bird-fixed-control-exit.sh \
-	/storage/.config/bird/bird-save-config.sh \
-	/storage/.config/bird/bird-suspend.sh \
-	/storage/.config/bird/bird-volume.sh \
-	/storage/.config/bird/bird-control-osd.sh \
-	/storage/.config/bird/prepare-ports.sh \
-	/storage/.config/bird/verify-portmaster-provider.sh \
-	/storage/.config/bird/fixed-storage.sh \
-	/storage/.config/bird/bird-network.sh || return 1
+# The exact initramfs BusyBox has no chmod applet. Use the already-mounted
+# pinned final-root BusyBox to normalize only that mutable data file.
 /sysroot/usr/bin/busybox chmod 0644 \
-	/storage/.config/bird/portmaster-provider.manifest.tsv \
 	/storage/.config/swap.conf || return 1
 
-# Verify the capabilities consumed in final root after the mode transaction.
-for FILE in bird-pidwait bird-fixed-controls bird-powerstate \
-	bird-fixed-control-exit.sh bird-save-config.sh bird-suspend.sh bird-volume.sh \
-	bird-control-osd.sh prepare-ports.sh \
-	verify-portmaster-provider.sh fixed-storage.sh \
-	bird-network.sh; do
-	[ -f "/storage/.config/bird/$FILE" ] && \
-		[ -x "/storage/.config/bird/$FILE" ] || return 1
-done
-[ -f /storage/.config/bird/portmaster-provider.manifest.tsv ] && \
-	[ -r /storage/.config/bird/portmaster-provider.manifest.tsv ] || return 1
+# Verify the remaining mutable capability after the mode transaction.
 [ -f /storage/.config/swap.conf ] && \
 	[ -r /storage/.config/swap.conf ] || return 1
 

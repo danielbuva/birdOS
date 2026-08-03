@@ -19,8 +19,8 @@ display geometry and hardware policy are deliberate. Older muOS stages,
 source-kernel challengers and clean-root experiments remain useful evidence,
 but they are not alternate active implementations.
 
-The card currently selects the bounded Stage 4 immutable boot-snapshot
-candidate `v6.23-flash-snapshot-9c4250e`, built from clean source
+The card currently selects the physically accepted Stage 4 immutable
+boot-snapshot checkpoint `v6.23-flash-snapshot-9c4250e`, built from clean source
 `9c4250ee50afd37c720a25b7cf109a64bd1a1303`. Its previous selector is the
 physically accepted first-frame-preparation checkpoint
 `v6.23-flash-firstframe-094be8b`, not a rejected experiment. The selected candidate's
@@ -30,10 +30,8 @@ and deployment verified all 57 manifest-owned files. The device-contract digest 
 `85ccb8e46e71ee66e2320022ac13228124d6efcea5abdd800b8c18bd190f73cd`
 and the generated-catalog digest is
 `7e29e491bb43191ca9ae6c18bd566b6ba0c984bf43d1d0103eddd6e534306e62`.
-The immutable-dispatcher, immutable-supervisor and first-frame-preparation
-checkpoints passed their full RG34XX-SP gates. The selected boot-snapshot
-candidate has passed host, build and deployment gates but still requires its
-RG34XX-SP boot/snapshot/content gate.
+The immutable-dispatcher, immutable-supervisor, first-frame-preparation and
+selected boot-snapshot checkpoints passed their full RG34XX-SP gates.
 None of these tuples
 replaces the broader source/behavior baseline or immutable fallback named above.
 
@@ -730,8 +728,43 @@ and early release launchers and their ELF sections remain byte-identical at
 The early overlay remains 615,256 compressed bytes but has a new digest because
 the initramfs copy list changed. The inactive immutable-supervisor release was
 archived, published and independently verified in the private GitHub release
-archive before its card copy was reclaimed. Hardware behavior and timing remain
-unclaimed until the card returns from this candidate's physical gate.
+archive before its card copy was reclaimed.
+
+The physical gate passes on boot `02d6aba1`. Input opened at 1222 ms, the usable
+frame committed at 1229 ms and storage became ready at 3713 ms. The usable
+sample is inside the accepted 1221--1229 ms range, so this is non-regression
+rather than a speed claim. The 47,325-byte/786-line snapshot ran as
+`/flash/bird/capture-boot-state.sh` through its final section, with zero failed
+units and no pending jobs. Game, music, movie, PortMaster networking and cleanup,
+suspend/resume, exact menu return and the durable shutdown checkpoint passed.
+
+### Complete immutable final-root toolset candidate
+
+The original stock-root bridge published Bird programs and fixed provider data
+under `/storage/.config/bird` because that was the established writable runtime
+namespace, FAT modes were not authoritative and destination checks had to fail
+closed on partial installation. The selected release is now manifest-verified
+before its session-long `/flash/bird` bind, and direct execution is physically
+proven across the launcher, supervisor, dispatcher, recovery, preparation and
+diagnostic paths.
+
+The next aggressive Stage 4 batch converts every remaining immutable consumer
+to `/flash/bird`: PID waiting, global controls, power policy, foreground exit,
+shutdown save, PortMaster preparation/verifier/manifest, fixed storage,
+networking, suspend, volume and OSD. Only the mutable 260-byte ROCKNIX memory
+policy remains copied to `/storage/.config/swap.conf`. Preparation falls from 14
+files/131,331 bytes to 1 file/260 bytes, removing 13 `cp` invocations, 131,071
+source-read plus destination-write bytes, the complete executable chmod
+transaction and 13 destination checks. Inert old writable copies are not
+deleted; the fallback overwrites its own versions before use.
+
+This batch changes no launcher, framebuffer, catalog, render traffic, retained
+task or timer. It removes post-usable storage/application preparation work and
+therefore cannot claim a first-usable-frame improvement. The physical gate must
+cover boot timing, storage/application readiness, all global controls, normal
+and forced content exit, game/media/reader/PortMaster launch and return, Wi-Fi
+cleanup, repeated suspend/resume, input reconnect, changed and quick shutdown,
+and rollback availability.
 
 ## Launcher visual architecture
 

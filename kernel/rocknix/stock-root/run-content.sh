@@ -129,8 +129,8 @@ LOG_DIR=/storage/bird-data/MUOS/Bird/log
 LOG=$LOG_DIR/stock-root-content-latest.log
 SWAY_SOCKET=/var/run/0-runtime-dir/sway-ipc.0.sock
 SESSION_MODE=content
-PORT_PREP=/storage/.config/bird/prepare-ports.sh
-NETWORK=/storage/.config/bird/bird-network.sh
+PORT_PREP=/flash/bird/prepare-ports.sh
+NETWORK=/flash/bird/bird-network.sh
 MPV_PLAYER=${BIRD_MPV_PLAYER:-/flash/bird/bird-mpv-player.sh}
 SESSION_PID=/run/bird/content-session.pid
 SESSION_DIR=/run/bird/content-sessions
@@ -393,7 +393,7 @@ ensure_content_services() {
 	# every audio service, app stream and ALSA control looks healthy. Reapply the
 	# saved Bird volume and explicitly clear that route mute before every app.
 	"$TIMEOUT_PROGRAM" --signal=TERM --kill-after=1s 3s \
-		/storage/.config/bird/bird-volume.sh restore \
+		/flash/bird/bird-volume.sh restore \
 		8>&- 9>&- || return 1
 	content_stage services-ready
 }
@@ -1885,9 +1885,9 @@ start_cleanup_guard() {
 			done
 		} >>"$GUARD_LOG" 2>&1
 		while ! rm -f "$STATE_FILE"; do usleep 250000; done
-	' bird-content-guard /storage/.config/bird/bird-pidwait "$$" \
+	' bird-content-guard /flash/bird/bird-pidwait "$$" \
 		"$RUNNER_STATE" "$RUNNER_START_TICKS" "$BOOT_ID_FULL" \
-		/storage/.config/bird/bird-fixed-control-exit.sh "$NETWORK" \
+		/flash/bird/bird-fixed-control-exit.sh "$NETWORK" \
 		"$SESSION_LOG" "$SESSION_RECORD" "$SESSION_PID" "$SESSION_TOKEN" \
 		"$RESOURCE_LOCK" "$SWAY_OWNER" "$NETWORK_OWNER" "$SWAY_SOCKET" \
 		"$SCOPE_START_GATE" "$SCOPE_START_READY" "$SCOPE_START_CANCEL" /proc \

@@ -93,3 +93,8 @@ For every implementation task:
 6. Compile both the final-root and early-initramfs launcher variants where the environment permits.
 7. Report changed files, tests run, measured host-side differences, and anything requiring RG34XX-SP verification.
 8. Be honest when hardware behavior cannot be proven in the current environment.
+
+Implementation summaries must put a short explanation of why the previous
+implementation existed before describing what changed. Independently testable
+changes may be batched into one hardware cycle when each active path, assertion,
+host test, measured delta, and rollback boundary remains explicit.

@@ -34,8 +34,8 @@ grep -Fq 'SYSTEM_BUSYBOX_SHA=b90f5f58dd5c39348f7be9bbef79b349f51e6ac0117b217691e
 grep -Fq 'for APPLET in awk chmod cmp cp mv rm stat; do' "$BUILDER" &&
 	grep -Fq 'exact SYSTEM BusyBox lacks required $APPLET applet' "$BUILDER" ||
 	fail 'SYSTEM policy applet capabilities are not verified during preflight'
-grep -Fq "grep -Fq '/sysroot/usr/bin/busybox chmod 0755'" "$BUILDER" ||
-	fail 'generated mount hook executable modes are not validated'
+grep -Fq "if grep -Fq '/sysroot/usr/bin/busybox chmod 0755'" "$BUILDER" ||
+	fail 'generated mount hook immutable executable publication is not rejected'
 grep -Fq "grep -Fq '/sysroot/usr/bin/busybox chmod 0644'" "$BUILDER" ||
 	fail 'generated mount hook data modes are not validated'
 grep -Fq 'print "  if [ \"${BOOT_STEP}\" = \"mount_storage\" ]; then"' \

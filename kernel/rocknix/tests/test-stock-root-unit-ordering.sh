@@ -8,16 +8,24 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../../.." && pwd)
 POWER=$ROOT/kernel/rocknix/stock-root/bird-powerstate.service
+CONTROLS=$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.service
+STORAGE=$ROOT/kernel/rocknix/stock-root/rocknix-automount.service
+SAVE=$ROOT/kernel/rocknix/stock-root/bird-save-config.service
 UI=$ROOT/kernel/rocknix/stock-root/essway.service
 TARGET=$ROOT/kernel/rocknix/stock-root/rocknix.target
 REPORT=$ROOT/kernel/rocknix/stock-root/rocknix-report-stats.service
 
 grep -Fqx 'After=local-fs.target' "$POWER"
 grep -Fqx 'WantedBy=multi-user.target' "$POWER"
+grep -Fqx 'ExecStart=/flash/bird/bird-powerstate' "$POWER"
 if grep -Eq '^(After|Before|Wants|Requires)=.*essway\.service' "$POWER"; then
 	printf '%s\n' 'powerstate must not order against essway' >&2
 	exit 1
 fi
+
+grep -Fqx 'ExecStart=/flash/bird/bird-fixed-controls' "$CONTROLS"
+grep -Fqx 'ExecStart=/flash/bird/fixed-storage.sh' "$STORAGE"
+grep -Fqx 'ExecStart=/flash/bird/bird-save-config.sh' "$SAVE"
 
 grep -Eq '^After=.*graphical\.target' "$UI"
 grep -Fqx 'ExecStartPre=/flash/bird/first-frame-prep.sh' "$UI"

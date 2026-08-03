@@ -521,7 +521,27 @@ release launchers and their ELF sections remain byte-identical at
 remains 615,256 compressed bytes with changed content from the copy-list
 subtraction. The inactive supervisor release was archived, published and
 independently verified on GitHub before its card copy was removed. This
-candidate now waits only for its physical boot/snapshot/content/shutdown gate.
+candidate's physical gate passes. Boot `02d6aba1` opened input at 1222 ms,
+committed the usable frame at 1229 ms and published storage at 3713 ms. The
+47,325-byte/786-line snapshot ran from `/flash/bird` through its final section,
+with zero failed units and no jobs. Game, media, PortMaster networking/cleanup,
+suspend/resume, exact return and durable shutdown also passed.
+
+The next aggressive subtraction removes all 13 remaining immutable
+runtime-publication copies. They were retained by the original stock-root
+bridge to provide a conventional writable execution namespace, repair FAT mode
+semantics and fail closed on partial destinations. Every active consumer now
+uses the manifest-verified session-long `/flash/bird` bind; mutable launcher
+state remains under `/storage/.config/bird`, and only ROCKNIX's 260-byte mutable
+memory policy is still copied to `/storage/.config/swap.conf`.
+
+Preparation falls from 14 files/131,331 bytes to 1 file/260 bytes, eliminating
+13 `cp` invocations, 131,071 source-read plus destination-write bytes, the
+executable chmod transaction and 13 destination checks. This is post-usable
+storage/application work, not a boot claim. The combined physical gate covers
+all controls, content and forced cleanup, provider/network return, suspend,
+quick and changed shutdown and rollback; per-path source assertions keep each
+batched change independently diagnosable.
 
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
