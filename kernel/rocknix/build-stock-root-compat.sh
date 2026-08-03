@@ -802,8 +802,10 @@ grep -Fq 'RUNNER=/flash/bird/run-content.sh' \
 	"$OUTPUT/card/bird/supervisor.sh" || fail 'immutable content dispatcher path missing'
 grep -Fq 'PIDWAIT=/flash/bird/bird-pidwait' \
 	"$OUTPUT/card/bird/supervisor.sh" || fail 'immutable supervisor waiter path missing'
-grep -q '^UI_SERVICE="essway.service"$' \
+grep -Fq 'EXPECTED='\''UI_SERVICE="essway.service"'\''' \
 	"$OUTPUT/card/bird/090-ui_service" || fail 'boot compositor deferral missing'
+grep -Fq '[ "$FIRST" = "$EXPECTED" ]' \
+	"$OUTPUT/card/bird/090-ui_service" || fail 'UI profile idempotency missing'
 grep -q '^JobTimeoutAction=reboot-force$' \
 	"$OUTPUT/card/bird/rocknix.target" || fail 'target watchdog missing'
 grep -q 'queue_game_launch' \
@@ -1049,8 +1051,10 @@ grep -q '/flash/bird/bird-swap.conf' \
 	"$OUTPUT/card/mount-storage.sh" || fail 'fixed memory policy install missing'
 grep -q 'brightness_write=none' \
 	"$OUTPUT/card/bird/first-frame-prep.sh" || fail 'brightness ownership missing'
-grep -q '^DEVICE_HAS_DUAL_SCREEN=false$' \
+grep -Fq "[ \"\$PANEL_FIRST\" = 'DEVICE_HAS_DUAL_SCREEN=false' ]" \
 	"$OUTPUT/card/bird/999-export" || fail 'fixed panel profile missing'
+grep -Fq '[ "$PANEL_READY" -ne 1 ]' \
+	"$OUTPUT/card/bird/999-export" || fail 'fixed panel profile idempotency missing'
 if grep -q '/usr/lib/autostart' "$OUTPUT/card/mount-storage.sh"; then
 	fail 'autostart bind replacement remained'
 fi
