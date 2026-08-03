@@ -10,6 +10,7 @@ ROOT=$(CDPATH= cd -- "$(dirname "$0")/../../.." && pwd)
 POWER=$ROOT/kernel/rocknix/stock-root/bird-powerstate.service
 UI=$ROOT/kernel/rocknix/stock-root/essway.service
 TARGET=$ROOT/kernel/rocknix/stock-root/rocknix.target
+REPORT=$ROOT/kernel/rocknix/stock-root/rocknix-report-stats.service
 
 grep -Fqx 'After=local-fs.target' "$POWER"
 grep -Fqx 'WantedBy=multi-user.target' "$POWER"
@@ -22,3 +23,5 @@ grep -Eq '^After=.*graphical\.target' "$UI"
 grep -Fqx 'ExecStartPre=/flash/bird/first-frame-prep.sh' "$UI"
 grep -Fqx 'ExecStart=/flash/bird/supervisor.sh' "$UI"
 grep -Eq '^Wants=.*essway\.service.*powerstate\.service' "$TARGET"
+grep -Fqx 'After=rocknix-autostart.service' "$REPORT"
+grep -Fqx 'ExecStart=/flash/bird/capture-boot-state.sh' "$REPORT"

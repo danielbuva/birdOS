@@ -754,8 +754,26 @@ with all 57 files verified and the accepted supervisor checkpoint as previous.
 Release launchers are byte-identical at 597,336/600,600 bytes; profile launchers
 remain 658,408/669,992 bytes. The 615,256-byte overlay is five compressed bytes
 larger with an unchanged early launcher. The inactive dispatcher release was
-archived and independently verified on GitHub before card reclamation. The
-RG34XX-SP gate remains pending.
+archived and independently verified on GitHub before card reclamation.
+
+That RG34XX-SP gate passes. Five valid usable-readiness records are 1229, 1221,
+1221, 1229 and 1226 ms after kernel start, a descriptive median of 1226 ms and
+non-regression from the accepted supervisor checkpoint. The external stopwatch
+remained near 2.7 seconds. The immutable pre-start completed in about 10 ms
+without a brightness write. Game, music, reader, movie, retained-frame return,
+emergency UI restart and durable shutdown passed without a failed unit or
+ownership loss. One shutdown requested before storage readiness exercised the
+unchanged bounded final-root wait and completed normally.
+
+The next independently bounded candidate executes the post-autostart diagnostic
+as `/flash/bird/capture-boot-state.sh`. It removes only the writable copy, chmod
+operand and destination check for that 4,831-byte single-consumer script.
+Preparation falls from 15 files/136,162 bytes to 14 files/131,331 bytes, with
+4,831 fewer source-read and destination-write bytes. It does not alter the
+launcher, provider, input, controls, suspend, audio, task, timer or memory paths,
+and cannot improve the first usable frame because the work is already
+post-usable. The hardware gate is boot non-inferiority, a fresh complete
+post-autostart snapshot, content return and shutdown.
 
 ## Stage 5 — Battery, suspend and memory closure
 

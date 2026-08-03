@@ -493,9 +493,23 @@ Clean source `094be8be0555c4ab51f2968b21f13993b63de96f` is deployed as
 with all 57 manifest files verified and the accepted supervisor as previous.
 Both release launchers and their ELF sections are byte-identical; profile sizes
 remain 658,408/669,992 bytes. The overlay changed from 615,251 to 615,256
-compressed bytes with no early-launcher change. This candidate now waits only
-for its physical boot/log, brightness-observation, content/recovery and shutdown
-gate.
+compressed bytes with no early-launcher change. That gate passes: five valid
+usable-frame records are 1229, 1221, 1221, 1229 and 1226 ms after kernel start,
+with a descriptive median of 1226 ms and no regression from the supervisor
+checkpoint. The stopwatch remained near 2.7 seconds. The immutable pre-start
+completed in about 10 ms without writing brightness, and game, music, reader,
+movie, retained-frame return, emergency UI restart and durable shutdown passed
+without failed units or ownership loss.
+
+The next subtraction runs the single-consumer 4,831-byte
+`capture-boot-state.sh` directly from immutable `/flash` after autostart. It
+removes its writable copy, chmod operand and destination check, reducing
+preparation from 15 files/136,162 bytes to 14 files/131,331 bytes and removing
+4,831 source-read plus destination-write bytes. The script execution and its
+diagnostic writes remain. This changes no launcher, content, input, controls,
+suspend, audio, task, timer or resident-memory behavior, and is not a boot-time
+claim. A fresh complete snapshot, boot non-regression, content return and
+shutdown remain the physical gate.
 
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full

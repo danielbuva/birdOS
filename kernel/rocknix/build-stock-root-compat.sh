@@ -618,6 +618,9 @@ grep -q '^Type=simple$' \
 	"$OUTPUT/card/bird/rocknix-report-stats.service" || fail 'nonblocking snapshot missing'
 grep -q '^RuntimeMaxSec=20s$' \
 	"$OUTPUT/card/bird/rocknix-report-stats.service" || fail 'bounded snapshot runtime missing'
+grep -q '^ExecStart=/flash/bird/capture-boot-state.sh$' \
+	"$OUTPUT/card/bird/rocknix-report-stats.service" || \
+	fail 'immutable boot snapshot path missing'
 grep -q 'timeout 2s pactl info' \
 	"$OUTPUT/card/bird/capture-boot-state.sh" || fail 'bounded audio diagnostic missing'
 grep -q "^  LINUX /bird-releases/$RELEASE_ID/KERNEL$" \

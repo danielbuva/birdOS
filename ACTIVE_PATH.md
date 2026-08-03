@@ -19,9 +19,9 @@ display geometry and hardware policy are deliberate. Older muOS stages,
 source-kernel challengers and clean-root experiments remain useful evidence,
 but they are not alternate active implementations.
 
-The card currently selects the bounded Stage 4 immutable first-frame-preparation
-candidate `v6.23-flash-firstframe-094be8b`, built from clean source
-`094be8be0555c4ab51f2968b21f13993b63de96f`. Its previous selector is the
+The card currently selects the physically accepted Stage 4 immutable
+first-frame-preparation checkpoint `v6.23-flash-firstframe-094be8b`, built from
+clean source `094be8be0555c4ab51f2968b21f13993b63de96f`. Its previous selector is the
 physically accepted immutable-supervisor checkpoint
 `v6.23-flash-supervisor-f06686a`, not a rejected experiment. The selected candidate's
 canonical manifest digest is
@@ -30,9 +30,8 @@ and deployment verified all 57 manifest-owned files. The device-contract digest 
 `85ccb8e46e71ee66e2320022ac13228124d6efcea5abdd800b8c18bd190f73cd`
 and the generated-catalog digest is
 `7e29e491bb43191ca9ae6c18bd566b6ba0c984bf43d1d0103eddd6e534306e62`.
-The immutable-dispatcher and immutable-supervisor checkpoints passed their full
-RG34XX-SP gates. The selected first-frame-preparation candidate has passed host,
-build and deployment gates but still requires its RG34XX-SP boot/content gate.
+The immutable-dispatcher, immutable-supervisor and selected
+first-frame-preparation checkpoints passed their full RG34XX-SP gates.
 None of these tuples
 replaces the broader source/behavior baseline or immutable fallback named above.
 
@@ -689,8 +688,35 @@ unchanged. Profile variants remain 658,408 and 669,992 bytes. The early overlay
 is 615,256 bytes, five compressed bytes larger than the accepted overlay even
 though its early launcher is byte-identical. The inactive immutable-dispatcher
 release was archived and independently verified in the private GitHub release
-archive before its card copy was reclaimed. Hardware behavior and timing remain
-unclaimed until the card returns from this candidate's physical gate.
+archive before its card copy was reclaimed.
+
+The physical gate passes. Five valid kernel-to-usable records were 1229, 1221,
+1221, 1229 and 1226 ms, a descriptive median of 1226 ms and no regression from
+the accepted supervisor checkpoint. The external stopwatch remained near 2.7
+seconds. The immutable pre-start completed in about 10 ms without a brightness
+write. Game, music, reader, movie, retained-frame returns, an emergency UI
+restart and durable shutdown completed with no failed unit or ownership loss.
+One shutdown requested before storage readiness exercised the existing bounded
+final-root wait and still completed; that path was unchanged by this candidate.
+
+### Immutable boot-snapshot candidate
+
+The next bounded Stage 4 candidate changes only
+`rocknix-report-stats.service` from the writable diagnostic duplicate to
+`/flash/bird/capture-boot-state.sh`. The 4,831-byte script has one post-autostart
+consumer, uses absolute paths and writes only its snapshot below writable
+storage. The accepted immutable `/flash/bird` lifetime already covers the
+launcher, dispatcher, supervisor and first-frame preparation.
+
+Writable preparation falls from 15 files/136,162 bytes to 14 files/131,331
+bytes. This removes one `cp` invocation, one mode operand, one destination
+capability check and 4,831 source-read plus 4,831 destination-write bytes. The
+diagnostic still runs once after autostart, so its execution read is not counted
+as removed. Launcher, framebuffer, input, content, controls, suspend, audio,
+timers, tasks and resident memory are unchanged. This is post-usable storage
+work reduction; it cannot claim a first-frame improvement. Its physical gate is
+boot non-inferiority, a fresh complete snapshot after 25 seconds, normal content
+return and shutdown.
 
 ## Launcher visual architecture
 

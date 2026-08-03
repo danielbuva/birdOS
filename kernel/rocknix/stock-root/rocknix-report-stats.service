@@ -10,4 +10,4 @@ Environment=HOME=/storage
 Environment=XDG_RUNTIME_DIR=/var/run/0-runtime-dir
 Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket
 RuntimeMaxSec=20s
-ExecStart=/storage/.config/bird/capture-boot-state.sh
+ExecStart=/flash/bird/capture-boot-state.sh
