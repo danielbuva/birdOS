@@ -543,6 +543,19 @@ all controls, content and forced cleanup, provider/network return, suspend,
 quick and changed shutdown and rollback; per-path source assertions keep each
 batched change independently diagnosable.
 
+Clean source `61c51dd798af47330af604e2884553f2e0275e68` is deployed as
+`v6.23-flash-toolset-61c51dd`, manifest
+`d806243beeb5edbffadc36ac1f83fb9306407935d1084e24d23aa11a2881a8a9`,
+with all 57 files and the `.complete` digest verified. The accepted snapshot
+checkpoint is the previous selector. Both release/profile launcher pairs and
+their sections remain byte-identical. The only executable-size change is fixed
+controls, 10,608 to 10,568 bytes through a 40-byte `.rodata` reduction. The
+manifest-owned release shrinks 1,869 bytes; the mount hook contributes 1,692
+bytes and the compressed overlay changes from 615,256 to 615,254 bytes. The
+inactive first-frame release was archived, published and independently verified
+on GitHub before its card copy was removed. The batch now waits for the broad
+physical behavior and timing gate.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.

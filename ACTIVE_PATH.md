@@ -19,19 +19,21 @@ display geometry and hardware policy are deliberate. Older muOS stages,
 source-kernel challengers and clean-root experiments remain useful evidence,
 but they are not alternate active implementations.
 
-The card currently selects the physically accepted Stage 4 immutable
-boot-snapshot checkpoint `v6.23-flash-snapshot-9c4250e`, built from clean source
-`9c4250ee50afd37c720a25b7cf109a64bd1a1303`. Its previous selector is the
-physically accepted first-frame-preparation checkpoint
-`v6.23-flash-firstframe-094be8b`, not a rejected experiment. The selected candidate's
+The card currently selects the aggressive Stage 4 complete immutable-toolset
+candidate `v6.23-flash-toolset-61c51dd`, built from clean source
+`61c51dd798af47330af604e2884553f2e0275e68`. Its previous selector is the
+physically accepted boot-snapshot checkpoint
+`v6.23-flash-snapshot-9c4250e`, not a rejected experiment. The selected candidate's
 canonical manifest digest is
-`4d854a95edbea36e0e23e26ce7fa76c6a559b790ffcf30e0a852c98d0f877b93`,
+`d806243beeb5edbffadc36ac1f83fb9306407935d1084e24d23aa11a2881a8a9`,
 and deployment verified all 57 manifest-owned files. The device-contract digest is
 `85ccb8e46e71ee66e2320022ac13228124d6efcea5abdd800b8c18bd190f73cd`
 and the generated-catalog digest is
 `7e29e491bb43191ca9ae6c18bd566b6ba0c984bf43d1d0103eddd6e534306e62`.
 The immutable-dispatcher, immutable-supervisor, first-frame-preparation and
-selected boot-snapshot checkpoints passed their full RG34XX-SP gates.
+boot-snapshot checkpoints passed their full RG34XX-SP gates. The selected
+complete-toolset batch has passed host, build and deployment gates but still
+requires its broad RG34XX-SP behavior gate.
 None of these tuples
 replaces the broader source/behavior baseline or immutable fallback named above.
 
@@ -765,6 +767,20 @@ cover boot timing, storage/application readiness, all global controls, normal
 and forced content exit, game/media/reader/PortMaster launch and return, Wi-Fi
 cleanup, repeated suspend/resume, input reconnect, changed and quick shutdown,
 and rollback availability.
+
+Clean source `61c51dd798af47330af604e2884553f2e0275e68` is deployed as
+`v6.23-flash-toolset-61c51dd`, canonical manifest
+`d806243beeb5edbffadc36ac1f83fb9306407935d1084e24d23aa11a2881a8a9`.
+All 57 manifest-owned files and the `.complete` digest verified, with the
+accepted boot-snapshot checkpoint as the previous selector. Release launchers
+and their ELF sections remain byte-identical at 597,336/600,600 bytes; profile
+launchers remain 658,408/669,992 bytes. Fixed controls shrink from 10,608 to
+10,568 bytes entirely in `.rodata`; `.text`, data and BSS are unchanged. The
+manifest-owned release shrinks 1,869 bytes, including a 1,692-byte smaller
+mount hook and a two-byte smaller 615,254-byte compressed overlay. The inactive
+first-frame release was archived, published and independently verified in the
+private GitHub release archive before its card copy was reclaimed. Hardware
+behavior and timing remain unclaimed until the card returns from this batch.
 
 ## Launcher visual architecture
 

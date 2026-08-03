@@ -817,6 +817,18 @@ combined hardware gate exercises controls, normal/forced content cleanup,
 providers, PortMaster Wi-Fi teardown, suspend, quick/changed shutdown and
 rollback.
 
+Clean source `61c51dd798af47330af604e2884553f2e0275e68` is deployed as
+`v6.23-flash-toolset-61c51dd`, manifest
+`d806243beeb5edbffadc36ac1f83fb9306407935d1084e24d23aa11a2881a8a9`,
+with all 57 files verified and the accepted boot-snapshot checkpoint as
+previous. Release and profile launchers and their ELF sections are unchanged at
+597,336/600,600 and 658,408/669,992 bytes. Fixed controls lose 40 `.rodata`
+bytes with unchanged code/data/BSS. The manifest-owned release is 1,869 bytes
+smaller, the mount hook is 1,692 bytes smaller and the compressed overlay is
+two bytes smaller at 615,254. The inactive first-frame release was archived and
+independently verified on GitHub before card reclamation. The broad RG34XX-SP
+gate remains pending.
+
 ## Stage 5 — Battery, suspend and memory closure
 
 Measure calibrated energy, wakeups, IRQs and CPU residency for short-label menu
