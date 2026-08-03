@@ -1059,13 +1059,16 @@ grep -Fq 'print "system.suspendmode=" mode' \
 	"$OUTPUT/card/mount-storage.sh" || fail 'pre-systemd fake-suspend mode enforcement missing'
 grep -Fq '/flash/bird/bird-suspend-policy.generated.sh' \
 	"$OUTPUT/card/mount-storage.sh" || fail 'generated suspend policy is not consumed'
-grep -Fq '/flash/bird/bird-restore-suspend-policy.sh' \
-	"$OUTPUT/card/mount-storage.sh" || fail 'post-recovery suspend policy missing'
+grep -Fq '$FLASH_ROOT/bird-restore-suspend-policy.sh' \
+	"$OUTPUT/card/bird/bird-autostart" || \
+	fail 'post-recovery suspend policy step missing'
 grep -Fq '/usr/bin/suspendmode' \
 	"$OUTPUT/card/bird/bird-restore-suspend-policy.sh" || \
 	fail 'fixed suspendmode transaction missing'
-grep -Fq '030-suspend_mode' \
-	"$OUTPUT/card/mount-storage.sh" || fail 'late H700 suspend writer remained active'
+if grep -Fq '030-suspend_mode' "$OUTPUT/card/mount-storage.sh" \
+	"$OUTPUT/card/bird/bird-autostart"; then
+	fail 'late H700 suspend writer remained active'
+fi
 grep -Fxq 'AllowSuspend=no' \
 	"$OUTPUT/card/bird/bird-sleep.conf" || fail 'kernel suspend disable policy missing'
 grep -Fxq 'HandleLidSwitch=ignore' \
@@ -1077,8 +1080,10 @@ grep -Fxq 'BIRD_SUSPEND_PROVIDER_MODE=off' \
 	fail 'generated fake-suspend provider policy missing'
 grep -q 'DEVICE_TEMP_SENSOR=.*thermal_zone2/temp' \
 	"$OUTPUT/card/bird/bird-fixed-platform.sh" || fail 'fixed thermal profile missing'
-grep -q '001-sync-modules' \
-	"$OUTPUT/card/mount-storage.sh" || fail 'immutable module sync remained active'
+if grep -q '001-sync-modules' "$OUTPUT/card/mount-storage.sh" \
+	"$OUTPUT/card/bird/bird-autostart"; then
+	fail 'immutable module sync remained active'
+fi
 grep -q 'XCOMPOSEFILE=/dev/null' \
 	"$OUTPUT/card/bird/run-content.sh" || fail 'English PortMaster policy missing'
 grep -q -- '--- audio graph ---' \
