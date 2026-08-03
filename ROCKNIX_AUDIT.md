@@ -657,6 +657,16 @@ EmulationStation start lock. Udev, seatd, journald, audio, networking, HDMI,
 Bluetooth and suspend remain unchanged. This is an application-readiness and
 persistent-I/O candidate, not a first-frame candidate.
 
+The returned physical gate accepted that exact fixed-profile tuple. Two clean
+samples reached input at 1216/1218 ms, usable readiness at 1222/1221 ms and the
+supervisor at 9.28/9.26 s, with the complete tested behavior matrix passing.
+The next retained-policy audit removes generic runtime discovery around CPU,
+GPU, turbo and rumble but explicitly preserves their RG34XX-SP controls. The
+captured closure includes four Cortex-A53 cores, all advertised CPU/GPU
+governors, 600 MHz normal and 648 MHz overclocked GPU maxima, CPU boost and the
+joypad driver's PWM vibrator. These are retained capabilities, not feature
+deletion candidates. HDMI, Bluetooth and audio are outside this batch.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.

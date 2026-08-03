@@ -966,6 +966,21 @@ profiles and their repair code. This is post-usable work, so no first-frame
 change is expected or claimed; application readiness and storage-write
 reduction require device verification.
 
+The returned RG34XX-SP gate accepted this exact fixed-profile release. All
+menu, launch, return, media, storage, power and suspend checks passed. Two
+preserved clean boots reached direct input at 1216/1218 ms and honest usable
+readiness at 1222/1221 ms; their supervisors began at 9.28/9.26 s. These samples
+establish non-regression inside the accepted first-menu range, not a faster
+distribution. This release is the physical rollback for the next candidate.
+
+The next retained-policy boundary replaces four generic post-frame wrappers:
+multi-board CPU/GPU discovery, H700 GPU-overclock profile loading, recursive
+platform rumble discovery and generic turbo settings loading. Fixed board paths
+and limits retain adjustable core count, every captured CPU/GPU governor, the
+600/648 MHz GPU maximum, turbo on/off and built-in PWM rumble on/off. HDMI,
+Bluetooth and audio are unchanged. Each policy remains independently tested
+and revertible even though the batch shares one hardware cycle.
+
 ## Launcher visual architecture
 
 The active 720x480 launcher presentation is inspired by Mister Menu's ES-DE

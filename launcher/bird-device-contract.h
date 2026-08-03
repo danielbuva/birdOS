@@ -30,6 +30,21 @@
 #define BIRD_DEVICE_INPUT_ABS_BITMAP 0x1bUL
 #define BIRD_DEVICE_INPUT_FF_BITMAP_WORD_COUNT 2U
 #define BIRD_DEVICE_INPUT_FF_BITMAP_WORDS { 0x0000000000000000UL, 0x0000000107030000UL }
+#define BIRD_DEVICE_RUMBLE_ENABLE_PATH "/sys/devices/platform/rocknix-singleadc-joypad/rumble_enable"
+#define BIRD_DEVICE_RUMBLE_DEFAULT_ENABLED 1U
+#define BIRD_DEVICE_CPU_COUNT 4U
+#define BIRD_DEVICE_CPU_POLICY_PATH "/sys/devices/system/cpu/cpufreq/policy0"
+#define BIRD_DEVICE_CPU_MIN_KHZ 480000U
+#define BIRD_DEVICE_CPU_MAX_KHZ 1416000U
+#define BIRD_DEVICE_CPU_GOVERNORS "conservative ondemand userspace powersave performance schedutil"
+#define BIRD_DEVICE_CPU_DEFAULT_GOVERNOR "ondemand"
+#define BIRD_DEVICE_GPU_DEVFREQ_PATH "/sys/devices/platform/soc/1800000.gpu/devfreq/1800000.gpu"
+#define BIRD_DEVICE_GPU_MIN_HZ 420000000U
+#define BIRD_DEVICE_GPU_MAX_HZ 600000000U
+#define BIRD_DEVICE_GPU_OVERCLOCK_HZ 648000000U
+#define BIRD_DEVICE_GPU_GOVERNORS "userspace powersave performance simple_ondemand"
+#define BIRD_DEVICE_GPU_DEFAULT_GOVERNOR "simple_ondemand"
+#define BIRD_DEVICE_TURBO_PATH "/sys/devices/system/cpu/cpufreq/boost"
 #define BIRD_DEVICE_BACKLIGHT_DIRECTORY "/sys/class/backlight/backlight"
 #define BIRD_DEVICE_BACKLIGHT_MAXIMUM_RAW 2499U
 #define BIRD_DEVICE_BACKLIGHT_COLD_PERCENT 5U

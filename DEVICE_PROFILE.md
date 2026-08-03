@@ -32,6 +32,13 @@ machine-readable hardware subset without replacing this experience contract.
 - Whether the final image retains HDMI and Bluetooth support is an explicit
   later product decision. Current optimization candidates preserve both
   retained paths; absence from offline boot is not approval to remove them.
+- CPU core count and governor, GPU governor and bounded H700 overclock, and CPU
+  turbo are retained adjustable RG34XX-SP capabilities. Their implementation
+  may use fixed board paths and verified limits, but later optimization must
+  not collapse them into one immutable performance mode.
+- The built-in PWM vibrator is retained hardware. Rumble may be enabled or
+  disabled by policy and remains available to compatible content; removing
+  generic device discovery is not permission to remove force feedback.
 
 ## Fixed behavior
 

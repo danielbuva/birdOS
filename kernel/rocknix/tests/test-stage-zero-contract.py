@@ -37,6 +37,10 @@ def main() -> None:
     assert "BIRD_DEVICE_INPUT_KEY_BITMAP_WORD_COUNT 12U" in header
     assert "0x0000000107030000UL" in header
     assert "BIRD_DEVICE_BACKLIGHT_MAXIMUM_RAW 2499U" in header
+    assert "BIRD_DEVICE_RUMBLE_ENABLE_PATH" in header
+    assert "BIRD_DEVICE_CPU_COUNT 4U" in header
+    assert "BIRD_DEVICE_CPU_MAX_KHZ 1416000U" in header
+    assert "BIRD_DEVICE_GPU_OVERCLOCK_HZ 648000000U" in header
     assert "deploy-manifest" not in (ROOT / "bird-device-contract.tsv").read_text()
     assert "BIRD_SUSPEND_PROVIDER_MODE=off" in (ROOT / policy_shell).read_text()
     assert "AllowSuspend=no" in (ROOT / sleep_policy).read_text()

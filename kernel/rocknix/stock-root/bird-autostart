@@ -4,7 +4,7 @@
 # upstream responsibility set are detected, but release boots do not rescan or
 # launch scripts which this fixed profile has already proven unnecessary.
 
-BIRD_AUTOSTART_REVISION=bird-fixed-autostart-v1
+BIRD_AUTOSTART_REVISION=bird-fixed-autostart-v2
 FLASH_ROOT=${BIRD_FLASH_ROOT:-/flash/bird}
 AUTOSTART_ROOT=${BIRD_AUTOSTART_ROOT:-/usr/lib/autostart}
 CUSTOM_ROOT=${BIRD_CUSTOM_ROOT:-/storage/.config/autostart}
@@ -21,7 +21,8 @@ log_failure() {
 run_step() {
 	STEP_NAME=$1
 	STEP_PATH=$2
-	"$STEP_PATH" >>"$BOOTLOG" 2>&1
+	shift 2
+	"$STEP_PATH" "$@" >>"$BOOTLOG" 2>&1
 	STEP_STATUS=$?
 	[ "$STEP_STATUS" -eq 0 ] || log_failure "$STEP_NAME" "$STEP_STATUS"
 }
@@ -31,18 +32,17 @@ performance 2>/dev/null || log_failure performance "$?"
 # Exact H700 and common-script order from the pinned v6.23 SYSTEM.
 run_step fixed-platform "$FLASH_ROOT/bird-fixed-platform.sh"
 run_step ui-selection "$FLASH_ROOT/090-ui_service"
-run_step gpu-overclock \
-	"$AUTOSTART_ROOT/quirks/platforms/H700/400-set_gpu_overclock"
+run_step gpu-overclock "$FLASH_ROOT/bird-fixed-gpu-overclock.sh"
 
 run_step controller "$FLASH_ROOT/bird-fixed-controller.sh"
 run_step setup "$FLASH_ROOT/bird-fixed-setup.sh"
 run_step logging "$FLASH_ROOT/bird-fixed-logging.sh"
-run_step perfmode "$AUTOSTART_ROOT/common/008-perfmode"
+run_step perfmode "$FLASH_ROOT/bird-fixed-performance.sh" prepare
 run_step suspend-policy "$FLASH_ROOT/bird-restore-suspend-policy.sh"
 run_step pico8 "$FLASH_ROOT/bird-fixed-pico8.sh"
-run_step rumble "$AUTOSTART_ROOT/common/020-rumble"
+run_step rumble "$FLASH_ROOT/bird-fixed-rumble.sh"
 run_step audio "$AUTOSTART_ROOT/common/050-audio"
-run_step turbo-mode "$AUTOSTART_ROOT/common/095-turbo-mode"
+run_step turbo-mode "$FLASH_ROOT/bird-fixed-turbo.sh"
 run_step fixed-sway "$FLASH_ROOT/bird-fixed-sway.sh"
 run_step application-ready "$FLASH_ROOT/999-export"
 
@@ -55,12 +55,6 @@ if [ -d "$CUSTOM_ROOT" ]; then
 	done
 fi
 
-DEVICE_CPU_GOVERNOR=$(get_setting system.cpugovernor)
-if [ -n "$DEVICE_CPU_GOVERNOR" ]; then
-	$DEVICE_CPU_GOVERNOR >>"$BOOTLOG" 2>&1
-	GOVERNOR_STATUS=$?
-	[ "$GOVERNOR_STATUS" -eq 0 ] || \
-		log_failure cpu-governor "$GOVERNOR_STATUS"
-fi
+run_step cpu-governor "$FLASH_ROOT/bird-fixed-performance.sh" governor
 
 exit 0

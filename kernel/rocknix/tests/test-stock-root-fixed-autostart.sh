@@ -30,16 +30,18 @@ make_step() {
 
 make_step "$FLASH/bird-fixed-platform.sh" fixed-platform
 make_step "$FLASH/090-ui_service" ui-selection
-make_step "$AUTOSTART/quirks/platforms/H700/400-set_gpu_overclock" gpu-overclock
+make_step "$FLASH/bird-fixed-gpu-overclock.sh" gpu-overclock
 make_step "$FLASH/bird-fixed-controller.sh" controller
 make_step "$FLASH/bird-fixed-setup.sh" setup 7
 make_step "$FLASH/bird-fixed-logging.sh" logging
-make_step "$AUTOSTART/common/008-perfmode" perfmode
+printf '#!/bin/sh\nprintf "performance-%%s\\n" "$1" >>"$BIRD_TEST_EVENTS"\n' \
+	>"$FLASH/bird-fixed-performance.sh"
+chmod 0755 "$FLASH/bird-fixed-performance.sh"
 make_step "$FLASH/bird-restore-suspend-policy.sh" suspend-policy
 make_step "$FLASH/bird-fixed-pico8.sh" pico8
-make_step "$AUTOSTART/common/020-rumble" rumble
+make_step "$FLASH/bird-fixed-rumble.sh" rumble
 make_step "$AUTOSTART/common/050-audio" audio
-make_step "$AUTOSTART/common/095-turbo-mode" turbo-mode
+make_step "$FLASH/bird-fixed-turbo.sh" turbo-mode
 make_step "$FLASH/bird-fixed-sway.sh" fixed-sway
 make_step "$FLASH/999-export" application-ready
 make_step "$CUSTOM/010-first" custom-first
@@ -47,14 +49,9 @@ make_step "$CUSTOM/020-second" custom-second
 
 printf '#!/bin/sh\nprintf "performance\\n" >>"$BIRD_TEST_EVENTS"\n' \
 	>"$BIN/performance"
-printf '#!/bin/sh\nprintf "governor\\n" >>"$BIRD_TEST_EVENTS"\n' \
-	>"$BIN/test-governor"
-printf '#!/bin/sh\nprintf "%%s\\n" "$BIRD_TEST_GOVERNOR"\n' \
-	>"$BIN/get_setting"
-chmod 0755 "$BIN/performance" "$BIN/test-governor" "$BIN/get_setting"
+chmod 0755 "$BIN/performance"
 
 export BIRD_TEST_EVENTS=$EVENTS
-export BIRD_TEST_GOVERNOR=$BIN/test-governor
 PATH=$BIN:$PATH \
 BIRD_FLASH_ROOT=$FLASH \
 BIRD_AUTOSTART_ROOT=$AUTOSTART \
@@ -70,7 +67,7 @@ gpu-overclock
 controller
 setup
 logging
-perfmode
+performance-prepare
 suspend-policy
 pico8
 rumble
@@ -80,16 +77,21 @@ fixed-sway
 application-ready
 custom-first
 custom-second
-governor
+performance-governor
 EOF
 cmp "$TMP/expected" "$EVENTS"
 grep -Fxq 'Bird autostart step failed: setup status=7' "$BOOTLOG"
 [ ! -e "$TMP/start.games" ]
 
-grep -q '^BIRD_AUTOSTART_REVISION=bird-fixed-autostart-v1$' "$SCRIPT"
+grep -q '^BIRD_AUTOSTART_REVISION=bird-fixed-autostart-v2$' "$SCRIPT"
 if grep -Eq 'autostart/(common|quirks)/[*]|common/001-(controller|setup)|start[.]games|(^|[^[:alnum:]_])date([^[:alnum:]_]|$)|tocon|systemctl' \
 	"$SCRIPT"; then
 	printf '%s\n' 'fixed coordinator regained generic discovery or helpers' >&2
+	exit 1
+fi
+if grep -Eq 'common/008-perfmode|common/020-rumble|common/095-turbo-mode|400-set_gpu_overclock|get_setting system.cpugovernor' \
+	"$SCRIPT"; then
+	printf '%s\n' 'generic performance or rumble policy returned' >&2
 	exit 1
 fi
 

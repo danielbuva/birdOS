@@ -24,6 +24,21 @@ input.ev_bitmap	hex	0x20000b
 input.key_bitmap	bitmap64	0x0000000000000000,0x0000000000000000,0x0000000000000000,0x0000000000000000,0x7fdb000000000000,0x0000000000000000,0x0000000000000000,0x0000000000000000,0x0000000f00000000,0x0000000000000000,0x0000000000000000,0x0000000000000000
 input.abs_bitmap	hex	0x1b
 input.ff_bitmap	bitmap64	0x0000000000000000,0x0000000107030000
+rumble.enable_path	string	/sys/devices/platform/rocknix-singleadc-joypad/rumble_enable
+rumble.default_enabled	bool	true
+performance.cpu_count	u32	4
+performance.cpu_policy_path	string	/sys/devices/system/cpu/cpufreq/policy0
+performance.cpu_min_khz	u32	480000
+performance.cpu_max_khz	u32	1416000
+performance.cpu_governors	string	conservative ondemand userspace powersave performance schedutil
+performance.cpu_default_governor	string	ondemand
+performance.gpu_devfreq_path	string	/sys/devices/platform/soc/1800000.gpu/devfreq/1800000.gpu
+performance.gpu_min_hz	u32	420000000
+performance.gpu_max_hz	u32	600000000
+performance.gpu_overclock_hz	u32	648000000
+performance.gpu_governors	string	userspace powersave performance simple_ondemand
+performance.gpu_default_governor	string	simple_ondemand
+performance.turbo_path	string	/sys/devices/system/cpu/cpufreq/boost
 backlight.directory	string	/sys/class/backlight/backlight
 backlight.maximum_raw	u32	2499
 backlight.cold_percent	u32	5

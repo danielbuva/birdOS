@@ -1006,6 +1006,19 @@ Both launchers are byte-identical and the release overlay shrinks three bytes;
 manifest-owned bytes grow 3,513. The target is earlier application readiness
 and fewer persistent writes, with boot/UI required to remain non-inferior.
 
+The returned hardware gate passed the complete tested matrix. Direct input was
+available at 1216/1218 ms, usable readiness at 1222/1221 ms and supervisor start
+at 9.28/9.26 s. These are non-regression samples, not a distribution-level boot
+improvement. Fixed profiles are the accepted rollback for the next candidate.
+
+The next larger-but-separable Stage 4 batch replaces generic performance,
+overclock, turbo and rumble wrappers with fixed RG34XX-SP policy scripts. This
+subtracts discovery and profile loading only: adjustable 1--4/all CPU cores,
+captured CPU/GPU governors, the bounded 648 MHz H700 GPU option, CPU turbo and
+the built-in PWM vibrator remain product features. Independent host fault
+injection and rollback boundaries are required for each policy. HDMI,
+Bluetooth and audio are unchanged.
+
 ## Stage 5 — Battery, suspend and memory closure
 
 Measure calibrated energy, wakeups, IRQs and CPU residency for short-label menu

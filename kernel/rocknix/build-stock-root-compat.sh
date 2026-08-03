@@ -422,6 +422,8 @@ for FILE in 090-ui_service 999-export bird-autostart bird-journald.conf \
 	bird-restore-suspend-policy.sh bird-volume.sh bird-control-osd.sh \
 	bird-fixed-sway.sh bird-fixed-platform.sh bird-fixed-logging.sh \
 	bird-fixed-pico8.sh bird-fixed-controller.sh bird-fixed-setup.sh \
+	bird-fixed-performance.sh bird-fixed-gpu-overclock.sh \
+	bird-fixed-rumble.sh bird-fixed-turbo.sh \
 	bird-controller-profile \
 	bird-swap.conf bird-suspend-policy.generated.sh bird-sleep.conf; do
 	cp -fp "$ROOT/kernel/rocknix/stock-root/$FILE" "$OUTPUT/card/bird/$FILE"
@@ -468,7 +470,11 @@ chmod 0755 "$OUTPUT/card/post-flash.sh" "$OUTPUT/card/mount-storage.sh" \
 	"$OUTPUT/card/bird/bird-fixed-logging.sh" \
 	"$OUTPUT/card/bird/bird-fixed-pico8.sh" \
 	"$OUTPUT/card/bird/bird-fixed-controller.sh" \
-	"$OUTPUT/card/bird/bird-fixed-setup.sh"
+	"$OUTPUT/card/bird/bird-fixed-setup.sh" \
+	"$OUTPUT/card/bird/bird-fixed-performance.sh" \
+	"$OUTPUT/card/bird/bird-fixed-gpu-overclock.sh" \
+	"$OUTPUT/card/bird/bird-fixed-rumble.sh" \
+	"$OUTPUT/card/bird/bird-fixed-turbo.sh"
 
 for SCRIPT in "$OUTPUT/card/post-flash.sh" \
 	"$OUTPUT/card/mount-storage.sh" \
@@ -495,7 +501,11 @@ for SCRIPT in "$OUTPUT/card/post-flash.sh" \
 	"$OUTPUT/card/bird/bird-fixed-logging.sh" \
 	"$OUTPUT/card/bird/bird-fixed-pico8.sh" \
 	"$OUTPUT/card/bird/bird-fixed-controller.sh" \
-	"$OUTPUT/card/bird/bird-fixed-setup.sh"; do
+	"$OUTPUT/card/bird/bird-fixed-setup.sh" \
+	"$OUTPUT/card/bird/bird-fixed-performance.sh" \
+	"$OUTPUT/card/bird/bird-fixed-gpu-overclock.sh" \
+	"$OUTPUT/card/bird/bird-fixed-rumble.sh" \
+	"$OUTPUT/card/bird/bird-fixed-turbo.sh"; do
 	bash -n "$SCRIPT" || fail "shell syntax failed: $SCRIPT"
 done
 bash -n "$OUTPUT/card/bird/bird-suspend-policy.generated.sh" || \
@@ -588,9 +598,10 @@ grep -q '^BindPaths=/dev/null:/dev/console$' \
 	"$OUTPUT/card/bird/rocknix-autostart.service" || fail 'autostart console isolation missing'
 grep -q 'exec /flash/bird/bird-autostart' \
 	"$OUTPUT/card/bird/rocknix-autostart.service" || fail 'fixed autostart coordinator missing'
-grep -q '^BIRD_AUTOSTART_REVISION=bird-fixed-autostart-v1$' \
+grep -q '^BIRD_AUTOSTART_REVISION=bird-fixed-autostart-v2$' \
 	"$OUTPUT/card/bird/bird-autostart" || fail 'fixed autostart revision missing'
-grep -q '400-set_gpu_overclock' "$OUTPUT/card/bird/bird-autostart" || \
+grep -q '\$FLASH_ROOT/bird-fixed-gpu-overclock.sh' \
+	"$OUTPUT/card/bird/bird-autostart" || \
 	fail 'fixed H700 GPU policy missing'
 grep -q 'common/050-audio' "$OUTPUT/card/bird/bird-autostart" || \
 	fail 'fixed audio preparation missing'
@@ -1073,6 +1084,16 @@ grep -q '\$FLASH_ROOT/bird-fixed-setup.sh' \
 if grep -q 'common/003-logging\|common/010-pico8\|common/001-controller\|common/001-setup\|start[.]games' \
 	"$OUTPUT/card/bird/bird-autostart"; then
 	fail 'write-heavy generic fixed-profile setup remained active'
+fi
+for FIXED_POLICY in bird-fixed-performance.sh bird-fixed-gpu-overclock.sh \
+	bird-fixed-rumble.sh bird-fixed-turbo.sh; do
+	grep -q "\\\$FLASH_ROOT/$FIXED_POLICY" \
+		"$OUTPUT/card/bird/bird-autostart" || \
+		fail "fixed device policy missing: $FIXED_POLICY"
+done
+if grep -q 'common/008-perfmode\|common/020-rumble\|common/095-turbo-mode\|400-set_gpu_overclock\|get_setting system.cpugovernor' \
+	"$OUTPUT/card/bird/bird-autostart"; then
+	fail 'generic performance or rumble policy remained active'
 fi
 grep -q '^Storage=volatile$' "$OUTPUT/card/bird/bird-journald.conf" || \
 	fail 'explicit volatile journal policy missing'
