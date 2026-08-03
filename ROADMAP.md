@@ -747,6 +747,16 @@ storage-efficiency candidate; no boot improvement is claimed. Its hardware gate
 is boot non-inferiority, read-only brightness evidence, quick launch/return,
 emergency restart and shutdown.
 
+Clean source `094be8be0555c4ab51f2968b21f13993b63de96f` is deployed as
+`v6.23-flash-firstframe-094be8b`, manifest
+`c90a4b6b5b21fd5cedabdb58f0756ec8ceb810adf18c39efae017becde8dff20`,
+with all 57 files verified and the accepted supervisor checkpoint as previous.
+Release launchers are byte-identical at 597,336/600,600 bytes; profile launchers
+remain 658,408/669,992 bytes. The 615,256-byte overlay is five compressed bytes
+larger with an unchanged early launcher. The inactive dispatcher release was
+archived and independently verified on GitHub before card reclamation. The
+RG34XX-SP gate remains pending.
+
 ## Stage 5 — Battery, suspend and memory closure
 
 Measure calibrated energy, wakeups, IRQs and CPU residency for short-label menu

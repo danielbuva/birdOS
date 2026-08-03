@@ -487,6 +487,16 @@ without changing the launcher, content, audio, suspend, task, timer or memory
 paths. The physical gate remains boot non-regression, brightness observation,
 quick content return, emergency restart and shutdown.
 
+Clean source `094be8be0555c4ab51f2968b21f13993b63de96f` is deployed as
+`v6.23-flash-firstframe-094be8b`, manifest
+`c90a4b6b5b21fd5cedabdb58f0756ec8ceb810adf18c39efae017becde8dff20`,
+with all 57 manifest files verified and the accepted supervisor as previous.
+Both release launchers and their ELF sections are byte-identical; profile sizes
+remain 658,408/669,992 bytes. The overlay changed from 615,251 to 615,256
+compressed bytes with no early-launcher change. This candidate now waits only
+for its physical boot/log, brightness-observation, content/recovery and shutdown
+gate.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.

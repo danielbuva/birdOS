@@ -19,19 +19,21 @@ display geometry and hardware policy are deliberate. Older muOS stages,
 source-kernel challengers and clean-root experiments remain useful evidence,
 but they are not alternate active implementations.
 
-The card currently selects the bounded Stage 4 immutable-supervisor candidate
-`v6.23-flash-supervisor-f06686a`, built from clean source
-`f06686ab0cf80676733de800809c39765aadfc6e`. Its previous selector is the
-physically accepted immutable-dispatcher checkpoint
-`v6.23-flash-runner-0b438f5`, not a rejected experiment. The selected candidate's
+The card currently selects the bounded Stage 4 immutable first-frame-preparation
+candidate `v6.23-flash-firstframe-094be8b`, built from clean source
+`094be8be0555c4ab51f2968b21f13993b63de96f`. Its previous selector is the
+physically accepted immutable-supervisor checkpoint
+`v6.23-flash-supervisor-f06686a`, not a rejected experiment. The selected candidate's
 canonical manifest digest is
-`e69a5c90fae8479161819b5797984d03e9d8a15e0c96f23a75c4647c6582bb37`,
+`c90a4b6b5b21fd5cedabdb58f0756ec8ceb810adf18c39efae017becde8dff20`,
 and deployment verified all 57 manifest-owned files. The device-contract digest is
 `85ccb8e46e71ee66e2320022ac13228124d6efcea5abdd800b8c18bd190f73cd`
 and the generated-catalog digest is
 `7e29e491bb43191ca9ae6c18bd566b6ba0c984bf43d1d0103eddd6e534306e62`.
 The immutable-dispatcher and immutable-supervisor checkpoints passed their full
-RG34XX-SP gates. Neither tuple
+RG34XX-SP gates. The selected first-frame-preparation candidate has passed host,
+build and deployment gates but still requires its RG34XX-SP boot/content gate.
+None of these tuples
 replaces the broader source/behavior baseline or immutable fallback named above.
 
 ## Authority
@@ -675,6 +677,20 @@ is not counted as removed. There is no launcher, framebuffer, input, provider,
 suspend, audio, task, timer, wakeup or resident-memory change. Boot timing, the
 read-only brightness log, quick launch/return, repeated emergency restart and
 shutdown remain the RG34XX-SP gate.
+
+Clean source `094be8be0555c4ab51f2968b21f13993b63de96f` is deployed as
+`v6.23-flash-firstframe-094be8b`, canonical manifest
+`c90a4b6b5b21fd5cedabdb58f0756ec8ceb810adf18c39efae017becde8dff20`.
+All 57 manifest-owned files and the `.complete` digest verified, with the
+accepted immutable-supervisor checkpoint as the previous selector. The final
+and early release launchers are byte-identical to that checkpoint at 597,336
+and 600,600 bytes; `.text`, `.rodata`, `.data.rel.ro`, `.data` and `.bss` are
+unchanged. Profile variants remain 658,408 and 669,992 bytes. The early overlay
+is 615,256 bytes, five compressed bytes larger than the accepted overlay even
+though its early launcher is byte-identical. The inactive immutable-dispatcher
+release was archived and independently verified in the private GitHub release
+archive before its card copy was reclaimed. Hardware behavior and timing remain
+unclaimed until the card returns from this candidate's physical gate.
 
 ## Launcher visual architecture
 
