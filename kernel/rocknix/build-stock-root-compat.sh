@@ -775,8 +775,8 @@ grep -Fq 'cmp -s "$SWAY_STAGE/095-sway" "$SWAY_PROFILE"' \
 	"$OUTPUT/card/bird/999-export" || fail 'fixed Sway profile validation missing'
 grep -Fq 'mv -f "$READY_TMP" "$READY"' \
 	"$OUTPUT/card/bird/999-export" || fail 'atomic application marker publication missing'
-grep -q '/flash/bird/999-export' \
-	"$OUTPUT/card/mount-storage.sh" || fail 'application milestone bind missing'
+grep -q '\$FLASH_ROOT/999-export' \
+	"$OUTPUT/card/bird/bird-autostart" || fail 'application milestone step missing'
 grep -q 'wait_application_contract' \
 	"$OUTPUT/card/bird/run-content.sh" || fail 'early selection queue missing'
 grep -q '^APPLICATION_CONTRACT_REVISION=bird-application-v1$' \
