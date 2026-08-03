@@ -14,7 +14,6 @@ CUSTOM=$TMP/custom
 BIN=$TMP/bin
 EVENTS=$TMP/events
 BOOTLOG=$TMP/boot.log
-LOCK=$TMP/start.games
 mkdir -p "$FLASH" "$AUTOSTART/quirks/platforms/H700" \
 	"$AUTOSTART/common" "$CUSTOM" "$BIN"
 : >"$EVENTS"
@@ -32,8 +31,8 @@ make_step() {
 make_step "$FLASH/bird-fixed-platform.sh" fixed-platform
 make_step "$FLASH/090-ui_service" ui-selection
 make_step "$AUTOSTART/quirks/platforms/H700/400-set_gpu_overclock" gpu-overclock
-make_step "$AUTOSTART/common/001-controller" controller
-make_step "$AUTOSTART/common/001-setup" setup 7
+make_step "$FLASH/bird-fixed-controller.sh" controller
+make_step "$FLASH/bird-fixed-setup.sh" setup 7
 make_step "$FLASH/bird-fixed-logging.sh" logging
 make_step "$AUTOSTART/common/008-perfmode" perfmode
 make_step "$FLASH/bird-restore-suspend-policy.sh" suspend-policy
@@ -61,7 +60,6 @@ BIRD_FLASH_ROOT=$FLASH \
 BIRD_AUTOSTART_ROOT=$AUTOSTART \
 BIRD_CUSTOM_ROOT=$CUSTOM \
 BIRD_BOOTLOG=$BOOTLOG \
-BIRD_START_GAMES_LOCK=$LOCK \
 	"$SCRIPT"
 
 cat >"$TMP/expected" <<'EOF'
@@ -86,10 +84,10 @@ governor
 EOF
 cmp "$TMP/expected" "$EVENTS"
 grep -Fxq 'Bird autostart step failed: setup status=7' "$BOOTLOG"
-[ -f "$LOCK" ]
+[ ! -e "$TMP/start.games" ]
 
 grep -q '^BIRD_AUTOSTART_REVISION=bird-fixed-autostart-v1$' "$SCRIPT"
-if grep -Eq 'autostart/(common|quirks)/[*]|(^|[^[:alnum:]_])date([^[:alnum:]_]|$)|tocon|systemctl' \
+if grep -Eq 'autostart/(common|quirks)/[*]|common/001-(controller|setup)|start[.]games|(^|[^[:alnum:]_])date([^[:alnum:]_]|$)|tocon|systemctl' \
 	"$SCRIPT"; then
 	printf '%s\n' 'fixed coordinator regained generic discovery or helpers' >&2
 	exit 1

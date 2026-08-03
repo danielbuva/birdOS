@@ -3,6 +3,25 @@
 # own DRM before Bird's direct-framebuffer menu. The content dispatcher starts
 # the unchanged sway.service only while a selected application needs it.
 
-cat <<EOF >/storage/.config/profile.d/090-ui_service
-UI_SERVICE="essway.service"
-EOF
+set -eu
+
+PROFILE=${BIRD_UI_PROFILE:-/storage/.config/profile.d/090-ui_service}
+TEMP=$PROFILE.bird-new
+EXPECTED='UI_SERVICE="essway.service"'
+FIRST=
+SECOND=
+
+if [ -f "$PROFILE" ]; then
+	exec 3<"$PROFILE"
+	if IFS= read -r FIRST <&3 && \
+		! IFS= read -r SECOND <&3 && [ "$FIRST" = "$EXPECTED" ]; then
+		exec 3<&-
+		exit 0
+	fi
+	exec 3<&-
+fi
+
+mkdir -p "${PROFILE%/*}"
+printf '%s\n' "$EXPECTED" >"$TEMP"
+chmod 0644 "$TEMP"
+mv -f "$TEMP" "$PROFILE"

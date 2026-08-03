@@ -1298,12 +1298,17 @@ PLATFORM_STAGE=$CONTRACT_ROOT/run/bird/fixed-platform
 SWAY_STAGE=$CONTRACT_ROOT/run/bird/fixed-sway
 READY_DIR=$CONTRACT_ROOT/run/bird
 SYSTEM_EXPORT=$CONTRACT_ROOT/etc/profile.d/999-export
+CONTROLLER_PROFILE=$CONTRACT_ROOT/flash/bird/bird-controller-profile
 CONTRACT_UPTIME=$CONTRACT_ROOT/proc/uptime
 CONTRACT_READY=$READY_DIR/application-contract-ready
 CONTRACT_UNDER_TEST=$CONTRACT_ROOT/999-export
 mkdir -p "$PROFILE_DIR" "$SWAY_DIR" "$PLATFORM_STAGE" "$SWAY_STAGE" \
-	"${SYSTEM_EXPORT%/*}" "${CONTRACT_UPTIME%/*}" "$READY_DIR"
+	"${SYSTEM_EXPORT%/*}" "${CONTROLLER_PROFILE%/*}" \
+	"${CONTRACT_UPTIME%/*}" "$READY_DIR"
 printf '%s\n' 'export BIRD_TEST_PROFILE=ready' >"$SYSTEM_EXPORT"
+cp "$ROOT/kernel/rocknix/stock-root/bird-controller-profile" \
+	"$CONTROLLER_PROFILE"
+cp "$CONTROLLER_PROFILE" "$PROFILE_DIR/098-controller"
 printf '%s\n' '1.25 0.50' >"$CONTRACT_UPTIME"
 for PROFILE_NAME in 001-device_config 002-turbo-mode_config 010-governors \
 	010-led_control 020-fan_control 050-modifiers 091-ui_shader; do
@@ -1321,6 +1326,7 @@ sed \
 	-e "s#^PLATFORM_STAGE=.*#PLATFORM_STAGE=$PLATFORM_STAGE#" \
 	-e "s#^SWAY_STAGE=.*#SWAY_STAGE=$SWAY_STAGE#" \
 	-e "s#^SYSTEM_EXPORT=.*#SYSTEM_EXPORT=$SYSTEM_EXPORT#" \
+	-e "s#^CONTROLLER_PROFILE_SOURCE=.*#CONTROLLER_PROFILE_SOURCE=$CONTROLLER_PROFILE#" \
 	-e "s#^READY_DIR=.*#READY_DIR=$READY_DIR#" \
 	-e 's#^VOLUME_HELPER=.*#VOLUME_HELPER=/usr/bin/true#' \
 	-e "s#/proc/uptime#$CONTRACT_UPTIME#g" \

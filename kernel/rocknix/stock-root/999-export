@@ -15,6 +15,7 @@ UI_PROFILE=$PROFILE_DIR/090-ui_service
 SWAY_PROFILE=$PROFILE_DIR/095-sway
 SWAY_CONFIG=$SWAY_DIR/config
 SYSTEM_EXPORT=/etc/profile.d/999-export
+CONTROLLER_PROFILE_SOURCE=/flash/bird/bird-controller-profile
 EXPORT_LINK=$PROFILE_DIR/999-export
 READY_DIR=/run/bird
 READY=$READY_DIR/application-contract-ready
@@ -35,16 +36,32 @@ mkdir -p "$PROFILE_DIR" "$READY_DIR"
 [ ! -d "$PANEL_PROFILE" ]
 [ ! -d "$EXPORT_LINK" ]
 
-cat <<'EOF' >"$PROFILE_TMP"
-DEVICE_HAS_DUAL_SCREEN=false
-EOF
-chmod 0644 "$PROFILE_TMP"
-mv -f "$PROFILE_TMP" "$PANEL_PROFILE"
+PANEL_FIRST=
+PANEL_SECOND=
+PANEL_READY=0
+if [ -f "$PANEL_PROFILE" ]; then
+	exec 3<"$PANEL_PROFILE"
+	if IFS= read -r PANEL_FIRST <&3 && \
+		! IFS= read -r PANEL_SECOND <&3 && \
+		[ "$PANEL_FIRST" = 'DEVICE_HAS_DUAL_SCREEN=false' ]; then
+		PANEL_READY=1
+	fi
+	exec 3<&-
+fi
+if [ "$PANEL_READY" -ne 1 ]; then
+	printf '%s\n' 'DEVICE_HAS_DUAL_SCREEN=false' >"$PROFILE_TMP"
+	chmod 0644 "$PROFILE_TMP"
+	mv -f "$PROFILE_TMP" "$PANEL_PROFILE"
+fi
 [ "$(wc -l <"$PANEL_PROFILE")" -eq 1 ]
 grep -qx 'DEVICE_HAS_DUAL_SCREEN=false' "$PANEL_PROFILE"
 
-ln -s "$SYSTEM_EXPORT" "$LINK_TMP"
-mv -f "$LINK_TMP" "$EXPORT_LINK"
+if [ -L "$EXPORT_LINK" ] && [ "$(readlink "$EXPORT_LINK")" = "$SYSTEM_EXPORT" ]; then
+	:
+else
+	ln -s "$SYSTEM_EXPORT" "$LINK_TMP"
+	mv -f "$LINK_TMP" "$EXPORT_LINK"
+fi
 [ -L "$EXPORT_LINK" ]
 [ "$(readlink "$EXPORT_LINK")" = "$SYSTEM_EXPORT" ]
 [ -r "$EXPORT_LINK" ]
@@ -59,6 +76,8 @@ for PROFILE_NAME in 001-device_config 002-turbo-mode_config 010-governors \
 	[ -r "$PROFILE_DIR/$PROFILE_NAME" ]
 	cmp -s "$PLATFORM_STAGE/$PROFILE_NAME" "$PROFILE_DIR/$PROFILE_NAME"
 done
+[ -r "$PROFILE_DIR/098-controller" ]
+cmp -s "$CONTROLLER_PROFILE_SOURCE" "$PROFILE_DIR/098-controller"
 [ -r "$SWAY_STAGE/config" ]
 [ -r "$SWAY_CONFIG" ]
 cmp -s "$SWAY_STAGE/config" "$SWAY_CONFIG"

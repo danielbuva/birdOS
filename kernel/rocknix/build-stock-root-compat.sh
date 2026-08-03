@@ -421,7 +421,8 @@ for FILE in 090-ui_service 999-export bird-autostart bird-journald.conf \
 	bird-save-config.sh bird-save-config.service bird-suspend.sh \
 	bird-restore-suspend-policy.sh bird-volume.sh bird-control-osd.sh \
 	bird-fixed-sway.sh bird-fixed-platform.sh bird-fixed-logging.sh \
-	bird-fixed-pico8.sh \
+	bird-fixed-pico8.sh bird-fixed-controller.sh bird-fixed-setup.sh \
+	bird-controller-profile \
 	bird-swap.conf bird-suspend-policy.generated.sh bird-sleep.conf; do
 	cp -fp "$ROOT/kernel/rocknix/stock-root/$FILE" "$OUTPUT/card/bird/$FILE"
 done
@@ -465,7 +466,9 @@ chmod 0755 "$OUTPUT/card/post-flash.sh" "$OUTPUT/card/mount-storage.sh" \
 	"$OUTPUT/card/bird/bird-fixed-sway.sh" \
 	"$OUTPUT/card/bird/bird-fixed-platform.sh" \
 	"$OUTPUT/card/bird/bird-fixed-logging.sh" \
-	"$OUTPUT/card/bird/bird-fixed-pico8.sh"
+	"$OUTPUT/card/bird/bird-fixed-pico8.sh" \
+	"$OUTPUT/card/bird/bird-fixed-controller.sh" \
+	"$OUTPUT/card/bird/bird-fixed-setup.sh"
 
 for SCRIPT in "$OUTPUT/card/post-flash.sh" \
 	"$OUTPUT/card/mount-storage.sh" \
@@ -490,7 +493,9 @@ for SCRIPT in "$OUTPUT/card/post-flash.sh" \
 	"$OUTPUT/card/bird/bird-fixed-sway.sh" \
 	"$OUTPUT/card/bird/bird-fixed-platform.sh" \
 	"$OUTPUT/card/bird/bird-fixed-logging.sh" \
-	"$OUTPUT/card/bird/bird-fixed-pico8.sh"; do
+	"$OUTPUT/card/bird/bird-fixed-pico8.sh" \
+	"$OUTPUT/card/bird/bird-fixed-controller.sh" \
+	"$OUTPUT/card/bird/bird-fixed-setup.sh"; do
 	bash -n "$SCRIPT" || fail "shell syntax failed: $SCRIPT"
 done
 bash -n "$OUTPUT/card/bird/bird-suspend-policy.generated.sh" || \
@@ -498,7 +503,8 @@ bash -n "$OUTPUT/card/bird/bird-suspend-policy.generated.sh" || \
 chmod 0644 "$OUTPUT/card/bird/portmaster-provider.manifest.tsv"
 chmod 0644 "$OUTPUT/card/bird/bird-suspend-policy.generated.sh" \
 	"$OUTPUT/card/bird/bird-sleep.conf" \
-	"$OUTPUT/card/bird/bird-journald.conf"
+	"$OUTPUT/card/bird/bird-journald.conf" \
+	"$OUTPUT/card/bird/bird-controller-profile"
 [ "$(file_mode "$OUTPUT/card/bird/verify-portmaster-provider.sh")" = 755 ] || \
 	fail 'PortMaster provider verifier mode changed'
 [ "$(file_mode "$OUTPUT/card/bird/portmaster-provider.manifest.tsv")" = 644 ] || \
@@ -509,6 +515,8 @@ chmod 0644 "$OUTPUT/card/bird/bird-suspend-policy.generated.sh" \
 	fail 'systemd sleep policy mode changed'
 [ "$(file_mode "$OUTPUT/card/bird/bird-journald.conf")" = 644 ] || \
 	fail 'journald policy mode changed'
+[ "$(file_mode "$OUTPUT/card/bird/bird-controller-profile")" = 644 ] || \
+	fail 'fixed controller profile mode changed'
 
 [ "$(sha256 "$OUTPUT/card/KERNEL")" = "$KERNEL_SHA" ] || fail 'copied KERNEL changed'
 [ "$(sha256 "$OUTPUT/card/dtb.img")" = "$DTB_SHA" ] || fail 'copied DTB changed'
@@ -1054,9 +1062,13 @@ grep -q '\$FLASH_ROOT/bird-fixed-logging.sh' \
 	"$OUTPUT/card/bird/bird-autostart" || fail 'fixed logging step missing'
 grep -q '\$FLASH_ROOT/bird-fixed-pico8.sh' \
 	"$OUTPUT/card/bird/bird-autostart" || fail 'fixed Pico-8 step missing'
-if grep -q 'common/003-logging\|common/010-pico8' \
+grep -q '\$FLASH_ROOT/bird-fixed-controller.sh' \
+	"$OUTPUT/card/bird/bird-autostart" || fail 'fixed controller step missing'
+grep -q '\$FLASH_ROOT/bird-fixed-setup.sh' \
+	"$OUTPUT/card/bird/bird-autostart" || fail 'fixed setup step missing'
+if grep -q 'common/003-logging\|common/010-pico8\|common/001-controller\|common/001-setup\|start[.]games' \
 	"$OUTPUT/card/bird/bird-autostart"; then
-	fail 'write-heavy generic housekeeping remained active'
+	fail 'write-heavy generic fixed-profile setup remained active'
 fi
 grep -q '^Storage=volatile$' "$OUTPUT/card/bird/bird-journald.conf" || \
 	fail 'explicit volatile journal policy missing'

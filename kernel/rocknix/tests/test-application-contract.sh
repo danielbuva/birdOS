@@ -15,14 +15,19 @@ PLATFORM_STAGE=$TMP/run/bird/fixed-platform
 SWAY_STAGE=$TMP/run/bird/fixed-sway
 READY_DIR=$TMP/run/bird
 SYSTEM_EXPORT=$TMP/etc/profile.d/999-export
+CONTROLLER_PROFILE=$TMP/flash/bird/bird-controller-profile
 UPTIME=$TMP/proc/uptime
 READY=$READY_DIR/application-contract-ready
 UNDER_TEST=$TMP/999-export
 HOST_BIN=$TMP/bin
 
 mkdir -p "$PROFILE_DIR" "$SWAY_DIR" "$PLATFORM_STAGE" "$SWAY_STAGE" \
-	"${SYSTEM_EXPORT%/*}" "${UPTIME%/*}" "$READY_DIR" "$HOST_BIN"
+	"${SYSTEM_EXPORT%/*}" "${CONTROLLER_PROFILE%/*}" "${UPTIME%/*}" \
+	"$READY_DIR" "$HOST_BIN"
 printf '%s\n' 'export BIRD_TEST_PROFILE=ready' >"$SYSTEM_EXPORT"
+cp "$ROOT/kernel/rocknix/stock-root/bird-controller-profile" \
+	"$CONTROLLER_PROFILE"
+cp "$CONTROLLER_PROFILE" "$PROFILE_DIR/098-controller"
 printf '%s\n' '1.25 0.50' >"$UPTIME"
 
 for NAME in 001-device_config 002-turbo-mode_config 010-governors \
@@ -42,6 +47,7 @@ sed \
 	-e "s#^PLATFORM_STAGE=.*#PLATFORM_STAGE=$PLATFORM_STAGE#" \
 	-e "s#^SWAY_STAGE=.*#SWAY_STAGE=$SWAY_STAGE#" \
 	-e "s#^SYSTEM_EXPORT=.*#SYSTEM_EXPORT=$SYSTEM_EXPORT#" \
+	-e "s#^CONTROLLER_PROFILE_SOURCE=.*#CONTROLLER_PROFILE_SOURCE=$CONTROLLER_PROFILE#" \
 	-e "s#^READY_DIR=.*#READY_DIR=$READY_DIR#" \
 	-e "s#/proc/uptime#$UPTIME#g" \
 	"$SOURCE" >"$UNDER_TEST"
@@ -58,6 +64,14 @@ chmod 0755 "$HOST_BIN/systemctl" "$HOST_BIN/usleep" "$HOST_BIN/seq"
 "$UNDER_TEST"
 [ "$(sed -n '1p' "$READY")" = \
 	'contract_revision=bird-application-v1' ]
+PANEL_MTIME=$(stat -f '%m' "$PROFILE_DIR/080-dual_screen_mode" 2>/dev/null || \
+	stat -c '%Y' "$PROFILE_DIR/080-dual_screen_mode")
+LINK_MTIME=$(stat -f '%m' "$PROFILE_DIR/999-export" 2>/dev/null || \
+	stat -c '%Y' "$PROFILE_DIR/999-export")
+sleep 1
+"$UNDER_TEST"
+[ "$PANEL_MTIME" = "$(stat -f '%m' "$PROFILE_DIR/080-dual_screen_mode" 2>/dev/null || stat -c '%Y' "$PROFILE_DIR/080-dual_screen_mode")" ]
+[ "$LINK_MTIME" = "$(stat -f '%m' "$PROFILE_DIR/999-export" 2>/dev/null || stat -c '%Y' "$PROFILE_DIR/999-export")" ]
 
 # ROCKNIX's coordinator ignores an earlier script failure. A mismatched fixed
 # output must therefore invalidate an already-published marker on the rerun.

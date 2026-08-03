@@ -9,7 +9,6 @@ FLASH_ROOT=${BIRD_FLASH_ROOT:-/flash/bird}
 AUTOSTART_ROOT=${BIRD_AUTOSTART_ROOT:-/usr/lib/autostart}
 CUSTOM_ROOT=${BIRD_CUSTOM_ROOT:-/storage/.config/autostart}
 BOOTLOG=${BIRD_BOOTLOG:-/var/log/boot.log}
-START_GAMES_LOCK=${BIRD_START_GAMES_LOCK:-/var/lock/start.games}
 
 log_failure() {
 	printf 'Bird autostart step failed: %s status=%s\n' "$1" "$2" \
@@ -35,8 +34,8 @@ run_step ui-selection "$FLASH_ROOT/090-ui_service"
 run_step gpu-overclock \
 	"$AUTOSTART_ROOT/quirks/platforms/H700/400-set_gpu_overclock"
 
-run_step controller "$AUTOSTART_ROOT/common/001-controller"
-run_step setup "$AUTOSTART_ROOT/common/001-setup"
+run_step controller "$FLASH_ROOT/bird-fixed-controller.sh"
+run_step setup "$FLASH_ROOT/bird-fixed-setup.sh"
 run_step logging "$FLASH_ROOT/bird-fixed-logging.sh"
 run_step perfmode "$AUTOSTART_ROOT/common/008-perfmode"
 run_step suspend-policy "$FLASH_ROOT/bird-restore-suspend-policy.sh"
@@ -55,10 +54,6 @@ if [ -d "$CUSTOM_ROOT" ]; then
 		run_step "custom:${CUSTOM_SCRIPT##*/}" "$CUSTOM_SCRIPT"
 	done
 fi
-
-rm -f "$START_GAMES_LOCK" >>"$BOOTLOG" 2>&1
-touch "$START_GAMES_LOCK" >>"$BOOTLOG" 2>&1 || \
-	log_failure start-games-lock "$?"
 
 DEVICE_CPU_GOVERNOR=$(get_setting system.cpugovernor)
 if [ -n "$DEVICE_CPU_GOVERNOR" ]; then
