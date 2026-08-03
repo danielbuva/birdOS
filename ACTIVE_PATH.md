@@ -19,22 +19,22 @@ display geometry and hardware policy are deliberate. Older muOS stages,
 source-kernel challengers and clean-root experiments remain useful evidence,
 but they are not alternate active implementations.
 
-The card currently selects the Stage 4 fixed-housekeeping candidate
-`v6.23-fixed-housekeeping-91b2f58`, built from clean public source
-`91b2f58ed696dfcd547b1ffd52fcb5ceb3ad3602`. Its previous selector is the
-physically accepted fixed-session/idle-wakeup checkpoint
-`v6.23-fixed-session-46dd170`. The selected candidate's canonical manifest
+The card currently selects the Stage 4 fixed-application-profile candidate
+`v6.23-fixed-profiles-b87dcc2`, built from clean public source
+`b87dcc2a5c7f7ef0fc8c4737eebf51ac60b2dd87`. Its previous selector is the
+physically accepted fixed-housekeeping checkpoint
+`v6.23-fixed-housekeeping-91b2f58`. The selected candidate's canonical manifest
 digest is
-`41edbb038356df9cbf1086d451a6731ba3b2bc3c7ad71c9d0754d6b76ee9100f`,
-and deployment verified all 58 manifest-owned files. The device-contract digest is
+`c9dbc12ff1ca1ef98d7436824321db922905dce45afcac50617db18e1ffe0564`,
+and deployment verified all 61 manifest-owned files. The device-contract digest is
 `85ccb8e46e71ee66e2320022ac13228124d6efcea5abdd800b8c18bd190f73cd`
 and the generated-catalog digest is
 `7e29e491bb43191ca9ae6c18bd566b6ba0c984bf43d1d0103eddd6e534306e62`.
 The immutable-dispatcher, immutable-supervisor, first-frame-preparation and
-boot-snapshot, complete-toolset, content-shell, fixed-autostart and fixed-session
-batches passed their full RG34XX-SP gates. The selected fixed-housekeeping batch
-passed host, build and deployment gates but still requires its RG34XX-SP
-behavior gate. HDMI and
+boot-snapshot, complete-toolset, content-shell, fixed-autostart, fixed-session
+and fixed-housekeeping batches passed their full RG34XX-SP gates. The selected
+fixed-application-profile batch passed host, build and deployment gates but
+still requires its RG34XX-SP behavior gate. HDMI and
 Bluetooth remain unchanged; retention or removal of either is an explicit
 later product decision. None of these tuples
 replaces the broader source/behavior baseline or immutable fallback named above.
@@ -933,6 +933,38 @@ logind `cmp`, one `stat` and its obsolete drop-in scan. Manifest-owned bytes
 increase by 403 and the fixed Bird-file subset by 564 bytes. These operations
 occur after usable readiness, so no first-frame timing change is expected or
 claimed; the target is lower post-frame I/O and earlier application readiness.
+
+The returned physical gate passed all tested functionality. The preserved
+clean boot reached direct input at 1216 ms and usable readiness at 1220 ms,
+inside the accepted range; this is non-regression and a best observation, not a
+distribution-level improvement. One suspend stress sequence dispatched lid
+close and lid open but never recorded the normal coordinator resume completion,
+then a new boot sequence began. Later suspend cycles passed. No panic or
+watchdog cause survived, and the housekeeping candidate changed no suspend
+path, so no speculative fix is included.
+
+### Fixed application profiles candidate
+
+The generic controller and setup hooks existed to derive profiles for arbitrary
+controllers and repair mutable multi-device installations. On the fixed H700
+they still ran `control-gen`, XML selection, two UUID generators, 100 per-input
+`awk` operations and rewrote `098-controller` every boot. Setup also re-sorted
+and replaced valid persistent settings, deleted and re-added
+`clouddrive.mounted=0`, and recreated an already-correct cache link. The fixed
+UI and application publishers rewrote two valid profiles and one symlink, while
+`start.games` served only the absent EmulationStation unit.
+
+Clean source `b87dcc2a5c7f7ef0fc8c4737eebf51ac60b2dd87` publishes a build-verified
+H700 controller profile, retains `chksysconfig` recovery, and makes every other
+accepted-state publication comparison-only. Application readiness now validates
+the fixed controller bytes. Release `v6.23-fixed-profiles-b87dcc2`, manifest
+`c9dbc12ff1ca1ef98d7436824321db922905dce45afcac50617db18e1ffe0564`,
+is deployed with accepted fixed-housekeeping as previous. All 61 files and
+`.complete` verify. Release/profile launchers are byte-identical; the release
+overlay shrinks three bytes. Manifest-owned bytes grow 3,513 for explicit fixed
+profiles and their repair code. This is post-usable work, so no first-frame
+change is expected or claimed; application readiness and storage-write
+reduction require device verification.
 
 ## Launcher visual architecture
 

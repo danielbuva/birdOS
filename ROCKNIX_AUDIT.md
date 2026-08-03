@@ -638,6 +638,25 @@ journald, audio, networking, HDMI and Bluetooth are unchanged. This is a
 post-frame application-readiness/I/O candidate; no boot, power or memory gain
 is claimed before device evidence.
 
+The returned housekeeping gate passed all tested functionality. The preserved
+clean sample reached H700 input at 1216 ms and usable readiness at 1220 ms.
+One stress sequence ended after lid-open without a resume-complete record and
+was followed by a new boot sequence; subsequent suspend cycles passed. The
+available logs contain no durable panic/watchdog cause and housekeeping did not
+change controls, suspend, power or kernel code, so this is documented without a
+speculative correction.
+
+The next audit boundary is clean source
+`b87dcc2a5c7f7ef0fc8c4737eebf51ac60b2dd87`, release
+`v6.23-fixed-profiles-b87dcc2` and manifest
+`c9dbc12ff1ca1ef98d7436824321db922905dce45afcac50617db18e1ffe0564`.
+It replaces runtime H700 controller XML generation with the exact derived fixed
+profile, retains configuration recovery while removing valid-state settings
+rewrites, makes UI/application profiles idempotent and removes the unused
+EmulationStation start lock. Udev, seatd, journald, audio, networking, HDMI,
+Bluetooth and suspend remain unchanged. This is an application-readiness and
+persistent-I/O candidate, not a first-frame candidate.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.
@@ -728,8 +747,8 @@ The v6.15 audit found the following generic work and defects. Only items marked
 
 ## Next active order
 
-1. Complete the fixed-housekeeping physical gate while retaining the accepted
-   fixed-session checkpoint as previous.
+1. Complete the fixed-application-profile physical gate while retaining the
+   accepted fixed-housekeeping checkpoint as previous.
 2. Audit udev coldplug only after a pinned precompiled hwdb and complete live
    consumer closure exist.
 3. Preserve HDMI and Bluetooth until their explicit product decision.

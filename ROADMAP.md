@@ -979,6 +979,33 @@ no logind drop-in scan. Manifest-owned bytes grow 403. This is post-usable work:
 boot-log timing should remain non-inferior, while application readiness and
 late I/O are the device targets.
 
+The returned gate passed all tested functionality. One preserved clean boot
+reached input at 1216 ms and usable readiness at 1220 ms, supporting
+first-menu non-regression but not a distribution claim. Suspend stress produced
+one incomplete lid-resume event group followed by a new boot sequence; later
+cycles passed and no durable kernel cause survived. Because this candidate did
+not touch suspend, the event remains an explicitly deferred intermittent issue.
+
+### Stage 4 fixed application profiles candidate — 2026-08-03
+
+Generic controller/setup generation existed for arbitrary hardware and mutable
+ROCKNIX installations. The accepted H700 path nevertheless invoked runtime XML
+selection, two UUID generators, `control-gen`, 100 per-input `awk` operations
+and a persistent controller-profile rewrite. It also rewrote valid sorted
+settings, cloud state, cache/UI/panel profile links and the unused
+EmulationStation `start.games` condition on every boot.
+
+Clean source `b87dcc2a5c7f7ef0fc8c4737eebf51ac60b2dd87` derives the fixed profile
+from the pinned H700 XML under a host test, publishes it transactionally only
+when bytes differ, retains `chksysconfig` and malformed-settings repair, and
+makes UI/panel/export publication idempotent. Application readiness validates
+the controller profile. Release `v6.23-fixed-profiles-b87dcc2`, manifest
+`c9dbc12ff1ca1ef98d7436824321db922905dce45afcac50617db18e1ffe0564`,
+is deployed with accepted fixed-housekeeping as previous; all 61 files verify.
+Both launchers are byte-identical and the release overlay shrinks three bytes;
+manifest-owned bytes grow 3,513. The target is earlier application readiness
+and fewer persistent writes, with boot/UI required to remain non-inferior.
+
 ## Stage 5 — Battery, suspend and memory closure
 
 Measure calibrated energy, wakeups, IRQs and CPU residency for short-label menu
