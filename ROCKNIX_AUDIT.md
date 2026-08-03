@@ -607,6 +607,19 @@ daemon retained. Release `v6.23-fixed-autostart-1338341` has manifest
 `2c9553b94c7fffd25dff2f45b764c342c134ca6564ed3f9ae9a040ca0149d198`.
 This is post-usable subtraction and makes no first-frame claim.
 
+The returned gate passed all functionality. Six current-release usable samples
+span 1223--1235 ms, while final-root supervisor entry moved from 9.65--9.69 s
+to 9.25--9.53 s. It is now the accepted rollback for the fixed-session batch.
+
+The session audit found no active login1 consumer: Bird owns lid/power, fake
+suspend does not call logind, and content explicitly starts seatd before Sway.
+Candidate `v6.23-fixed-session-46dd170`, clean source
+`46dd1704e3453dd3f3fcbb55ea96488716deb840`, masks logind, the daily tmpfiles
+wakeup and volatile UTMP boot/runlevel jobs. Manifest
+`00ba951842afc78f2f27a34f952f790e7cc32eab385db4f902cc0e9c0d7df7cd`
+binds the deployed release. Udev is intentionally retained: historical device
+evidence shows required metadata consumers and a failed daemon-stop experiment.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.
@@ -697,10 +710,10 @@ The v6.15 audit found the following generic work and defects. Only items marked
 
 ## Next active order
 
-1. Complete the fixed-autostart/journal physical gate while retaining the
-   accepted content-shell checkpoint as previous.
-2. Audit udev coldplug and session managers one independently measurable
-   boundary at a time.
+1. Complete the fixed-session/idle-wakeup physical gate while retaining the
+   accepted fixed-autostart checkpoint as previous.
+2. Audit udev coldplug only after a pinned precompiled hwdb and complete live
+   consumer closure exist.
 3. Preserve HDMI and Bluetooth until their explicit product decision.
 4. Audit udev coldplug output and let its manager exit if no retained feature
    needs runtime hotplug; keep fixed hardware initialization separate from

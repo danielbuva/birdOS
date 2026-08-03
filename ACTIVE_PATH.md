@@ -19,20 +19,20 @@ display geometry and hardware policy are deliberate. Older muOS stages,
 source-kernel challengers and clean-root experiments remain useful evidence,
 but they are not alternate active implementations.
 
-The card currently selects the Stage 4 fixed-autostart/journal candidate
-`v6.23-fixed-autostart-1338341`, built from clean public source
-`133834108ee66a6ad965c44441b6e09690eb8369`. Its previous selector is the
-physically accepted requested-diagnostics/content-shell checkpoint
-`v6.23-content-shell-e87e491`. The selected candidate's canonical manifest
+The card currently selects the Stage 4 fixed-session/idle-wakeup candidate
+`v6.23-fixed-session-46dd170`, built from clean public source
+`46dd1704e3453dd3f3fcbb55ea96488716deb840`. Its previous selector is the
+physically accepted fixed-autostart/journal checkpoint
+`v6.23-fixed-autostart-1338341`. The selected candidate's canonical manifest
 digest is
-`2c9553b94c7fffd25dff2f45b764c342c134ca6564ed3f9ae9a040ca0149d198`,
+`00ba951842afc78f2f27a34f952f790e7cc32eab385db4f902cc0e9c0d7df7cd`,
 and deployment verified all 57 manifest-owned files. The device-contract digest is
 `85ccb8e46e71ee66e2320022ac13228124d6efcea5abdd800b8c18bd190f73cd`
 and the generated-catalog digest is
 `7e29e491bb43191ca9ae6c18bd566b6ba0c984bf43d1d0103eddd6e534306e62`.
 The immutable-dispatcher, immutable-supervisor, first-frame-preparation and
-boot-snapshot, complete-toolset and content-shell batches passed their full
-RG34XX-SP gates. The selected fixed-autostart batch has passed host, build and
+boot-snapshot, complete-toolset, content-shell and fixed-autostart batches
+passed their full RG34XX-SP gates. The selected fixed-session batch passed host, build and
 deployment gates but still requires its RG34XX-SP behavior gate. HDMI and
 Bluetooth remain unchanged; retention or removal of either is an explicit
 later product decision. None of these tuples
@@ -878,6 +878,35 @@ from 615,251 to 615,258 bytes. This is post-usable work: no first-frame gain is
 claimed. The physical target is earlier application/content readiness and less
 late CPU/I/O with boot/UI non-inferior. HDMI, Bluetooth, udev, seatd, logind and
 the warm audio policy are unchanged.
+
+The returned fixed-autostart gate passed all functions. Six boot-scoped samples
+published usable readiness at 1223, 1226, 1228, 1229, 1229 and 1235 ms, versus
+the accepted 1222--1229 ms range. That supports non-regression, not a faster
+first-menu claim. The initially suspicious 1567 ms record was a stale
+catalog/runtime file outside this release's boot-scoped evidence. Final-root
+supervisor entry moved from 9.65--9.69 s to 9.25--9.53 s, consistent with less
+post-frame coordinator work.
+
+### Fixed session manager and idle-wakeup candidate
+
+Logind remained because ROCKNIX normally delegates lid, power and login-session
+policy to it. Bird now owns lid/power through its fixed controls, the retained
+fake-suspend provider has no login1 client, and Sway explicitly joins seatd.
+The tmpfiles timer served general persistent roots, while this image recreates
+its cleaned `/tmp` and `/var` roots as tmpfs. UTMP recorders likewise served
+multi-user login accounting, but wrote only volatile `/var` here.
+
+Clean source `46dd1704e3453dd3f3fcbb55ea96488716deb840` masks logind, its one
+resident task, the 15-minute/daily tmpfiles-clean timer and the two boot/runlevel
+UTMP one-shots. Seatd, udev, journald, audio, networking, HDMI and Bluetooth
+remain unchanged. Release `v6.23-fixed-session-46dd170`, manifest
+`00ba951842afc78f2f27a34f952f790e7cc32eab385db4f902cc0e9c0d7df7cd`,
+is deployed with the accepted fixed-autostart release as previous. Launcher,
+ELF sections and compressed overlay are unchanged; added explicit assertions
+grow the manifest-owned release by 530 bytes. No first-frame gain is claimed.
+The physical gate must prove suspend, shutdown, all providers and Sway/seatd
+startup without login1, plus boot/UI non-inferiority. PSS and wakeup savings
+remain unclaimed until device measurement.
 
 ## Launcher visual architecture
 

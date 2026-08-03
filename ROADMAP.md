@@ -925,6 +925,32 @@ post-frame application/content readiness and lower late CPU/I/O. Boot and UI
 must remain non-inferior. HDMI, Bluetooth, udev, seatd, logind and warm audio
 are unchanged.
 
+The returned gate passed all functions. Boot-scoped usable samples are 1223,
+1226, 1228, 1229, 1229 and 1235 ms, versus accepted 1222--1229 ms; this is
+non-regression, not a faster first-menu claim. A 1567 ms stale catalog/runtime
+record is excluded from the release-scoped evidence. Final-root supervisor
+entry improved from 9.65--9.69 s to 9.25--9.53 s.
+
+### Stage 4 fixed-session/idle-wakeup candidate — 2026-08-03
+
+ROCKNIX retained logind for generic lid, power and login-session ownership.
+Bird's fixed controls now own lid/power, fake suspend has no login1 consumer,
+and content explicitly joins seatd before Sway. The general tmpfiles-clean timer
+targets roots which are fresh tmpfs here, and UTMP accounting writes only the
+same volatile `/var` without any Bird login session.
+
+Clean source `46dd1704e3453dd3f3fcbb55ea96488716deb840` independently masks
+logind, the 15-minute/daily tmpfiles timer and both UTMP one-shots. It preserves
+seatd, udev, journald, audio, networking, HDMI and Bluetooth. Release
+`v6.23-fixed-session-46dd170`, manifest
+`00ba951842afc78f2f27a34f952f790e7cc32eab385db4f902cc0e9c0d7df7cd`,
+is deployed with accepted fixed-autostart as previous. All 57 files verify;
+release/profile final-root and early-initramfs builds pass. Launcher binaries,
+sections, framebuffer metrics and compressed overlay are unchanged. Explicit
+assertions add 530 manifest bytes. The target is one fewer resident task, one
+fewer scheduled wake source and two fewer volatile accounting jobs. Device PSS,
+wakeups and energy remain unclaimed until measured.
+
 ## Stage 5 — Battery, suspend and memory closure
 
 Measure calibrated energy, wakeups, IRQs and CPU residency for short-label menu
