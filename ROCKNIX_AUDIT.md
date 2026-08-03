@@ -620,6 +620,24 @@ wakeup and volatile UTMP boot/runlevel jobs. Manifest
 binds the deployed release. Udev is intentionally retained: historical device
 evidence shows required metadata consumers and a failed daemon-stop experiment.
 
+The returned fixed-session gate passed all tested functionality. Boots
+`17553b07`, `9ff881cd` and `b7c3b076` reached usable readiness at 1222, 1223
+and 1222 ms. Final-root supervisor entry was 9.42, 10.67 and 9.26 seconds; the
+middle outlier prevents an application-readiness improvement claim. The exact
+fixed-session tuple is now the physically accepted rollback.
+
+The next audit boundary is clean source
+`91b2f58ed696dfcd547b1ffd52fcb5ceb3ad3602`, release
+`v6.23-fixed-housekeeping-91b2f58` and manifest
+`41edbb038356df9cbf1086d451a6731ba3b2bc3c7ad71c9d0754d6b76ee9100f`.
+Generic logging and Pico-8 hooks previously performed three steady-state
+filesystem mutations after the menu, and storage preparation retained a
+logind-policy comparison, mode read and drop-in scan after logind removal. The
+fixed hooks are idempotent and the inert policy work is absent. Udev, seatd,
+journald, audio, networking, HDMI and Bluetooth are unchanged. This is a
+post-frame application-readiness/I/O candidate; no boot, power or memory gain
+is claimed before device evidence.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.
@@ -710,8 +728,8 @@ The v6.15 audit found the following generic work and defects. Only items marked
 
 ## Next active order
 
-1. Complete the fixed-session/idle-wakeup physical gate while retaining the
-   accepted fixed-autostart checkpoint as previous.
+1. Complete the fixed-housekeeping physical gate while retaining the accepted
+   fixed-session checkpoint as previous.
 2. Audit udev coldplug only after a pinned precompiled hwdb and complete live
    consumer closure exist.
 3. Preserve HDMI and Bluetooth until their explicit product decision.

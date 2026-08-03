@@ -951,6 +951,34 @@ assertions add 530 manifest bytes. The target is one fewer resident task, one
 fewer scheduled wake source and two fewer volatile accounting jobs. Device PSS,
 wakeups and energy remain unclaimed until measured.
 
+The returned RG34XX-SP gate passed all tested functionality. Three boot-scoped
+samples reached direct input at 1219, 1221 and 1219 ms and usable readiness at
+1222, 1223 and 1222 ms. Those samples accept the exact fixed-session tuple as
+rollback and show no first-menu regression; they are not a promoted tail or
+energy claim.
+
+### Stage 4 fixed post-frame housekeeping candidate — 2026-08-03
+
+The generic hooks existed because ROCKNIX supports mutable layouts and multiple
+devices. In birdOS's fixed steady state, logging nevertheless removed and
+recreated the same valid RetroArch log symlink, Pico-8 touched an existing
+sentinel, and storage preparation still verified writable logind policy after
+logind itself had been physically accepted as absent.
+
+Clean source `91b2f58ed696dfcd547b1ffd52fcb5ceb3ad3602` introduces two small
+idempotent fixed hooks and removes only the dead logind-policy publication and
+drop-in scan. It preserves failure repair: missing or stale log links are
+replaced and missing Pico-8 state is created. Release
+`v6.23-fixed-housekeeping-91b2f58`, manifest
+`41edbb038356df9cbf1086d451a6731ba3b2bc3c7ad71c9d0754d6b76ee9100f`,
+is deployed with physically accepted fixed-session as previous; all 58 files
+and `.complete` verify. Release/profile launchers, ELF behavior and framebuffer
+metrics are unchanged. The accepted-state structural delta is three fewer
+filesystem-mutating applet launches plus one fewer `cmp`, one fewer `stat` and
+no logind drop-in scan. Manifest-owned bytes grow 403. This is post-usable work:
+boot-log timing should remain non-inferior, while application readiness and
+late I/O are the device targets.
+
 ## Stage 5 — Battery, suspend and memory closure
 
 Measure calibrated energy, wakeups, IRQs and CPU residency for short-label menu

@@ -19,21 +19,22 @@ display geometry and hardware policy are deliberate. Older muOS stages,
 source-kernel challengers and clean-root experiments remain useful evidence,
 but they are not alternate active implementations.
 
-The card currently selects the Stage 4 fixed-session/idle-wakeup candidate
-`v6.23-fixed-session-46dd170`, built from clean public source
-`46dd1704e3453dd3f3fcbb55ea96488716deb840`. Its previous selector is the
-physically accepted fixed-autostart/journal checkpoint
-`v6.23-fixed-autostart-1338341`. The selected candidate's canonical manifest
+The card currently selects the Stage 4 fixed-housekeeping candidate
+`v6.23-fixed-housekeeping-91b2f58`, built from clean public source
+`91b2f58ed696dfcd547b1ffd52fcb5ceb3ad3602`. Its previous selector is the
+physically accepted fixed-session/idle-wakeup checkpoint
+`v6.23-fixed-session-46dd170`. The selected candidate's canonical manifest
 digest is
-`00ba951842afc78f2f27a34f952f790e7cc32eab385db4f902cc0e9c0d7df7cd`,
-and deployment verified all 57 manifest-owned files. The device-contract digest is
+`41edbb038356df9cbf1086d451a6731ba3b2bc3c7ad71c9d0754d6b76ee9100f`,
+and deployment verified all 58 manifest-owned files. The device-contract digest is
 `85ccb8e46e71ee66e2320022ac13228124d6efcea5abdd800b8c18bd190f73cd`
 and the generated-catalog digest is
 `7e29e491bb43191ca9ae6c18bd566b6ba0c984bf43d1d0103eddd6e534306e62`.
 The immutable-dispatcher, immutable-supervisor, first-frame-preparation and
-boot-snapshot, complete-toolset, content-shell and fixed-autostart batches
-passed their full RG34XX-SP gates. The selected fixed-session batch passed host, build and
-deployment gates but still requires its RG34XX-SP behavior gate. HDMI and
+boot-snapshot, complete-toolset, content-shell, fixed-autostart and fixed-session
+batches passed their full RG34XX-SP gates. The selected fixed-housekeeping batch
+passed host, build and deployment gates but still requires its RG34XX-SP
+behavior gate. HDMI and
 Bluetooth remain unchanged; retention or removal of either is an explicit
 later product decision. None of these tuples
 replaces the broader source/behavior baseline or immutable fallback named above.
@@ -904,9 +905,34 @@ remain unchanged. Release `v6.23-fixed-session-46dd170`, manifest
 is deployed with the accepted fixed-autostart release as previous. Launcher,
 ELF sections and compressed overlay are unchanged; added explicit assertions
 grow the manifest-owned release by 530 bytes. No first-frame gain is claimed.
-The physical gate must prove suspend, shutdown, all providers and Sway/seatd
-startup without login1, plus boot/UI non-inferiority. PSS and wakeup savings
-remain unclaimed until device measurement.
+The returned physical gate passed all tested functionality. Boot-scoped samples
+`17553b07`, `9ff881cd` and `b7c3b076` published usable readiness at 1222, 1223
+and 1222 ms respectively, with direct input at 1219, 1221 and 1219 ms. This
+accepts the fixed-session tuple as the next candidate's rollback and supports
+first-menu non-regression, not a distribution-level improvement claim. PSS and
+wakeup savings remain unclaimed until device measurement.
+
+### Fixed post-frame housekeeping candidate
+
+The generic logging and Pico-8 hooks existed to support mutable configuration
+and many ROCKNIX devices. On this fixed image they still removed and recreated
+an already-correct RetroArch log symlink and touched an existing `Splore.png`
+sentinel every boot. Logind policy publication likewise survived from when
+logind still owned input policy, despite the physically accepted service mask.
+
+Clean source `91b2f58ed696dfcd547b1ffd52fcb5ceb3ad3602` replaces those two generic
+hooks with fixed idempotent scripts and removes comparison, mode inspection and
+drop-in cleanup for inert logind configuration. Udev, seatd, journald, audio,
+networking, HDMI and Bluetooth remain unchanged. Release
+`v6.23-fixed-housekeeping-91b2f58`, manifest
+`41edbb038356df9cbf1086d451a6731ba3b2bc3c7ad71c9d0754d6b76ee9100f`,
+is deployed with physically accepted fixed-session as previous. All 58 files
+verify; release/profile launchers are byte-identical to the checkpoint. The
+steady state removes `rm`, `ln` and `touch` filesystem mutations plus one
+logind `cmp`, one `stat` and its obsolete drop-in scan. Manifest-owned bytes
+increase by 403 and the fixed Bird-file subset by 564 bytes. These operations
+occur after usable readiness, so no first-frame timing change is expected or
+claimed; the target is lower post-frame I/O and earlier application readiness.
 
 ## Launcher visual architecture
 
