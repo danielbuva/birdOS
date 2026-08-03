@@ -543,9 +543,11 @@ until Stage 7 passes.
 Run immutable final-root programs directly from versioned `/flash/bird`; keep
 the early launcher in initramfs and mutable state under `/storage`. Evaluate one
 at a time: fixed coordinator/module/firmware layouts, exact internal audio,
-removal of HDMI/Bluetooth/quantum work, warm versus on-demand PipeWire, narrowed
-udev, on-demand seatd, logind removal after suspend proof, volatile journald
-before removal, trace-only diagnostics and PortMaster-only networking.
+generic quantum work, warm versus on-demand PipeWire, narrowed udev, on-demand
+seatd, logind removal after suspend proof, volatile journald before removal,
+trace-only diagnostics and PortMaster-only networking. HDMI and Bluetooth
+retention/removal remains an explicit later product decision and is not
+authorized in current candidates.
 
 Measure A edge through launcher request, supervisor acceptance, provider exec,
 usable provider state and first accepted input, plus provider exit through
@@ -827,7 +829,66 @@ bytes with unchanged code/data/BSS. The manifest-owned release is 1,869 bytes
 smaller, the mount hook is 1,692 bytes smaller and the compressed overlay is
 two bytes smaller at 615,254. The inactive first-frame release was archived and
 independently verified on GitHub before card reclamation. The broad RG34XX-SP
-gate remains pending.
+gate passes. Boot `b116d112` records direct input at 1218 ms, usable frame at
+1226 ms and storage readiness at 3723 ms; its pre-storage game selection
+remained exactly one pending intent and dispatched at readiness. Both managed
+game sessions returned 0, retained-frame restoration matched, shutdown
+completed its durable checkpoint and the operator reported the full behavior
+matrix passing. The usable time remains within the accepted 1221--1229 ms
+range, so this is non-regression rather than a boot improvement.
+
+### Stage 4 requested-diagnostics/content-shell candidate — 2026-08-02
+
+The ordinary post-autostart snapshot existed to capture the broad retained
+ROCKNIX state after autostart without delaying the usable frame. Boot
+`b116d112` nevertheless showed its 46,984-byte/782-line probe forest starting
+at 12.17 s, overlapping the first content contract at 12.10 s and preceding
+content services at 13.94 s. The runner and supervisor also retained
+conventional external parsers for readable, exact state validation, while
+`systemd-run` applied default environment expansion to both content command
+boundaries.
+
+The next batch gates the broad snapshot behind persistent request marker
+`/storage/.config/bird/boot-diagnostics.request`; ordinary boots retain the
+narrow readiness, supervisor, content, emergency and shutdown records.
+Requested captures publish atomically under their own boot ID before updating
+the latest copy. Both `systemd-run` boundaries preserve literal arguments with
+`--expand-environment=no`, fixing the observed guard-variable corruption and
+protecting provider paths containing `$`.
+
+Built-in parsing changes the following structural counts without changing the
+launcher or provider contract:
+
+- external `/proc/uptime` parser sites across runner/supervisor: 39 to 0;
+- main runner process-stat parsing: two `cat` and three `awk` sites removed;
+- per-launch path validation: `wc`, `tr` and `grep` removed;
+- scope metadata validation: three `sed | head` pipelines removed per pass;
+- PortMaster owner logging: four `cat` substitutions removed;
+- tiny supervisor state/boot/handoff reads: seven external commands removed.
+
+The exact-line replacement rejects truncated, extended and multi-line records.
+Provider returns gain accurate post-return classifications for success,
+ordinary exits and Linux signal-derived statuses. The proven completed D-Bus
+barrier remains separate from audio startup; the unsafe one-transaction variant
+was rejected during review rather than sent to hardware.
+
+Clean source `e87e4910459b953b7a1f2ebd19a0efee35fe9e57` is deployed as
+`v6.23-content-shell-e87e491`, manifest
+`28e2372b36cef01c5f49b584c8896b00ce6969299a30eebb1d40a367d960c70c`,
+with the accepted toolset checkpoint as previous. All 57 files, selectors and
+the `.complete` digest verified. Launcher/profile pairs remain
+597,336/600,600 and 658,408/669,992 bytes with identical sections and profile
+metrics. Explicit shell validation grows the manifest-owned release by 2,703
+bytes; gzip output falls three bytes to 615,251. The older snapshot was
+published and independently verified in the private GitHub archive before card
+reclamation.
+
+This candidate changes no framebuffer bytes, launcher syscalls, timer, resident
+task, HDMI or Bluetooth path. First-usable timing therefore has no host-side
+improvement claim. Its RG34XX-SP gate covers ordinary no-snapshot boot, one
+deliberately armed boot-ID snapshot, absence of expansion warnings, immediate
+and pre-storage launch, normal and forced return classification, providers,
+controls, suspend, shutdown and boot/UI non-inferiority.
 
 ## Stage 5 — Battery, suspend and memory closure
 

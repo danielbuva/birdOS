@@ -19,22 +19,23 @@ display geometry and hardware policy are deliberate. Older muOS stages,
 source-kernel challengers and clean-root experiments remain useful evidence,
 but they are not alternate active implementations.
 
-The card currently selects the aggressive Stage 4 complete immutable-toolset
-candidate `v6.23-flash-toolset-61c51dd`, built from clean source
-`61c51dd798af47330af604e2884553f2e0275e68`. Its previous selector is the
-physically accepted boot-snapshot checkpoint
-`v6.23-flash-snapshot-9c4250e`, not a rejected experiment. The selected candidate's
-canonical manifest digest is
-`d806243beeb5edbffadc36ac1f83fb9306407935d1084e24d23aa11a2881a8a9`,
+The card currently selects the Stage 4 requested-diagnostics/content-shell
+candidate `v6.23-content-shell-e87e491`, built from clean public source
+`e87e4910459b953b7a1f2ebd19a0efee35fe9e57`. Its previous selector is the
+physically accepted complete immutable-toolset checkpoint
+`v6.23-flash-toolset-61c51dd`. The selected candidate's canonical manifest
+digest is
+`28e2372b36cef01c5f49b584c8896b00ce6969299a30eebb1d40a367d960c70c`,
 and deployment verified all 57 manifest-owned files. The device-contract digest is
 `85ccb8e46e71ee66e2320022ac13228124d6efcea5abdd800b8c18bd190f73cd`
 and the generated-catalog digest is
 `7e29e491bb43191ca9ae6c18bd566b6ba0c984bf43d1d0103eddd6e534306e62`.
 The immutable-dispatcher, immutable-supervisor, first-frame-preparation and
-boot-snapshot checkpoints passed their full RG34XX-SP gates. The selected
-complete-toolset batch has passed host, build and deployment gates but still
-requires its broad RG34XX-SP behavior gate.
-None of these tuples
+boot-snapshot checkpoints and the complete-toolset batch passed their full
+RG34XX-SP gates. The selected content-shell batch has passed host, build and
+deployment gates but still requires its RG34XX-SP behavior gate. HDMI and
+Bluetooth remain unchanged; retention or removal of either is an explicit
+later product decision. None of these tuples
 replaces the broader source/behavior baseline or immutable fallback named above.
 
 ## Authority
@@ -779,8 +780,69 @@ launchers remain 658,408/669,992 bytes. Fixed controls shrink from 10,608 to
 manifest-owned release shrinks 1,869 bytes, including a 1,692-byte smaller
 mount hook and a two-byte smaller 615,254-byte compressed overlay. The inactive
 first-frame release was archived, published and independently verified in the
-private GitHub release archive before its card copy was reclaimed. Hardware
-behavior and timing remain unclaimed until the card returns from this batch.
+private GitHub release archive before its card copy was reclaimed.
+
+The broad RG34XX-SP gate passes. Boot `b116d112` opened the direct launcher and
+input at 1218 ms, committed the honest usable frame at 1226 ms and published
+storage readiness at 3723 ms. A game selected at 2493 ms remained exactly one
+pending intent and dispatched only after storage became ready. Two managed game
+sessions returned status 0 with matched retained-frame restoration. The
+operator reported the complete behavior matrix passing, including controls,
+providers, PortMaster/network cleanup, suspend/resume and shutdown. Shutdown
+was requested at 92.50 s, dispatched at 92.56 s and completed the durable save
+at 92.74 s. The 1226 ms usable result remains inside the accepted 1221--1229 ms
+range, so timing is unchanged/non-inferior rather than improved.
+
+### Requested diagnostics and content-shell candidate
+
+The ordinary post-autostart snapshot existed to expose retained ROCKNIX unit,
+process, memory, journal, kernel, udev and audio state after the compatibility
+graph settled. It was idle-I/O-priority work, but boot `b116d112` proves it
+still overlapped priority-two content startup: its 46,984-byte/782-line capture
+began at 12.17 s, while the first content contract was ready at 12.10 s and
+content services began at 13.94 s. Conventional shell parsers also made the
+early and content state contracts easy to inspect while those contracts were
+still changing. Finally, `systemd-run` retained its default `$` expansion even
+for the cleanup guard's embedded shell program.
+
+This candidate makes the full snapshot explicitly requested by the persistent
+marker `/storage/.config/bird/boot-diagnostics.request`. Ordinary boots retain
+readiness, supervisor, content, emergency and shutdown logs without launching
+the broad probe set. A requested capture atomically publishes
+`stock-root-boot-state-<boot-id>.log`, then refreshes the latest copy; the
+supervisor no longer attributes an older latest capture to a later boot. Both
+content `systemd-run` boundaries use `--expand-environment=no`, preserving
+literal provider arguments and guard parameter expansion. This fixes the
+invalid-environment warnings found in the accepted checkpoint's emergency
+records and protects paths containing `$`.
+
+Built-in reads replace all 39 external `/proc/uptime` parser sites across the
+runner and supervisor, two `cat` plus three `awk` process-stat sites, three
+per-launch path-validation helpers, three `sed | head` metadata pipelines,
+four PortMaster owner-token `cat` substitutions and seven tiny supervisor
+state-read commands. Exact-line parsing still rejects missing terminators,
+extra lines and malformed action/PID records. Provider returns now distinguish
+success, ordinary exits, SIGKILL, SIGTERM and other Linux signal-derived
+statuses after content has returned.
+
+Clean source `e87e4910459b953b7a1f2ebd19a0efee35fe9e57` is deployed as
+`v6.23-content-shell-e87e491`, canonical manifest
+`28e2372b36cef01c5f49b584c8896b00ce6969299a30eebb1d40a367d960c70c`,
+with all 57 files verified and the physically accepted toolset checkpoint as
+previous. Release/profile launcher pairs and their ELF sections remain
+unchanged at 597,336/600,600 and 658,408/669,992 bytes. The manifest-owned
+release grows 2,703 bytes from explicit validation and diagnostics code while
+the compressed overlay shrinks three bytes to 615,251. The retired snapshot
+release was published and independently verified in the private GitHub archive
+before its card copy was reclaimed.
+
+Launcher, framebuffer traffic, input ownership, timers and resident tasks are
+unchanged, so no first-frame improvement is claimed. The physical gate must
+prove an ordinary boot creates no broad snapshot, a deliberately armed boot is
+complete and correctly attributed, systemd expansion warnings are absent,
+immediate/pre-storage and normal content launch/return work, deliberate force
+quit is classified, and boot/UI timing, providers, controls, suspend and
+shutdown remain non-inferior. HDMI and Bluetooth are not part of this change.
 
 ## Launcher visual architecture
 

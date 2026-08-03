@@ -553,8 +553,43 @@ controls, 10,608 to 10,568 bytes through a 40-byte `.rodata` reduction. The
 manifest-owned release shrinks 1,869 bytes; the mount hook contributes 1,692
 bytes and the compressed overlay changes from 615,256 to 615,254 bytes. The
 inactive first-frame release was archived, published and independently verified
-on GitHub before its card copy was removed. The batch now waits for the broad
-physical behavior and timing gate.
+on GitHub before its card copy was removed. The broad gate passes. Boot
+`b116d112` opened direct input at 1218 ms, committed the usable frame at 1226 ms
+and published storage at 3723 ms. Its early selection remained one pending
+intent; two managed games returned 0 with matched retained-frame restoration.
+The operator reported the full controls/provider/PortMaster/suspend/shutdown
+matrix passing. The usable result remains inside the accepted 1221--1229 ms
+range, so it proves non-regression rather than improvement.
+
+The next Stage 4 audit candidate removes ordinary execution of the broad
+post-autostart snapshot. The accepted boot's 46,984-byte/782-line snapshot
+began at 12.17 s, overlapping application-contract readiness at 12.10 s and
+preceding content-service startup at 13.94 s. It is now armed only by persistent
+marker `/storage/.config/bird/boot-diagnostics.request`, atomically publishes a
+boot-scoped record and then refreshes the latest copy. Narrow readiness,
+supervisor, content, emergency and shutdown logs remain ordinary behavior.
+
+The accepted emergency evidence also showed systemd prematurely expanding the
+cleanup guard's shell variables and reporting invalid environment-variable
+names. Both `systemd-run` boundaries now specify `--expand-environment=no`.
+This is a correctness fix for literal provider/guard arguments, not merely log
+cleanup. Built-in reads remove all 39 external uptime parser sites, two
+`cat`/three `awk` process-stat sites, three path-validation helpers, three
+`sed | head` metadata pipelines, four PortMaster owner reads and seven tiny
+supervisor state reads. Exact validation and the completed D-Bus-before-audio
+barrier remain intact.
+
+Clean source `e87e4910459b953b7a1f2ebd19a0efee35fe9e57`, release
+`v6.23-content-shell-e87e491` and manifest
+`28e2372b36cef01c5f49b584c8896b00ce6969299a30eebb1d40a367d960c70c`
+are deployed with the accepted toolset checkpoint as previous. All 57 files
+verified; launcher/profile binaries and sections are unchanged, total
+manifest-owned bytes grow 2,703 and the overlay shrinks to 615,251 bytes. The
+older snapshot is independently verified in the private GitHub archive. HDMI
+and Bluetooth are untouched and remain explicit later product decisions. The
+physical gate covers ordinary and armed diagnostics, expansion-warning
+absence, immediate/queued launches, forced-exit classification, providers,
+controls, suspend, shutdown and boot/UI non-inferiority.
 
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
@@ -622,8 +657,10 @@ The v6.15 audit found the following generic work and defects. Only items marked
    H616 CARD jack and reconciles the independent MIXER speaker switch only when
    needed; physical testing accepts headphone-only output. A muted explicit
    PipeWire resume did not remove the speaker or headphone transients and was
-   removed. Generic HDMI/Bluetooth/quantum subtraction and codec power/pop
-   attribution remain later Stage 4 candidates.
+   removed. Generic quantum work and codec power/pop attribution remain later
+   audit candidates. HDMI and Bluetooth subtraction is not authorized; whether
+   either retained path belongs in the final image is an explicit later product
+   decision.
 3. **Closed in v6.16:** the two latency writers used inconsistent
    `audiolatency` and `global.audiolatency` keys. Both are suppressed because
    the pinned writable provider already contains the required value.
@@ -633,7 +670,8 @@ The v6.15 audit found the following generic work and defects. Only items marked
    generic slot is a no-op.
 5. **Closed in v6.15:** `055-hdmi-check` performed two DRM scans and contained
    an unquoted numeric test. The fixed internal-display profile suppresses it;
-   HDMI is not an offline-boot feature.
+   HDMI is not an offline-boot feature. Suppressing offline connector scans does
+   not decide whether retained HDMI support ships in the final image.
 6. **Closed in v6.15:** `098-deviceutils` and `099-networkservices` repeatedly
    started or stopped device-family service sets already expressed by the fixed
    target and unit gates. Both slots are bind-replaced by the fixed no-op.
@@ -643,18 +681,19 @@ The v6.15 audit found the following generic work and defects. Only items marked
 
 ## Next active order
 
-1. Complete the direct-flash replacement-launcher functional, boot and
-   launch/return gate while retaining the accepted MPV release as fallback.
-2. If it passes, move the next final-root executable directly from the selected
-   immutable release as its own bounded candidate.
-3. Audit udev coldplug output and let its manager exit if no retained feature
+1. Complete the requested-diagnostics/content-shell physical gate while
+   retaining the accepted immutable-toolset checkpoint as previous.
+2. Audit the retained coordinator, udev coldplug and session/logging managers
+   one independently measurable boundary at a time.
+3. Preserve HDMI and Bluetooth until their explicit product decision.
+4. Audit udev coldplug output and let its manager exit if no retained feature
    needs runtime hotplug; keep fixed hardware initialization separate from
    Bird.
-4. Audit logind versus seatd, journald policy, and remaining idle wakeups.
-5. Remove the muOS-to-ROCKNIX compatibility namespace as an explicit migration:
+5. Audit logind versus seatd, journald policy, and remaining idle wakeups.
+6. Remove the muOS-to-ROCKNIX compatibility namespace as an explicit migration:
    canonical `/storage/roms`, `/run/bird`, Bird-owned data/config directories,
    native BIOS/Ports paths and no launcher-time path rewriting.
-6. Re-measure menu, storage and application-contract boundaries before kernel
+7. Re-measure menu, storage and application-contract boundaries before kernel
    or U-Boot subtraction.
 
 ## Deliberately deferred

@@ -26,8 +26,12 @@ machine-readable hardware subset without replacing this experience contract.
   launcher at `/storage/bird-data` and exported to applications through the
   fixed `/storage/roms` view. `/mnt/mmc` is only the launcher's compiled
   catalogue namespace; the runner translates it before dispatch.
-- HDMI, alternate boards, touchscreens and external controller setup are not
-  part of the first custom-launcher target.
+- Offline boot targets the internal panel and built-in controls. Alternate
+  boards, touchscreens and external-controller setup remain outside this
+  product.
+- Whether the final image retains HDMI and Bluetooth support is an explicit
+  later product decision. Current optimization candidates preserve both
+  retained paths; absence from offline boot is not approval to remove them.
 
 ## Fixed behavior
 
@@ -39,9 +43,12 @@ machine-readable hardware subset without replacing this experience contract.
 - Storage readiness: the cached collection remains browsable while storage is
   made ready asynchronously; launching is gated on the selected ROM path.
 - Diagnostics: no probe gates the first usable frame. Ordinary boots retain
-  the exact readiness logs and one bounded, idle-priority post-frame snapshot;
-  deeper probes are individually armed for a specific experiment and removed
-  again afterward.
+  exact readiness, supervisor, content, emergency and shutdown records but do
+  not run the broad post-autostart probe set. A full snapshot is explicitly
+  armed by persistent marker `/storage/.config/bird/boot-diagnostics.request`,
+  publishes under its own boot ID and refreshes
+  `stock-root-boot-state-latest.log`; remove the marker to disarm subsequent
+  captures.
 - Compatibility provider: the pinned ROCKNIX 20260701 application and hardware
   closure, with birdOS replacing its frontend and selected generic policy.
 - Boot recovery: loader or post-flash verification failure selects the
