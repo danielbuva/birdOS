@@ -620,6 +620,9 @@ grep -q 'systemd-rfkill.socket' \
 	"$OUTPUT/card/mount-storage.sh" || fail 'rfkill activation socket remained'
 grep -q '^After=rocknix-autostart.service$' \
 	"$OUTPUT/card/bird/rocknix-report-stats.service" || fail 'event-ordered snapshot missing'
+grep -q '^ConditionPathExists=/storage/.config/bird/boot-diagnostics.request$' \
+	"$OUTPUT/card/bird/rocknix-report-stats.service" || \
+	fail 'ordinary-boot snapshot gate missing'
 grep -q '^Type=simple$' \
 	"$OUTPUT/card/bird/rocknix-report-stats.service" || fail 'nonblocking snapshot missing'
 grep -q '^RuntimeMaxSec=20s$' \
@@ -629,6 +632,9 @@ grep -q '^ExecStart=/flash/bird/capture-boot-state.sh$' \
 	fail 'immutable boot snapshot path missing'
 grep -q 'timeout 2s pactl info' \
 	"$OUTPUT/card/bird/capture-boot-state.sh" || fail 'bounded audio diagnostic missing'
+grep -q 'stock-root-boot-state-\$BOOT_ID.log' \
+	"$OUTPUT/card/bird/capture-boot-state.sh" || \
+	fail 'boot-scoped snapshot publication missing'
 grep -q "^  LINUX /bird-releases/$RELEASE_ID/KERNEL$" \
 	"$OUTPUT/card/extlinux/extlinux.conf" || fail 'versioned KERNEL selector missing'
 grep -q "^  INITRD /bird-releases/$RELEASE_ID/bird-initramfs.cpio.gz$" \
@@ -906,6 +912,9 @@ grep -q 'SESSION_PID=/run/bird/content-session.pid' \
 	"$OUTPUT/card/bird/run-content.sh" || fail 'managed content root missing'
 grep -Fq '/usr/bin/systemd-run --quiet --scope --collect' \
 	"$OUTPUT/card/bird/run-content.sh" || fail 'systemd content scope boundary missing'
+[ "$(grep -c -- '--expand-environment=no' \
+	"$OUTPUT/card/bird/run-content.sh")" -eq 2 ] || \
+	fail 'systemd command argument preservation missing'
 grep -q 'boundary=systemd-scope' \
 	"$OUTPUT/card/bird/run-content.sh" || fail 'content scope metadata contract missing'
 grep -q 'InvocationID' "$OUTPUT/card/bird/run-content.sh" || \

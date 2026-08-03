@@ -19,7 +19,6 @@ LOG_DIR=/storage/bird-data/MUOS/Bird/log
 LOG=$LOG_DIR/stock-root-supervisor.log
 LOG_BOOT_ID=$LOG_DIR/stock-root-supervisor.boot-id
 EARLY_LATEST=$LOG_DIR/early-initramfs-latest.log
-BOOT_STATE_LATEST=$LOG_DIR/stock-root-boot-state-latest.log
 SHUTDOWN_LOG=$LOG_DIR/shutdown-latest.log
 CONTENT_STATE_DIR=/run/bird
 STARTUP_FAILURE_LIMIT=3
@@ -30,10 +29,53 @@ EARLY_LAUNCHER_PID=
 EARLY_ACCEPT_REASON=
 EARLY_HEALTH_COMMITTED=0
 
+uptime_now() {
+	local uptime_path=${BIRD_UPTIME_PATH:-/proc/uptime}
+	local uptime_value ignored
+	if [ -r "$uptime_path" ] && \
+		IFS=' ' read -r uptime_value ignored <"$uptime_path"; then
+		printf '%s\n' "$uptime_value"
+	else
+		printf '%s\n' unknown
+	fi
+}
+
+classify_exit_status() {
+	local status=$1 signal
+	case "$status" in
+		0) CONTENT_EXIT_CLASS=success ;;
+		129|1[3-8][0-9]|19[0-2])
+			signal=$((status - 128))
+			case "$signal" in
+				9) CONTENT_EXIT_CLASS=sigkill ;;
+				15) CONTENT_EXIT_CLASS=sigterm ;;
+				*) CONTENT_EXIT_CLASS=signal-$signal ;;
+			esac
+			;;
+		*) CONTENT_EXIT_CLASS=exit-$status ;;
+	esac
+}
+
+read_single_line_file() {
+	local path=$1 trailing=
+	SINGLE_LINE_VALUE=
+	[ -s "$path" ] || return 1
+	{
+		# The producer contract includes a terminating newline. Reject a torn
+		# final record and any second line instead of accepting a valid prefix.
+		IFS= read -r SINGLE_LINE_VALUE || return 1
+		if IFS= read -r trailing || [ -n "$trailing" ]; then
+			return 1
+		fi
+	} <"$path"
+}
+
 mkdir -p /run/muos "$LOG_DIR" "${ATTEMPTS%/*}"
-BOOT_ID=$(cut -c1-8 /proc/sys/kernel/random/boot_id 2>/dev/null || :)
+IFS= read -r BOOT_ID_FULL </proc/sys/kernel/random/boot_id || BOOT_ID_FULL=
+BOOT_ID=${BOOT_ID_FULL:0:8}
 [ -n "$BOOT_ID" ] || BOOT_ID=unknown
-OLD_BOOT_ID=$(cat "$LOG_BOOT_ID" 2>/dev/null || :)
+OLD_BOOT_ID=
+[ ! -r "$LOG_BOOT_ID" ] || IFS= read -r OLD_BOOT_ID <"$LOG_BOOT_ID" || :
 if [ "$OLD_BOOT_ID" != "$BOOT_ID" ]; then
 	case "$OLD_BOOT_ID" in
 		????????)
@@ -41,8 +83,6 @@ if [ "$OLD_BOOT_ID" != "$BOOT_ID" ]; then
 				"$LOG_DIR/stock-root-supervisor-$OLD_BOOT_ID.log"
 			[ -s "$EARLY_LATEST" ] && cp -f "$EARLY_LATEST" \
 				"$LOG_DIR/early-initramfs-$OLD_BOOT_ID.log"
-			[ -s "$BOOT_STATE_LATEST" ] && cp -f "$BOOT_STATE_LATEST" \
-				"$LOG_DIR/stock-root-boot-state-$OLD_BOOT_ID.log"
 			if [ -s "$SHUTDOWN_LOG" ] && cp -f "$SHUTDOWN_LOG" \
 				"$LOG_DIR/shutdown-$OLD_BOOT_ID.log"; then
 				# A later forced reset must not attribute this older trace to
@@ -57,12 +97,12 @@ fi
 exec >>"$LOG" 2>&1
 printf 'bird supervisor boot_id=%s release_id=%s start uptime=' \
 	"$BOOT_ID" "$RELEASE_ID"
-cut -d ' ' -f 1 /proc/uptime
+uptime_now
 
 supervisor_signal() {
 	rm -f "$ATTEMPTS_TMP"
 	printf 'bird supervisor signal=%s uptime=' "$1"
-	cut -d ' ' -f 1 /proc/uptime
+	uptime_now
 	exit 0
 }
 trap 'supervisor_signal TERM' TERM
@@ -83,14 +123,14 @@ request_reboot() {
 	local result
 	if reboot_client; then
 		printf 'bird reboot dispatch ready uptime='
-		cut -d ' ' -f 1 /proc/uptime
+		uptime_now
 		exit 0
 	else
 		result=$?
 	fi
 	printf 'bird reboot dispatch failed result=%s; resuming launcher uptime=' \
 		"$result"
-	cut -d ' ' -f 1 /proc/uptime
+	uptime_now
 	return "$result"
 }
 
@@ -98,12 +138,12 @@ request_poweroff() {
 	local result
 	{
 		printf 'Bird shutdown requested boot_id=%s uptime=' "$BOOT_ID"
-		cut -d ' ' -f 1 /proc/uptime
+		uptime_now
 	} >"$SHUTDOWN_LOG"
 	if poweroff_client; then
 		{
 			printf 'Bird shutdown dispatch ready boot_id=%s uptime=' "$BOOT_ID"
-			cut -d ' ' -f 1 /proc/uptime
+			uptime_now
 		} >>"$SHUTDOWN_LOG"
 		exit 0
 	else
@@ -111,10 +151,10 @@ request_poweroff() {
 	fi
 	printf 'Bird shutdown dispatch failed boot_id=%s exit=%s uptime=' \
 		"$BOOT_ID" "$result" >>"$SHUTDOWN_LOG"
-	cut -d ' ' -f 1 /proc/uptime >>"$SHUTDOWN_LOG"
+	uptime_now >>"$SHUTDOWN_LOG"
 	printf 'bird shutdown dispatch failed result=%s; resuming launcher uptime=' \
 		"$result"
-	cut -d ' ' -f 1 /proc/uptime
+	uptime_now
 	return "$result"
 }
 
@@ -123,10 +163,12 @@ reset_boot_attempts() {
 	# the reset with one same-directory rename and verify both sides of it.
 	rm -f "$ATTEMPTS_TMP"
 	printf '0\n' >"$ATTEMPTS_TMP" || return 1
-	[ "$(cat "$ATTEMPTS_TMP" 2>/dev/null || :)" = 0 ] || return 1
+	read_single_line_file "$ATTEMPTS_TMP" || return 1
+	[ "$SINGLE_LINE_VALUE" = 0 ] || return 1
 	sync "$ATTEMPTS_TMP" || return 1
 	mv -f "$ATTEMPTS_TMP" "$ATTEMPTS" || return 1
-	[ "$(cat "$ATTEMPTS" 2>/dev/null || :)" = 0 ] || return 1
+	read_single_line_file "$ATTEMPTS" || return 1
+	[ "$SINGLE_LINE_VALUE" = 0 ] || return 1
 	sync "$ATTEMPTS" || return 1
 	# Persist the same-directory rename itself, not only the new file bytes. GNU
 	# sync supports directory fsync directly; retain syncfs/global fallbacks for
@@ -146,7 +188,7 @@ reset_boot_attempts() {
 report_boot_attempt_reset_failure() {
 	rm -f "$ATTEMPTS_TMP"
 	printf 'bird boot-attempt reset failed path=%s uptime=' "$ATTEMPTS"
-	cut -d ' ' -f 1 /proc/uptime
+	uptime_now
 }
 
 content_cleanup_pending() {
@@ -164,14 +206,14 @@ wait_content_cleanup() {
 	while content_cleanup_pending; do
 		if [ "$warned" -eq 0 ]; then
 			printf 'bird waiting for foreground content cleanup uptime='
-			cut -d ' ' -f 1 /proc/uptime
+			uptime_now
 			warned=1
 		fi
 		usleep 20000
 	done
 	[ "$warned" -eq 0 ] || {
 		printf 'bird foreground content cleanup complete uptime='
-		cut -d ' ' -f 1 /proc/uptime
+		uptime_now
 	}
 }
 
@@ -183,6 +225,10 @@ run_content() {
 	# reconcile the exact scope and display resources.  Its atomic state file is
 	# the foreground lease and the guard removes it only after cleanup completes.
 	wait_content_cleanup
+	classify_exit_status "$result"
+	printf 'bird content result=%s class=%s uptime=' \
+		"$result" "$CONTENT_EXIT_CLASS"
+	uptime_now
 	return "$result"
 }
 
@@ -192,15 +238,18 @@ consume_handoff_action() {
 	fi
 	printf 'bird initramfs handoff consume failed path=%s uptime=' \
 		"$HANDOFF_ACTION"
-	cut -d ' ' -f 1 /proc/uptime
+	uptime_now
 	return 1
 }
 
 dispatch_handoff_action() {
-	[ -s "$HANDOFF_ACTION" ] || return 0
-	ACTION=$(cat "$HANDOFF_ACTION")
+	[ -e "$HANDOFF_ACTION" ] || return 0
+	if ! read_completed_handoff_action; then
+		rm -f "$HANDOFF_ACTION"
+		return 0
+	fi
 	printf 'bird initramfs handoff action=%s uptime=' "$ACTION"
-	cut -d ' ' -f 1 /proc/uptime
+	uptime_now
 	case "$ACTION" in
 		10) consume_handoff_action && run_content "$REQUEST" ;;
 		11) consume_handoff_action && request_poweroff ;;
@@ -212,21 +261,12 @@ dispatch_handoff_action() {
 }
 
 read_completed_handoff_action() {
-	local bytes trailing=
 	ACTION=
-	[ -s "$HANDOFF_ACTION" ] || return 1
-	bytes=$(wc -c <"$HANDOFF_ACTION" 2>/dev/null) || return 1
-	[ "$bytes" -eq 3 ] || return 1
-	{
-		# The early launcher publishes exactly two digits and one newline with
-		# an atomic rename. Reject partial, extended and multi-line files rather
-		# than treating a prefix as proof that a usable launcher completed.
-		IFS= read -r ACTION || return 1
-		if IFS= read -r trailing; then
-			return 1
-		fi
-		[ -z "$trailing" ] || return 1
-	} <"$HANDOFF_ACTION"
+	read_single_line_file "$HANDOFF_ACTION" || return 1
+	ACTION=$SINGLE_LINE_VALUE
+	# The early launcher publishes exactly two digits and one newline with an
+	# atomic rename. The shared reader rejects partial and multi-line files; the
+	# exact enum below rejects extended single-line prefixes.
 	case "$ACTION" in
 		10|11|12|13|14) return 0 ;;
 		*) return 1 ;;
@@ -248,7 +288,7 @@ accept_completed_early_action() {
 		return 1
 	fi
 	printf 'bird accepted completed initramfs action=%s uptime=' "$ACTION"
-	cut -d ' ' -f 1 /proc/uptime
+	uptime_now
 	return 0
 }
 
@@ -289,8 +329,8 @@ early_launcher_adoptable() {
 load_early_launcher() {
 	local pid
 	EARLY_LAUNCHER_PID=
-	[ -s "$EARLY_PID" ] || return 1
-	pid=$(cat "$EARLY_PID")
+	read_single_line_file "$EARLY_PID" || return 1
+	pid=$SINGLE_LINE_VALUE
 	case "$pid" in *[!0-9]*|'') return 1 ;; esac
 	early_launcher_adoptable "$pid" || return 1
 	EARLY_LAUNCHER_PID=$pid
@@ -327,14 +367,14 @@ accept_early_frame() {
 				cp -f "$EARLY_LOG" "$LOG_DIR/early-initramfs-latest.log"
 			EARLY_ACCEPT_REASON=first-frame
 			printf 'bird accepted initramfs first frame pid=%s uptime=' "$pid"
-			cut -d ' ' -f 1 /proc/uptime
+			uptime_now
 			return 0
 		fi
 		usleep 20000
 	done
 	EARLY_ACCEPT_REASON=first-frame-timeout
 	printf 'bird initramfs first-frame timeout pid=%s uptime=' "$pid"
-	cut -d ' ' -f 1 /proc/uptime
+	uptime_now
 	return 2
 }
 
@@ -345,7 +385,7 @@ retire_early_launcher() {
 	# never target an unrelated process.
 	early_launcher_adoptable "$pid" || return 0
 	printf 'bird retiring unready initramfs launcher pid=%s uptime=' "$pid"
-	cut -d ' ' -f 1 /proc/uptime
+	uptime_now
 	kill -TERM "$pid" 2>/dev/null || return 0
 	for ((check = 0; check < 50; check++)); do
 		launcher_exited "$pid" && return 0
@@ -360,16 +400,16 @@ adopt_early_launcher() {
 	early_launcher_adoptable "$pid" || return 1
 
 	printf 'bird adopted persistent initramfs launcher pid=%s uptime=' "$pid"
-	cut -d ' ' -f 1 /proc/uptime
+	uptime_now
 	# pidfd_open + ppoll sleeps inside the kernel. The supervisor does no
 	# periodic kill(2), /proc scan or timer wakeup while Bird owns the menu.
 	if ! "$PIDWAIT" "$pid"; then
 		printf 'bird persistent-owner pidfd fallback pid=%s uptime=' "$pid"
-		cut -d ' ' -f 1 /proc/uptime
+		uptime_now
 		while ! launcher_exited "$pid"; do usleep 20000; done
 	fi
 	printf 'bird persistent initramfs launcher exited pid=%s uptime=' "$pid"
-	cut -d ' ' -f 1 /proc/uptime
+	uptime_now
 	archive_early_launcher
 	return 0
 }
@@ -400,7 +440,7 @@ mark_healthy() {
 		if launcher_exited "$pid"; then
 			HEALTH_REASON=child-exit
 			printf 'bird stock-root launcher exited before first frame uptime='
-			cut -d ' ' -f 1 /proc/uptime
+			uptime_now
 			return 1
 		fi
 		if [ -e "$FIRST_FRAME" ]; then
@@ -409,7 +449,7 @@ mark_healthy() {
 			if launcher_exited "$pid"; then
 				HEALTH_REASON=child-exit
 				printf 'bird stock-root stale first frame after exit uptime='
-				cut -d ' ' -f 1 /proc/uptime
+				uptime_now
 				return 1
 			fi
 			if ! reset_boot_attempts; then
@@ -418,14 +458,14 @@ mark_healthy() {
 				return 1
 			fi
 			printf 'bird stock-root first frame uptime='
-			cut -d ' ' -f 1 /proc/uptime
+			uptime_now
 			return 0
 		fi
 		usleep 20000
 	done
 	HEALTH_REASON=first-frame-timeout
 	printf 'bird stock-root first-frame timeout uptime='
-	cut -d ' ' -f 1 /proc/uptime
+	uptime_now
 	return 1
 }
 
@@ -512,7 +552,7 @@ if load_early_launcher; then
 			# Keep the already-visible initramfs launcher alive. systemd can
 			# restart this supervisor and retry the persistence transaction.
 			printf 'bird early frame not accepted; supervisor retry required uptime='
-			cut -d ' ' -f 1 /proc/uptime
+			uptime_now
 			exit 1
 		fi
 		if [ "$EARLY_ACCEPT_REASON" = first-frame-timeout ]; then
@@ -525,7 +565,7 @@ else
 fi
 if ! service_handoff_action; then
 	printf 'bird completed early action not accepted; supervisor retry required uptime='
-	cut -d ' ' -f 1 /proc/uptime
+	uptime_now
 	exit 1
 fi
 
@@ -546,7 +586,7 @@ while :; do
 		printf 'bird launcher startup failure=%s result=%s attempt=%s/%s uptime=' \
 			"$STARTUP_CLASS" "$LAUNCHER_RESULT" "$STARTUP_FAILURES" \
 			"$STARTUP_FAILURE_LIMIT"
-		cut -d ' ' -f 1 /proc/uptime
+		uptime_now
 		if [ "$STARTUP_FAILURES" -lt "$STARTUP_FAILURE_LIMIT" ]; then
 			# Recoverable device timing gets a short retry. A fatal class is
 			# relaunched only to establish repeated boot-level failure before the
@@ -555,7 +595,7 @@ while :; do
 			continue
 		fi
 		printf 'bird repeated boot-level launcher failure; rebooting uptime='
-		cut -d ' ' -f 1 /proc/uptime
+		uptime_now
 		systemctl reboot --force
 		exit 1
 	fi
@@ -563,7 +603,7 @@ while :; do
 	reap_launcher "$LAUNCHER_PID"
 	RESULT=$LAUNCHER_RESULT
 	printf 'bird launcher result=%s uptime=' "$RESULT"
-	cut -d ' ' -f 1 /proc/uptime
+	uptime_now
 	case "$RESULT" in
 		10) RUNTIME_FAILURES=0; run_content "$REQUEST" ;;
 		11) RUNTIME_FAILURES=0; request_poweroff ;;

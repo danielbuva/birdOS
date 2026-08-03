@@ -15,6 +15,34 @@ NETWORK_DIRECT_HARD_BOUND=91s
 NETWORK_STOP_BOUND=12s
 NETWORK_STOP_HARD_BOUND=13s
 
+read_uptime() {
+	BIRD_UPTIME_PATH=${BIRD_UPTIME_PATH:-/proc/uptime}
+	if [ ! -r "$BIRD_UPTIME_PATH" ] || \
+		! IFS=' ' read -r BIRD_UPTIME_VALUE _ <"$BIRD_UPTIME_PATH"; then
+		BIRD_UPTIME_VALUE=unknown
+	fi
+}
+
+uptime_now() {
+	read_uptime
+	printf '%s\n' "$BIRD_UPTIME_VALUE"
+}
+
+classify_exit_status() {
+	case "$1" in
+		0) BIRD_EXIT_CLASS=success ;;
+		129|1[3-8][0-9]|19[0-2])
+			BIRD_EXIT_SIGNAL=$(($1 - 128))
+			case "$BIRD_EXIT_SIGNAL" in
+				9) BIRD_EXIT_CLASS=sigkill ;;
+				15) BIRD_EXIT_CLASS=sigterm ;;
+				*) BIRD_EXIT_CLASS=signal-$BIRD_EXIT_SIGNAL ;;
+			esac
+			;;
+		*) BIRD_EXIT_CLASS=exit-$1 ;;
+	esac
+}
+
 # A wedged systemd client must never strand the launcher off-screen. Callers
 # retain their existing exact state checks; a timeout is an unknown/failure,
 # never proof that a resource stopped.
@@ -25,7 +53,7 @@ systemctl() {
 
 content_stage() {
 	printf 'Bird content stage=%s uptime=' "$1"
-	cut -d ' ' -f 1 /proc/uptime
+	uptime_now
 }
 
 application_contract_valid() {
@@ -101,13 +129,17 @@ fi
 
 validate_host_path() {
 	EXTRA_LINE=$1
-	HOST_PATH_BYTES=$(LC_ALL=C printf '%s' "$HOST_PATH" | wc -c | tr -d ' ')
-	case "$HOST_PATH_BYTES" in
-		''|*[!0-9]*) HOST_PATH_BYTES=$((CATALOG_PATH_MAX_BYTES + 1)) ;;
+	# C-locale shell length is the exact byte count. Keep validation in this
+	# process instead of forking wc, tr and grep before every provider handoff.
+	local LC_ALL=C
+	HOST_PATH_BYTES=${#HOST_PATH}
+	case "$HOST_PATH" in
+		*[[:cntrl:]]*) HOST_PATH_CONTROL=1 ;;
+		*) HOST_PATH_CONTROL=0 ;;
 	esac
 	if [ "$EXTRA_LINE" -ne 0 ] || \
 		[ "$HOST_PATH_BYTES" -gt "$CATALOG_PATH_MAX_BYTES" ] || \
-		LC_ALL=C printf '%s' "$HOST_PATH" | grep -q '[[:cntrl:]]'; then
+		[ "$HOST_PATH_CONTROL" -ne 0 ]; then
 		PATH_REJECTION="malformed ($HOST_PATH_BYTES bytes)"
 		return 1
 	fi
@@ -174,14 +206,14 @@ KOREADER_PORT_TEMP=
 
 initial_process_start_ticks() {
 	[ -r "$1" ] || return 1
-	PROCESS_STAT_RECORD=$(cat "$1" 2>/dev/null) || \
-		return 1
+	IFS= read -r PROCESS_STAT_RECORD <"$1" || return 1
 	case "$PROCESS_STAT_RECORD" in
-		*") "*)
-			printf '%s\n' "${PROCESS_STAT_RECORD##*) }" | awk '{print $20}'
-			;;
+		*") "*) PROCESS_STAT_TAIL=${PROCESS_STAT_RECORD##*) } ;;
 		*) return 1 ;;
 	esac
+	set -- $PROCESS_STAT_TAIL
+	[ "$#" -ge 20 ] || return 1
+	printf '%s\n' "${20}"
 }
 
 load_launch_request() {
@@ -247,8 +279,8 @@ if [ "$SESSION_MODE" = content ]; then
 	fi
 fi
 
-BOOT_ID_FULL=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || printf unknown)
-BOOT_ID=$(printf '%s' "$BOOT_ID_FULL" | cut -c 1-8)
+IFS= read -r BOOT_ID_FULL </proc/sys/kernel/random/boot_id || BOOT_ID_FULL=unknown
+BOOT_ID=${BOOT_ID_FULL:0:8}
 [ -n "$BOOT_ID" ] || BOOT_ID=boot
 RUNNER_START_TICKS=$(initial_process_start_ticks \
 	"$PROCESS_PROC_ROOT/$$/stat")
@@ -261,7 +293,8 @@ SCOPE_START_READY=/run/bird/content-scope-$SESSION_TOKEN.ready
 SCOPE_START_CANCEL=/run/bird/content-scope-$SESSION_TOKEN.cancel
 KOREADER_PORT_SCRIPT=/run/bird/ports/KOReader-$SESSION_TOKEN.sh
 KOREADER_PORT_TEMP=$KOREADER_PORT_SCRIPT.tmp
-SESSION_TICK=$(cut -d ' ' -f 1 /proc/uptime | tr -d .)
+read_uptime
+SESSION_TICK=${BIRD_UPTIME_VALUE/./}
 case "$SESSION_MODE" in
 	content) SESSION_KIND=kind$KIND ;;
 	portmaster) SESSION_KIND=portmaster ;;
@@ -305,6 +338,7 @@ owner_matches() {
 
 owner_relation() {
 	OWNER_RELATION=unknown
+	OWNER_TOKEN=
 	OWNER_FILE=$1
 	[ -s "$OWNER_FILE" ] || return 0
 	IFS= read -r OWNER_TOKEN <"$OWNER_FILE" || return 0
@@ -386,6 +420,8 @@ start_sway() {
 ensure_content_services() {
 	# Bird can be selected before the background compatibility graph completes.
 	# Join only the services every proven application session actually needs.
+	# D-Bus is a completed barrier: the pinned audio units do not express that
+	# ordering themselves, so merging these transactions is not equivalent.
 	systemctl start dbus.service 8>&- 9>&- || return 1
 	systemctl start pipewire.service wireplumber.service \
 		pipewire-pulse.service 8>&- 9>&- || return 1
@@ -662,9 +698,34 @@ write_scope_metadata() {
 scope_metadata_matches() {
 	METADATA_FILE=$1
 	[ -f "$METADATA_FILE" ] || return 1
-	RECORDED_TOKEN=$(sed -n 's/^session_token=//p' "$METADATA_FILE" | head -n 1)
-	RECORDED_UNIT=$(sed -n 's/^unit=//p' "$METADATA_FILE" | head -n 1)
-	RECORDED_INVOCATION=$(sed -n 's/^invocation_id=//p' "$METADATA_FILE" | head -n 1)
+	RECORDED_TOKEN=
+	RECORDED_UNIT=
+	RECORDED_INVOCATION=
+	METADATA_TOKEN_FOUND=0
+	METADATA_UNIT_FOUND=0
+	METADATA_INVOCATION_FOUND=0
+	while IFS= read -r METADATA_LINE || [ -n "$METADATA_LINE" ]; do
+		case "$METADATA_LINE" in
+			session_token=*)
+				if [ "$METADATA_TOKEN_FOUND" -eq 0 ]; then
+					RECORDED_TOKEN=${METADATA_LINE#session_token=}
+					METADATA_TOKEN_FOUND=1
+				fi
+				;;
+			unit=*)
+				if [ "$METADATA_UNIT_FOUND" -eq 0 ]; then
+					RECORDED_UNIT=${METADATA_LINE#unit=}
+					METADATA_UNIT_FOUND=1
+				fi
+				;;
+			invocation_id=*)
+				if [ "$METADATA_INVOCATION_FOUND" -eq 0 ]; then
+					RECORDED_INVOCATION=${METADATA_LINE#invocation_id=}
+					METADATA_INVOCATION_FOUND=1
+				fi
+				;;
+		esac
+	done <"$METADATA_FILE"
 	[ "$RECORDED_TOKEN" = "$SESSION_TOKEN" ] && \
 		[ "$RECORDED_UNIT" = "$SCOPE_UNIT" ] && \
 		{ [ "$RECORDED_INVOCATION" = "$SCOPE_INVOCATION" ] || \
@@ -873,21 +934,25 @@ wait_for_scope_registration() {
 
 process_stat_tail() {
 	[ -r "$PROCESS_PROC_ROOT/$1/stat" ] || return 1
-	PROCESS_STAT_RECORD=$(cat "$PROCESS_PROC_ROOT/$1/stat" 2>/dev/null) || \
-		return 1
+	IFS= read -r PROCESS_STAT_RECORD \
+		<"$PROCESS_PROC_ROOT/$1/stat" || return 1
 	case "$PROCESS_STAT_RECORD" in
-		*") "*) printf '%s\n' "${PROCESS_STAT_RECORD##*) }" ;;
+		*") "*) PROCESS_STAT_TAIL=${PROCESS_STAT_RECORD##*) } ;;
 		*) return 1 ;;
 	esac
+	[ -n "$PROCESS_STAT_TAIL" ]
 }
 
 process_start_ticks() {
-	process_stat_tail "$1" | awk '{print $20}'
+	process_stat_tail "$1" || return 1
+	set -- $PROCESS_STAT_TAIL
+	[ "$#" -ge 20 ] || return 1
+	printf '%s\n' "${20}"
 }
 
 process_pid_running() {
-	PROCESS_PID_STAT=$(process_stat_tail "$1") || return 1
-	PROCESS_PID_STATE=${PROCESS_PID_STAT%% *}
+	process_stat_tail "$1" || return 1
+	PROCESS_PID_STATE=${PROCESS_STAT_TAIL%% *}
 	[ -n "$PROCESS_PID_STATE" ] && [ "$PROCESS_PID_STATE" != Z ]
 }
 
@@ -897,9 +962,11 @@ process_identity_alive() {
 	case "$IDENTITY_PID:$IDENTITY_START_TICKS" in
 		*[!0-9:]*|:*) return 1 ;;
 	esac
-	IDENTITY_STAT=$(process_stat_tail "$IDENTITY_PID") || return 1
-	IDENTITY_STATE=${IDENTITY_STAT%% *}
-	IDENTITY_CURRENT_START=$(printf '%s\n' "$IDENTITY_STAT" | awk '{print $20}')
+	process_stat_tail "$IDENTITY_PID" || return 1
+	IDENTITY_STATE=${PROCESS_STAT_TAIL%% *}
+	set -- $PROCESS_STAT_TAIL
+	[ "$#" -ge 20 ] || return 1
+	IDENTITY_CURRENT_START=${20}
 	[ "$IDENTITY_CURRENT_START" = "$IDENTITY_START_TICKS" ] && \
 		[ -n "$IDENTITY_STATE" ] && [ "$IDENTITY_STATE" != Z ]
 }
@@ -1057,6 +1124,7 @@ start_scope_runner() {
 		done
 		[ -e "$SCOPE_START_GATE" ] || exit 125
 		exec /usr/bin/systemd-run --quiet --scope --collect \
+			--expand-environment=no \
 			--unit="$SCOPE_UNIT" \
 			--description='birdOS foreground content' -- "$@" 8>&- 9>&-
 	) &
@@ -1117,7 +1185,9 @@ run_managed() {
 	}
 
 	rm -f "$SESSION_RECORD" || return 1
-	SCOPE_TICK=$(cut -d ' ' -f 1 /proc/uptime | tr -cd '0-9')
+	read_uptime
+	SCOPE_TICK=${BIRD_UPTIME_VALUE/./}
+	case "$SCOPE_TICK" in *[!0-9]*) SCOPE_TICK=0 ;; esac
 	[ -n "$SCOPE_TICK" ] || SCOPE_TICK=0
 	SCOPE_UNIT=bird-content-${BOOT_ID}-$$-${SCOPE_TICK}.scope
 	SCOPE_INVOCATION=
@@ -1212,6 +1282,10 @@ run_managed() {
 		"$SCOPE_UNIT" "$SCOPE_INVOCATION"
 	wait "$SCOPE_RUNNER_PID"
 	STATUS=$?
+	classify_exit_status "$STATUS"
+	printf 'Bird managed scope return status=%s class=%s uptime=' \
+		"$STATUS" "$BIRD_EXIT_CLASS"
+	uptime_now
 
 	# systemd-run follows the provider root. A surviving child keeps the scope
 	# active. Joining the already-completed start job is not an inactivity wait,
@@ -1300,7 +1374,7 @@ run_network_helper() {
 start_portmaster_network() {
 	NETWORK_START_MODE=${1:-start}
 	printf 'Bird portmaster network start begin uptime='
-	cut -d ' ' -f 1 /proc/uptime
+	uptime_now
 	if [ -e /run/bird/network-request ]; then
 		printf '%s\n' 'Bird network request flag present before start'
 	else
@@ -1309,7 +1383,7 @@ start_portmaster_network() {
 	if [ -s "$NETWORK_OWNER" ]; then
 		owner_relation "$NETWORK_OWNER" || :
 		printf 'Bird portmaster network owner relation=%s token=%s\n' \
-			"$OWNER_RELATION" "$(cat "$NETWORK_OWNER")"
+			"$OWNER_RELATION" "$OWNER_TOKEN"
 	else
 		printf '%s\n' 'Bird portmaster network owner relation=none token=none'
 	fi
@@ -1338,19 +1412,19 @@ start_portmaster_network() {
 	if [ -s "$NETWORK_OWNER" ]; then
 		owner_relation "$NETWORK_OWNER" || :
 		printf 'Bird portmaster network owner relation=%s token=%s\n' \
-			"$OWNER_RELATION" "$(cat "$NETWORK_OWNER")"
+			"$OWNER_RELATION" "$OWNER_TOKEN"
 	else
 		printf '%s\n' 'Bird portmaster network owner relation=none token=none'
 	fi
 	printf 'Bird portmaster network start mode=%s helper_status=%s hard_bound=%s uptime=' \
 		"$NETWORK_START_MODE" "$NETWORK_STATUS" "$NETWORK_HELPER_HARD_BOUND"
-	cut -d ' ' -f 1 /proc/uptime
+	uptime_now
 	return "$NETWORK_STATUS"
 }
 
 stop_portmaster_network() {
 	printf 'Bird portmaster network stop begin uptime='
-	cut -d ' ' -f 1 /proc/uptime
+	uptime_now
 	if [ -e /run/bird/network-request ]; then
 		printf '%s\n' 'Bird network request flag present before stop'
 	else
@@ -1359,7 +1433,7 @@ stop_portmaster_network() {
 	if [ -s "$NETWORK_OWNER" ]; then
 		owner_relation "$NETWORK_OWNER" || :
 		printf 'Bird portmaster network owner relation=%s token=%s\n' \
-			"$OWNER_RELATION" "$(cat "$NETWORK_OWNER")"
+			"$OWNER_RELATION" "$OWNER_TOKEN"
 	else
 		printf '%s\n' 'Bird portmaster network owner relation=none token=none'
 	fi
@@ -1403,8 +1477,9 @@ stop_portmaster_network() {
 			printf '%s\n' 'Bird network request flag absent after stop'
 		fi
 		if [ -s "$NETWORK_OWNER" ]; then
+			owner_relation "$NETWORK_OWNER" || :
 			printf 'Bird portmaster network owner token=%s\n' \
-				"$(cat "$NETWORK_OWNER")"
+				"$OWNER_TOKEN"
 		else
 			printf '%s\n' 'Bird portmaster network owner relation=none token=none'
 		fi
@@ -1593,7 +1668,7 @@ run_selected() {
 		PORT_PREP_STATUS=0
 		"$PORT_PREP" || PORT_PREP_STATUS=$?
 		printf 'Bird portmaster prepare status=%s uptime=' "$PORT_PREP_STATUS"
-		cut -d ' ' -f 1 /proc/uptime
+		uptime_now
 		[ "$PORT_PREP_STATUS" -eq 0 ] || return "$PORT_PREP_STATUS"
 		# The start helper can partially configure an interface before returning
 		# failure, so cleanup owns a stop attempt from this point onward.
@@ -1706,6 +1781,7 @@ start_cleanup_guard() {
 	GUARD_UNIT=bird-content-guard-${BOOT_ID}-$$-${RUNNER_START_TICKS}.service
 	if ! /usr/bin/timeout --signal=TERM --kill-after=1s 3s \
 		/usr/bin/systemd-run --quiet --collect --service-type=exec \
+		--expand-environment=no \
 		--unit="$GUARD_UNIT" --description='birdOS content cleanup guard' \
 		-- /bin/sh -c '
 		trap "" HUP
@@ -1794,7 +1870,11 @@ start_cleanup_guard() {
 		fi
 		{
 			printf "Bird runner guard reconciled pid=%s uptime=" "$PARENT"
-			cut -d " " -f 1 /proc/uptime
+			if IFS=" " read -r GUARD_UPTIME _ </proc/uptime; then
+				printf "%s\n" "$GUARD_UPTIME"
+			else
+				printf "%s\n" unknown
+			fi
 			if [ "$SCOPE_EXPECTED_GUARD" = 1 ]; then
 				for TARGET in "$SESSION_RECORD" "$GLOBAL_SESSION"; do
 					EXIT_STATUS=2
@@ -1983,7 +2063,7 @@ trap 'signal_exit 129' HUP
 	if [ "$STATUS" -eq 0 ] && wait_application_contract && . /etc/profile; then
 		printf 'Bird application contract ready revision=%s uptime=' \
 			"$APPLICATION_CONTRACT_REVISION"
-		cut -d ' ' -f 1 /proc/uptime
+		uptime_now
 		content_stage contract-ready
 		if [ "$SESSION_MODE" = content ] && ! rm -f "$REQUEST"; then
 			STATUS=1
@@ -2016,7 +2096,7 @@ trap 'signal_exit 129' HUP
 	cleanup_runtime || STATUS=1
 	content_stage cleanup-complete
 	printf 'Bird ROCKNIX session result=%s uptime=' "$STATUS"
-	cut -d ' ' -f 1 /proc/uptime
+	uptime_now
 } >"$SESSION_LOG" 2>&1
 
 cp -f "$SESSION_LOG" "$LOG" || :

@@ -1,10 +1,23 @@
 #!/bin/bash
-# One diagnostic snapshot ordered after normal ROCKNIX autostart. This is
-# deliberately post-frame and never blocks Bird interaction.
+# One requested diagnostic snapshot ordered after normal ROCKNIX autostart.
+# It publishes the boot-scoped record immediately, so ordinary later boots do
+# not have to rename or accidentally reattribute a stale latest snapshot.
 
 set -u
 
-LOG=/storage/bird-data/MUOS/Bird/log/stock-root-boot-state-latest.log
+LOG_DIR=/storage/bird-data/MUOS/Bird/log
+IFS= read -r BOOT_ID_FULL </proc/sys/kernel/random/boot_id || BOOT_ID_FULL=
+BOOT_ID=${BOOT_ID_FULL:0:8}
+[ -n "$BOOT_ID" ] || BOOT_ID=unknown
+LOG=$LOG_DIR/stock-root-boot-state-$BOOT_ID.log
+LOG_TMP=$LOG.tmp.$$
+LATEST=$LOG_DIR/stock-root-boot-state-latest.log
+
+cleanup() {
+	rm -f "$LOG_TMP" 2>/dev/null || :
+}
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
 
 {
 	printf 'Bird post-frame boot snapshot uptime='
@@ -130,4 +143,7 @@ LOG=/storage/bird-data/MUOS/Bird/log/stock-root-boot-state-latest.log
 	done
 	printf '%s\n' '--- AXP717 kernel messages ---'
 	dmesg | grep -Ei 'axp717|battery|charger|power supply' | tail -n 80 || :
-} >"$LOG" 2>&1
+} >"$LOG_TMP" 2>&1
+mv -f "$LOG_TMP" "$LOG" || exit 1
+cp -f "$LOG" "$LATEST" || exit 1
+trap - EXIT HUP INT TERM

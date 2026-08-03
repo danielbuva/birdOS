@@ -1357,12 +1357,27 @@ fi
 bash -n "$RUNNER"
 sh -n "$EXIT_HELPER"
 grep -Fq '/usr/bin/systemd-run --quiet --scope --collect' "$RUNNER"
+[ "$(grep -Fc -- '--expand-environment=no' "$RUNNER")" -eq 2 ]
+if grep -Eq "cut -d ['\"] ['\"] -f 1 /proc/uptime" "$RUNNER"; then
+	printf '%s\n' 'content path still forks cut only to read uptime' >&2
+	exit 1
+fi
+if grep -Fq "printf '%s' \"\$HOST_PATH\" | wc -c" "$RUNNER" || \
+	grep -Fq "printf '%s' \"\$HOST_PATH\" | grep" "$RUNNER"; then
+	printf '%s\n' 'content path still forks to validate a catalog path' >&2
+	exit 1
+fi
+if grep -Fq "sed -n 's/^session_token=//p'" "$RUNNER" || \
+	grep -Fq '$(cat "$NETWORK_OWNER")' "$RUNNER"; then
+	printf '%s\n' 'content metadata or owner logging still forks parsers' >&2
+	exit 1
+fi
 grep -Fq 'contract_revision=$APPLICATION_CONTRACT_REVISION' "$RUNNER"
 grep -Fq 'systemctl kill --kill-whom=all --signal=KILL' "$EXIT_HELPER"
 grep -Fq 'for TARGET in "$SESSION_RECORD" "$GLOBAL_SESSION"' "$RUNNER"
 grep -Fq 'owner_relation "$SWAY_OWNER"' "$RUNNER"
 grep -Fq 'CATALOG_PATH_MAX_BYTES=4085' "$RUNNER"
-grep -Fq "grep -q '[[:cntrl:]]'" "$RUNNER"
+grep -Fq '*[[:cntrl:]]*) HOST_PATH_CONTROL=1 ;;' "$RUNNER"
 grep -Fq '*/../*|*/..|../*|..)' "$RUNNER"
 grep -Fq 'scope_expected=%s' "$RUNNER"
 grep -Fq 'if ! session_lock; then' "$RUNNER"
@@ -1376,9 +1391,25 @@ guard_start = source.index("start_cleanup_guard() {")
 guard_end = source.index("\n}\n\ncleanup_runtime() {", guard_start)
 guard = source[guard_start:guard_end]
 service_exec = guard.index("/usr/bin/systemd-run --quiet --collect --service-type=exec")
+no_expand = guard.index("--expand-environment=no", service_exec)
+shell_exec = guard.index("-- /bin/sh -c", no_expand)
 guard_ready = guard.index("GUARD_STARTED=1", service_exec)
 lease_armed = guard.index("publish_runner_state 1 || return 1", guard_ready)
-assert service_exec < guard_ready < lease_armed
+assert service_exec < no_expand < shell_exec < guard_ready < lease_armed
+
+scope_exec = source.index("/usr/bin/systemd-run --quiet --scope --collect")
+scope_no_expand = source.index("--expand-environment=no", scope_exec)
+scope_command = source.index(' -- "$@" 8>&- 9>&-', scope_no_expand)
+assert scope_exec < scope_no_expand < scope_command
+
+services_start = source.index("ensure_content_services() {")
+services_end = source.index("\n}", services_start)
+services = source[services_start:services_end]
+assert services.count("systemctl start") == 2
+dbus = services.index("systemctl start dbus.service")
+audio = services.index("systemctl start pipewire.service wireplumber.service")
+assert dbus < audio
+assert "pipewire-pulse.service" in services
 
 # The only permitted pre-guard work is validation and local bookkeeping. The
 # first compositor, network, or content-scope acquisition must remain behind
@@ -1387,6 +1418,66 @@ dispatch = source.index("if ! start_cleanup_guard; then", guard_end)
 first_sway = source.index("start_sway", dispatch)
 assert dispatch < first_sway
 PY
+
+STATUS_CLASSIFIER=$TMP/status-classifier.sh
+sed -n '/^classify_exit_status() {/,/^}/p' "$RUNNER" >"$STATUS_CLASSIFIER"
+# shellcheck source=/dev/null
+. "$STATUS_CLASSIFIER"
+classify_exit_status 0
+[ "$BIRD_EXIT_CLASS" = success ]
+classify_exit_status 7
+[ "$BIRD_EXIT_CLASS" = exit-7 ]
+classify_exit_status 137
+[ "$BIRD_EXIT_CLASS" = sigkill ]
+classify_exit_status 143
+[ "$BIRD_EXIT_CLASS" = sigterm ]
+classify_exit_status 130
+[ "$BIRD_EXIT_CLASS" = signal-2 ]
+classify_exit_status 128
+[ "$BIRD_EXIT_CLASS" = exit-128 ]
+classify_exit_status 192
+[ "$BIRD_EXIT_CLASS" = signal-64 ]
+classify_exit_status 193
+[ "$BIRD_EXIT_CLASS" = exit-193 ]
+classify_exit_status 255
+[ "$BIRD_EXIT_CLASS" = exit-255 ]
+
+METADATA_MATCHER=$TMP/scope-metadata-matcher.sh
+sed -n '/^scope_metadata_matches() {/,/^}/p' "$RUNNER" >"$METADATA_MATCHER"
+# shellcheck source=/dev/null
+. "$METADATA_MATCHER"
+SESSION_TOKEN=test-session
+SCOPE_UNIT=bird-content-test.scope
+SCOPE_INVOCATION=0123456789abcdef
+METADATA_RECORD=$TMP/scope-metadata
+printf '%s\n' \
+	version=2 \
+	session_token="$SESSION_TOKEN" \
+	unit="$SCOPE_UNIT" \
+	invocation_id="$SCOPE_INVOCATION" >"$METADATA_RECORD"
+scope_metadata_matches "$METADATA_RECORD"
+printf '%s\n' \
+	session_token="$SESSION_TOKEN" \
+	session_token=wrong-later-value \
+	unit="$SCOPE_UNIT" \
+	invocation_id="$SCOPE_INVOCATION" >"$METADATA_RECORD"
+scope_metadata_matches "$METADATA_RECORD"
+printf '%s\n' \
+	session_token=wrong-first-value \
+	session_token="$SESSION_TOKEN" \
+	unit="$SCOPE_UNIT" \
+	invocation_id="$SCOPE_INVOCATION" >"$METADATA_RECORD"
+if scope_metadata_matches "$METADATA_RECORD"; then
+	printf '%s\n' 'metadata matcher ignored first-value semantics' >&2
+	exit 1
+fi
+printf '%s\n' \
+	session_token="$SESSION_TOKEN" \
+	unit="$SCOPE_UNIT" \
+	invocation_id=pending >"$METADATA_RECORD"
+SCOPE_INVOCATION=
+scope_metadata_matches "$METADATA_RECORD"
+rm -f "$METADATA_RECORD"
 grep -Fq 'reconcile_registration_failure 2 || :' "$RUNNER"
 grep -Fq 'reconcile_registration_failure 3 || :' "$RUNNER"
 grep -Fq '2) stop_and_reap_scope_runner "$UNRESOLVED_RUNNER_PID" \' "$RUNNER"

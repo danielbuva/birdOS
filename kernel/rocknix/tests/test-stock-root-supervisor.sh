@@ -16,12 +16,18 @@ grep -Fq 'PIDWAIT=/flash/bird/bird-pidwait' "$SUPERVISOR"
 
 FUNCTIONS=$TMP/supervisor-functions.sh
 awk '
+	/^uptime_now\(\) \{/,/^}/ { print; next }
+	/^classify_exit_status\(\) \{/,/^}/ { print; next }
+	/^read_single_line_file\(\) \{/,/^}/ { print; next }
 	/^poweroff_client\(\) \{/ { emit = 1 }
 	/^reset_boot_attempts\(\) \{/ { emit = 1 }
 	/^wait_content_cleanup$/ { exit }
 	emit { print }
 ' "$SUPERVISOR" >"$FUNCTIONS"
 
+grep -q '^uptime_now() {' "$FUNCTIONS"
+grep -q '^classify_exit_status() {' "$FUNCTIONS"
+grep -q '^read_single_line_file() {' "$FUNCTIONS"
 grep -q '^poweroff_client() {' "$FUNCTIONS"
 grep -q '^request_poweroff() {' "$FUNCTIONS"
 grep -q '^reboot_client() {' "$FUNCTIONS"
@@ -78,6 +84,56 @@ chmod 0755 "$PIDWAIT_HELPER" "$PIDWAIT_EXIT_HELPER" \
 
 # shellcheck source=/dev/null
 . "$FUNCTIONS"
+
+SINGLE_LINE_TEST=$STATE/single-line
+printf '10\n' >"$SINGLE_LINE_TEST"
+read_single_line_file "$SINGLE_LINE_TEST"
+[ "$SINGLE_LINE_VALUE" = 10 ]
+printf '10' >"$SINGLE_LINE_TEST"
+if read_single_line_file "$SINGLE_LINE_TEST"; then
+	printf '%s\n' 'single-line reader accepted missing terminator' >&2
+	exit 1
+fi
+printf '10\n11\n' >"$SINGLE_LINE_TEST"
+if read_single_line_file "$SINGLE_LINE_TEST"; then
+	printf '%s\n' 'single-line reader accepted a second record' >&2
+	exit 1
+fi
+printf '10\n11' >"$SINGLE_LINE_TEST"
+if read_single_line_file "$SINGLE_LINE_TEST"; then
+	printf '%s\n' 'single-line reader accepted unterminated second record' >&2
+	exit 1
+fi
+rm -f "$SINGLE_LINE_TEST"
+
+classify_exit_status 0
+[ "$CONTENT_EXIT_CLASS" = success ]
+classify_exit_status 7
+[ "$CONTENT_EXIT_CLASS" = exit-7 ]
+classify_exit_status 137
+[ "$CONTENT_EXIT_CLASS" = sigkill ]
+classify_exit_status 143
+[ "$CONTENT_EXIT_CLASS" = sigterm ]
+classify_exit_status 130
+[ "$CONTENT_EXIT_CLASS" = signal-2 ]
+classify_exit_status 128
+[ "$CONTENT_EXIT_CLASS" = exit-128 ]
+classify_exit_status 192
+[ "$CONTENT_EXIT_CLASS" = signal-64 ]
+classify_exit_status 193
+[ "$CONTENT_EXIT_CLASS" = exit-193 ]
+classify_exit_status 255
+[ "$CONTENT_EXIT_CLASS" = exit-255 ]
+
+if grep -Eq '\$\(cat "\$(ATTEMPTS_TMP|ATTEMPTS|HANDOFF_ACTION|EARLY_PID)"' \
+	"$SUPERVISOR"; then
+	printf '%s\n' 'tiny supervisor state still forks cat' >&2
+	exit 1
+fi
+if grep -Fq 'wc -c <"$HANDOFF_ACTION"' "$SUPERVISOR"; then
+	printf '%s\n' 'handoff validation still forks wc' >&2
+	exit 1
+fi
 
 # The production implementation reads /proc to recognize unreaped zombies.
 # Hosts running this test may be macOS, so model only that one process-state

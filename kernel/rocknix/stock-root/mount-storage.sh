@@ -340,8 +340,9 @@ mount --bind /flash/bird/systemd-rfkill.service \
 	return 1
 }
 
-# Reuse the release's dormant statistics-service slot for one event-ordered
-# diagnostic snapshot. Its periodic timer is masked below.
+# Reuse the release's dormant statistics-service slot for a requested,
+# event-ordered diagnostic snapshot. Ordinary boots do not run the probe set;
+# its periodic timer is masked below.
 mount --bind /flash/bird/rocknix-report-stats.service \
 	/sysroot/usr/lib/systemd/system/rocknix-report-stats.service || {
 	error bird-boot-snapshot "Could not install post-frame snapshot service"

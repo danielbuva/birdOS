@@ -14,6 +14,7 @@ SAVE=$ROOT/kernel/rocknix/stock-root/bird-save-config.service
 UI=$ROOT/kernel/rocknix/stock-root/essway.service
 TARGET=$ROOT/kernel/rocknix/stock-root/rocknix.target
 REPORT=$ROOT/kernel/rocknix/stock-root/rocknix-report-stats.service
+CAPTURE=$ROOT/kernel/rocknix/stock-root/capture-boot-state.sh
 
 grep -Fqx 'After=local-fs.target' "$POWER"
 grep -Fqx 'WantedBy=multi-user.target' "$POWER"
@@ -32,4 +33,11 @@ grep -Fqx 'ExecStartPre=/flash/bird/first-frame-prep.sh' "$UI"
 grep -Fqx 'ExecStart=/flash/bird/supervisor.sh' "$UI"
 grep -Eq '^Wants=.*essway\.service.*powerstate\.service' "$TARGET"
 grep -Fqx 'After=rocknix-autostart.service' "$REPORT"
+grep -Fqx \
+	'ConditionPathExists=/storage/.config/bird/boot-diagnostics.request' \
+	"$REPORT"
 grep -Fqx 'ExecStart=/flash/bird/capture-boot-state.sh' "$REPORT"
+grep -Fq 'stock-root-boot-state-$BOOT_ID.log' "$CAPTURE"
+grep -Fq 'cp -f "$LOG" "$LATEST"' "$CAPTURE"
+grep -Fq 'trap cleanup EXIT' "$CAPTURE"
+grep -Fq "trap 'exit 1' HUP INT TERM" "$CAPTURE"
