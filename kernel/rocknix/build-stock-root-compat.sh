@@ -575,6 +575,9 @@ grep -q '^DefaultDependencies=no$' \
 	"$OUTPUT/card/bird/essway.service" || fail 'early Bird ordering missing'
 grep -q '^After=rocknix-automount.service graphical.target$' \
 	"$OUTPUT/card/bird/essway.service" || fail 'stable supervisor boundary missing'
+grep -q '^ExecStartPre=/flash/bird/first-frame-prep.sh$' \
+	"$OUTPUT/card/bird/essway.service" || \
+	fail 'immutable first-frame preparation path missing'
 grep -q '^Wants=.*essway.service' \
 	"$OUTPUT/card/bird/rocknix.target" || fail 'early Bird target request missing'
 grep -q '^BindPaths=/dev/null:/dev/console$' \

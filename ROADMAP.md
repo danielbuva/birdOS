@@ -722,9 +722,30 @@ with all 57 manifest files verified and the accepted dispatcher checkpoint as
 previous. Preparation falls from 17 files/154,715 bytes to 16 files/136,973
 bytes: one fewer `cp`, mode operand and destination check, plus 17,742 fewer
 source and destination bytes. Launcher, input, framebuffer, provider, suspend,
-audio, resident tasks, timers and memory are unchanged. Boot non-inferiority,
-both service states, quick launch/return, emergency restart and shutdown remain
-the physical gate.
+audio, resident tasks, timers and memory are unchanged. That physical gate
+passes. The direct supervisor, both services, game/media launch and return,
+emergency restart and shutdown remained functional. Valid usable-frame records
+were 1232 and 1221 ms after kernel start and the external stopwatch remained
+near 2.7 seconds. This establishes non-regression only.
+
+Audio-only MPV suspend remains a separate non-blocking defect. One run ended
+inside resume without a completion marker or surviving reset cause. The next
+run completed suspend/resume but audibly repeated about one second; PipeWire
+logged output and MPV XRUNs at resume. A movie completed the same retained
+fake-suspend path correctly. The provider currently stops MPV while leaving the
+PipeWire graph alive, then resumes MPV before unmuting. Do not add a blind pause
+toggle or apply an audio-only workaround to movies. A future isolated candidate
+must use acknowledged MPV IPC, preserve prior pause state, fit the intended
+background-music policy and follow finer resume/reset instrumentation.
+
+The next independently bounded candidate executes
+`/flash/bird/first-frame-prep.sh` directly from `essway.service` and removes its
+writable duplicate. Preparation falls from 16 files/136,973 bytes to 15
+files/136,162 bytes: one fewer `cp`, mode operand and destination check, plus
+811 fewer source-read and destination-write bytes. This is a post-usable-frame
+storage-efficiency candidate; no boot improvement is claimed. Its hardware gate
+is boot non-inferiority, read-only brightness evidence, quick launch/return,
+emergency restart and shutdown.
 
 ## Stage 5 — Battery, suspend and memory closure
 

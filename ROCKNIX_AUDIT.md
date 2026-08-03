@@ -465,7 +465,27 @@ The writable set falls from 17 files/154,715 bytes to 16 files/136,973 bytes,
 removing one `cp`, one mode operand, one destination check and 17,742 source
 plus destination bytes. This changes no retained process or launcher, provider,
 suspend, audio, timer, wakeup or memory behavior. Hardware service state,
-boot timing, content return, recovery and shutdown remain the gate.
+boot timing, content return, recovery and shutdown remain the gate. That gate
+passes: two valid per-boot usable-readiness records are 1232 and 1221 ms after
+kernel start, the stopwatch remained near 2.7 seconds, and direct supervision,
+game/media return, emergency restart and shutdown remained functional. The
+sparse timing set establishes non-regression only.
+
+Audio-only MPV suspend exposed a separate retained discontinuity. One run
+abruptly reset after resume dispatch without a completion marker or attributable
+panic/OOM/reset cause. The next run completed the transaction but replayed about
+one second; PipeWire reported output and MPV XRUNs at resume. Movie suspend on
+that boot completed correctly. The retained provider stops MPV but leaves the
+PipeWire graph alive, then resumes MPV before unmuting. No blind pause behavior
+is accepted; a future audio-only candidate needs acknowledged IPC, prior-pause
+preservation, background-music policy and finer resume/reset evidence first.
+
+The next subtraction executes the single-consumer 811-byte
+`first-frame-prep.sh` directly from immutable `/flash`. It removes one copy
+child, chmod operand, destination check and 811 source plus destination bytes,
+without changing the launcher, content, audio, suspend, task, timer or memory
+paths. The physical gate remains boot non-regression, brightness observation,
+quick content return, emergency restart and shutdown.
 
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full

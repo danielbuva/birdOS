@@ -30,9 +30,8 @@ and deployment verified all 57 manifest-owned files. The device-contract digest 
 `85ccb8e46e71ee66e2320022ac13228124d6efcea5abdd800b8c18bd190f73cd`
 and the generated-catalog digest is
 `7e29e491bb43191ca9ae6c18bd566b6ba0c984bf43d1d0103eddd6e534306e62`.
-The immutable-dispatcher checkpoint passed its full RG34XX-SP gate; the immutable-supervisor
-candidate has passed host, build and deployment gates but still requires its
-RG34XX-SP boot/content gate. Neither tuple
+The immutable-dispatcher and immutable-supervisor checkpoints passed their full
+RG34XX-SP gates. Neither tuple
 replaces the broader source/behavior baseline or immutable fallback named above.
 
 ## Authority
@@ -629,9 +628,53 @@ Clean source `f06686ab0cf80676733de800809c39765aadfc6e` is deployed as
 `v6.23-flash-supervisor-f06686a`, canonical manifest
 `e69a5c90fae8479161819b5797984d03e9d8a15e0c96f23a75c4647c6582bb37`.
 All 57 manifest-owned files verified, with the accepted immutable-dispatcher
-checkpoint as previous. Hardware boot timing, both retained service states,
-quick first-content launch, return, emergency restart and shutdown remain the
-RG34XX-SP gate; no device latency or energy improvement is claimed yet.
+checkpoint as previous. The RG34XX-SP gate passes the direct supervisor path,
+both retained service states, game and media launch/return, retained-frame
+emergency restart and orderly shutdown. The two valid per-boot records report
+usable readiness at 1232 and 1221 ms after kernel start; the external stopwatch
+remained near 2.7 seconds. The missing per-boot log from the abruptly reset run
+is not reconstructed from `early-initramfs-latest.log`. These sparse records
+establish boot non-regression only; no latency or energy improvement is claimed.
+
+Audio-only MPV playback also exposed a retained fake-suspend discontinuity on
+this otherwise accepted checkpoint. Boot `8e3ced38` dispatched power suspend and
+resume at 38.956 and 40.910 seconds but left no resume-complete marker before an
+abrupt reboot. No orderly shutdown, panic, Oops, OOM, pstore or reset cause
+survived. On boot `aa4a04bf`, the same song completed suspend/resume at
+22.122/24.647/25.697 seconds but replayed about one second before recovering;
+a movie later completed lid suspend/resume at 52.314/53.600/54.639 seconds and
+continued normally. The active and previous releases have byte-identical MPV,
+suspend, controls and content-runner artifacts, so the immutable-supervisor
+subtraction did not introduce this behavior.
+
+The retained provider mutes PipeWire, stops matching MPV processes with
+`SIGSTOP`, leaves PipeWire and WirePlumber running, then sends `SIGCONT` before
+unmuting. That is not an acknowledged MPV pause transaction and can leave an
+audio-only stream with stale buffered output; the exact buffer-level cause is
+not logged. No behavior change is promoted: a blind pause toggle is
+non-idempotent, pausing every media provider would regress the working movie
+path, and letting MPV advance while muted conflicts with the current policy. A
+future bounded audio-suspend candidate must distinguish audio-only from video,
+preserve prior pause state through acknowledged IPC, align with background-music
+policy and follow finer provider-phase/reset-cause instrumentation.
+
+### Immutable first-frame preparation candidate
+
+The next bounded Stage 4 candidate changes only `essway.service`'s pre-start
+path from the writable duplicate to
+`/flash/bird/first-frame-prep.sh`. The selected release is already required by
+the accepted immutable supervisor, and this 811-byte script uses absolute
+kernel/storage paths and writes only its diagnostic log. Root preparation no
+longer copies, chmods or verifies the writable duplicate.
+
+Against the accepted supervisor checkpoint, writable preparation falls from 16
+files/136,973 bytes to 15 files/136,162 bytes. This removes one `cp` child, one
+mode operand, one destination capability check and 811 source plus 811
+destination bytes. The script still executes once later, so its execution read
+is not counted as removed. There is no launcher, framebuffer, input, provider,
+suspend, audio, task, timer, wakeup or resident-memory change. Boot timing, the
+read-only brightness log, quick launch/return, repeated emergency restart and
+shutdown remain the RG34XX-SP gate.
 
 ## Launcher visual architecture
 

@@ -19,5 +19,6 @@ if grep -Eq '^(After|Before|Wants|Requires)=.*essway\.service' "$POWER"; then
 fi
 
 grep -Eq '^After=.*graphical\.target' "$UI"
+grep -Fqx 'ExecStartPre=/flash/bird/first-frame-prep.sh' "$UI"
 grep -Fqx 'ExecStart=/flash/bird/supervisor.sh' "$UI"
 grep -Eq '^Wants=.*essway\.service.*powerstate\.service' "$TARGET"
