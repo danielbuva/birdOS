@@ -12,7 +12,7 @@ TMP=$(mktemp -d "${TMPDIR:-/tmp}/bird-stage5-snapshot.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT INT TERM HUP
 PROC=$TMP/proc
 SYS=$TMP/sys
-mkdir -p "$PROC/42" "$SYS/kernel/debug" \
+mkdir -p "$PROC/42/task/42" "$PROC/42/task/44" "$SYS/kernel/debug" \
 	"$SYS/devices/system/cpu/cpu0/cpuidle/state1" \
 	"$SYS/class/power_supply/battery"
 mkdir -p "$PROC/43/smaps_rollup"
@@ -38,6 +38,16 @@ cat >"$PROC/42/status" <<'EOF'
 Name:	bird-launcher
 voluntary_ctxt_switches:	4
 nonvoluntary_ctxt_switches:	5
+EOF
+printf '%s\n' 'bird-launcher' >"$PROC/42/task/42/comm"
+printf '%s\n' '1000 2000 3' >"$PROC/42/task/42/schedstat"
+cp "$PROC/42/status" "$PROC/42/task/42/status"
+printf '%s\n' 'bird-render' >"$PROC/42/task/44/comm"
+printf '%s\n' '6000 7000 8' >"$PROC/42/task/44/schedstat"
+cat >"$PROC/42/task/44/status" <<'EOF'
+Name:	bird-render
+voluntary_ctxt_switches:	9
+nonvoluntary_ctxt_switches:	10
 EOF
 printf '%s\n' 'irq evidence' >"$PROC/interrupts"
 printf '%s\n' 'softirq evidence' >"$PROC/softirqs"
@@ -65,13 +75,14 @@ grep -Fxq 'bird_stage5_snapshot_version=1 label=invalid' "$TMP/invalid"
 
 BIRD_PROC_ROOT=$PROC BIRD_SYS_ROOT=$SYS "$WINDOW" start >"$TMP/start"
 BIRD_PROC_ROOT=$PROC BIRD_SYS_ROOT=$SYS "$WINDOW" end >"$TMP/end"
-grep -Fxq 'bird_stage5_window_version=1 mode=start' "$TMP/start"
-grep -Fxq 'bird_stage5_window_version=1 mode=end' "$TMP/end"
-grep -Fxq 'pid=42 comm=bird-launcher runtime_ns=1000 wait_ns=2000 timeslices=3 voluntary=4 nonvoluntary=5' "$TMP/start"
+grep -Fxq 'bird_stage5_window_version=2 mode=start' "$TMP/start"
+grep -Fxq 'bird_stage5_window_version=2 mode=end' "$TMP/end"
+grep -Fxq 'pid=42 tid=42 comm=bird-launcher runtime_ns=1000 wait_ns=2000 timeslices=3 voluntary=4 nonvoluntary=5' "$TMP/start"
+grep -Fxq 'pid=42 tid=44 comm=bird-render runtime_ns=6000 wait_ns=7000 timeslices=8 voluntary=9 nonvoluntary=10' "$TMP/start"
 START_SCHEDULER=$(grep -n '^--- scheduler counters ---$' "$TMP/start" | cut -d: -f1)
-START_PROCESSES=$(grep -n '^--- process scheduler counters ---$' "$TMP/start" | cut -d: -f1)
+START_PROCESSES=$(grep -n '^--- thread scheduler counters ---$' "$TMP/start" | cut -d: -f1)
 END_SCHEDULER=$(grep -n '^--- scheduler counters ---$' "$TMP/end" | cut -d: -f1)
-END_PROCESSES=$(grep -n '^--- process scheduler counters ---$' "$TMP/end" | cut -d: -f1)
+END_PROCESSES=$(grep -n '^--- thread scheduler counters ---$' "$TMP/end" | cut -d: -f1)
 [ "$START_SCHEDULER" -gt "$START_PROCESSES" ]
 [ "$END_SCHEDULER" -lt "$END_PROCESSES" ]
 if BIRD_PROC_ROOT=$PROC BIRD_SYS_ROOT=$SYS "$WINDOW" invalid >/dev/null 2>&1; then

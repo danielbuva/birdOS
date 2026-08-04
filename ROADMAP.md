@@ -1277,20 +1277,26 @@ The unarmed hardware gate passed with 1219/1220/1222 ms
 launcher/input/usable readiness and broad behavior intact. Keep the binaries
 fixed and acquire the paused-game window next.
 
-The RetroArch paused-menu window passed on boot `24facdce`. RetroArch consumed
-53.59 CPU-seconds and Sway 5.55 CPU-seconds over 60 seconds; aggregate four-core
-busy was 28.58 percent. Audio managers recorded zero runtime. RetroArch PSS/USS
-was 204,267/194,748 KiB. This identifies continuous menu presentation as a real
-paused-state battery candidate, but changing its cadence must preserve active
-menu responsiveness. Acquire ordinary audio playback next before selecting a
-candidate.
+The RetroArch paused-menu window passed on boot `24facdce`. Its main thread
+recorded 53.59 CPU-seconds and the Sway main thread 5.55 CPU-seconds over 60
+seconds; aggregate four-core busy was 28.58 percent. Audio-manager main threads
+recorded zero runtime. RetroArch PSS/USS was 204,267/194,748 KiB. This
+identifies continuous menu presentation as a real paused-state battery
+candidate, but changing its cadence must preserve active menu responsiveness.
 
-The ordinary MP3 playback window passed on boot `a91f03d0`. MPV consumed 1.95
-CPU-seconds over 60 seconds, while the retained PipeWire, PulseAudio and
-WirePlumber processes consumed none and held 18,682 KiB PSS. Aggregate four-core
-busy was 3.40 percent. Treat the warm audio stack as a measured
+The ordinary MP3 playback window passed on boot `a91f03d0`. The MPV main thread
+recorded 1.95 CPU-seconds over 60 seconds, while the retained PipeWire,
+PulseAudio and WirePlumber main threads recorded none and held 18,682 KiB PSS.
+Aggregate four-core busy was 3.40 percent. Treat the warm audio stack as a measured
 memory/residency candidate only after provider compatibility and launch latency
-are compared. Acquire ordinary video playback next on the same binaries.
+are compared.
+
+The ordinary video window passed on boot `35f2c9f5`, with unchanged 1226 ms
+usable readiness. Aggregate four-core busy was 63.32 percent, equivalent to 2.53
+cores, and MPV PSS/USS was 120,127/116,508 KiB. The per-process sampler was then
+found to represent only each process's main thread. Counter ABI v2 now records
+every task/TID outside the global measurement boundary. Repeat representative
+content windows with v2 before selecting a content battery candidate.
 
 ## Stage 6 — Canonical namespace and hermetic image
 

@@ -892,22 +892,33 @@ That unarmed gate passed. Launcher/input/usable readiness was
 paused-game window may now be armed without rebuilding or changing owners.
 
 The operator-positioned RetroArch paused-menu sample passed on boot
-`24facdce`. RetroArch used 53.59 CPU-seconds and Sway 5.55 CPU-seconds in the
-60-second window, while PipeWire, PulseAudio, WirePlumber and seatd used none.
+`24facdce`. The RetroArch main thread recorded 53.59 CPU-seconds and the Sway
+main thread 5.55 CPU-seconds in the 60-second window, while the PipeWire,
+PulseAudio, WirePlumber and seatd main threads recorded none.
 Aggregate four-core busy was 28.58 percent and RetroArch PSS/USS was
 204,267/194,748 KiB. This attributes the paused-state cost to continuous
 RetroArch/Sway menu presentation rather than the retained audio managers. It is
 structural evidence, not calibrated energy; preserve responsiveness until an
 independent throttling candidate is measured.
 
-The ordinary MP3 playback window passed on boot `a91f03d0`. MPV used 1.95
-CPU-seconds and 5,712 slices over 60 seconds. PipeWire, PulseAudio, WirePlumber,
-seatd, Sway and the Bird MPV helpers recorded effectively zero runtime during
-the window. The three warm audio managers nevertheless retained 18,682 KiB PSS.
+The ordinary MP3 playback window passed on boot `a91f03d0`. The MPV main thread
+recorded 1.95 CPU-seconds and 5,712 slices over 60 seconds. The PipeWire,
+PulseAudio, WirePlumber, seatd, Sway and Bird MPV-helper main threads recorded
+effectively zero runtime during the window. The three warm audio managers
+nevertheless retained 18,682 KiB PSS.
 This proves that this MPV path is not consuming their CPU during steady
 playback; it does not yet prove that other providers can launch, play, suspend
 and return without them. Preserve interaction behavior until that closure is
 measured.
+
+The ordinary video window passed on boot `35f2c9f5`. Aggregate four-core busy
+was 63.32 percent, equivalent to 2.53 cores, while MPV PSS/USS was
+120,127/116,508 KiB. Usable readiness remained 1226 ms. Review then proved that
+the per-process scheduler capture read only `/proc/<pid>/schedstat` and therefore
+omitted worker-thread attribution. Global CPU, IRQ, memory and boot evidence is
+valid. Counter ABI v2 now enumerates every `/proc/<pid>/task/<tid>` outside the
+global boundary; content attribution must use v2 before a retained-service or
+decoder candidate promotes.
 
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full

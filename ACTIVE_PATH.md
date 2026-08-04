@@ -1294,8 +1294,9 @@ The operator-positioned RetroArch paused-menu window passed on boot
 `24facdce`. Launcher/input/usable readiness was 1215/1215/1218 ms, four
 milliseconds faster at usable readiness on unchanged binaries and therefore
 ordinary boot variation, not an optimization claim. Over 60 seconds RetroArch
-used 53.59 CPU-seconds and 41,748 slices; Sway used 5.55 CPU-seconds. Aggregate
-four-core busy was 28.58 percent,
+recorded 53.59 CPU-seconds and 41,748 slices for the RetroArch main thread; the
+Sway main thread recorded 5.55 CPU-seconds. Aggregate four-core busy was 28.58
+percent,
 with 5,902 context switches/s and 4,624 interrupts/s. RetroArch PSS/USS was
 204,267/194,748 KiB. PipeWire, PulseAudio, WirePlumber and seatd recorded zero
 runtime during the window. Thus the paused core does not imply a quiet UI:
@@ -1307,9 +1308,9 @@ ordinary audio playback next on identical binaries.
 The ordinary MP3 playback window passed on boot `a91f03d0`.
 Launcher/input/usable readiness was 1220/1221/1226 ms, eight milliseconds
 slower at usable readiness than the paused-game boot on unchanged binaries and
-therefore ordinary variation. Over 60 seconds MPV used 1.95 CPU-seconds and
-5,712 slices, or 3.25 percent of one core. Aggregate four-core busy was 3.40
-percent, with 2,166 context switches/s and 1,786 interrupts/s. PipeWire,
+therefore ordinary variation. Over 60 seconds the MPV main thread recorded 1.95
+CPU-seconds and 5,712 slices. Aggregate four-core busy was 3.40 percent, with
+2,166 context switches/s and 1,786 interrupts/s. PipeWire,
 PulseAudio, WirePlumber, seatd, Sway and both Bird MPV helpers recorded
 effectively zero runtime during the measured window. MPV PSS/USS was
 32,373/29,528 KiB; the retained PipeWire/Pulse/WirePlumber stack totaled 18,682
@@ -1317,6 +1318,22 @@ KiB PSS. The instantaneous battery reading moved from 439 to 442 mA and is not
 calibrated energy. The warm audio managers are now a measured memory/residency
 candidate, but may not be removed unless provider launch and return remain
 non-inferior. Acquire ordinary video playback next on identical binaries.
+
+The ordinary video window passed on boot `35f2c9f5`. Launcher/input/usable
+readiness was 1221/1222/1226 ms, identical at usable readiness to the audio
+window. Over 60 seconds aggregate four-core busy was 63.32 percent, equivalent
+to 2.53 cores, with 3,408 context switches/s and 2,906 interrupts/s. MPV
+PSS/USS was 120,127/116,508 KiB; the retained audio stack held 18,820 KiB PSS
+and again recorded zero main-thread runtime. The instantaneous battery reading
+moved from 449 to 456 mA and is not calibrated energy.
+
+Review of the sampler found that its per-process scheduler lines read only
+`/proc/<pid>/schedstat`, which represents the main thread rather than all worker
+threads. Global CPU, IRQ, memory and boot results above remain valid, but the
+earlier RetroArch, Sway and MPV values are explicitly main-thread attribution.
+Stage 5 counter ABI v2 enumerates `/proc/<pid>/task/<tid>` outside the measured
+boundary so subsequent content windows can attribute multi-threaded work
+without adding normal boot work.
 
 ## Launcher visual architecture
 

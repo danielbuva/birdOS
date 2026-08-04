@@ -22,9 +22,11 @@ capture_boundary() {
 }
 
 capture_structural() {
-	printf '%s\n' '--- process scheduler counters ---'
-	for PID_ROOT in "$PROC_ROOT"/[0-9]*; do
-		[ -d "$PID_ROOT" ] || continue
+	printf '%s\n' '--- thread scheduler counters ---'
+	for TASK_ROOT in "$PROC_ROOT"/[0-9]*/task/[0-9]*; do
+		[ -d "$TASK_ROOT" ] || continue
+		TID=${TASK_ROOT##*/}
+		PID_ROOT=${TASK_ROOT%/task/*}
 		PID=${PID_ROOT##*/}
 		COMM=unknown
 		RUNTIME_NS=unavailable
@@ -32,12 +34,12 @@ capture_structural() {
 		TIMESLICES=unavailable
 		VOLUNTARY=unavailable
 		NONVOLUNTARY=unavailable
-		[ ! -r "$PID_ROOT/comm" ] || IFS= read -r COMM <"$PID_ROOT/comm"
-		if [ -r "$PID_ROOT/schedstat" ]; then
+		[ ! -r "$TASK_ROOT/comm" ] || IFS= read -r COMM <"$TASK_ROOT/comm"
+		if [ -r "$TASK_ROOT/schedstat" ]; then
 			IFS=' ' read -r RUNTIME_NS WAIT_NS TIMESLICES \
-				<"$PID_ROOT/schedstat" || continue
+				<"$TASK_ROOT/schedstat" || continue
 		fi
-		if [ -r "$PID_ROOT/status" ]; then
+		if [ -r "$TASK_ROOT/status" ]; then
 			while IFS=' 	' read -r KEY VALUE _REST; do
 				case "$KEY" in
 					voluntary_ctxt_switches:)
@@ -47,10 +49,10 @@ capture_structural() {
 						NONVOLUNTARY=$VALUE
 						;;
 				esac
-			done <"$PID_ROOT/status" 2>/dev/null || continue
+			done <"$TASK_ROOT/status" 2>/dev/null || continue
 		fi
-		printf 'pid=%s comm=%s runtime_ns=%s wait_ns=%s timeslices=%s voluntary=%s nonvoluntary=%s\n' \
-			"$PID" "$COMM" "$RUNTIME_NS" "$WAIT_NS" "$TIMESLICES" \
+		printf 'pid=%s tid=%s comm=%s runtime_ns=%s wait_ns=%s timeslices=%s voluntary=%s nonvoluntary=%s\n' \
+			"$PID" "$TID" "$COMM" "$RUNTIME_NS" "$WAIT_NS" "$TIMESLICES" \
 			"$VOLUNTARY" "$NONVOLUNTARY"
 	done
 	printf '%s\n' '--- wakeup sources ---'
@@ -88,7 +90,7 @@ capture_structural() {
 	done
 }
 
-printf 'bird_stage5_window_version=1 mode=%s\n' "$MODE"
+printf 'bird_stage5_window_version=2 mode=%s\n' "$MODE"
 	if [ "$MODE" = start ]; then
 		capture_structural
 		capture_boundary

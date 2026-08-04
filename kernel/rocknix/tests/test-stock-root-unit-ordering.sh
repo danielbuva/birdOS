@@ -61,7 +61,7 @@ grep -Fq 'STAGE5_CAPTURE=${BIRD_STAGE5_CAPTURE:-/flash/bird/capture-stage5-windo
 grep -Fq 'BOOT_CAPTURE=${BIRD_BOOT_DIAGNOSTICS_CAPTURE:-/flash/bird/capture-boot-state.sh}' "$DISPATCH"
 grep -Fq '"$COUNTERS" start' "$STAGE5_ACQUIRE"
 grep -Fq '"$COUNTERS" end' "$STAGE5_ACQUIRE"
-grep -Fq 'bird_stage5_window_version=1' "$STAGE5_WINDOW"
+grep -Fq 'bird_stage5_window_version=2' "$STAGE5_WINDOW"
 grep -Fq 'rm -f "$REQUEST"' "$STAGE5_ACQUIRE"
 grep -Fq 'settle_seconds=%s window_seconds=%s' "$STAGE5_ACQUIRE"
 grep -Fq 'trap cleanup EXIT' "$CAPTURE"

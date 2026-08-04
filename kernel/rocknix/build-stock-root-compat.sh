@@ -677,7 +677,7 @@ if grep -q 'stage5-idle-window.request' \
 	"$OUTPUT/card/bird/capture-boot-state.sh"; then
 	fail 'broad snapshot still owns the Stage 5 window'
 fi
-grep -Fq 'bird_stage5_window_version=1 mode=%s' \
+grep -Fq 'bird_stage5_window_version=2 mode=%s' \
 	"$OUTPUT/card/bird/capture-stage5-window-counters.sh" || \
 	fail 'Stage 5 window counter revision missing'
 grep -Fq 'bird_stage5_snapshot_version=1 label=%s' \
