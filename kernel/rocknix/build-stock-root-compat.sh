@@ -654,7 +654,7 @@ grep -q 'stock-root-boot-state-\$BOOT_ID.log' \
 grep -q '/flash/bird/capture-stage5-state.sh' \
 	"$OUTPUT/card/bird/capture-boot-state.sh" || \
 	fail 'requested Stage 5 snapshot missing'
-grep -q '^bird_stage5_snapshot_version=1' \
+grep -Fq 'bird_stage5_snapshot_version=1 label=%s' \
 	"$OUTPUT/card/bird/capture-stage5-state.sh" || \
 	fail 'Stage 5 snapshot revision missing'
 grep -q "^  LINUX /bird-releases/$RELEASE_ID/KERNEL$" \
