@@ -1157,6 +1157,16 @@ manifest-owned bytes and no ordinary task, timer, syscall or wakeup because the
 request marker is unarmed. Production remains no-serial and diagnostic/fallback
 entries retain serial.
 
+The request-only sampler passed its broad RG34XX-SP gate with
+launcher/input/usable readiness at 1218/1219/1223 ms and unchanged stopwatch
+timing. Clean source `2ca82cdf5fd3d173644b756797ae8f0421f4a87d`, release
+`v6.23-stage5-idle-2ca82cd`, manifest
+`c44f2639aaa714d46ef264d26f3627ed7598699d85c4aaadb7e7abfe88af09c1`
+adds a one-shot controlled menu-idle window. It settles five seconds, records
+start counters, leaves fifteen seconds untouched, records end counters and
+disarms only after atomic log publication. All 66 files verify; launchers are
+unchanged, manifest bytes grow 566, and ordinary boots remain sampler-free.
+
 ## Stage 6 — Canonical namespace and hermetic image
 
 Atomically migrate `/run/muos` to `/run/bird`, legacy state to Bird state,

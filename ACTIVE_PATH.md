@@ -19,13 +19,13 @@ display geometry and hardware policy are deliberate. Older muOS stages,
 source-kernel challengers and clean-root experiments remain useful evidence,
 but they are not alternate active implementations.
 
-The card currently selects the Stage 5 request-only measurement candidate
-`v6.23-stage5-metrics-3ce316d`, built from clean public source
-`3ce316d17574e8487ab846975c404f82f3366e56`. Its previous selector is the
-physically accepted Stage 4 warm-manager closure
-`v6.23-warm-managers-72d7fe6`. The selected release's canonical manifest
+The card currently selects the Stage 5 one-shot idle-window candidate
+`v6.23-stage5-idle-2ca82cd`, built from clean public source
+`2ca82cdf5fd3d173644b756797ae8f0421f4a87d`. Its previous selector is the
+physically accepted request-only measurement candidate
+`v6.23-stage5-metrics-3ce316d`. The selected release's canonical manifest
 digest is
-`aba835ad6dd467ff553df81ec64db6542ea4f13e87903fe3268e89bfe3083289`,
+`c44f2639aaa714d46ef264d26f3627ed7598699d85c4aaadb7e7abfe88af09c1`,
 and deployment verified all 66 manifest-owned files. The device-contract digest is
 `85ccb8e46e71ee66e2320022ac13228124d6efcea5abdd800b8c18bd190f73cd`
 and the generated-catalog digest is
@@ -1125,6 +1125,25 @@ and 3,036 manifest-owned bytes; the compressed overlay changes by two bytes to
 615,258. Its persistent request marker is not armed for the ordinary hardware
 gate. Production remains no-serial; diagnostic and fallback entries retain
 serial.
+
+The returned measurement-infrastructure release passed the broad hardware
+gate. Its cold boot recorded 1218 ms launcher, 1219 ms input and 1223 ms usable
+readiness. Stable post-first-launch sessions reached Sway-ready in 460--470 ms
+and provider dispatch in about 680--690 ms; launch return, PortMaster cleanup
+and shutdown completed normally. This accepts the unarmed sampler without a
+boot, interaction or battery improvement claim.
+
+Clean public source `2ca82cdf5fd3d173644b756797ae8f0421f4a87d` is deployed as
+`v6.23-stage5-idle-2ca82cd`, canonical manifest
+`c44f2639aaa714d46ef264d26f3627ed7598699d85c4aaadb7e7abfe88af09c1`.
+All 66 manifest files verify. Stage5-metrics is the on-card accepted rollback;
+warm-managers is sealed in the private GitHub release archive. Both launcher
+modes remain byte-identical. The one-shot control adds 566 manifest-owned bytes
+while the compressed overlay changes to 615,255 bytes. When explicitly armed,
+the diagnostic settles for five seconds, samples, records a fifteen-second
+untouched interval, samples again and disarms the idle-window request after
+atomic publication. Ordinary boots still execute no sampler. Production
+remains no-serial; diagnostic and fallback entries retain serial.
 
 ## Launcher visual architecture
 

@@ -773,6 +773,16 @@ rollback. The unarmed sampler adds no ordinary process or wakeup; its 3,036-
 byte manifest increase is measurement infrastructure, not a memory-efficiency
 claim.
 
+The request-only metrics release passed its broad physical gate at
+1218/1219/1223 ms launcher/input/usable readiness. Clean source
+`2ca82cdf5fd3d173644b756797ae8f0421f4a87d`, release
+`v6.23-stage5-idle-2ca82cd`, manifest
+`c44f2639aaa714d46ef264d26f3627ed7598699d85c4aaadb7e7abfe88af09c1`
+adds only an explicitly armed one-shot idle counter window. It has no ordinary
+caller, process or timer. Its paired counter deltas can attribute wakeup and
+residency candidates, while calibrated energy remains a separate physical
+metric.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.
