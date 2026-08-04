@@ -929,6 +929,15 @@ terminal progress. Release MPV now disables terminal OSD and emits only
 warnings/errors; `BIRD_MPV_TRACE=1` retains full diagnostics. This removes
 card writes and formatting work without changing decode, audio or input paths.
 
+The paired quiet-MPV window passed on boot `0f8278ee`. With the same movie and
+ABI-v2 sampler, the session log fell from 320,566 bytes/5,852 lines to 1,349
+bytes/21 lines. MPV thread-group runtime fell from 167.83 to 130.28 CPU-seconds
+and aggregate load from 2.91 to 2.28 equivalent cores. Context-switch rate fell
+slightly while IRQ rate rose slightly. No warning/error was emitted and the
+physical behavior gate passed. This supports retaining release-mode status
+suppression; calibrated energy and a larger paired set remain required before
+claiming battery improvement.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.

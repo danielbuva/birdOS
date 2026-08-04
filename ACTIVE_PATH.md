@@ -1346,6 +1346,18 @@ mostly MPV's continuous terminal status. The next bounded userspace candidate
 disables terminal OSD and lowers release messages to warnings/errors while
 retaining full output behind `BIRD_MPV_TRACE=1`.
 
+The quiet-MPV paired screening window passed on boot `0f8278ee` with the same
+movie and ABI-v2 sampler. Its content log fell from 320,566 bytes/5,852 lines to
+1,349 bytes/21 lines, a 99.58 percent byte reduction. MPV thread-group runtime
+fell from 167.83 to 130.28 CPU-seconds and aggregate load from 2.91 to 2.28
+equivalent cores. Context switches moved from 3,422 to 3,385/s; interrupts from
+2,815 to 2,862/s. The session emitted no warning or error and the physical
+behavior gate passed. Launcher/input/usable readiness was 1217/1218/1229 ms;
+the three-millisecond usable change on a byte-identical launcher is ordinary
+variation. This is a large same-content screening result, not calibrated energy
+or a statistically promoted battery claim. Retain the candidate and complete
+the external-power idle window next.
+
 ## Launcher visual architecture
 
 The active 720x480 launcher presentation is inspired by Mister Menu's ES-DE

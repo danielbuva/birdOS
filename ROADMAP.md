@@ -1306,6 +1306,14 @@ terminal progress. First remove that release-mode status stream while retaining
 warnings/errors and trace-mode output; measure before considering decoder or
 kernel work.
 
+The quiet-MPV paired screening window passed on boot `0f8278ee`. The identical
+movie log fell 99.58 percent, from 320,566 to 1,349 bytes. MPV thread-group
+runtime fell from 167.83 to 130.28 CPU-seconds and aggregate load from 2.91 to
+2.28 equivalent cores, with no warning/error or behavior failure. Usable
+readiness moved only from 1226 to 1229 ms on the byte-identical launcher. Keep
+this as strong screening evidence rather than a calibrated energy claim, and
+complete the external-power idle matrix next.
+
 ## Stage 6 — Canonical namespace and hermetic image
 
 Atomically migrate `/run/muos` to `/run/bird`, legacy state to Bird state,
