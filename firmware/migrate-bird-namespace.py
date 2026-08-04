@@ -191,6 +191,16 @@ def copy_tree_bytes(source: pathlib.Path, destination: pathlib.Path) -> None:
             fail(f"unsupported BIOS source entry: {source_entry}")
 
 
+def purge_macos_metadata(root: pathlib.Path) -> None:
+    """Remove host-only exFAT sidecars created while publishing new bytes."""
+
+    for path in sorted(root.rglob("*"), reverse=True):
+        if path.name == ".DS_Store" or path.name.startswith("._"):
+            if not path.is_file() or path.is_symlink():
+                fail(f"unsafe macOS metadata sidecar: {path}")
+            path.unlink()
+
+
 def inventory(root: pathlib.Path) -> list[str]:
     result: list[str] = []
     for path in sorted(root.rglob("*"), key=lambda item: item.relative_to(root).as_posix().encode()):
@@ -317,6 +327,7 @@ class Migration:
         # `._` sidecar per file and can nearly double the tree. Do not copy
         # host metadata into the device's canonical content namespace.
         copy_tree_bytes(self.legacy_bios, bios)
+        purge_macos_metadata(temporary)
         bios_file_count = sum(1 for path in bios.rglob("*") if path.is_file())
         os.replace(temporary, self.prepare)
         write_record(self.inventory_path, [f"revision\t{REVISION}", *payload_inventory(self.prepare / "Bird", self.prepare / "bios")])
