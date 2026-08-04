@@ -153,11 +153,9 @@ trap 'exit 1' HUP INT TERM
 		printf '%s\n' '--- Stage 5 controlled menu-idle window ---'
 		printf '%s\n' 'settle_seconds=5 window_seconds=15'
 		sleep 5
-		BIRD_STAGE5_LABEL=menu-idle-start \
-			/flash/bird/capture-stage5-state.sh 2>&1 || :
+		/flash/bird/capture-stage5-window-counters.sh start 2>&1 || :
 		sleep 15
-		BIRD_STAGE5_LABEL=menu-idle-end \
-			/flash/bird/capture-stage5-state.sh 2>&1 || :
+		/flash/bird/capture-stage5-window-counters.sh end 2>&1 || :
 	fi
 } >"$LOG_TMP" 2>&1
 mv -f "$LOG_TMP" "$LOG" || exit 1

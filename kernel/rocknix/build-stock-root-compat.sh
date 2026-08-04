@@ -417,6 +417,7 @@ for FILE in 090-ui_service 999-export bird-autostart bird-journald.conf \
 	prepare-ports.sh verify-portmaster-provider.sh \
 	portmaster-provider.manifest.tsv fixed-storage.sh first-frame-prep.sh \
 	capture-boot-state.sh capture-stage5-state.sh \
+	capture-stage5-window-counters.sh \
 	bird-network.sh bird-fixed-control-exit.sh \
 	bird-emergency-recover.sh \
 	bird-save-config.sh bird-save-config.service bird-suspend.sh \
@@ -458,6 +459,7 @@ chmod 0755 "$OUTPUT/card/post-flash.sh" "$OUTPUT/card/mount-storage.sh" \
 	"$OUTPUT/card/bird/first-frame-prep.sh" \
 	"$OUTPUT/card/bird/capture-boot-state.sh" \
 	"$OUTPUT/card/bird/capture-stage5-state.sh" \
+	"$OUTPUT/card/bird/capture-stage5-window-counters.sh" \
 	"$OUTPUT/card/bird/bird-network.sh" \
 	"$OUTPUT/card/bird/bird-fixed-control-exit.sh" \
 	"$OUTPUT/card/bird/bird-emergency-recover.sh" \
@@ -490,6 +492,7 @@ for SCRIPT in "$OUTPUT/card/post-flash.sh" \
 	"$OUTPUT/card/bird/first-frame-prep.sh" \
 	"$OUTPUT/card/bird/capture-boot-state.sh" \
 	"$OUTPUT/card/bird/capture-stage5-state.sh" \
+	"$OUTPUT/card/bird/capture-stage5-window-counters.sh" \
 	"$OUTPUT/card/bird/bird-network.sh" \
 	"$OUTPUT/card/bird/bird-fixed-control-exit.sh" \
 	"$OUTPUT/card/bird/bird-emergency-recover.sh" \
@@ -657,12 +660,15 @@ grep -q '/flash/bird/capture-stage5-state.sh' \
 grep -q '^STAGE5_WINDOW_REQUEST=/storage/bird-data/MUOS/Bird/stage5-idle-window.request$' \
 	"$OUTPUT/card/bird/capture-boot-state.sh" || \
 	fail 'one-shot Stage 5 window request missing'
-grep -q 'BIRD_STAGE5_LABEL=menu-idle-start' \
+grep -q 'capture-stage5-window-counters.sh start' \
 	"$OUTPUT/card/bird/capture-boot-state.sh" || \
 	fail 'Stage 5 idle start sample missing'
-grep -q 'BIRD_STAGE5_LABEL=menu-idle-end' \
+grep -q 'capture-stage5-window-counters.sh end' \
 	"$OUTPUT/card/bird/capture-boot-state.sh" || \
 	fail 'Stage 5 idle end sample missing'
+grep -Fq 'bird_stage5_window_version=1 mode=%s' \
+	"$OUTPUT/card/bird/capture-stage5-window-counters.sh" || \
+	fail 'Stage 5 window counter revision missing'
 grep -Fq 'bird_stage5_snapshot_version=1 label=%s' \
 	"$OUTPUT/card/bird/capture-stage5-state.sh" || \
 	fail 'Stage 5 snapshot revision missing'

@@ -1182,6 +1182,16 @@ implements the corrected host-visible trigger with stage5-idle as rollback.
 All 66 files verify; launchers are unchanged and manifest bytes grow by 31.
 The next boot is measurement-only until the one-shot window publishes.
 
+Boot `62fc769f` satisfied the one-shot publication contract and passed the broad
+hardware gate. Its 15.04-second screening delta was 0.43 percent aggregate CPU
+busy, about 1,469 context switches/s and 1,030 IRQs/s. `arch_timer` contributed
+about 486.5/s and `5070000.adc` exactly 300/s. Do not promote from these numbers:
+the start sampler's remaining reads occurred inside the interval and PSS/USS
+aborted on a disappearing PID. Replace the all-files awk with race-tolerant
+per-PID shell reads. Add paired per-process `schedstat`/context-switch counters,
+and order the minimal global scheduler timestamp last at start and first at end.
+Only a repeated corrected sample may select the next idle-cost candidate.
+
 ## Stage 6 — Canonical namespace and hermetic image
 
 Atomically migrate `/run/muos` to `/run/bird`, legacy state to Bird state,

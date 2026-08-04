@@ -798,6 +798,16 @@ All 66 files verify and the launchers are unchanged. The next returned card
 must contain both labelled samples and an absent one-shot marker before any
 counter delta is used.
 
+Boot `62fc769f` met that contract and the hardware gate passed. The raw window
+observed 0.43 percent aggregate CPU busy, about 1,469 context switches/s and
+1,030 IRQs/s; `arch_timer` was about 486.5/s and the H700 ADC exactly 300/s.
+These are screening observations only. A PID exited between glob expansion and
+awk open, invalidating PSS/USS, and the start sampler's structural reads entered
+the scheduler interval. The next sampler reads each `smaps_rollup` independently
+and brackets the global interval with minimal ordered counter endpoints while
+also recording per-process scheduler/context-switch deltas. Do not attribute
+the timer or ADC cost to userspace or begin kernel work from this single run.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.

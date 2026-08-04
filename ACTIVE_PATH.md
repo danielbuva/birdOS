@@ -1165,6 +1165,27 @@ modes remain byte-identical. The corrected absolute strings add 31 manifest-
 owned bytes and the compressed overlay is 615,257 bytes. Production remains
 no-serial; diagnostic and fallback entries retain serial.
 
+The corrected trigger passed its broad hardware gate and produced boot-scoped
+sample `62fc769f`; the one-shot marker disappeared only after both labels and
+the atomic latest copy existed. Across 15.04 seconds, raw `/proc/stat` deltas
+show 26 busy and 5,958 idle aggregate jiffies (0.43 percent busy), 22,087
+context switches (about 1,469/s) and 15,498 hardware interrupts (about
+1,030/s). The largest named IRQ deltas are `arch_timer` 7,317 (486.5/s) and
+`5070000.adc` 4,512 (exactly 300/s), followed by I2C 113 and thermal 61. This is
+screening evidence, not calibrated energy. The start sampler performed
+structural reads after its scheduler timestamp, and one `/proc/PID` exit caused
+the combined PSS awk to abort, so process memory and the exact global idle rate
+from this run are invalid.
+
+The next measurement-only correction uses a race-tolerant shell read for each
+`smaps_rollup` and a minimal paired counter endpoint. Start enumerates structural
+and per-process scheduler state before writing the final global scheduler
+timestamp; end writes the global timestamp first. The timed global delta thus
+excludes start-side enumeration. Per-process `schedstat` plus voluntary and
+nonvoluntary context-switch counters identify actual runtime without inferring
+cost from residency alone. The ADC and timer rates remain hypotheses until the
+corrected sample repeats them.
+
 ## Launcher visual architecture
 
 The active 720x480 launcher presentation is inspired by Mister Menu's ES-DE

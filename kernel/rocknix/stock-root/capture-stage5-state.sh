@@ -27,29 +27,30 @@ if [ -r "$PROC_ROOT/stat" ]; then
 fi
 
 printf '%s\n' '--- process pss and uss KiB ---'
-set -- "$PROC_ROOT"/[0-9]*/smaps_rollup
-if [ -e "$1" ]; then
-	awk '
-		function emit(file, count, part) {
-			if (file == "") return
-			count = split(file, part, "/")
-			printf "pid=%s pss_kib=%d uss_kib=%d\n", \
-				part[count - 1], pss, private_kib
-		}
-		FILENAME != current {
-			emit(current)
-			current = FILENAME
-			pss = 0
-			private_kib = 0
-		}
-		$1 == "Pss:" { pss += $2 }
-		$1 == "Private_Clean:" || $1 == "Private_Dirty:" || \
-		$1 == "Private_Hugetlb:" { private_kib += $2 }
-		END { emit(current) }
-	' "$@"
-else
-	printf '%s\n' 'smaps_rollup=unavailable'
-fi
+PSS_AVAILABLE=0
+for ROLLUP in "$PROC_ROOT"/[0-9]*/smaps_rollup; do
+	[ -e "$ROLLUP" ] || continue
+	PID_ROOT=${ROLLUP%/smaps_rollup}
+	PID=${PID_ROOT##*/}
+	PSS=0
+	PRIVATE_KIB=0
+	PSS_SEEN=0
+	if while IFS=' ' read -r KEY VALUE _REST; do
+		case "$KEY" in
+			Pss:) PSS=$((PSS + VALUE)); PSS_SEEN=1 ;;
+			Private_Clean:|Private_Dirty:|Private_Hugetlb:)
+				PRIVATE_KIB=$((PRIVATE_KIB + VALUE))
+				;;
+		esac
+	done <"$ROLLUP" 2>/dev/null && [ "$PSS_SEEN" -eq 1 ]; then
+		COMM=unknown
+		[ ! -r "$PID_ROOT/comm" ] || IFS= read -r COMM <"$PID_ROOT/comm"
+		printf 'pid=%s comm=%s pss_kib=%s uss_kib=%s\n' \
+			"$PID" "$COMM" "$PSS" "$PRIVATE_KIB"
+		PSS_AVAILABLE=1
+	fi
+done
+[ "$PSS_AVAILABLE" -eq 1 ] || printf '%s\n' 'smaps_rollup=unavailable'
 
 printf '%s\n' '--- wakeup sources ---'
 if [ -r "$SYS_ROOT/kernel/debug/wakeup_sources" ]; then
