@@ -1,0 +1,11 @@
+[Unit]
+Description=Bird requested Stage 5 measurement window
+After=rocknix-autostart.service
+ConditionPathExists=/storage/bird-data/MUOS/Bird/stage5-idle-window.request
+
+[Service]
+Type=simple
+Nice=19
+IOSchedulingClass=idle
+RuntimeMaxSec=120s
+ExecStart=/flash/bird/capture-stage5-window.sh

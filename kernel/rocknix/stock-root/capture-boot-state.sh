@@ -12,9 +12,6 @@ BOOT_ID=${BOOT_ID_FULL:0:8}
 LOG=$LOG_DIR/stock-root-boot-state-$BOOT_ID.log
 LOG_TMP=$LOG.tmp.$$
 LATEST=$LOG_DIR/stock-root-boot-state-latest.log
-STAGE5_WINDOW_REQUEST=/storage/bird-data/MUOS/Bird/stage5-idle-window.request
-STAGE5_WINDOW_ARMED=0
-[ ! -e "$STAGE5_WINDOW_REQUEST" ] || STAGE5_WINDOW_ARMED=1
 
 cleanup() {
 	rm -f "$LOG_TMP" 2>/dev/null || :
@@ -149,16 +146,7 @@ trap 'exit 1' HUP INT TERM
 	done
 	printf '%s\n' '--- AXP717 kernel messages ---'
 	dmesg | grep -Ei 'axp717|battery|charger|power supply' | tail -n 80 || :
-	if [ "$STAGE5_WINDOW_ARMED" -eq 1 ]; then
-		printf '%s\n' '--- Stage 5 controlled menu-idle window ---'
-		printf '%s\n' 'settle_seconds=5 window_seconds=15'
-		sleep 5
-		/flash/bird/capture-stage5-window-counters.sh start 2>&1 || :
-		sleep 15
-		/flash/bird/capture-stage5-window-counters.sh end 2>&1 || :
-	fi
 } >"$LOG_TMP" 2>&1
 mv -f "$LOG_TMP" "$LOG" || exit 1
 cp -f "$LOG" "$LATEST" || exit 1
-[ "$STAGE5_WINDOW_ARMED" -eq 0 ] || rm -f "$STAGE5_WINDOW_REQUEST" || exit 1
 trap - EXIT HUP INT TERM

@@ -35,14 +35,14 @@ for ROLLUP in "$PROC_ROOT"/[0-9]*/smaps_rollup; do
 	PSS=0
 	PRIVATE_KIB=0
 	PSS_SEEN=0
-	if while IFS=' ' read -r KEY VALUE _REST; do
+	if { while IFS=' ' read -r KEY VALUE _REST; do
 		case "$KEY" in
 			Pss:) PSS=$((PSS + VALUE)); PSS_SEEN=1 ;;
 			Private_Clean:|Private_Dirty:|Private_Hugetlb:)
 				PRIVATE_KIB=$((PRIVATE_KIB + VALUE))
 				;;
 		esac
-	done <"$ROLLUP" 2>/dev/null && [ "$PSS_SEEN" -eq 1 ]; then
+	done <"$ROLLUP"; } 2>/dev/null && [ "$PSS_SEEN" -eq 1 ]; then
 		COMM=unknown
 		[ ! -r "$PID_ROOT/comm" ] || IFS= read -r COMM <"$PID_ROOT/comm"
 		printf 'pid=%s comm=%s pss_kib=%s uss_kib=%s\n' \

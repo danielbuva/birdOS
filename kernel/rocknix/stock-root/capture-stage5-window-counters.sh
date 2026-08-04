@@ -1,7 +1,7 @@
 #!/bin/sh
-# Minimal paired-counter endpoint. Start records the broad counters first and
-# scheduler totals last; end records scheduler totals first. The timed scheduler
-# delta therefore excludes the start sampler's structural reads.
+# Minimal paired-counter endpoint. Start records structural state first and the
+# global boundary last; end records the global boundary first. Scheduler, IRQ
+# and softirq deltas therefore exclude the process and sysfs enumeration.
 
 set -u
 
@@ -10,11 +10,15 @@ SYS_ROOT=${BIRD_SYS_ROOT:-/sys}
 MODE=${1:-}
 case "$MODE" in start|end) ;; *) exit 2 ;; esac
 
-capture_scheduler() {
+capture_boundary() {
 	printf '%s\n' '--- scheduler counters ---'
 	[ ! -r "$PROC_ROOT/stat" ] || \
 		awk '/^(cpu([0-9]+)? |ctxt |intr |processes |procs_running |procs_blocked )/' \
-			"$PROC_ROOT/stat"
+				"$PROC_ROOT/stat"
+	printf '%s\n' '--- interrupts ---'
+	[ ! -r "$PROC_ROOT/interrupts" ] || cat "$PROC_ROOT/interrupts"
+	printf '%s\n' '--- softirqs ---'
+	[ ! -r "$PROC_ROOT/softirqs" ] || cat "$PROC_ROOT/softirqs"
 }
 
 capture_structural() {
@@ -55,10 +59,6 @@ capture_structural() {
 	else
 		printf '%s\n' 'wakeup_sources=unavailable'
 	fi
-	printf '%s\n' '--- interrupts ---'
-	[ ! -r "$PROC_ROOT/interrupts" ] || cat "$PROC_ROOT/interrupts"
-	printf '%s\n' '--- softirqs ---'
-	[ ! -r "$PROC_ROOT/softirqs" ] || cat "$PROC_ROOT/softirqs"
 	printf '%s\n' '--- cpu idle counters ---'
 	for STATE_ROOT in "$SYS_ROOT"/devices/system/cpu/cpu[0-9]*/cpuidle/state[0-9]*; do
 		[ -d "$STATE_ROOT" ] || continue
@@ -89,10 +89,10 @@ capture_structural() {
 }
 
 printf 'bird_stage5_window_version=1 mode=%s\n' "$MODE"
-if [ "$MODE" = start ]; then
-	capture_structural
-	capture_scheduler
-else
-	capture_scheduler
-	capture_structural
-fi
+	if [ "$MODE" = start ]; then
+		capture_structural
+		capture_boundary
+	else
+		capture_boundary
+		capture_structural
+	fi
