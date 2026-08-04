@@ -879,6 +879,14 @@ same condition-gated sampler may now acquire distinctly labelled paused-game,
 audio-playback, video-playback and external-power menu windows; none adds an
 ordinary-boot process, timer or probe.
 
+Clean source `e8cd4ef2b5546bd158454bccaf0db951298a3237` deploys that label-only
+extension as `v6.23-stage5-states-e8cd4ef`, manifest
+`9e62d8ffabe2d2091a5b832aca4f53b77e90c1a3cd450c247efc02774c299a18`.
+All 69 files verify. The executable owners and launcher binaries are unchanged;
+only the explicitly requested diagnostic parser accepts the additional states.
+Stage5-slot is the card rollback. Do not arm a content window until the broad
+hardware behavior gate passes.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.

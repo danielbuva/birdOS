@@ -1265,6 +1265,14 @@ current marquee behavior. Extend only the explicit one-shot sampler to label
 `game-paused`, `audio-playback`, `video-playback` and
 `external-power-menu-idle`; ordinary boot remains condition-gated and unchanged.
 
+Clean source `e8cd4ef2b5546bd158454bccaf0db951298a3237`, release
+`v6.23-stage5-states-e8cd4ef`, manifest
+`9e62d8ffabe2d2091a5b832aca4f53b77e90c1a3cd450c247efc02774c299a18`
+is deployed unarmed. All 69 files verify; stage5-slot remains the on-card
+rollback. Stage5-counters was sealed in the private GitHub archive before card
+reclamation. Launchers are unchanged and the overlay is 615,249 bytes. Require
+the broad behavior gate before arming the first paused-game window.
+
 ## Stage 6 — Canonical namespace and hermetic image
 
 Atomically migrate `/run/muos` to `/run/bird`, legacy state to Bird state,

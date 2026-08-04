@@ -19,13 +19,13 @@ display geometry and hardware policy are deliberate. Older muOS stages,
 source-kernel challengers and clean-root experiments remain useful evidence,
 but they are not alternate active implementations.
 
-The card currently selects the repaired Stage 5 diagnostic-slot candidate
-`v6.23-stage5-slot-d0c6e4e`, built from clean public source
-`d0c6e4edb02753f3f006ad2513976ce25b87cbfa`. Its previous selector is the
-physically accepted corrected-counter implementation
-`v6.23-stage5-counters-9945f9d`. The selected release's canonical manifest
+The card currently selects the Stage 5 power-state measurement candidate
+`v6.23-stage5-states-e8cd4ef`, built from clean public source
+`e8cd4ef2b5546bd158454bccaf0db951298a3237`. Its previous selector is the
+physically accepted diagnostic-slot implementation
+`v6.23-stage5-slot-d0c6e4e`. The selected release's canonical manifest
 digest is
-`bcf8e4575878ba81f8ffd854037436e2876a859148f959d167fe1c1981c8df95`,
+`9e62d8ffabe2d2091a5b832aca4f53b77e90c1a3cd450c247efc02774c299a18`,
 and deployment verified all 69 manifest-owned files. The device-contract digest is
 `eca6a008947c927ca1b47efc275f7e3bde1a94735223837a353db7db2acf0b40`
 and the generated-catalog digest is
@@ -1273,6 +1273,16 @@ label scrolls, no cadence or smoothness change is justified by these structural
 counters. The request-only sampler now accepts separately labelled paused-game,
 audio-playback, video-playback and external-power menu states so the remaining
 matrix can be acquired without running ordinary-boot diagnostics.
+
+Clean source `e8cd4ef2b5546bd158454bccaf0db951298a3237` is deployed as
+`v6.23-stage5-states-e8cd4ef`, manifest
+`9e62d8ffabe2d2091a5b832aca4f53b77e90c1a3cd450c247efc02774c299a18`.
+All 69 files verify; stage5-slot is the on-card rollback. The older
+stage5-counters release was verified, published to the private immutable GitHub
+archive, then reclaimed from the card. Release launchers remain
+597,336/600,600 bytes; the overlay is 615,249 bytes, three bytes smaller. The
+candidate is deployed unarmed so its broad behavior gate remains separate from
+the next requested measurement.
 
 ## Launcher visual architecture
 
