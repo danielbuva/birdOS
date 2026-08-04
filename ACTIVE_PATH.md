@@ -1030,6 +1030,21 @@ KiB RSS for seatd and 8,548 KiB for udevd before worker memory, but current PSS,
 wakeups and energy remain unmeasured. Production remains no-serial; diagnostic
 fallback retains serial.
 
+The returned hardware gate found all tested behavior functional and preserved
+the boot milestones at 1220 ms launcher/input and 1223 ms usable readiness,
+effectively unchanged from fixed-performance's 1218/1219/1222 ms single-log
+reference. The lower-priority seatd residency saving is nevertheless rejected:
+stable content sessions reached Sway-ready in a 490 ms median versus 470 ms on
+fixed-performance, a roughly 20 ms first-launch regression. Total
+session-to-provider timing also moved from roughly 630 ms to 710 ms, but the
+combined candidate cannot attribute the remainder between manager scheduling
+and udev quiescence. The next isolated candidate therefore restores the warm
+graphical-boot seatd policy and retains only post-coldplug udevd quiescence.
+This intentionally retains seatd's observed 1,556 KiB RSS because content
+interaction outranks memory. Udev reactivation, content timing, PSS, wakeups
+and energy remain device gates. Production remains no-serial; diagnostic and
+fallback entries retain serial.
+
 ## Launcher visual architecture
 
 The active 720x480 launcher presentation is inspired by Mister Menu's ES-DE

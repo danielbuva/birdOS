@@ -1,5 +1,5 @@
 #!/bin/bash
-# Focused host coverage for post-coldplug udev quiescence and on-demand seatd.
+# Focused host coverage for post-coldplug udev quiescence.
 
 set -eu
 
@@ -61,11 +61,4 @@ for FAILURE in settle stop active; do
 	fi
 done
 
-grep -Fqx 'ConditionPathExists=/run/bird/seat-request' \
-	"$ROOT/kernel/rocknix/stock-root/bird-seatd.service"
-grep -Fq 'request_seatd() {' "$ROOT/kernel/rocknix/stock-root/run-content.sh"
-grep -Fq 'release_seatd() {' "$ROOT/kernel/rocknix/stock-root/run-content.sh"
-grep -Fq 'rm -f /run/bird/seat-request' \
-	"$ROOT/kernel/rocknix/stock-root/run-content.sh"
-
-printf '%s\n' 'stock-root fixed manager tests passed'
+printf '%s\n' 'stock-root fixed udev tests passed'

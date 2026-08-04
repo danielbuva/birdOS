@@ -285,15 +285,6 @@ mount --bind /flash/bird/rocknix-report-stats.service \
 	return 1
 }
 
-# seatd is required only while selected content owns Sway. The generic unit is
-# pulled into every graphical boot; the fixed definition keeps that name and
-# binary but requires the explicit lease published by run-content.sh.
-mount --bind /flash/bird/bird-seatd.service \
-	/sysroot/usr/lib/systemd/system/seatd.service || {
-	error bird-seatd-policy "Could not install on-demand seat policy"
-	return 1
-}
-
 # The accepted image already journals to /run. Make that bounded volatile
 # contract explicit, then remove the empty persistent flush/catalog jobs.
 # Journald itself remains active for recovery evidence.

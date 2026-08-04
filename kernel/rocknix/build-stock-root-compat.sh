@@ -407,7 +407,7 @@ cp -fp "$ROOT/kernel/rocknix/stock-root/post-flash.sh" \
 cp -fp "$ROOT/kernel/rocknix/stock-root/mount-storage.sh" \
 	"$OUTPUT/card/mount-storage.sh"
 for FILE in 090-ui_service 999-export bird-autostart bird-journald.conf \
-	essway.service rocknix.target bird-seatd.service \
+	essway.service rocknix.target \
 	rocknix-automount.service rocknix-autostart.service \
 	rocknix-report-stats.service \
 	NetworkManager.service iwd.service systemd-resolved.service \
@@ -517,7 +517,6 @@ chmod 0644 "$OUTPUT/card/bird/portmaster-provider.manifest.tsv"
 chmod 0644 "$OUTPUT/card/bird/bird-suspend-policy.generated.sh" \
 	"$OUTPUT/card/bird/bird-sleep.conf" \
 	"$OUTPUT/card/bird/bird-journald.conf" \
-	"$OUTPUT/card/bird/bird-seatd.service" \
 	"$OUTPUT/card/bird/bird-controller-profile"
 [ "$(file_mode "$OUTPUT/card/bird/verify-portmaster-provider.sh")" = 755 ] || \
 	fail 'PortMaster provider verifier mode changed'
@@ -1117,12 +1116,6 @@ grep -q 'systemd-update-utmp-runlevel.service' \
 	"$OUTPUT/card/mount-storage.sh" || fail 'volatile UTMP runlevel mask missing'
 grep -Fq 'systemctl start seatd.service' \
 	"$OUTPUT/card/bird/run-content.sh" || fail 'explicit seat provider join missing'
-grep -Fq 'ConditionPathExists=/run/bird/seat-request' \
-	"$OUTPUT/card/bird/bird-seatd.service" || fail 'on-demand seat policy missing'
-grep -Fq '/flash/bird/bird-seatd.service' \
-	"$OUTPUT/card/mount-storage.sh" || fail 'fixed seat policy install missing'
-grep -Fq 'systemctl stop seatd.service' \
-	"$OUTPUT/card/bird/run-content.sh" || fail 'seat provider release missing'
 grep -Fq 'stop systemd-udevd.service' \
 	"$OUTPUT/card/bird/bird-udev-idle.sh" || fail 'udev manager quiesce missing'
 if grep -Fq 'systemd-udevd-kernel.socket' \

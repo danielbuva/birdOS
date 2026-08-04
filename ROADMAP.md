@@ -1058,6 +1058,18 @@ menu-idle managers, but PSS, wakeups, energy and content-start non-inferiority
 require the RG34XX-SP gate. Production remains no-serial; diagnostics retain
 serial.
 
+The fixed-manager hardware cycle passed functionality and kept one recorded
+boot at 1220 ms launcher/input and 1223 ms usable readiness, non-inferior to the
+1218/1219/1222 ms fixed-performance reference. On-demand seatd does not pass
+the lexicographic content-interaction gate: stable session-to-Sway-ready median
+rose from 470 ms to 490 ms. Session-to-provider median rose from about 630 ms
+to 710 ms for the combined manager candidate, so that larger delta is not yet
+assigned to either component. Restore warm seatd and retain only udev-idle as
+the next A/B. The roughly 1,556 KiB observed seatd RSS is accepted rather than
+trading about 20 ms of first-content readiness for a lower-priority memory
+saving. Production remains no-serial; diagnostic and fallback entries retain
+serial.
+
 ## Stage 5 — Battery, suspend and memory closure
 
 Measure calibrated energy, wakeups, IRQs and CPU residency for short-label menu

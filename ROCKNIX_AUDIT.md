@@ -707,6 +707,17 @@ ownership transfer, external-guard release, udev settle/stop/state rejection
 and retained socket activation. Device manager PSS, wakeups and energy are not
 claimed before measurement.
 
+The device gate accepts functionality but rejects the seatd lifetime change.
+Stable session-to-Sway-ready median was 490 ms versus 470 ms with warm seatd.
+The combined candidate's session-to-provider median was about 710 ms versus
+630 ms, which does not prove that the remaining delta belongs to udev. Restore
+the stock warm seatd lifetime and preserve explicit content-side
+`systemctl start` for early queued-launch correctness. Retain only the
+independently tested post-coldplug udev manager quiescence in the next release,
+with its activation sockets intact. This keeps the measured higher-priority
+content path ahead of seatd's observed 1,556 KiB RSS saving and gives udev an
+attributable physical A/B.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.

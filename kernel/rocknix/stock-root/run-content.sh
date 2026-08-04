@@ -189,7 +189,6 @@ RESOURCE_LOCK_HELD=0
 SESSION_LOCK=/run/bird/content-session.lock
 SESSION_LOCK_HELD=0
 SWAY_OWNER=/run/bird/sway-owner
-SEAT_REQUEST=/run/bird/seat-request
 NETWORK_OWNER=/run/bird/network-owner
 SCOPE_QUERY_RESULT=unknown
 SCOPE_QUERY_VALUE=
@@ -375,43 +374,17 @@ rollback_sway_start() {
 	return 1
 }
 
-request_seatd() {
-	SEAT_REQUEST_TMP=$SEAT_REQUEST.tmp.$$
-	if ! printf '%s\n' "$SESSION_TOKEN" >"$SEAT_REQUEST_TMP" || \
-		! mv -f "$SEAT_REQUEST_TMP" "$SEAT_REQUEST"; then
-		rm -f "$SEAT_REQUEST_TMP" 2>/dev/null || :
-		return 1
-	fi
-	if systemctl start seatd.service 8>&- 9>&-; then
-		return 0
-	fi
-	rm -f "$SEAT_REQUEST" 2>/dev/null || :
-	return 1
-}
-
-release_seatd() {
-	if ! systemctl stop seatd.service 8>&- 9>&-; then
-		printf '%s\n' 'Bird seatd stop failed; lease retained'
-		return 1
-	fi
-	rm -f "$SEAT_REQUEST"
-}
-
 start_sway() {
 	# graphical.target normally owns seatd, but an early queued selection can
 	# reach this path while that target is still starting. Join the fixed seat
 	# provider before publishing compositor ownership.
-	if ! request_seatd; then
+	if ! systemctl start seatd.service 8>&- 9>&-; then
 		printf '%s\n' 'Bird Sway start failed stage=seatd'
 		return 1
 	fi
 	content_stage sway-owner-claim
-	if ! resource_lock; then
-		release_seatd || :
-		return 1
-	fi
+	resource_lock || return 1
 	if ! claim_owner "$SWAY_OWNER"; then
-		release_seatd || :
 		resource_unlock
 		return 1
 	fi
@@ -422,7 +395,6 @@ start_sway() {
 	if ! publish_runner_state 1; then
 		SWAY_OWNED=0
 		remove_owned_token "$SWAY_OWNER" || :
-		release_seatd || :
 		resource_unlock
 		return 1
 	fi
@@ -497,7 +469,6 @@ stop_sway() {
 				resource_unlock
 				return 1
 			fi
-			release_seatd || :
 			resource_unlock
 			return 0
 		fi
@@ -520,7 +491,6 @@ stop_sway() {
 				resource_unlock
 				return 1
 			fi
-			release_seatd || :
 			resource_unlock
 			return 0
 		fi
@@ -1981,10 +1951,6 @@ start_cleanup_guard() {
 								if ! sway_stopped || ! rm -f "$SWAY_OWNER"; then
 									RESOURCE_STATUS=1
 								else
-									timeout 3s systemctl stop seatd.service \
-										8>&- 9>&- 2>/dev/null || :
-									rm -f /run/bird/seat-request || \
-										RESOURCE_STATUS=1
 									SWAY_OWNED_GUARD=0
 								fi
 								;;
