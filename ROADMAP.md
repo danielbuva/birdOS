@@ -1273,6 +1273,10 @@ rollback. Stage5-counters was sealed in the private GitHub archive before card
 reclamation. Launchers are unchanged and the overlay is 615,249 bytes. Require
 the broad behavior gate before arming the first paused-game window.
 
+The unarmed hardware gate passed with 1219/1220/1222 ms
+launcher/input/usable readiness and broad behavior intact. Keep the binaries
+fixed and acquire the paused-game window next.
+
 ## Stage 6 — Canonical namespace and hermetic image
 
 Atomically migrate `/run/muos` to `/run/bird`, legacy state to Bird state,

@@ -1284,6 +1284,12 @@ archive, then reclaimed from the card. Release launchers remain
 candidate is deployed unarmed so its broad behavior gate remains separate from
 the next requested measurement.
 
+The unarmed RG34XX-SP gate passed. Launcher/input/usable readiness was
+1219/1220/1222 ms, within the accepted range and four milliseconds faster at
+usable readiness than the preceding logged boot. Broad menu, content and
+hardware behavior passed. The same release may now acquire one explicitly
+requested paused-game window; this is measurement only, not a timing claim.
+
 ## Launcher visual architecture
 
 The active 720x480 launcher presentation is inspired by Mister Menu's ES-DE

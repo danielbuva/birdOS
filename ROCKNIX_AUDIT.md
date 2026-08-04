@@ -887,6 +887,10 @@ only the explicitly requested diagnostic parser accepts the additional states.
 Stage5-slot is the card rollback. Do not arm a content window until the broad
 hardware behavior gate passes.
 
+That unarmed gate passed. Launcher/input/usable readiness was
+1219/1220/1222 ms and the broad physical matrix remained functional. The
+paused-game window may now be armed without rebuilding or changing owners.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.
