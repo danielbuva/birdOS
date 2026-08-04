@@ -920,6 +920,15 @@ valid. Counter ABI v2 now enumerates every `/proc/<pid>/task/<tid>` outside the
 global boundary; content attribution must use v2 before a retained-service or
 decoder candidate promotes.
 
+The ABI-v2 video repeat passed on boot `cb83e535`. MPV's complete thread group
+used 167.83 CPU-seconds in 60 seconds, PipeWire 0.79 and Sway 1.94; aggregate
+busy was equivalent to 2.91 cores. The 1916x1080 H.264 High-profile source did
+not activate hardware decoding under `--hwdec=auto-safe` and rendered through
+`wlshm`. Its session log grew by 320,566 bytes and 5,852 lines, dominated by
+terminal progress. Release MPV now disables terminal OSD and emits only
+warnings/errors; `BIRD_MPV_TRACE=1` retains full diagnostics. This removes
+card writes and formatting work without changing decode, audio or input paths.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.

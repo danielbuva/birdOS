@@ -577,6 +577,12 @@ grep -Fq -- '--input-gamepad=no' "$OUTPUT/card/bird/bird-mpv-player.sh" || \
 grep -Fq -- '--input-default-bindings=no' \
 	"$OUTPUT/card/bird/bird-mpv-player.sh" || \
 	fail 'MPV default input path is not disabled'
+grep -Fq -- '--term-osd=no' "$OUTPUT/card/bird/bird-mpv-player.sh" || \
+	fail 'MPV release terminal status suppression is missing'
+grep -Fq -- '--msg-level=all=warn' "$OUTPUT/card/bird/bird-mpv-player.sh" || \
+	fail 'MPV release warning/error policy is missing'
+grep -Fq 'BIRD_MPV_TRACE' "$OUTPUT/card/bird/bird-mpv-player.sh" || \
+	fail 'MPV trace-mode diagnostic override is missing'
 grep -Fq '/flash/bird/bird-mpv-controls' \
 	"$OUTPUT/card/bird/bird-mpv-player.sh" || \
 	fail 'fixed MPV controls are not launched'

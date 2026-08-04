@@ -51,8 +51,15 @@ else
 	RES=${FBHEIGHT}x${FBWIDTH}
 fi
 
-"$MPV" --fullscreen --geometry="$RES" --hwdec=auto-safe \
-	--input-gamepad=no --input-default-bindings=no \
-	--input-conf=/flash/bird/mpv-input.conf \
-	--input-ipc-server="$IPC_SOCKET" "$CONTENT"
+run_mpv() {
+	"$MPV" --fullscreen --geometry="$RES" --hwdec=auto-safe \
+		--input-gamepad=no --input-default-bindings=no "$@" \
+		--input-conf=/flash/bird/mpv-input.conf \
+		--input-ipc-server="$IPC_SOCKET" "$CONTENT"
+}
+
+case ${BIRD_MPV_TRACE:-0} in
+	1) run_mpv ;;
+	*) run_mpv --term-osd=no --msg-level=all=warn ;;
+esac
 exit $?

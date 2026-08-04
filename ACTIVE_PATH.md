@@ -1335,6 +1335,17 @@ Stage 5 counter ABI v2 enumerates `/proc/<pid>/task/<tid>` outside the measured
 boundary so subsequent content windows can attribute multi-threaded work
 without adding normal boot work.
 
+The ABI-v2 video repeat passed on boot `cb83e535` with
+1217/1218/1226 ms launcher/input/usable readiness. Over 60 seconds MPV's full
+thread group used 167.83 CPU-seconds, PipeWire 0.79 and Sway 1.94; aggregate
+four-core busy was 72.86 percent, equivalent to 2.91 cores. The 1916x1080 H.264
+High-profile source did not report hardware decoding under `--hwdec=auto-safe`,
+used the `wlshm` output and dropped frames. Do not force an unproven decoder
+path. The same content session wrote 320,566 bytes across 5,852 log lines,
+mostly MPV's continuous terminal status. The next bounded userspace candidate
+disables terminal OSD and lowers release messages to warnings/errors while
+retaining full output behind `BIRD_MPV_TRACE=1`.
+
 ## Launcher visual architecture
 
 The active 720x480 launcher presentation is inspired by Mister Menu's ES-DE

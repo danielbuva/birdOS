@@ -23,6 +23,9 @@ grep -Fxq 'VOLUME_UP ignore' "$POLICY"
 grep -Fq -- '--input-gamepad=no' "$PLAYER"
 grep -Fq -- '--input-default-bindings=no' "$PLAYER"
 grep -Fq -- '--input-conf=/flash/bird/mpv-input.conf' "$PLAYER"
+grep -Fq -- '--term-osd=no' "$PLAYER"
+grep -Fq -- '--msg-level=all=warn' "$PLAYER"
+grep -Fq 'BIRD_MPV_TRACE' "$PLAYER"
 grep -Fq '/flash/bird/bird-mpv-controls' "$PLAYER"
 grep -Fq 'set_kill set "mpv"' "$PLAYER"
 grep -Fq 'set_kill stop' "$PLAYER"
@@ -126,9 +129,27 @@ grep -Fxq 'set_kill set mpv' "$TMP/events"
 grep -Fxq 'set_kill stop ' "$TMP/events"
 grep -Fxq -- '--input-gamepad=no' "$TMP/args"
 grep -Fxq -- '--input-default-bindings=no' "$TMP/args"
+grep -Fxq -- '--term-osd=no' "$TMP/args"
+grep -Fxq -- '--msg-level=all=warn' "$TMP/args"
 grep -Fxq -- '--geometry=720x480' "$TMP/args"
 grep -Fxq -- "$TMP/movie.mkv" "$TMP/args"
 grep -Fxq -- '--input-ipc-server=/tmp/mpvsocket' "$TMP/args"
+[ ! -e /tmp/mpvsocket ]
+
+: >"$TMP/events"
+BIRD_MPV_TRACE=1 \
+BIRD_MPV_CONTROLS=$TMP/controls \
+BIRD_MPV_PROGRAM=$TMP/mpv \
+BIRD_FBWIDTH_PROGRAM=$TMP/fbwidth \
+BIRD_FBHEIGHT_PROGRAM=$TMP/fbheight \
+BIRD_PROFILE_PATH=$TMP/profile \
+BIRD_TEST_EVENTS=$TMP/events \
+BIRD_TEST_ARGS=$TMP/args \
+	"$PLAYER" "$TMP/movie.mkv"
+if grep -Eq '^--(term-osd=no|msg-level=all=warn)$' "$TMP/args"; then
+	printf '%s\n' 'trace MPV invocation retained release output suppression' >&2
+	exit 1
+fi
 [ ! -e /tmp/mpvsocket ]
 
 "$ROOT/kernel/rocknix/tests/test-mpv-controls-c.sh"

@@ -1298,6 +1298,14 @@ found to represent only each process's main thread. Counter ABI v2 now records
 every task/TID outside the global measurement boundary. Repeat representative
 content windows with v2 before selecting a content battery candidate.
 
+The ABI-v2 repeat attributed 167.83 CPU-seconds to MPV's complete thread group
+over 60 seconds; aggregate load was 2.91 cores. The fixed 1080p H.264 source
+fell back from `--hwdec=auto-safe` and used `wlshm`, so hardware decoding remains
+unproven. Its session also wrote 320,566 bytes and 5,852 lines, dominated by
+terminal progress. First remove that release-mode status stream while retaining
+warnings/errors and trace-mode output; measure before considering decoder or
+kernel work.
+
 ## Stage 6 — Canonical namespace and hermetic image
 
 Atomically migrate `/run/muos` to `/run/bird`, legacy state to Bird state,
