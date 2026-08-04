@@ -1072,6 +1072,17 @@ priority-two interaction, keeps volatile journald for recovery, keeps audio
 warm, removes logind, and gates networking to PortMaster. HDMI and Bluetooth
 remain undecided and unchanged.
 
+Clean public source `72d7fe6058dcd21d8c95545871c0acffc3d3dce6` is deployed as
+`v6.23-warm-managers-72d7fe6`, canonical manifest
+`8b81f34ab5f84e4c1faafee2ee13357de08a26af704f2a8a26e6ac8107f1b545`.
+All 65 manifest files verify. Udev-isolation is the on-card rollback and the
+older fixed-managers release is sealed in the private GitHub release archive.
+Release/profile final-root and early-initramfs variants compile. The 597,336-
+byte final-root and 600,600-byte early launchers are unchanged; removing the
+udev-idle script reduces manifest-owned bytes by 875 while the compressed
+overlay remains 615,256 bytes. Production remains no-serial; diagnostic and
+fallback entries retain serial.
+
 ## Launcher visual architecture
 
 The active 720x480 launcher presentation is inspired by Mister Menu's ES-DE

@@ -1094,6 +1094,16 @@ until their explicit product decision. After the warm-manager restoration
 passes physically, proceed to Stage 5 measurement and one attributable idle-
 cost candidate at a time.
 
+The warm-manager restoration is clean source
+`72d7fe6058dcd21d8c95545871c0acffc3d3dce6`, release
+`v6.23-warm-managers-72d7fe6`, manifest
+`8b81f34ab5f84e4c1faafee2ee13357de08a26af704f2a8a26e6ac8107f1b545`.
+All 65 files verify and both launcher variants are byte-identical to the prior
+candidate. Manifest-owned bytes shrink 875 and the compressed overlay remains
+615,256 bytes. Udev-isolation is the on-card rollback; fixed-managers is sealed
+in the private GitHub archive. This cycle is the Stage 4 closure gate before
+Stage 5 measurement, not a new boot-speed claim.
+
 ## Stage 5 — Battery, suspend and memory closure
 
 Measure calibrated energy, wakeups, IRQs and CPU residency for short-label menu

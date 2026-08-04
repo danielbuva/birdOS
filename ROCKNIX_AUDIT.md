@@ -739,6 +739,14 @@ latency. The retained audit is closed with warm udevd, warm seatd, warm audio,
 bounded volatile journald, no logind, PortMaster-only networking, and no HDMI or
 Bluetooth removal decision.
 
+Clean source `72d7fe6058dcd21d8c95545871c0acffc3d3dce6` restores that
+closure in release `v6.23-warm-managers-72d7fe6`, manifest
+`8b81f34ab5f84e4c1faafee2ee13357de08a26af704f2a8a26e6ac8107f1b545`.
+All 65 manifest files verify. The launchers are unchanged, the rejected udev
+policy file is absent, manifest-owned bytes shrink 875, and the active
+coordinator is again the physically accepted v2 implementation. Production
+remains no-serial while diagnostic and fallback entries retain serial.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.
