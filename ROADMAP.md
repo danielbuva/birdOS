@@ -1228,6 +1228,20 @@ both boundaries. All 69 files verify; ordinary boots add no process or timer.
 The next physical gate is one untouched two-minute menu-idle boot plus the broad
 functional matrix.
 
+Reject `v6.23-stage5-settled-56d58d4`: its newly named service had no existing
+unit-file bind target in the immutable stock root. Root preparation stopped, so
+only the early launcher remained and all final-root actions were unavailable.
+No measurement was acquired. This is a path-contract failure, not a launcher,
+input or timing result.
+
+Clean source `d0c6e4edb02753f3f006ad2513976ce25b87cbfa`, release
+`v6.23-stage5-slot-d0c6e4e`, manifest
+`bcf8e4575878ba81f8ffd854037436e2876a859148f959d167fe1c1981c8df95`
+reuses the proven stock report-statistics service slot and dispatches the broad
+or Stage 5 request there. Host coverage now proves every unit bind target exists
+in the pinned root. Keep measurement unarmed until the complete recovery gate
+passes; stage5-counters is the known-good rollback.
+
 ## Stage 6 — Canonical namespace and hermetic image
 
 Atomically migrate `/run/muos` to `/run/bird`, legacy state to Bird state,

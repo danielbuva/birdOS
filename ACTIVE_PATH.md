@@ -19,13 +19,13 @@ display geometry and hardware policy are deliberate. Older muOS stages,
 source-kernel challengers and clean-root experiments remain useful evidence,
 but they are not alternate active implementations.
 
-The card currently selects the settled Stage 5 measurement candidate
-`v6.23-stage5-settled-56d58d4`, built from clean public source
-`56d58d404817f90588e61e0faa58beb0e7547f66`. Its previous selector is the
+The card currently selects the repaired Stage 5 diagnostic-slot candidate
+`v6.23-stage5-slot-d0c6e4e`, built from clean public source
+`d0c6e4edb02753f3f006ad2513976ce25b87cbfa`. Its previous selector is the
 physically accepted corrected-counter implementation
 `v6.23-stage5-counters-9945f9d`. The selected release's canonical manifest
 digest is
-`8e0988258c445c4c743f9afe8ae042a86d3bf144aa8a6c78456070641c343ebc`,
+`bcf8e4575878ba81f8ffd854037436e2876a859148f959d167fe1c1981c8df95`,
 and deployment verified all 69 manifest-owned files. The device-contract digest is
 `eca6a008947c927ca1b47efc275f7e3bde1a94735223837a353db7db2acf0b40`
 and the generated-catalog digest is
@@ -1224,6 +1224,24 @@ enumeration. The inventory adds two files and 1,745 bytes; release launchers
 remain 597,336/600,600 bytes and the overlay shrinks five bytes to 615,253.
 Ordinary boots add no process or timer. Production remains no-serial;
 diagnostic/fallback entries retain serial.
+
+The settled candidate failed its hardware gate before final-root handoff. Its
+new `bird-stage5-window.service` bind target did not exist in the immutable
+stock root, so root preparation stopped. The early launcher could navigate,
+but content, controls, suspend and emergency recovery were unavailable because
+their final-root owners never started. No new logs survived because storage
+handoff never completed.
+
+Clean source `d0c6e4edb02753f3f006ad2513976ce25b87cbfa` repairs this as
+`v6.23-stage5-slot-d0c6e4e`, manifest
+`bcf8e4575878ba81f8ffd854037436e2876a859148f959d167fe1c1981c8df95`.
+The existing stock report-statistics service slot now dispatches either
+explicit diagnostic request through two systemd OR conditions; no new bind
+target is introduced. A host test rejects every systemd bind destination absent
+from the pinned stock root. All 69 files verify. Stage5-counters remains the
+known-good rollback; the failed release is archived privately and removed from
+the card. Measurement is unarmed for the recovery gate. Launchers are unchanged
+and the overlay is 615,252 bytes. Production remains no-serial.
 
 ## Launcher visual architecture
 

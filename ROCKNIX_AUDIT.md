@@ -842,6 +842,20 @@ uses a 30-second settle and 60-second interval, suppresses expected disappearing
 enumeration. Stage5-counters remains the on-card rollback. This is neutral
 measurement infrastructure; ordinary boots have no new process or timer.
 
+The first standalone-service deployment is rejected. The immutable stock root
+had no `bird-stage5-window.service` destination, so its bind mount failed and
+root preparation never completed. That exactly explains the early menu with no
+content, brightness, volume, suspend or emergency helper. Storage never handed
+off, so no new diagnostic log was expected to survive.
+
+Clean source `d0c6e4edb02753f3f006ad2513976ce25b87cbfa` repairs the boundary in
+release `v6.23-stage5-slot-d0c6e4e`, manifest
+`bcf8e4575878ba81f8ffd854037436e2876a859148f959d167fe1c1981c8df95`.
+The already-present stock report-statistics service becomes a two-request
+dispatcher. A new host assertion rejects absent unit bind destinations. The
+failed release is archived; stage5-counters remains the on-card known-good
+rollback. Do not arm measurement until final-root behavior passes again.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.
