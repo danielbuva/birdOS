@@ -871,7 +871,7 @@ conventional external parsers for readable, exact state validation, while
 boundaries.
 
 The next batch gates the broad snapshot behind persistent request marker
-`/storage/.config/bird/boot-diagnostics.request`; ordinary boots retain the
+`/storage/bird-data/MUOS/Bird/boot-diagnostics.request`; ordinary boots retain the
 narrow readiness, supervisor, content, emergency and shutdown records.
 Requested captures publish atomically under their own boot ID before updating
 the latest copy. Both `systemd-run` boundaries preserve literal arguments with
@@ -1166,6 +1166,14 @@ adds a one-shot controlled menu-idle window. It settles five seconds, records
 start counters, leaves fifteen seconds untouched, records end counters and
 disarms only after atomic log publication. All 66 files verify; launchers are
 unchanged, manifest bytes grow 566, and ordinary boots remain sampler-free.
+
+The broad physical gate passed, but the first requested window produced no
+sample because the host marker was written to BIRD-DATA `.config` while the
+unit checked the separate ROCKNIX `/storage/.config` filesystem. Reject that
+measurement as nonexistent. Move both request paths to the already-mounted,
+host-visible `/storage/bird-data/MUOS/Bird` authority and assert that exact path
+in the builder and unit-ordering tests. This is neutral instrumentation; it
+does not authorize a battery, wakeup or memory claim.
 
 ## Stage 6 — Canonical namespace and hermetic image
 

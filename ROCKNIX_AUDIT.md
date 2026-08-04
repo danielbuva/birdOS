@@ -573,7 +573,7 @@ The next Stage 4 audit candidate removes ordinary execution of the broad
 post-autostart snapshot. The accepted boot's 46,984-byte/782-line snapshot
 began at 12.17 s, overlapping application-contract readiness at 12.10 s and
 preceding content-service startup at 13.94 s. It is now armed only by persistent
-marker `/storage/.config/bird/boot-diagnostics.request`, atomically publishes a
+marker `/storage/bird-data/MUOS/Bird/boot-diagnostics.request`, atomically publishes a
 boot-scoped record and then refreshes the latest copy. Narrow readiness,
 supervisor, content, emergency and shutdown logs remain ordinary behavior.
 
@@ -782,6 +782,13 @@ adds only an explicitly armed one-shot idle counter window. It has no ordinary
 caller, process or timer. Its paired counter deltas can attribute wakeup and
 residency candidates, while calibrated energy remains a separate physical
 metric.
+
+The first armed window did not run because the host wrote BIRD-DATA `.config`
+but the unit checked the separate ROCKNIX storage-image `.config`. The broad
+hardware gate still passed; there is simply no valid idle sample. The corrected
+fixed boundary is `/storage/bird-data/MUOS/Bird`, which is already mounted and
+host-visible before final-root systemd. Builder and host tests reject either
+request path returning to `/storage/.config`.
 
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full

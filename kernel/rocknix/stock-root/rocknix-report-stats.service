@@ -1,7 +1,7 @@
 [Unit]
 Description=Bird requested post-frame boot snapshot
 After=rocknix-autostart.service
-ConditionPathExists=/storage/.config/bird/boot-diagnostics.request
+ConditionPathExists=/storage/bird-data/MUOS/Bird/boot-diagnostics.request
 
 [Service]
 Type=simple

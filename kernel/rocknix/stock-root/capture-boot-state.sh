@@ -12,7 +12,7 @@ BOOT_ID=${BOOT_ID_FULL:0:8}
 LOG=$LOG_DIR/stock-root-boot-state-$BOOT_ID.log
 LOG_TMP=$LOG.tmp.$$
 LATEST=$LOG_DIR/stock-root-boot-state-latest.log
-STAGE5_WINDOW_REQUEST=/storage/.config/bird/stage5-idle-window.request
+STAGE5_WINDOW_REQUEST=/storage/bird-data/MUOS/Bird/stage5-idle-window.request
 STAGE5_WINDOW_ARMED=0
 [ ! -e "$STAGE5_WINDOW_REQUEST" ] || STAGE5_WINDOW_ARMED=1
 

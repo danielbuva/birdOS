@@ -636,7 +636,7 @@ grep -q 'systemd-rfkill.socket' \
 	"$OUTPUT/card/mount-storage.sh" || fail 'rfkill activation socket remained'
 grep -q '^After=rocknix-autostart.service$' \
 	"$OUTPUT/card/bird/rocknix-report-stats.service" || fail 'event-ordered snapshot missing'
-grep -q '^ConditionPathExists=/storage/.config/bird/boot-diagnostics.request$' \
+grep -q '^ConditionPathExists=/storage/bird-data/MUOS/Bird/boot-diagnostics.request$' \
 	"$OUTPUT/card/bird/rocknix-report-stats.service" || \
 	fail 'ordinary-boot snapshot gate missing'
 grep -q '^Type=simple$' \
@@ -654,7 +654,7 @@ grep -q 'stock-root-boot-state-\$BOOT_ID.log' \
 grep -q '/flash/bird/capture-stage5-state.sh' \
 	"$OUTPUT/card/bird/capture-boot-state.sh" || \
 	fail 'requested Stage 5 snapshot missing'
-grep -q '^STAGE5_WINDOW_REQUEST=/storage/.config/bird/stage5-idle-window.request$' \
+grep -q '^STAGE5_WINDOW_REQUEST=/storage/bird-data/MUOS/Bird/stage5-idle-window.request$' \
 	"$OUTPUT/card/bird/capture-boot-state.sh" || \
 	fail 'one-shot Stage 5 window request missing'
 grep -q 'BIRD_STAGE5_LABEL=menu-idle-start' \

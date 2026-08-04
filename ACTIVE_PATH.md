@@ -823,7 +823,7 @@ still changing. Finally, `systemd-run` retained its default `$` expansion even
 for the cleanup guard's embedded shell program.
 
 This candidate makes the full snapshot explicitly requested by the persistent
-marker `/storage/.config/bird/boot-diagnostics.request`. Ordinary boots retain
+marker `/storage/bird-data/MUOS/Bird/boot-diagnostics.request`. Ordinary boots retain
 readiness, supervisor, content, emergency and shutdown logs without launching
 the broad probe set. A requested capture atomically publishes
 `stock-root-boot-state-<boot-id>.log`, then refreshes the latest copy; the
@@ -1144,6 +1144,17 @@ the diagnostic settles for five seconds, samples, records a fifteen-second
 untouched interval, samples again and disarms the idle-window request after
 atomic publication. Ordinary boots still execute no sampler. Production
 remains no-serial; diagnostic and fallback entries retain serial.
+
+The one-shot idle-window release passed the broad hardware gate with unchanged
+boot behavior. Its first requested measurement did not execute: the documented
+`/storage/.config` marker belongs to the internal ROCKNIX storage image, while
+the macOS writer had placed the same relative path on BIRD-DATA, which the
+device exposes at `/storage/bird-data`. No false sample is recorded. The fixed
+request authority is now the existing host-visible Bird directory
+`/storage/bird-data/MUOS/Bird`; both the systemd condition and one-shot disarm
+path use that exact mount. The two ineffective BIRD-DATA `.config` markers were
+removed. This changes measurement triggering only and adds no ordinary process,
+timer or content-path work.
 
 ## Launcher visual architecture
 

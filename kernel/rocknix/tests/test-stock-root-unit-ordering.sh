@@ -39,7 +39,7 @@ grep -Fqx 'ExecStart=/flash/bird/supervisor.sh' "$UI"
 grep -Eq '^Wants=.*essway\.service.*powerstate\.service' "$TARGET"
 grep -Fqx 'After=rocknix-autostart.service' "$REPORT"
 grep -Fqx \
-	'ConditionPathExists=/storage/.config/bird/boot-diagnostics.request' \
+	'ConditionPathExists=/storage/bird-data/MUOS/Bird/boot-diagnostics.request' \
 	"$REPORT"
 grep -Fqx 'ExecStart=/flash/bird/capture-boot-state.sh' "$REPORT"
 grep -Fqx 'RuntimeMaxSec=45s' "$REPORT"

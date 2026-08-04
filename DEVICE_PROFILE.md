@@ -70,7 +70,8 @@ frequency, idle energy and memory rather than a universal warm/cold rule.
 - Diagnostics: no probe gates the first usable frame. Ordinary boots retain
   exact readiness, supervisor, content, emergency and shutdown records but do
   not run the broad post-autostart probe set. A full snapshot is explicitly
-  armed by persistent marker `/storage/.config/bird/boot-diagnostics.request`,
+  armed by persistent marker
+  `/storage/bird-data/MUOS/Bird/boot-diagnostics.request`,
   publishes under its own boot ID and refreshes
   `stock-root-boot-state-latest.log`; remove the marker to disarm subsequent
   captures.
