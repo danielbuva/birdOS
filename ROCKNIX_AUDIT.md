@@ -718,6 +718,16 @@ with its activation sockets intact. This keeps the measured higher-priority
 content path ahead of seatd's observed 1,556 KiB RSS saving and gives udev an
 attributable physical A/B.
 
+Clean source `7d74bf668e3a38a9ae1cd1ceb15d81babf191592` implements that
+isolation in release `v6.23-udev-isolation-7d74bf6`, manifest
+`c5fbebc38faa9a469d5c6363dc47811ef0983e973e30908648c09872b8fdbe6f`.
+All 66 files verify. The launcher is byte-identical to fixed-managers, the
+content runner shrinks 807 bytes and total manifest-owned bytes shrink 1,459.
+The only remaining manager experiment is udevd exit after settlement with both
+activation sockets retained; seatd again starts through the normal graphical
+path and the explicit content-side join remains as an idempotent early-launch
+guard.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.

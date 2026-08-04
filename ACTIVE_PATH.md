@@ -1045,6 +1045,18 @@ interaction outranks memory. Udev reactivation, content timing, PSS, wakeups
 and energy remain device gates. Production remains no-serial; diagnostic and
 fallback entries retain serial.
 
+Clean public source `7d74bf668e3a38a9ae1cd1ceb15d81babf191592` is deployed as
+the isolated candidate `v6.23-udev-isolation-7d74bf6`, canonical manifest
+`c5fbebc38faa9a469d5c6363dc47811ef0983e973e30908648c09872b8fdbe6f`.
+All 66 manifest files verify. Fixed-managers is the on-card functional
+rollback; fixed-performance was archived to the private GitHub release archive
+before card-space reclamation. Release/profile final-root and early-initramfs
+variants compile and the 600,600-byte release launcher is byte-identical to
+fixed-managers. Removing the rejected seat unit and lease machinery reduces
+manifest-owned bytes by 1,459; the compressed overlay changes by two bytes to
+615,256. No boot-timing improvement is expected because warm seatd remains
+post-usable graphical work and launcher bytes are unchanged.
+
 ## Launcher visual architecture
 
 The active 720x480 launcher presentation is inspired by Mister Menu's ES-DE

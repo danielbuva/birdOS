@@ -1070,6 +1070,17 @@ trading about 20 ms of first-content readiness for a lower-priority memory
 saving. Production remains no-serial; diagnostic and fallback entries retain
 serial.
 
+The isolated implementation is public source
+`7d74bf668e3a38a9ae1cd1ceb15d81babf191592`, release
+`v6.23-udev-isolation-7d74bf6`, manifest
+`c5fbebc38faa9a469d5c6363dc47811ef0983e973e30908648c09872b8fdbe6f`.
+All 66 files verify; both launcher modes compile, the release launcher is
+byte-identical and manifest-owned bytes shrink 1,459 from fixed-managers.
+Fixed-managers remains the functional on-card rollback and fixed-performance is
+sealed in the private GitHub archive. The next device cycle attributes udev
+alone: verify hotplug reactivation and compare Sway/provider timing while boot
+must remain inside the accepted range.
+
 ## Stage 5 — Battery, suspend and memory closure
 
 Measure calibrated energy, wakeups, IRQs and CPU residency for short-label menu
