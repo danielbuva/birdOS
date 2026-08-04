@@ -284,12 +284,6 @@ mount --bind /flash/bird/rocknix-report-stats.service \
 	error bird-boot-snapshot "Could not install post-frame snapshot service"
 	return 1
 }
-mount --bind /flash/bird/bird-stage5-window.service \
-	/sysroot/usr/lib/systemd/system/bird-stage5-window.service || {
-	error bird-stage5-window "Could not install requested Stage 5 window service"
-	return 1
-}
-
 # The accepted image already journals to /run. Make that bounded volatile
 # contract explicit, then remove the empty persistent flush/catalog jobs.
 # Journald itself remains active for recovery evidence.

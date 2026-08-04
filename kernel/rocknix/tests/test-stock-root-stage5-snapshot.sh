@@ -7,6 +7,7 @@ ROOT=$(CDPATH= cd -- "$(dirname "$0")/../../.." && pwd)
 SCRIPT=$ROOT/kernel/rocknix/stock-root/capture-stage5-state.sh
 WINDOW=$ROOT/kernel/rocknix/stock-root/capture-stage5-window-counters.sh
 ACQUIRE=$ROOT/kernel/rocknix/stock-root/capture-stage5-window.sh
+DISPATCH=$ROOT/kernel/rocknix/stock-root/capture-requested-diagnostics.sh
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/bird-stage5-snapshot.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT INT TERM HUP
 PROC=$TMP/proc
@@ -118,5 +119,24 @@ if BIRD_STAGE5_REQUEST=$TMP/request BIRD_STAGE5_LOG_DIR=$TMP/log \
 	exit 1
 fi
 [ -e "$TMP/request" ]
+
+printf '%s\n' '#!/bin/sh' 'printf stage5' >"$TMP/stage5-capture"
+printf '%s\n' '#!/bin/sh' 'printf boot' >"$TMP/boot-capture"
+chmod +x "$TMP/stage5-capture" "$TMP/boot-capture"
+: >"$TMP/stage5-request"
+: >"$TMP/boot-request"
+BIRD_STAGE5_REQUEST=$TMP/stage5-request \
+	BIRD_BOOT_DIAGNOSTICS_REQUEST=$TMP/boot-request \
+	BIRD_STAGE5_CAPTURE=$TMP/stage5-capture \
+	BIRD_BOOT_DIAGNOSTICS_CAPTURE=$TMP/boot-capture \
+	"$DISPATCH" >"$TMP/dispatched"
+[ "$(cat "$TMP/dispatched")" = stage5 ]
+rm "$TMP/stage5-request"
+BIRD_STAGE5_REQUEST=$TMP/stage5-request \
+	BIRD_BOOT_DIAGNOSTICS_REQUEST=$TMP/boot-request \
+	BIRD_STAGE5_CAPTURE=$TMP/stage5-capture \
+	BIRD_BOOT_DIAGNOSTICS_CAPTURE=$TMP/boot-capture \
+	"$DISPATCH" >"$TMP/dispatched"
+[ "$(cat "$TMP/dispatched")" = boot ]
 
 printf '%s\n' 'stock-root Stage 5 snapshot tests passed'

@@ -10,6 +10,7 @@ MOUNT_STORAGE=$ROOT/kernel/rocknix/stock-root/mount-storage.sh
 SUPERVISOR=$ROOT/kernel/rocknix/stock-root/supervisor.sh
 EARLY_BUILDER=$ROOT/kernel/rocknix/build-stock-root-early-initramfs.sh
 INIT_BUSYBOX=$ROOT/kernel/work/rocknix-official-initramfs-20260701/ramdisk/usr/bin/busybox
+SYSTEM_UNITS=$ROOT/kernel/work/rocknix-system-exact-20260701/usr/lib/systemd/system
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/bird-mount-storage.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT INT TERM HUP
 
@@ -75,6 +76,17 @@ grep -Fq 'systemd-logind.service' "$MOUNT_STORAGE"
 grep -Fq 'systemd-tmpfiles-clean.timer' "$MOUNT_STORAGE"
 grep -Fq 'systemd-update-utmp.service' "$MOUNT_STORAGE"
 grep -Fq 'systemd-update-utmp-runlevel.service' "$MOUNT_STORAGE"
+
+# Every unit bind target must already exist in the immutable stock root. A bind
+# mount cannot create a new pathname; missing this check strands Bird in the
+# early launcher with no final-root controls or content runtime.
+sed -n 's#^[[:space:]]*/sysroot/usr/lib/systemd/system/\([^[:space:]]*\).*#\1#p' \
+	"$MOUNT_STORAGE" | while IFS= read -r UNIT; do
+	[ -e "$SYSTEM_UNITS/$UNIT" ] || {
+		printf 'missing stock unit bind target: %s\n' "$UNIT" >&2
+		exit 1
+	}
+done
 
 EVENTS=$TMP/events
 FAIL_OPERATION=
@@ -342,7 +354,7 @@ DEST_SWAP=$TMP/dest-swap.conf
 SYSTEM_BUSYBOX=$TMP/system-busybox
 MODE_EVENTS=$TMP/mode-events
 /bin/mkdir -p "$SOURCE_BIRD" "$DEST_BIRD"
-IMMUTABLE_FILES='bird-pidwait bird-fixed-controls bird-powerstate bird-fixed-control-exit.sh bird-save-config.sh prepare-ports.sh verify-portmaster-provider.sh portmaster-provider.manifest.tsv fixed-storage.sh capture-boot-state.sh capture-stage5-state.sh capture-stage5-window-counters.sh capture-stage5-window.sh bird-network.sh bird-suspend.sh bird-volume.sh bird-control-osd.sh bird-launcher run-content.sh supervisor.sh first-frame-prep.sh'
+IMMUTABLE_FILES='bird-pidwait bird-fixed-controls bird-powerstate bird-fixed-control-exit.sh bird-save-config.sh prepare-ports.sh verify-portmaster-provider.sh portmaster-provider.manifest.tsv fixed-storage.sh capture-boot-state.sh capture-requested-diagnostics.sh capture-stage5-state.sh capture-stage5-window-counters.sh capture-stage5-window.sh bird-network.sh bird-suspend.sh bird-volume.sh bird-control-osd.sh bird-launcher run-content.sh supervisor.sh first-frame-prep.sh'
 for FILE in $IMMUTABLE_FILES; do
 	printf 'immutable fixture %s\n' "$FILE" >"$SOURCE_BIRD/$FILE"
 done

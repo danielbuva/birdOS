@@ -409,14 +409,14 @@ cp -fp "$ROOT/kernel/rocknix/stock-root/mount-storage.sh" \
 for FILE in 090-ui_service 999-export bird-autostart bird-journald.conf \
 	essway.service rocknix.target \
 	rocknix-automount.service rocknix-autostart.service \
-	rocknix-report-stats.service bird-stage5-window.service \
+	rocknix-report-stats.service \
 	NetworkManager.service iwd.service systemd-resolved.service \
 	systemd-timesyncd.service systemd-rfkill.service \
 	bird-fixed-controls.service \
 	bird-powerstate.service supervisor.sh run-content.sh bird-mpv-player.sh \
 	prepare-ports.sh verify-portmaster-provider.sh \
 	portmaster-provider.manifest.tsv fixed-storage.sh first-frame-prep.sh \
-	capture-boot-state.sh capture-stage5-state.sh \
+	capture-boot-state.sh capture-requested-diagnostics.sh capture-stage5-state.sh \
 	capture-stage5-window-counters.sh capture-stage5-window.sh \
 	bird-network.sh bird-fixed-control-exit.sh \
 	bird-emergency-recover.sh \
@@ -458,6 +458,7 @@ chmod 0755 "$OUTPUT/card/post-flash.sh" "$OUTPUT/card/mount-storage.sh" \
 	"$OUTPUT/card/bird/fixed-storage.sh" \
 	"$OUTPUT/card/bird/first-frame-prep.sh" \
 	"$OUTPUT/card/bird/capture-boot-state.sh" \
+	"$OUTPUT/card/bird/capture-requested-diagnostics.sh" \
 	"$OUTPUT/card/bird/capture-stage5-state.sh" \
 	"$OUTPUT/card/bird/capture-stage5-window-counters.sh" \
 	"$OUTPUT/card/bird/capture-stage5-window.sh" \
@@ -492,6 +493,7 @@ for SCRIPT in "$OUTPUT/card/post-flash.sh" \
 	"$OUTPUT/card/bird/fixed-storage.sh" \
 	"$OUTPUT/card/bird/first-frame-prep.sh" \
 	"$OUTPUT/card/bird/capture-boot-state.sh" \
+	"$OUTPUT/card/bird/capture-requested-diagnostics.sh" \
 	"$OUTPUT/card/bird/capture-stage5-state.sh" \
 	"$OUTPUT/card/bird/capture-stage5-window-counters.sh" \
 	"$OUTPUT/card/bird/capture-stage5-window.sh" \
@@ -641,30 +643,30 @@ grep -q 'systemd-rfkill.socket' \
 	"$OUTPUT/card/mount-storage.sh" || fail 'rfkill activation socket remained'
 grep -q '^After=rocknix-autostart.service$' \
 	"$OUTPUT/card/bird/rocknix-report-stats.service" || fail 'event-ordered snapshot missing'
-grep -q '^ConditionPathExists=/storage/bird-data/MUOS/Bird/boot-diagnostics.request$' \
+grep -Fq 'ConditionPathExists=|/storage/bird-data/MUOS/Bird/boot-diagnostics.request' \
 	"$OUTPUT/card/bird/rocknix-report-stats.service" || \
 	fail 'ordinary-boot snapshot gate missing'
+grep -Fq 'ConditionPathExists=|/storage/bird-data/MUOS/Bird/stage5-idle-window.request' \
+	"$OUTPUT/card/bird/rocknix-report-stats.service" || \
+	fail 'Stage 5 snapshot gate missing'
 grep -q '^Type=simple$' \
 	"$OUTPUT/card/bird/rocknix-report-stats.service" || fail 'nonblocking snapshot missing'
-grep -q '^RuntimeMaxSec=45s$' \
+grep -q '^RuntimeMaxSec=120s$' \
 	"$OUTPUT/card/bird/rocknix-report-stats.service" || fail 'bounded snapshot runtime missing'
-grep -q '^ExecStart=/flash/bird/capture-boot-state.sh$' \
+grep -q '^ExecStart=/flash/bird/capture-requested-diagnostics.sh$' \
 	"$OUTPUT/card/bird/rocknix-report-stats.service" || \
-	fail 'immutable boot snapshot path missing'
+	fail 'immutable diagnostic dispatcher missing'
 grep -q 'timeout 2s pactl info' \
 	"$OUTPUT/card/bird/capture-boot-state.sh" || fail 'bounded audio diagnostic missing'
 grep -q 'stock-root-boot-state-\$BOOT_ID.log' \
 	"$OUTPUT/card/bird/capture-boot-state.sh" || \
 	fail 'boot-scoped snapshot publication missing'
-grep -q '^ConditionPathExists=/storage/bird-data/MUOS/Bird/stage5-idle-window.request$' \
-	"$OUTPUT/card/bird/bird-stage5-window.service" || \
-	fail 'one-shot Stage 5 window request missing'
-grep -q '^ExecStart=/flash/bird/capture-stage5-window.sh$' \
-	"$OUTPUT/card/bird/bird-stage5-window.service" || \
+grep -Fq 'STAGE5_CAPTURE=${BIRD_STAGE5_CAPTURE:-/flash/bird/capture-stage5-window.sh}' \
+	"$OUTPUT/card/bird/capture-requested-diagnostics.sh" || \
 	fail 'standalone Stage 5 acquisition missing'
-grep -q '^RuntimeMaxSec=120s$' \
-	"$OUTPUT/card/bird/bird-stage5-window.service" || \
-	fail 'Stage 5 acquisition runtime is unbounded'
+grep -Fq 'BOOT_CAPTURE=${BIRD_BOOT_DIAGNOSTICS_CAPTURE:-/flash/bird/capture-boot-state.sh}' \
+	"$OUTPUT/card/bird/capture-requested-diagnostics.sh" || \
+	fail 'broad snapshot dispatch missing'
 grep -Fq '"$COUNTERS" start' \
 	"$OUTPUT/card/bird/capture-stage5-window.sh" || \
 	fail 'Stage 5 idle start sample missing'

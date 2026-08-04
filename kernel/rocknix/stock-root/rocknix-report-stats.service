@@ -1,7 +1,8 @@
 [Unit]
-Description=Bird requested post-frame boot snapshot
+Description=Bird requested post-frame diagnostics
 After=rocknix-autostart.service
-ConditionPathExists=/storage/bird-data/MUOS/Bird/boot-diagnostics.request
+ConditionPathExists=|/storage/bird-data/MUOS/Bird/boot-diagnostics.request
+ConditionPathExists=|/storage/bird-data/MUOS/Bird/stage5-idle-window.request
 
 [Service]
 Type=simple
@@ -10,5 +11,5 @@ IOSchedulingClass=idle
 Environment=HOME=/storage
 Environment=XDG_RUNTIME_DIR=/var/run/0-runtime-dir
 Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket
-RuntimeMaxSec=45s
-ExecStart=/flash/bird/capture-boot-state.sh
+RuntimeMaxSec=120s
+ExecStart=/flash/bird/capture-requested-diagnostics.sh
