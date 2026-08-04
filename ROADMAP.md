@@ -1325,6 +1325,14 @@ verb failing through the masked logind interface. Bird now submits
 systemd client. Physically verify ordered shutdown and reboot before accepting
 this interaction/reliability candidate.
 
+The release `v6.23-stage5-shutdown-d221dfd` physical gate passed reboot, quick
+shutdown and post-content shutdown. The quick path acknowledged dispatch in
+about 140 ms; the post-content path entered the target before the client could
+write its final record. Ordered config checkpoints completed, no logind failure
+returned and usable readiness remained 1221 ms. Accept this candidate and begin
+Stage 6 with a complete active `/run/muos` namespace inventory before the atomic
+migration.
+
 ## Stage 6 — Canonical namespace and hermetic image
 
 Atomically migrate `/run/muos` to `/run/bird`, legacy state to Bird state,

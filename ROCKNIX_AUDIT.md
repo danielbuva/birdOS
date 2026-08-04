@@ -951,6 +951,13 @@ the same three-second client bound. This keeps systemd's dependency ordering
 and unmount path, avoids a known failed request, and does not reintroduce a
 forced shutdown.
 
+Release `v6.23-stage5-shutdown-d221dfd` passed reboot, quick shutdown and
+post-content shutdown on the RG34XX-SP. The quick shutdown client acknowledged
+the target in about 140 ms; the later path was stopped by the target before its
+final acknowledgement. The ordered config checkpoint ran on each transition,
+and the former masked-logind error and timeout were absent. Direct systemd
+target dispatch is accepted.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.

@@ -1374,6 +1374,16 @@ now directly enqueues `poweroff.target`; reboot directly enqueues
 known failed round trip and a forced-poweroff bypass. It runs only after a user
 shutdown/reboot request and adds no boot or idle work.
 
+The ordered-target physical gate passed on release
+`v6.23-stage5-shutdown-d221dfd`. Reboot was accepted from the early handoff and
+restarted normally. Quick shutdown logged dispatch-ready in about 140 ms;
+post-content shutdown entered `poweroff.target` quickly enough that systemd
+terminated the supervisor/client before its final success record. Both paths
+ran the ordered config checkpoint, and neither emitted the former masked-logind
+failure or waited for the three-second client bound. Two clean boots reached
+usable readiness at 1221 ms. Accept the direct-target dispatch and begin the
+Stage 6 active namespace inventory.
+
 ## Launcher visual architecture
 
 The active 720x480 launcher presentation is inspired by Mister Menu's ES-DE
