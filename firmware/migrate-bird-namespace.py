@@ -8,7 +8,6 @@ import fcntl
 import hashlib
 import os
 import pathlib
-import shutil
 import stat
 import subprocess
 import time
@@ -165,6 +164,33 @@ def hash_file(path: pathlib.Path) -> str:
     return value.hexdigest()
 
 
+def copy_file_bytes(source: pathlib.Path, destination: pathlib.Path) -> None:
+    with source.open("rb") as input_stream, destination.open("xb") as output_stream:
+        for block in iter(lambda: input_stream.read(1024 * 1024), b""):
+            output_stream.write(block)
+        output_stream.flush()
+        os.fsync(output_stream.fileno())
+
+
+def copy_tree_bytes(source: pathlib.Path, destination: pathlib.Path) -> None:
+    """Copy regular file bytes and directory names, never macOS metadata."""
+
+    destination.mkdir()
+    for entry in sorted(os.scandir(source), key=lambda item: os.fsencode(item.name)):
+        if entry.name == ".DS_Store" or entry.name.startswith("._"):
+            continue
+        source_entry = pathlib.Path(entry.path)
+        destination_entry = destination / entry.name
+        if entry.is_symlink():
+            fail(f"symlink rejected in BIOS source: {source_entry}")
+        if entry.is_dir(follow_symlinks=False):
+            copy_tree_bytes(source_entry, destination_entry)
+        elif entry.is_file(follow_symlinks=False):
+            copy_file_bytes(source_entry, destination_entry)
+        else:
+            fail(f"unsupported BIOS source entry: {source_entry}")
+
+
 def inventory(root: pathlib.Path) -> list[str]:
     result: list[str] = []
     for path in sorted(root.rglob("*"), key=lambda item: item.relative_to(root).as_posix().encode()):
@@ -285,19 +311,12 @@ class Migration:
                 if source.is_symlink():
                     fail(f"legacy persistence file is a symlink: {source}")
                 if source.is_file():
-                    shutil.copyfile(source, bird / "state" / name)
+                    copy_file_bytes(source, bird / "state" / name)
         # Only file bytes are part of the fixed BIOS authority. copy2() asks
         # macOS to preserve xattrs on exFAT, which materializes one AppleDouble
         # `._` sidecar per file and can nearly double the tree. Do not copy
         # host metadata into the device's canonical content namespace.
-        shutil.copytree(
-            self.legacy_bios,
-            bios,
-            copy_function=shutil.copyfile,
-            ignore=lambda _directory, names: {
-                name for name in names if name == ".DS_Store" or name.startswith("._")
-            },
-        )
+        copy_tree_bytes(self.legacy_bios, bios)
         bios_file_count = sum(1 for path in bios.rglob("*") if path.is_file())
         os.replace(temporary, self.prepare)
         write_record(self.inventory_path, [f"revision\t{REVISION}", *payload_inventory(self.prepare / "Bird", self.prepare / "bios")])
