@@ -19,14 +19,14 @@ display geometry and hardware policy are deliberate. Older muOS stages,
 source-kernel challengers and clean-root experiments remain useful evidence,
 but they are not alternate active implementations.
 
-The card currently selects the physically accepted Stage 4 warm-manager
-closure `v6.23-warm-managers-72d7fe6`, built from clean public source
-`72d7fe6058dcd21d8c95545871c0acffc3d3dce6`. Its previous selector is the
-functional but interaction-rejected udev-isolation candidate
-`v6.23-udev-isolation-7d74bf6`. The selected release's canonical manifest
+The card currently selects the Stage 5 request-only measurement candidate
+`v6.23-stage5-metrics-3ce316d`, built from clean public source
+`3ce316d17574e8487ab846975c404f82f3366e56`. Its previous selector is the
+physically accepted Stage 4 warm-manager closure
+`v6.23-warm-managers-72d7fe6`. The selected release's canonical manifest
 digest is
-`8b81f34ab5f84e4c1faafee2ee13357de08a26af704f2a8a26e6ac8107f1b545`,
-and deployment verified all 65 manifest-owned files. The device-contract digest is
+`aba835ad6dd467ff553df81ec64db6542ea4f13e87903fe3268e89bfe3083289`,
+and deployment verified all 66 manifest-owned files. The device-contract digest is
 `85ccb8e46e71ee66e2320022ac13228124d6efcea5abdd800b8c18bd190f73cd`
 and the generated-catalog digest is
 `7e29e491bb43191ca9ae6c18bd566b6ba0c984bf43d1d0103eddd6e534306e62`.
@@ -1106,6 +1106,17 @@ autostart; ordinary boots do not execute it. The sampler records raw scheduler,
 PSS/USS, wakeup-source, IRQ, CPU-idle and battery counters with an explicit
 state label. These snapshots support paired attribution but are not calibrated
 energy measurements and do not authorize a battery claim.
+
+Clean public source `3ce316d17574e8487ab846975c404f82f3366e56` is deployed as
+`v6.23-stage5-metrics-3ce316d`, canonical manifest
+`aba835ad6dd467ff553df81ec64db6542ea4f13e87903fe3268e89bfe3083289`.
+All 66 manifest files verify. Warm-managers is the on-card accepted rollback;
+udev-isolation is sealed in the private GitHub release archive. Both launcher
+modes compile and remain byte-identical. The request-only sampler adds one file
+and 3,036 manifest-owned bytes; the compressed overlay changes by two bytes to
+615,258. Its persistent request marker is not armed for the ordinary hardware
+gate. Production remains no-serial; diagnostic and fallback entries retain
+serial.
 
 ## Launcher visual architecture
 

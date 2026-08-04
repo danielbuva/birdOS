@@ -1137,6 +1137,15 @@ may be differenced inside a controlled state block, but the sampler's own work
 means those counters remain structural evidence rather than calibrated energy.
 Battery promotion still requires an inline shunt or battery-path measurement.
 
+Clean source `3ce316d17574e8487ab846975c404f82f3366e56`, release
+`v6.23-stage5-metrics-3ce316d`, manifest
+`aba835ad6dd467ff553df81ec64db6542ea4f13e87903fe3268e89bfe3083289`
+is deployed with warm-managers as the accepted on-card rollback. All 66 files
+verify and both launcher modes are byte-identical. The sampler adds 3,036
+manifest-owned bytes and no ordinary task, timer, syscall or wakeup because the
+request marker is unarmed. Production remains no-serial and diagnostic/fallback
+entries retain serial.
+
 ## Stage 6 — Canonical namespace and hermetic image
 
 Atomically migrate `/run/muos` to `/run/bird`, legacy state to Bird state,

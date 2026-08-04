@@ -757,6 +757,15 @@ larger controlled set. The next audit work is measurement, not another manager
 lifetime guess: an explicitly requested Stage 5 sampler captures raw PSS/USS,
 wakeup, IRQ, CPU-idle and battery counters without entering ordinary boot.
 
+That sampler is deployed from clean source
+`3ce316d17574e8487ab846975c404f82f3366e56` as release
+`v6.23-stage5-metrics-3ce316d`, manifest
+`aba835ad6dd467ff553df81ec64db6542ea4f13e87903fe3268e89bfe3083289`.
+All 66 manifest files verify. Warm-managers remains the accepted on-card
+rollback. The unarmed sampler adds no ordinary process or wakeup; its 3,036-
+byte manifest increase is measurement infrastructure, not a memory-efficiency
+claim.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.
