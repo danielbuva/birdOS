@@ -19,13 +19,13 @@ display geometry and hardware policy are deliberate. Older muOS stages,
 source-kernel challengers and clean-root experiments remain useful evidence,
 but they are not alternate active implementations.
 
-The card currently selects the Stage 5 one-shot idle-window candidate
-`v6.23-stage5-idle-2ca82cd`, built from clean public source
-`2ca82cdf5fd3d173644b756797ae8f0421f4a87d`. Its previous selector is the
-physically accepted request-only measurement candidate
-`v6.23-stage5-metrics-3ce316d`. The selected release's canonical manifest
+The card currently selects the corrected Stage 5 trigger candidate
+`v6.23-stage5-trigger-97dd6ff`, built from clean public source
+`97dd6ffc55b2c1f86650bf1a7bb95cd10d1ff9e0`. Its previous selector is the
+physically accepted one-shot implementation
+`v6.23-stage5-idle-2ca82cd`. The selected release's canonical manifest
 digest is
-`c44f2639aaa714d46ef264d26f3627ed7598699d85c4aaadb7e7abfe88af09c1`,
+`505ac5d6674d81f18aff22723117dd2d48fafdffb443d3d961de6229bf2a6af5`,
 and deployment verified all 66 manifest-owned files. The device-contract digest is
 `85ccb8e46e71ee66e2320022ac13228124d6efcea5abdd800b8c18bd190f73cd`
 and the generated-catalog digest is
@@ -1155,6 +1155,15 @@ request authority is now the existing host-visible Bird directory
 path use that exact mount. The two ineffective BIRD-DATA `.config` markers were
 removed. This changes measurement triggering only and adds no ordinary process,
 timer or content-path work.
+
+Clean public source `97dd6ffc55b2c1f86650bf1a7bb95cd10d1ff9e0` is deployed as
+`v6.23-stage5-trigger-97dd6ff`, canonical manifest
+`505ac5d6674d81f18aff22723117dd2d48fafdffb443d3d961de6229bf2a6af5`.
+All 66 manifest files verify. Stage5-idle is the on-card accepted rollback;
+stage5-metrics is sealed in the private GitHub release archive. Both launcher
+modes remain byte-identical. The corrected absolute strings add 31 manifest-
+owned bytes and the compressed overlay is 615,257 bytes. Production remains
+no-serial; diagnostic and fallback entries retain serial.
 
 ## Launcher visual architecture
 

@@ -790,6 +790,14 @@ fixed boundary is `/storage/bird-data/MUOS/Bird`, which is already mounted and
 host-visible before final-root systemd. Builder and host tests reject either
 request path returning to `/storage/.config`.
 
+The corrected trigger is clean source
+`97dd6ffc55b2c1f86650bf1a7bb95cd10d1ff9e0`, release
+`v6.23-stage5-trigger-97dd6ff`, manifest
+`505ac5d6674d81f18aff22723117dd2d48fafdffb443d3d961de6229bf2a6af5`.
+All 66 files verify and the launchers are unchanged. The next returned card
+must contain both labelled samples and an absent one-shot marker before any
+counter delta is used.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.

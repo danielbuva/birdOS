@@ -1175,6 +1175,13 @@ host-visible `/storage/bird-data/MUOS/Bird` authority and assert that exact path
 in the builder and unit-ordering tests. This is neutral instrumentation; it
 does not authorize a battery, wakeup or memory claim.
 
+Clean source `97dd6ffc55b2c1f86650bf1a7bb95cd10d1ff9e0`, release
+`v6.23-stage5-trigger-97dd6ff`, manifest
+`505ac5d6674d81f18aff22723117dd2d48fafdffb443d3d961de6229bf2a6af5`
+implements the corrected host-visible trigger with stage5-idle as rollback.
+All 66 files verify; launchers are unchanged and manifest bytes grow by 31.
+The next boot is measurement-only until the one-shot window publishes.
+
 ## Stage 6 — Canonical namespace and hermetic image
 
 Atomically migrate `/run/muos` to `/run/bird`, legacy state to Bird state,
