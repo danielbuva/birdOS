@@ -5,7 +5,7 @@
 
 set -u
 
-CATALOG_PATH_MAX_BYTES=4085
+CATALOG_PATH_MAX_BYTES=4095
 APPLICATION_CONTRACT_REVISION=bird-application-v1
 APPLICATION_READY=${BIRD_APPLICATION_READY:-/run/bird/application-contract-ready}
 SYSTEMCTL_PROGRAM=${BIRD_SYSTEMCTL_PROGRAM:-$(command -v systemctl)}
@@ -145,7 +145,7 @@ validate_host_path() {
 	fi
 	case "$HOST_PATH" in
 		*/../*|*/..|../*|..) PATH_REJECTION=traversal; return 1 ;;
-		/mnt/mmc/*) return 0 ;;
+		/storage/roms/*|/storage/media/*) return 0 ;;
 		*) PATH_REJECTION=prefix; return 1 ;;
 	esac
 }
@@ -156,8 +156,8 @@ if [ "${BIRD_TEST_VALIDATE_HOST_PATH:-0}" = 1 ]; then
 	exit 1
 fi
 
-REQUEST=${1:-/run/muos/bird-launch-request}
-LOG_DIR=/storage/bird-data/MUOS/Bird/log
+REQUEST=${1:-/run/bird/bird-launch-request}
+LOG_DIR=/storage/bird-data/Bird/log
 LOG=$LOG_DIR/stock-root-content-latest.log
 SWAY_SOCKET=/var/run/0-runtime-dir/sway-ipc.0.sock
 SESSION_MODE=content
@@ -200,7 +200,7 @@ KOREADER_ARCHIVE_BYTES=43069001
 KOREADER_EXPANDED_BYTES=108544222
 KOREADER_ARCHIVE_ENTRIES=1139
 KOREADER_SHA256_PROGRAM=${BIRD_KOREADER_SHA256_PROGRAM:-/usr/bin/sha256sum}
-KOREADER_EXTRACTION_STATE_DIR=/storage/.config/bird/koreader-extraction
+KOREADER_EXTRACTION_STATE_DIR=/storage/bird-data/Bird/state/koreader-extraction
 KOREADER_PORT_SCRIPT=
 KOREADER_PORT_TEMP=
 
@@ -244,7 +244,7 @@ load_launch_request() {
 		return 1
 	fi
 	validate_host_path "$EXTRA_REQUEST_LINE" || return 1
-	CONTENT=/storage/bird-data/${HOST_PATH#/mnt/mmc/}
+	CONTENT=$HOST_PATH
 	return 0
 }
 
@@ -1723,8 +1723,8 @@ run_selected() {
 			;;
 		7)
 			case "$HOST_PATH" in
-				/mnt/mmc/MEDIA/READ/*.[eE][pP][uU][bB]|\
-				/mnt/mmc/MEDIA/READ/*.[pP][dD][fF]) ;;
+				/storage/media/READ/*.[eE][pP][uU][bB]|\
+				/storage/media/READ/*.[pP][dD][fF]) ;;
 				*) return 1 ;;
 			esac
 			[ -f "$CONTENT" ] || return 1

@@ -6,7 +6,7 @@
 set -u
 umask 077
 
-LOG_ROOT=${BIRD_EMERGENCY_LOG_ROOT:-/storage/bird-data/MUOS/Bird/log/emergency}
+LOG_ROOT=${BIRD_EMERGENCY_LOG_ROOT:-/storage/bird-data/Bird/log/emergency}
 PROC_ROOT=${BIRD_EMERGENCY_PROC_ROOT:-/proc}
 RUN_ROOT=${BIRD_EMERGENCY_RUN_ROOT:-/run}
 EXIT_HELPER=${BIRD_EMERGENCY_EXIT_HELPER:-/flash/bird/bird-fixed-control-exit.sh}
@@ -146,9 +146,9 @@ for PRESSURE in cpu io memory; do
 	snapshot_file pressure-$PRESSURE "$PROC_ROOT/pressure/$PRESSURE"
 done
 snapshot_file early-launcher "$RUN_ROOT/muos/initramfs-launcher.log"
-snapshot_file supervisor /storage/bird-data/MUOS/Bird/log/stock-root-supervisor.log
-snapshot_file content /storage/bird-data/MUOS/Bird/log/stock-root-content-latest.log
-snapshot_file content-exit /storage/bird-data/MUOS/Bird/log/content-exit-latest.log
+snapshot_file supervisor /storage/bird-data/Bird/log/stock-root-supervisor.log
+snapshot_file content /storage/bird-data/Bird/log/stock-root-content-latest.log
+snapshot_file content-exit /storage/bird-data/Bird/log/content-exit-latest.log
 snapshot_file launch-request "$REQUEST"
 snapshot_file handoff-action "$HANDOFF_ACTION"
 for STATE in "$RUN_ROOT"/bird/content-runner-*.state \
@@ -164,7 +164,7 @@ sync_log || printf 'snapshot_sync=failed\n' >&9
 "$TIMEOUT_PROGRAM" --signal=TERM --kill-after=1s 4s "$EXIT_HELPER"
 EXIT_STATUS=$?
 printf 'foreground_exit_status=%s\n' "$EXIT_STATUS" >&9
-snapshot_file content-exit-after /storage/bird-data/MUOS/Bird/log/content-exit-latest.log
+snapshot_file content-exit-after /storage/bird-data/Bird/log/content-exit-latest.log
 
 rm -f "$REQUEST" "$HANDOFF_ACTION" "$HANDOFF_ACTION.tmp"
 printf 'pending_action_cancelled=1\n' >&9

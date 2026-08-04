@@ -5,8 +5,8 @@
 
 set -eu
 
-REQUEST=${BIRD_STAGE5_REQUEST:-/storage/bird-data/MUOS/Bird/stage5-idle-window.request}
-LOG_DIR=${BIRD_STAGE5_LOG_DIR:-/storage/bird-data/MUOS/Bird/log}
+REQUEST=${BIRD_STAGE5_REQUEST:-/storage/bird-data/Bird/stage5-idle-window.request}
+LOG_DIR=${BIRD_STAGE5_LOG_DIR:-/storage/bird-data/Bird/log}
 COUNTERS=${BIRD_STAGE5_COUNTERS:-/flash/bird/capture-stage5-window-counters.sh}
 SNAPSHOT=${BIRD_STAGE5_SNAPSHOT:-/flash/bird/capture-stage5-state.sh}
 SLEEP=${BIRD_STAGE5_SLEEP:-sleep}

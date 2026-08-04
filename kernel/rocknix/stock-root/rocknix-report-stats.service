@@ -1,8 +1,8 @@
 [Unit]
 Description=Bird requested post-frame diagnostics
 After=rocknix-autostart.service
-ConditionPathExists=|/storage/bird-data/MUOS/Bird/boot-diagnostics.request
-ConditionPathExists=|/storage/bird-data/MUOS/Bird/stage5-idle-window.request
+ConditionPathExists=|/storage/bird-data/Bird/boot-diagnostics.request
+ConditionPathExists=|/storage/bird-data/Bird/stage5-idle-window.request
 
 [Service]
 Type=simple

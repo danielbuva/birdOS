@@ -97,11 +97,9 @@ MEDIA_KINDS = (
 IGNORED_DIRECTORY_NAMES = frozenset(("imgs", "images"))
 
 # Linux accepts at most 4095 pathname bytes excluding the terminating NUL.
-# The active runtime rewrites the eight-byte /mnt/mmc catalogue root to the
-# eighteen-byte /storage/bird-data root, so reserve those ten expansion bytes.
-# This value is emitted into catalog.generated.h and is therefore also the
-# launch-request and favorites-file contract used by the freestanding launcher.
-CATALOG_PATH_MAX_BYTES = 4085
+# Canonical catalog paths are also live paths, so no runtime-prefix expansion
+# reserve is necessary. This is the launch-request and persistence contract.
+CATALOG_PATH_MAX_BYTES = 4095
 CATALOG_ENTRY_INDEX_CAPACITY = 1 << 16
 CATALOG_U8_INDEX_CAPACITY = 1 << 8
 CATALOG_U32_MAX = (1 << 32) - 1
@@ -312,8 +310,13 @@ def discover(
                 relative = relative_path.as_posix()
                 if requested is not None and relative not in requested:
                     continue
+                catalog_relative = relative
+                if system.directory == "Ports":
+                    catalog_relative = pathlib.PurePosixPath(
+                        "ports", *relative_path.parts[1:]
+                    ).as_posix()
                 catalog_path = checked_catalog_path(
-                    f"/mnt/mmc/ROMS/{relative}", f"game entry {relative!r}"
+                    f"/storage/roms/{catalog_relative}", f"game entry {relative!r}"
                 )
                 entries.append((display_name(path), catalog_path, relative))
         entries.sort(key=lambda entry: (entry[0], entry[1]))
@@ -648,7 +651,7 @@ def discover_media(media_root: pathlib.Path | None) -> list[MediaCategory]:
             )
             relative = relative_to_media.as_posix()
             catalog_path = checked_catalog_path(
-                f"/mnt/mmc/MEDIA/{relative}", f"media entry {relative!r}"
+                f"/storage/media/{relative}", f"media entry {relative!r}"
             )
             grouped.setdefault(category_name, []).append(
                 MediaEntry(

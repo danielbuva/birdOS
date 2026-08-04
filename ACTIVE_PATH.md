@@ -1396,6 +1396,17 @@ transaction infrastructure only: the currently accepted runtime still uses
 the legacy namespace until the atomic activation candidate passes its own
 host and physical gate.
 
+The pending atomic activation uses `/run/bird` for the early launcher and all
+handoff markers, `/storage/bird-data/Bird/state` for favorites and recents,
+`/storage/bird-data/Bird/log` for diagnostics, and direct catalog paths below
+`/storage/roms` and `/storage/media`. It removes the launch-time
+`/mnt/mmc`-to-`/storage/bird-data` rewrite and the nested legacy BIOS bind.
+The launcher opens `/sysroot/storage` once at root-ready (or `/storage` when
+started in final root), preserving one storage descriptor across the mount
+transition. The accepted fallback remains untouched on its legacy paths. This
+candidate is not accepted until its migrated card and new immutable release
+pass the RG34XX-SP gate.
+
 ## Launcher visual architecture
 
 The active 720x480 launcher presentation is inspired by Mister Menu's ES-DE

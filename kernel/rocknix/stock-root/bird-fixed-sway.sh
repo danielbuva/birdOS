@@ -10,7 +10,7 @@ PROFILE_DIR=/storage/.config/profile.d
 RUN_DIR=/run/bird/fixed-sway
 CONFIG=$SWAY_DIR/config
 PROFILE=$PROFILE_DIR/095-sway
-LOG=/storage/bird-data/MUOS/Bird/log/fixed-sway-latest.log
+LOG=/storage/bird-data/Bird/log/fixed-sway-latest.log
 
 mkdir -p "$SWAY_DIR" "$PROFILE_DIR" "$RUN_DIR" "${LOG%/*}"
 

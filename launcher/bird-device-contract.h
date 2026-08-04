@@ -79,7 +79,8 @@
 #define BIRD_DEVICE_FLASH_ROOT "/flash"
 #define BIRD_DEVICE_RUNTIME_STORAGE "/storage/bird-data"
 #define BIRD_DEVICE_APPLICATION_ROMS "/storage/roms"
-#define BIRD_DEVICE_CATALOG_ROOT "/mnt/mmc"
+#define BIRD_DEVICE_APPLICATION_MEDIA "/storage/media"
+#define BIRD_DEVICE_CATALOG_ROOT "/storage"
 
 #if BIRD_DEVICE_FB_STRIDE != (BIRD_DEVICE_FB_WIDTH * BIRD_DEVICE_FB_BYTES_PER_PIXEL)
 #error "fixed framebuffer stride is inconsistent"

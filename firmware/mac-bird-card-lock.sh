@@ -26,7 +26,7 @@ bird_card_lock_serial_enter() {
 	[ "$(stat -f '%l' "$BIRD_CARD_LOCK_SERIAL" 2>/dev/null || :)" = 1 ] ||
 		fail 'Bird card lock mutex link count is unsafe'
 	exec 9<>"$BIRD_CARD_LOCK_SERIAL" || fail 'could not open Bird card lock mutex'
-	/usr/bin/lockf -s -t 5 9 || fail 'Bird card lock recovery is busy'
+	/usr/bin/lockf -s -t 15 9 || fail 'Bird card lock recovery is busy'
 }
 
 bird_card_lock_serial_leave() {
@@ -51,7 +51,7 @@ bird_card_lock_transaction_enter() {
 	# flock(2) is tied to the inherited open-file description. If this shell is
 	# SIGKILLed, an in-flight cp/mv/find child keeps fd 8 and therefore the lock
 	# until that child really exits.
-	if ! /usr/bin/lockf -s -t 5 8; then
+	if ! /usr/bin/lockf -s -t 15 8; then
 		exec 8>&-
 		BIRD_CARD_TRANSACTION_OPEN=0
 		fail 'another Bird card transaction is active (owner or inherited mutator child)'

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import hashlib
 import os
 import pathlib
@@ -58,7 +59,7 @@ def disk_field(path: pathlib.Path, key: str, fixture: pathlib.Path | None) -> st
     return ""
 
 
-def validate_card(bird: pathlib.Path, data: pathlib.Path, fixture: pathlib.Path | None) -> None:
+def validate_card(bird: pathlib.Path, data: pathlib.Path, fixture: pathlib.Path | None) -> str:
     reject_link(bird, "BIRD volume")
     reject_link(data, "BIRD-DATA volume")
     whole = disk_field(bird, "Part of Whole", fixture)
@@ -77,6 +78,83 @@ def validate_card(bird: pathlib.Path, data: pathlib.Path, fixture: pathlib.Path 
         fail("data is not p6")
     if disk_field(bird, "Volume Read-Only", fixture) != "No" or disk_field(data, "Volume Read-Only", fixture) != "No":
         fail("card volume is read-only")
+    return whole
+
+
+class CardLock:
+    """Interoperate with the shell updater's per-card fcntl transaction lock."""
+
+    def __init__(self, whole: str) -> None:
+        if not whole or any(character not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-" for character in whole):
+            fail("unsafe whole-disk identity for card lock")
+        self.root = pathlib.Path("/tmp/bird-card-locks")
+        self.root.mkdir(mode=0o700, exist_ok=True)
+        root_stat = self.root.lstat()
+        if not stat.S_ISDIR(root_stat.st_mode) or stat.S_ISLNK(root_stat.st_mode):
+            fail("Bird card lock directory is unsafe")
+        if root_stat.st_uid != os.getuid() or stat.S_IMODE(root_stat.st_mode) != 0o700:
+            fail("Bird card lock directory authority is unsafe")
+        self.transaction_path = self.root / f"{whole}.transaction"
+        self.serial_path = self.root / f"{whole}.serial"
+        self.owner_path = self.root / f"{whole}.lock"
+        self.transaction_fd = -1
+        self.serial_fd = -1
+        self.token = f"{os.getpid()}:{int(time.time_ns())}:{int(time.time())}"
+
+    def _open_mutex(self, path: pathlib.Path) -> int:
+        fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+        metadata = os.fstat(fd)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.getuid() or stat.S_IMODE(metadata.st_mode) != 0o600 or metadata.st_nlink != 1:
+            os.close(fd)
+            fail(f"Bird card mutex is unsafe: {path}")
+        return fd
+
+    @staticmethod
+    def _lock(fd: int, message: str) -> None:
+        deadline = time.monotonic() + 15.0
+        while True:
+            try:
+                fcntl.lockf(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    fail(message)
+                time.sleep(0.025)
+
+    def __enter__(self) -> CardLock:
+        self.transaction_fd = self._open_mutex(self.transaction_path)
+        self._lock(self.transaction_fd, "another Bird card transaction is active")
+        self.serial_fd = self._open_mutex(self.serial_path)
+        self._lock(self.serial_fd, "Bird card lock recovery is busy")
+        try:
+            if self.owner_path.exists() and not self.owner_path.is_symlink():
+                fail("Bird card lock is not an atomic owner symlink")
+            if self.owner_path.is_symlink():
+                self.owner_path.unlink()
+            self.owner_path.symlink_to(self.token)
+            if os.readlink(self.owner_path) != self.token:
+                fail("atomic Bird card lock verification failed")
+        finally:
+            fcntl.lockf(self.serial_fd, fcntl.LOCK_UN)
+            os.close(self.serial_fd)
+            self.serial_fd = -1
+        return self
+
+    def __exit__(self, _type: object, _value: object, _traceback: object) -> None:
+        if self.serial_fd < 0:
+            self.serial_fd = self._open_mutex(self.serial_path)
+            self._lock(self.serial_fd, "Bird card lock release is busy")
+        try:
+            if self.owner_path.is_symlink() and os.readlink(self.owner_path) == self.token:
+                self.owner_path.unlink()
+        finally:
+            fcntl.lockf(self.serial_fd, fcntl.LOCK_UN)
+            os.close(self.serial_fd)
+            self.serial_fd = -1
+            if self.transaction_fd >= 0:
+                fcntl.lockf(self.transaction_fd, fcntl.LOCK_UN)
+                os.close(self.transaction_fd)
+                self.transaction_fd = -1
 
 
 def hash_file(path: pathlib.Path) -> str:
@@ -284,9 +362,10 @@ def main() -> None:
         roots = (str(args.bird), str(args.data), str(args.device_info))
         if not all(value.startswith(("/tmp/", "/private/tmp/", "/var/folders/", "/private/var/folders/")) for value in roots):
             fail("device metadata override is limited to temporary host fixtures")
-    validate_card(args.bird, args.data, args.device_info)
-    migration = Migration(args.data)
-    getattr(migration, "prepare_payload" if args.action == "prepare" else args.action)()
+    whole = validate_card(args.bird, args.data, args.device_info)
+    with CardLock(whole):
+        migration = Migration(args.data)
+        getattr(migration, "prepare_payload" if args.action == "prepare" else args.action)()
 
 
 if __name__ == "__main__":

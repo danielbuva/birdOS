@@ -7,11 +7,11 @@ BACKLIGHT=${BIRD_BACKLIGHT:-/sys/class/backlight/backlight}
 BRIGHTNESS=$BACKLIGHT/brightness
 BL_POWER=$BACKLIGHT/bl_power
 MAX_BRIGHTNESS=$BACKLIGHT/max_brightness
-STATE=${BIRD_SUSPEND_STATE:-/run/muos/bird-pre-suspend-brightness}
+STATE=${BIRD_SUSPEND_STATE:-/run/bird/bird-pre-suspend-brightness}
 STOCK=${BIRD_SUSPEND_PROVIDER:-/usr/bin/rocknix-fake-suspend}
-LOG=${BIRD_SUSPEND_LOG:-/storage/bird-data/MUOS/Bird/log/suspend-latest.log}
+LOG=${BIRD_SUSPEND_LOG:-/storage/bird-data/Bird/log/suspend-latest.log}
 SETTLE=${BIRD_SUSPEND_SETTLE:-/usr/bin/usleep}
-RESUME_READY=${BIRD_SUSPEND_RESUME_READY:-/run/muos/bird-suspend-resume-ready}
+RESUME_READY=${BIRD_SUSPEND_RESUME_READY:-/run/bird/bird-suspend-resume-ready}
 
 log_brightness() {
 	RAW=unavailable

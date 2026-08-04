@@ -7,7 +7,7 @@ set -eu
 
 PROFILE=/storage/.config/profile.d
 STAGE=/run/bird/fixed-platform
-LOG=/storage/bird-data/MUOS/Bird/log/fixed-platform-latest.log
+LOG=/storage/bird-data/Bird/log/fixed-platform-latest.log
 
 mkdir -p "$PROFILE" "$STAGE" "${LOG%/*}"
 

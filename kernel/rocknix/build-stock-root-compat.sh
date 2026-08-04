@@ -243,7 +243,7 @@ CATALOG_SHA=$(sha256 "$ROOT/launcher/catalog.generated.h")
 {
 	printf 'component\tmode\tflags\n'
 	printf 'final-launcher-compile\t%s\t%s\n' "${BIRD_LAUNCHER_PROFILE:-release}" \
-		"--target=aarch64-linux-gnu -mcpu=cortex-a53 -O2 -ffreestanding -ffunction-sections -fdata-sections -fno-builtin -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-ident -fvisibility=hidden -nostdlib -Wall -Wextra -Werror -Wno-unused-function -DROM_ROOT=\"/storage/bird-data/ROMS\" -DLIVE_STORAGE_ROOT=\"/storage/bird-data\" -DFAVORITES_PATH=\"/storage/.config/bird/favorites.txt\" -DFAVORITES_TEMP=\"/storage/.config/bird/favorites.tmp\" -DRECENT_PATH=\"/storage/.config/bird/recent.txt\" -DRECENT_TEMP=\"/storage/.config/bird/recent.tmp\" -DBIRD_STATIC_BASE_PATH=\"/flash/bird/launcher-base.xrgb\" -DPERSIST_UI_STATE ${LAUNCHER_PROFILE_FLAGS:-} -c launcher/bird-launcher.c"
+		"--target=aarch64-linux-gnu -mcpu=cortex-a53 -O2 -ffreestanding -ffunction-sections -fdata-sections -fno-builtin -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-ident -fvisibility=hidden -nostdlib -Wall -Wextra -Werror -Wno-unused-function -DROM_ROOT=\"/storage/roms\" -DLIVE_STORAGE_ROOT=\"/storage\" -DFAVORITES_PATH=\"/storage/bird-data/Bird/state/favorites.txt\" -DFAVORITES_TEMP=\"/storage/bird-data/Bird/state/favorites.tmp\" -DRECENT_PATH=\"/storage/bird-data/Bird/state/recent.txt\" -DRECENT_TEMP=\"/storage/bird-data/Bird/state/recent.tmp\" -DBIRD_STATIC_BASE_PATH=\"/flash/bird/launcher-base.xrgb\" -DPERSIST_UI_STATE ${LAUNCHER_PROFILE_FLAGS:-} -c launcher/bird-launcher.c"
 	printf 'final-launcher-link\t%s\t%s\n' "${BIRD_LAUNCHER_PROFILE:-release}" \
 		'-static --gc-sections --build-id=none -z noexecstack -s -e _start'
 	printf 'bird-pidwait-compile\trelease\t%s\n' \
@@ -305,12 +305,12 @@ extract_portmaster_input harbourmaster 0755 18807 "$PORTMASTER_HARBOURMASTER_SHA
 	-fno-builtin -fno-stack-protector -fno-unwind-tables \
 	-fno-asynchronous-unwind-tables -fno-ident -fvisibility=hidden \
 	-nostdlib -Wall -Wextra -Werror -Wno-unused-function \
-	'-DROM_ROOT="/storage/bird-data/ROMS"' \
-	'-DLIVE_STORAGE_ROOT="/storage/bird-data"' \
-	'-DFAVORITES_PATH="/storage/.config/bird/favorites.txt"' \
-	'-DFAVORITES_TEMP="/storage/.config/bird/favorites.tmp"' \
-	'-DRECENT_PATH="/storage/.config/bird/recent.txt"' \
-	'-DRECENT_TEMP="/storage/.config/bird/recent.tmp"' \
+	'-DROM_ROOT="/storage/roms"' \
+	'-DLIVE_STORAGE_ROOT="/storage"' \
+	'-DFAVORITES_PATH="/storage/bird-data/Bird/state/favorites.txt"' \
+	'-DFAVORITES_TEMP="/storage/bird-data/Bird/state/favorites.tmp"' \
+	'-DRECENT_PATH="/storage/bird-data/Bird/state/recent.txt"' \
+	'-DRECENT_TEMP="/storage/bird-data/Bird/state/recent.tmp"' \
 	'-DBIRD_STATIC_BASE_PATH="/flash/bird/launcher-base.xrgb"' \
 	-DPERSIST_UI_STATE \
 	$LAUNCHER_PROFILE_FLAGS \
@@ -651,10 +651,10 @@ grep -q 'systemd-rfkill.socket' \
 	"$OUTPUT/card/mount-storage.sh" || fail 'rfkill activation socket remained'
 grep -q '^After=rocknix-autostart.service$' \
 	"$OUTPUT/card/bird/rocknix-report-stats.service" || fail 'event-ordered snapshot missing'
-grep -Fq 'ConditionPathExists=|/storage/bird-data/MUOS/Bird/boot-diagnostics.request' \
+grep -Fq 'ConditionPathExists=|/storage/bird-data/Bird/boot-diagnostics.request' \
 	"$OUTPUT/card/bird/rocknix-report-stats.service" || \
 	fail 'ordinary-boot snapshot gate missing'
-grep -Fq 'ConditionPathExists=|/storage/bird-data/MUOS/Bird/stage5-idle-window.request' \
+grep -Fq 'ConditionPathExists=|/storage/bird-data/Bird/stage5-idle-window.request' \
 	"$OUTPUT/card/bird/rocknix-report-stats.service" || \
 	fail 'Stage 5 snapshot gate missing'
 grep -q '^Type=simple$' \
@@ -742,7 +742,7 @@ grep -Fq '[ "$(cat "$TEMP" 2>/dev/null)" = "$VALUE" ]' \
 	"$OUTPUT/card/post-flash.sh" || fail 'verified boot-attempt temporary missing'
 grep -Fq 'case "$ATTEMPTS" in 0|1|2) ;; *) ATTEMPTS=2 ;; esac' \
 	"$OUTPUT/card/post-flash.sh" || fail 'corrupt boot attempts fail-safe policy missing'
-grep -Fq 'BIRD_FIRST_FRAME=/run/muos/bird-first-frame-ready' \
+grep -Fq 'BIRD_FIRST_FRAME=/run/bird/bird-first-frame-ready' \
 	"$OUTPUT/card/post-flash.sh" || fail 'honest first-frame health path missing'
 grep -Fq 'commit_first_usable_frame || FIRST_FRAME_COMMIT_RESULT=$?' \
 	"$OUTPUT/card/post-flash.sh" || fail 'usable-frame boot-health commit missing'
@@ -791,7 +791,7 @@ grep -Fq '/sysroot/usr/bin/busybox chmod 0644' \
 grep -Fq 'cp -f /flash/bird/bird-swap.conf /storage/.config/swap.conf' \
 	"$OUTPUT/card/mount-storage.sh" || \
 	fail 'mutable ROCKNIX memory policy publication missing'
-if grep -Fq '"/storage/.config/bird/$FILE"' \
+if grep -Fq '"/storage/bird-data/Bird/state/$FILE"' \
 	"$OUTPUT/card/mount-storage.sh"; then
 	fail 'immutable final-root publication remained'
 fi
@@ -1011,11 +1011,11 @@ grep -q 'retroarch fmsx' \
 	"$OUTPUT/card/bird/run-content.sh" || fail 'fixed MSX provider missing'
 grep -q '^#define BIRD_DEVICE_INPUT_SCAN_COUNT 32U$' \
 	"$ROOT/launcher/bird-device-contract.h" || fail 'complete fixed input search missing'
-grep -q '^CATALOG_PATH_MAX_BYTES = 4085$' \
+grep -q '^CATALOG_PATH_MAX_BYTES = 4095$' \
 	"$ROOT/generate-launcher-catalog.py" || fail 'catalogue path size contract missing'
 grep -Fq 'byte < 0x20 or byte == 0x7F' \
 	"$ROOT/generate-launcher-catalog.py" || fail 'generator path control-byte rejection missing'
-grep -q '^#define CATALOG_PATH_MAX_BYTES 4085U$' \
+grep -q '^#define CATALOG_PATH_MAX_BYTES 4095U$' \
 	"$ROOT/launcher/catalog.generated.h" || fail 'generated catalogue path contract missing'
 grep -Fq 'byte < 32U || byte == 127U' \
 	"$ROOT/launcher/bird-launcher.c" || fail 'launcher path control-byte rejection missing'

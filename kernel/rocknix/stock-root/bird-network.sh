@@ -5,7 +5,7 @@
 set -u
 
 FLAG=${BIRD_NETWORK_FLAG:-/run/bird/network-request}
-LOG=${BIRD_NETWORK_LOG:-/storage/bird-data/MUOS/Bird/log/network-latest.log}
+LOG=${BIRD_NETWORK_LOG:-/storage/bird-data/Bird/log/network-latest.log}
 SYS_CLASS_NET=${BIRD_SYS_CLASS_NET:-/sys/class/net}
 SYSTEMCTL_PROGRAM=${BIRD_SYSTEMCTL_PROGRAM:-/usr/bin/systemctl}
 TIMEOUT_PROGRAM=${BIRD_TIMEOUT_PROGRAM:-/usr/bin/timeout}

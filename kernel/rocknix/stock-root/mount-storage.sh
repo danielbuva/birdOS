@@ -178,7 +178,15 @@ done
 # Keep the owning p6 mount outside the loop filesystem that its image backs.
 # Only a bind alias lives below /storage, so shutdown can unmount the aliases,
 # then the loop, then p6 without a mount/backing-filesystem dependency cycle.
-mkdir -p /run/bird-data /storage/bird-data /storage/roms /storage/.config/bird
+NAMESPACE_RECORD=/birddata/Bird/namespace-v1.tsv
+[ -r "$NAMESPACE_RECORD" ] &&
+	[ "$(wc -l <"$NAMESPACE_RECORD")" -eq 2 ] &&
+	grep -Fqx 'revision	bird-canonical-namespace-v1' "$NAMESPACE_RECORD" &&
+	grep -Fqx 'state	committed' "$NAMESPACE_RECORD" || {
+	error bird-namespace "Canonical namespace transaction is absent or ambiguous"
+	return 1
+}
+mkdir -p /run/bird-data /storage/bird-data /storage/roms /storage/media
 mount --move /birddata /run/bird-data || {
 	error bird-data-move "Could not move large Bird data volume to its final mount"
 	return 1
@@ -191,9 +199,8 @@ mount --bind /storage/bird-data/ROMS /storage/roms || {
 	error bird-rom-bind "Could not publish the Bird ROM library"
 	return 1
 }
-mkdir -p /storage/roms/bios
-mount --bind /storage/bird-data/MUOS/bios /storage/roms/bios || {
-	error bird-bios-bind "Could not publish the existing BIOS library"
+mount --bind /storage/bird-data/MEDIA /storage/media || {
+	error bird-media-bind "Could not publish the Bird media library"
 	return 1
 }
 

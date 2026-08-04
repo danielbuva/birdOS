@@ -343,12 +343,14 @@ new_case() {
 	KOREADER_ARCHIVE=$KOREADER_ARCHIVE_ROOT/koreader.zip
 	PORTMASTER_PROVIDER_MANIFEST=$CASE_ROOT/portmaster-provider.manifest.tsv
 	PORTMASTER_PYLIBS_FIXTURE=$CASE_ROOT/pylibs.fixture.zip
-	mkdir -p "$BIRD/bird-releases" "$BIRD/extlinux" "$DATA/MUOS/runtime" \
+	mkdir -p "$BIRD/bird-releases" "$BIRD/extlinux" "$DATA/MUOS/runtime" "$DATA/Bird" \
 		"$WORK_ROOT" "$TEST_STATE" "$SYSTEM_TREE/usr/bin" \
 		"$SYSTEM_TREE/usr/config/PortMaster/release" "${OFFICIAL_INIT%/*}" \
 		"$KOREADER_ARCHIVE_ROOT/koreader/frontend/apps/reader" \
 		"$KOREADER_ARCHIVE_ROOT/koreader/libs" \
 		"$DATA/ROMS/Ports/PortMaster"
+	printf 'revision\tbird-canonical-namespace-v1\nstate\tcommitted\n' \
+		>"$DATA/Bird/namespace-v1.tsv"
 	printf 'rocknix kernel\n' >"$BIRD/KERNEL"
 	printf 'fallback kernel\n' >"$BIRD/KERNEL.fallback"
 	printf 'fixed dtb\n' >"$BIRD/dtb.img"

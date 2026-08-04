@@ -28,6 +28,7 @@ sed \
 	-e 's#^SYSTEM_BUSYBOX=.*#SYSTEM_BUSYBOX=$TEST_SYSTEM_BUSYBOX#' \
 	-e 's#^RETROARCH_CONFIG_DIR=.*#RETROARCH_CONFIG_DIR=$TEST_RETROARCH_CONFIG_DIR#' \
 	-e 's#^FIXED_RETROARCH_CONFIG_DIR=.*#FIXED_RETROARCH_CONFIG_DIR=$TEST_FIXED_RETROARCH_CONFIG_DIR#' \
+	-e 's#/birddata/Bird/namespace-v1.tsv#$TEST_NAMESPACE#g' \
 	"$PREFIX_RAW" >"$PREFIX"
 
 grep -q '^STORAGE_IMAGE=/birddata/MUOS/runtime/ROCKNIX-STORAGE$' "$PREFIX"
@@ -98,10 +99,13 @@ TEST_FIXED_SUSPEND_POLICY=$ROOT/kernel/rocknix/stock-root/bird-suspend-policy.ge
 TEST_RETROARCH_CONFIG_DIR=$TMP/storage/retroarch
 TEST_FIXED_RETROARCH_CONFIG_DIR=$TMP/fixed-retroarch
 TEST_SYSTEM_BUSYBOX=$TMP/system-busybox-policy
+TEST_NAMESPACE=$TMP/namespace-v1.tsv
 POLICY_EVENTS=$TMP/policy-events
 /bin/mkdir -p "${TEST_SUSPEND_CONFIG%/*}" \
 	"${TEST_SLEEP_CONFIG%/*}" "${TEST_LOGIND_CONFIG%/*}" \
 	"$TEST_RETROARCH_CONFIG_DIR" "$TEST_FIXED_RETROARCH_CONFIG_DIR"
+printf 'revision\tbird-canonical-namespace-v1\nstate\tcommitted\n' \
+	>"$TEST_NAMESPACE"
 printf '%s\n' 'fixed core options' \
 	>"$TEST_FIXED_RETROARCH_CONFIG_DIR/retroarch-core-options.cfg"
 printf '%s\n' 'fixed retroarch config' \
@@ -226,12 +230,11 @@ cat >"$TMP/expected-success" <<'EOF'
 loop|/birddata/MUOS/runtime/ROCKNIX-STORAGE|/storage|loop,rw,noatime
 mkdir|-p TEST_SLEEP_DIR
 mkdir|-p TEST_RETROARCH_DIR
-mkdir|-p /run/bird-data /storage/bird-data /storage/roms /storage/.config/bird
+mkdir|-p /run/bird-data /storage/bird-data /storage/roms /storage/media
 mount|--move /birddata /run/bird-data
 mount|--bind /run/bird-data /storage/bird-data
 mount|--bind /storage/bird-data/ROMS /storage/roms
-mkdir|-p /storage/roms/bios
-mount|--bind /storage/bird-data/MUOS/bios /storage/roms/bios
+mount|--bind /storage/bird-data/MEDIA /storage/media
 EOF
 sed -e "s#TEST_SLEEP_DIR#${TEST_SLEEP_CONFIG%/*}#" \
 	-e "s#TEST_RETROARCH_DIR#$TEST_RETROARCH_CONFIG_DIR#" \
@@ -304,7 +307,7 @@ cat >"$TMP/expected-move-failure" <<'EOF'
 loop|/birddata/MUOS/runtime/ROCKNIX-STORAGE|/storage|loop,rw,noatime
 mkdir|-p TEST_SLEEP_DIR
 mkdir|-p TEST_RETROARCH_DIR
-mkdir|-p /run/bird-data /storage/bird-data /storage/roms /storage/.config/bird
+mkdir|-p /run/bird-data /storage/bird-data /storage/roms /storage/media
 mount|--move /birddata /run/bird-data
 error|bird-data-move|Could not move large Bird data volume to its final mount
 EOF
@@ -322,7 +325,7 @@ cat >"$TMP/expected-bind-failure" <<'EOF'
 loop|/birddata/MUOS/runtime/ROCKNIX-STORAGE|/storage|loop,rw,noatime
 mkdir|-p TEST_SLEEP_DIR
 mkdir|-p TEST_RETROARCH_DIR
-mkdir|-p /run/bird-data /storage/bird-data /storage/roms /storage/.config/bird
+mkdir|-p /run/bird-data /storage/bird-data /storage/roms /storage/media
 mount|--move /birddata /run/bird-data
 mount|--bind /run/bird-data /storage/bird-data
 error|bird-data-bind|Could not publish the large Bird data volume
@@ -458,7 +461,7 @@ KMSG=$TMP/init-kmsg
 LOG_ROOT_A=$TMP/init-log-a
 LOG_ROOT_B=$TMP/init-log-b
 BIRD_EARLY=$TMP/bird-early-mock
-/bin/mkdir -p "$LOG_ROOT_A/MUOS/Bird/log"
+/bin/mkdir -p "$LOG_ROOT_A/Bird/log"
 cat >"$BIRD_EARLY" <<'EOF'
 #!/bin/bash
 printf 'bird-early:%s\n' "$1" >>"$INIT_EVENTS"
@@ -501,7 +504,7 @@ EOF
 cmp "$TMP/expected-init-failure" "$INIT_EVENTS"
 grep -Fqx 'bird mount_storage failed closed' "$KMSG"
 grep -Fqx 'status=failed step=mount_storage' \
-	"$LOG_ROOT_A/MUOS/Bird/log/mount-storage-latest.log"
+	"$LOG_ROOT_A/Bird/log/mount-storage-latest.log"
 if grep -Eq 'check_update|prepare_sysroot|root-ready|handoff|stock' "$INIT_EVENTS"; then
 	printf '%s\n' 'failed storage integration continued into later boot work' >&2
 	exit 1
@@ -510,7 +513,7 @@ fi
 # The same exact generated branch must remain transparent on success.
 : >"$INIT_EVENTS"
 : >"$KMSG"
-/bin/rm -f "$LOG_ROOT_A/MUOS/Bird/log/mount-storage-latest.log"
+/bin/rm -f "$LOG_ROOT_A/Bird/log/mount-storage-latest.log"
 MOUNT_RESULT=0
 (
 	# shellcheck source=/dev/null
@@ -529,6 +532,6 @@ stock-handoff
 EOF
 cmp "$TMP/expected-init-success" "$INIT_EVENTS"
 [ ! -s "$KMSG" ]
-[ ! -e "$LOG_ROOT_A/MUOS/Bird/log/mount-storage-latest.log" ]
+[ ! -e "$LOG_ROOT_A/Bird/log/mount-storage-latest.log" ]
 
 printf '%s\n' 'stock-root mount-storage topology tests: PASS'

@@ -5,7 +5,7 @@
 
 set -u
 
-LOG_DIR=/storage/bird-data/MUOS/Bird/log
+LOG_DIR=/storage/bird-data/Bird/log
 IFS= read -r BOOT_ID_FULL </proc/sys/kernel/random/boot_id || BOOT_ID_FULL=
 BOOT_ID=${BOOT_ID_FULL:0:8}
 [ -n "$BOOT_ID" ] || BOOT_ID=unknown

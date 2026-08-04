@@ -1382,7 +1382,7 @@ grep -Fq 'contract_revision=$APPLICATION_CONTRACT_REVISION' "$RUNNER"
 grep -Fq 'systemctl kill --kill-whom=all --signal=KILL' "$EXIT_HELPER"
 grep -Fq 'for TARGET in "$SESSION_RECORD" "$GLOBAL_SESSION"' "$RUNNER"
 grep -Fq 'owner_relation "$SWAY_OWNER"' "$RUNNER"
-grep -Fq 'CATALOG_PATH_MAX_BYTES=4085' "$RUNNER"
+grep -Fq 'CATALOG_PATH_MAX_BYTES=4095' "$RUNNER"
 grep -Fq '*[[:cntrl:]]*) HOST_PATH_CONTROL=1 ;;' "$RUNNER"
 grep -Fq '*/../*|*/..|../*|..)' "$RUNNER"
 grep -Fq 'scope_expected=%s' "$RUNNER"
@@ -2004,7 +2004,7 @@ set -eu
 CASE_DIR=$2
 SESSION_MODE=content
 KIND=7
-HOST_PATH='/mnt/mmc/MEDIA/READ/Book With Space.EPUB'
+HOST_PATH='/storage/media/READ/Book With Space.EPUB'
 CONTENT="$CASE_DIR/Book's exact title.epub"
 KOREADER_PORT_SCRIPT=$CASE_DIR/KOReader-session.sh
 KOREADER_PORT_TEMP=$KOREADER_PORT_SCRIPT.tmp
@@ -2062,8 +2062,8 @@ fi
 grep -q '^wrapper-remove$' "$CASE_DIR/events"
 
 for INVALID_HOST in \
-	'/mnt/mmc/MEDIA/READ/not-a-book.txt' \
-	'/mnt/mmc/MEDIA/WATCH/not-a-book.epub'; do
+	'/storage/media/READ/not-a-book.txt' \
+	'/storage/media/WATCH/not-a-book.epub'; do
 	HOST_PATH=$INVALID_HOST
 	: >"$CASE_DIR/events"
 	if BIRD_TEST_EVENTS=$CASE_DIR/events run_selected; then
@@ -2137,24 +2137,24 @@ POLL_COUNT=$(BIRD_TEST_SCOPE_POLL_STEPS=200 "$RUNNER" | awk '
 }
 
 BIRD_TEST_VALIDATE_HOST_PATH=1 \
-	BIRD_TEST_HOST_PATH='/mnt/mmc/ROMS/SNES/game.sfc' "$RUNNER"
+	BIRD_TEST_HOST_PATH='/storage/roms/SNES/game.sfc' "$RUNNER"
 if BIRD_TEST_VALIDATE_HOST_PATH=1 \
-	BIRD_TEST_HOST_PATH='/mnt/mmc/ROMS/../secret' "$RUNNER"; then
+	BIRD_TEST_HOST_PATH='/storage/roms/../secret' "$RUNNER"; then
 	printf '%s\n' 'traversal path unexpectedly accepted' >&2
 	exit 1
 fi
 if BIRD_TEST_VALIDATE_HOST_PATH=1 \
-	BIRD_TEST_HOST_PATH="$(printf '/mnt/mmc/ROMS/bad\rname')" "$RUNNER"; then
+	BIRD_TEST_HOST_PATH="$(printf '/storage/roms/bad\rname')" "$RUNNER"; then
 	printf '%s\n' 'control-delimited path unexpectedly accepted' >&2
 	exit 1
 fi
-LONG_PATH=/mnt/mmc/$(awk 'BEGIN { for (i = 0; i < 4080; i++) printf "x" }')
+LONG_PATH=/storage/roms/$(awk 'BEGIN { for (i = 0; i < 4082; i++) printf "x" }')
 if BIRD_TEST_VALIDATE_HOST_PATH=1 BIRD_TEST_HOST_PATH="$LONG_PATH" "$RUNNER"; then
 	printf '%s\n' 'overlong path unexpectedly accepted' >&2
 	exit 1
 fi
 if BIRD_TEST_VALIDATE_HOST_PATH=1 BIRD_TEST_EXTRA_LINE=1 \
-	BIRD_TEST_HOST_PATH='/mnt/mmc/ROMS/SNES/game.sfc' "$RUNNER"; then
+	BIRD_TEST_HOST_PATH='/storage/roms/SNES/game.sfc' "$RUNNER"; then
 	printf '%s\n' 'newline-extended request unexpectedly accepted' >&2
 	exit 1
 fi
@@ -2164,7 +2164,7 @@ fi
 [ "$(BIRD_TEST_SESSION_MODE=1 BIRD_TEST_SESSION_REQUEST=--portmaster \
 	"$RUNNER")" = portmaster ]
 [ "$(BIRD_TEST_SESSION_MODE=1 \
-	BIRD_TEST_SESSION_REQUEST=/run/muos/bird-launch-request "$RUNNER")" = \
+	BIRD_TEST_SESSION_REQUEST=/run/bird/bird-launch-request "$RUNNER")" = \
 	content ]
 
 # Direct PortMaster must prepare its provider, require confirmed network
@@ -2193,17 +2193,17 @@ assert cache_call < prepare < direct_network < readiness_gate < portmaster
 PY
 
 REQUEST_CASE=$TMP/request-record
-printf '1\nsnes9x\nGame\n/mnt/mmc/ROMS/SNES/game.sfc\n' >"$REQUEST_CASE"
+printf '1\nsnes9x\nGame\n/storage/roms/SNES/game.sfc\n' >"$REQUEST_CASE"
 BIRD_TEST_PARSE_LAUNCH_REQUEST=1 \
 	BIRD_TEST_REQUEST_PATH="$REQUEST_CASE" "$RUNNER"
-printf '1\nsnes9x\nGame\n/mnt/mmc/ROMS/SNES/game.sfc\nfifth' \
+printf '1\nsnes9x\nGame\n/storage/roms/SNES/game.sfc\nfifth' \
 	>"$REQUEST_CASE"
 if BIRD_TEST_PARSE_LAUNCH_REQUEST=1 \
 	BIRD_TEST_REQUEST_PATH="$REQUEST_CASE" "$RUNNER"; then
 	printf '%s\n' 'unterminated fifth request line unexpectedly accepted' >&2
 	exit 1
 fi
-printf '1\nsnes9x\nGame\n/mnt/mmc/ROMS/SNES/game.sfc' >"$REQUEST_CASE"
+printf '1\nsnes9x\nGame\n/storage/roms/SNES/game.sfc' >"$REQUEST_CASE"
 if BIRD_TEST_PARSE_LAUNCH_REQUEST=1 \
 	BIRD_TEST_REQUEST_PATH="$REQUEST_CASE" "$RUNNER"; then
 	printf '%s\n' 'unterminated required request line unexpectedly accepted' >&2

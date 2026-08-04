@@ -95,10 +95,12 @@ INFO=$TMP/device-info.tsv
 UPDATER_RELEASE_ID=v6.23
 
 mkdir -p "$CARD/bird" "$CARD/extlinux" "$BIRD/bird" "$BIRD/extlinux" \
-	"$DATA/MUOS/runtime" "$DATA/MUOS/Bird/boot-state/releases/v6.22" \
+	"$DATA/MUOS/runtime" "$DATA/Bird/boot-state/releases/v6.22" \
 	"$DATA/ROMS/Ports/PortMaster" "$CARD/bird/empty-runtime"
-PRIOR_ATTEMPTS=$DATA/MUOS/Bird/boot-state/releases/v6.22/attempts
-RELEASE_ATTEMPTS=$DATA/MUOS/Bird/boot-state/releases/v6.23/attempts
+printf 'revision\tbird-canonical-namespace-v1\nstate\tcommitted\n' \
+	>"$DATA/Bird/namespace-v1.tsv"
+PRIOR_ATTEMPTS=$DATA/Bird/boot-state/releases/v6.22/attempts
+RELEASE_ATTEMPTS=$DATA/Bird/boot-state/releases/v6.23/attempts
 printf '1\n' >"$PRIOR_ATTEMPTS"
 
 printf 'candidate-kernel\n' >"$CARD/KERNEL"
@@ -1063,7 +1065,7 @@ DYNAMIC_RELEASE=$BIRD/bird-releases/$DYNAMIC_ID
 [ -f "$DYNAMIC_RELEASE/.complete" ]
 cmp "$DYNAMIC_MANIFEST" "$DYNAMIC_RELEASE/deploy-manifest.tsv"
 grep -Fq "bird_release=$DYNAMIC_ID" "$BIRD/extlinux/extlinux.conf"
-[ "$(cat "$DATA/MUOS/Bird/boot-state/releases/$DYNAMIC_ID/attempts")" = 0 ]
+[ "$(cat "$DATA/Bird/boot-state/releases/$DYNAMIC_ID/attempts")" = 0 ]
 [ -f "$BIRD/bird-releases/v6.23/.complete" ]
 
 printf '%s\n' 'stock-root updater transaction tests passed'

@@ -1348,8 +1348,8 @@ fallback to read its original paths. Namespace v1 creates a fresh active
 `MUOS/Bird` tree. It copies and seals only favorites/recent state and the BIOS
 library, retains every legacy fallback byte, and can resume after interruption
 between the Bird-state and BIOS same-volume publication renames. Runtime
-activation must remain one later candidate: no active path changes until the
-transaction is host-proven and the card payload is committed.
+activation remains one separately promotable candidate: the accepted card does
+not change until the transaction is host-proven and the payload is committed.
 
 `/storage/bird-data/MUOS/runtime` remains an explicit pinned external boot
 input until the hermetic-image boundary; it is not relabelled as canonical
@@ -1357,6 +1357,17 @@ Bird state. The active catalog roots become `/storage/roms` and
 `/storage/media`, Ports remain under `/storage/roms/ports`, and the runtime
 namespace converges on `/run/bird`. A populated canonical destination without
 a matching transaction state is mixed state and must fail closed.
+
+The namespace-v1 activation candidate now removes active `/run/muos` use,
+emits catalog and request paths directly under `/storage/roms` and
+`/storage/media`, stores mutable Bird state under
+`/storage/bird-data/Bird`, publishes media as one fixed bind and removes the
+nested legacy BIOS bind. The launcher retains `/storage` itself at the
+root-ready edge, so the same PID can cross final-root handoff and reach both
+canonical libraries without a path translation. Deployment and the boot hook
+reject an absent or mixed migration marker. This is correctness/subtraction
+infrastructure, not a claimed hardware latency or energy improvement; it needs
+the complete physical gate before acceptance.
 
 Build the complete image with a digest-pinned container or immutable toolchain,
 fixed partition/filesystem identities, deterministic mkfs seeds/options,

@@ -265,6 +265,13 @@ find "$VOLUMES_ROOT" -mindepth 1 -maxdepth 1 -type d -print | \
 . "$ROOT/firmware/mac-stock-root-card-identity.sh"
 validate_stock_root_card_identity
 
+NAMESPACE_MARKER=$DATA/Bird/namespace-v1.tsv
+[ -f "$NAMESPACE_MARKER" ] && [ ! -L "$NAMESPACE_MARKER" ] &&
+	[ "$(wc -l <"$NAMESPACE_MARKER" | tr -d ' ')" -eq 2 ] &&
+	grep -Fqx 'revision	bird-canonical-namespace-v1' "$NAMESPACE_MARKER" &&
+	grep -Fqx 'state	committed' "$NAMESPACE_MARKER" ||
+	fail 'canonical namespace v1 is not committed; run the migration transaction first'
+
 BIRD_FS=$(field "$BIRD" 'File System Personality')
 case "$BIRD_FS" in
 	*FAT*|*ExFAT*) BIRD_SYNTHETIC_MODES=1 ;;
@@ -1594,8 +1601,8 @@ printf '  1. Eject safely: diskutil eject /dev/%s\n' "$WHOLE"
 printf '  2. Insert the card in the RG34XX-SP and boot normally.\n'
 if [ "$MODE" = profile ]; then
 	printf '  3. After testing, reinsert the card and collect:\n'
-	printf '     %s/MUOS/Bird/log/early-initramfs-latest.log\n' "$DATA"
-	printf '     %s/MUOS/Bird/log/stock-root-supervisor.log\n' "$DATA"
+	printf '     %s/Bird/log/early-initramfs-latest.log\n' "$DATA"
+	printf '     %s/Bird/log/stock-root-supervisor.log\n' "$DATA"
 else
 	printf '  3. If behavior changes, retain the selected release ID and card logs for comparison.\n'
 fi

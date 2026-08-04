@@ -115,6 +115,7 @@ REQUIRED = {
     "mount.flash": ("string", "BIRD_DEVICE_FLASH_ROOT"),
     "mount.runtime_storage": ("string", "BIRD_DEVICE_RUNTIME_STORAGE"),
     "mount.application_roms": ("string", "BIRD_DEVICE_APPLICATION_ROMS"),
+    "mount.application_media": ("string", "BIRD_DEVICE_APPLICATION_MEDIA"),
     "mount.catalog_root": ("string", "BIRD_DEVICE_CATALOG_ROOT"),
 }
 

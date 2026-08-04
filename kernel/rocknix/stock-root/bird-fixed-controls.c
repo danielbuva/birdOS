@@ -80,12 +80,12 @@ typedef signed long s64;
 #define BRIGHTNESS_CURRENT BIRD_DEVICE_BACKLIGHT_DIRECTORY "/brightness"
 #define BRIGHTNESS_MAX BIRD_DEVICE_BACKLIGHT_DIRECTORY "/max_brightness"
 #define SUSPEND_PROGRAM "/flash/bird/bird-suspend.sh"
-#define SUSPEND_RESUME_READY "/run/muos/bird-suspend-resume-ready"
+#define SUSPEND_RESUME_READY "/run/bird/bird-suspend-resume-ready"
 #define POWER_SUSPEND_ACTIVE "/var/run/power-fake-suspend-active.flag"
 #define EXIT_HELPER "/flash/bird/bird-fixed-control-exit.sh"
 #define EMERGENCY_HELPER "/flash/bird/bird-emergency-recover.sh"
 #define KMSG_DEVICE "/dev/kmsg"
-#define SUSPEND_TRACE "/storage/bird-data/MUOS/Bird/log/suspend-events.tsv"
+#define SUSPEND_TRACE "/storage/bird-data/Bird/log/suspend-events.tsv"
 
 #define SOURCE_GAMEPAD 0
 #define SOURCE_VOLUME 1

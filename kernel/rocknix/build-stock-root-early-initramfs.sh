@@ -187,7 +187,7 @@ chmod 0644 "$PAYLOAD/opt/bird/launcher-base.xrgb"
 fi
 
 printf 'early-launcher-compile\t%s\t%s\n' "${BIRD_LAUNCHER_PROFILE:-release}" \
-	"--target=aarch64-linux-gnu -mcpu=cortex-a53 -O2 -ffreestanding -ffunction-sections -fdata-sections -fno-builtin -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-ident -fvisibility=hidden -nostdlib -Wall -Wextra -Werror -Wno-unused-function -DROM_ROOT=\"/storage/bird-data/ROMS\" -DLIVE_STORAGE_ROOT=\"/storage/bird-data\" -DFAVORITES_PATH=\"/storage/.config/bird/favorites.txt\" -DFAVORITES_TEMP=\"/storage/.config/bird/favorites.tmp\" -DRECENT_PATH=\"/storage/.config/bird/recent.txt\" -DRECENT_TEMP=\"/storage/.config/bird/recent.tmp\" -DHANDOFF_ACTION_PATH=\"/run/muos/bird-launch-action\" -DSTORAGE_ANCHOR_MARKER=\"/run/muos/bird-storage-anchor-ready\" -DSTORAGE_READY_SIGNAL=\"/run/muos/bird-storage-ready\" -DPERSIST_UI_STATE -DDEVICE_WAIT_MS=20000UL ${LAUNCHER_PROFILE_FLAGS:-} ${BOOT_FRAME_REUSE_FLAGS:-} ${EARLY_STATIC_BASE_FLAGS:-} -c launcher/bird-launcher.c" \
+	"--target=aarch64-linux-gnu -mcpu=cortex-a53 -O2 -ffreestanding -ffunction-sections -fdata-sections -fno-builtin -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-ident -fvisibility=hidden -nostdlib -Wall -Wextra -Werror -Wno-unused-function -DROM_ROOT=\"/storage/roms\" -DLIVE_STORAGE_ROOT=\"/storage\" -DFAVORITES_PATH=\"/storage/bird-data/Bird/state/favorites.txt\" -DFAVORITES_TEMP=\"/storage/bird-data/Bird/state/favorites.tmp\" -DRECENT_PATH=\"/storage/bird-data/Bird/state/recent.txt\" -DRECENT_TEMP=\"/storage/bird-data/Bird/state/recent.tmp\" -DHANDOFF_ACTION_PATH=\"/run/bird/bird-launch-action\" -DSTORAGE_ANCHOR_MARKER=\"/run/bird/bird-storage-anchor-ready\" -DSTORAGE_READY_SIGNAL=\"/run/bird/bird-storage-ready\" -DPERSIST_UI_STATE -DDEVICE_WAIT_MS=20000UL ${LAUNCHER_PROFILE_FLAGS:-} ${BOOT_FRAME_REUSE_FLAGS:-} ${EARLY_STATIC_BASE_FLAGS:-} -c launcher/bird-launcher.c" \
 	>>"$OUTPUT/build/build-flags.tsv"
 printf 'early-launcher-link\t%s\t%s\n' "${BIRD_LAUNCHER_PROFILE:-release}" \
 	'-static --gc-sections --build-id=none -z noexecstack -s -e _start' \
@@ -201,15 +201,15 @@ printf 'early-initramfs-compress\trelease\t%s\n' \
 	-fno-builtin -fno-stack-protector -fno-unwind-tables \
 	-fno-asynchronous-unwind-tables -fno-ident -fvisibility=hidden \
 	-nostdlib -Wall -Wextra -Werror -Wno-unused-function \
-	'-DROM_ROOT="/storage/bird-data/ROMS"' \
-	'-DLIVE_STORAGE_ROOT="/storage/bird-data"' \
-	'-DFAVORITES_PATH="/storage/.config/bird/favorites.txt"' \
-	'-DFAVORITES_TEMP="/storage/.config/bird/favorites.tmp"' \
-	'-DRECENT_PATH="/storage/.config/bird/recent.txt"' \
-	'-DRECENT_TEMP="/storage/.config/bird/recent.tmp"' \
-	'-DHANDOFF_ACTION_PATH="/run/muos/bird-launch-action"' \
-	'-DSTORAGE_ANCHOR_MARKER="/run/muos/bird-storage-anchor-ready"' \
-	'-DSTORAGE_READY_SIGNAL="/run/muos/bird-storage-ready"' \
+	'-DROM_ROOT="/storage/roms"' \
+	'-DLIVE_STORAGE_ROOT="/storage"' \
+	'-DFAVORITES_PATH="/storage/bird-data/Bird/state/favorites.txt"' \
+	'-DFAVORITES_TEMP="/storage/bird-data/Bird/state/favorites.tmp"' \
+	'-DRECENT_PATH="/storage/bird-data/Bird/state/recent.txt"' \
+	'-DRECENT_TEMP="/storage/bird-data/Bird/state/recent.tmp"' \
+	'-DHANDOFF_ACTION_PATH="/run/bird/bird-launch-action"' \
+	'-DSTORAGE_ANCHOR_MARKER="/run/bird/bird-storage-anchor-ready"' \
+	'-DSTORAGE_READY_SIGNAL="/run/bird/bird-storage-ready"' \
 	-DPERSIST_UI_STATE \
 	-DDEVICE_WAIT_MS=20000UL \
 	$LAUNCHER_PROFILE_FLAGS \
@@ -245,8 +245,8 @@ awk '
 		print "    if ! mount_storage; then"
 		print "      printf \"bird mount_storage failed closed\\n\" >/dev/kmsg"
 		print "      for BIRD_STORAGE_LOG_ROOT in /run/bird-data /birddata; do"
-		print "        if [ -d \"${BIRD_STORAGE_LOG_ROOT}/MUOS/Bird/log\" ]; then"
-		print "          printf \"status=failed step=mount_storage\\n\" >\"${BIRD_STORAGE_LOG_ROOT}/MUOS/Bird/log/mount-storage-latest.log\""
+		print "        if [ -d \"${BIRD_STORAGE_LOG_ROOT}/Bird/log\" ]; then"
+		print "          printf \"status=failed step=mount_storage\\n\" >\"${BIRD_STORAGE_LOG_ROOT}/Bird/log/mount-storage-latest.log\""
 		print "          break"
 		print "        fi"
 		print "      done"

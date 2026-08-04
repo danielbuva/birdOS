@@ -73,4 +73,5 @@ storage.content_filesystem	string	exfat
 mount.flash	string	/flash
 mount.runtime_storage	string	/storage/bird-data
 mount.application_roms	string	/storage/roms
-mount.catalog_root	string	/mnt/mmc
+mount.application_media	string	/storage/media
+mount.catalog_root	string	/storage

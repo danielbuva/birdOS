@@ -94,17 +94,17 @@ typedef signed long s64;
 #define DEVICE_WAIT_MS 5000UL
 #endif
 #ifndef ROM_ROOT
-#define ROM_ROOT "/mnt/mmc/ROMS"
+#define ROM_ROOT "/storage/roms"
 #endif
 #ifndef LIVE_STORAGE_ROOT
-#define LIVE_STORAGE_ROOT "/mnt/mmc"
+#define LIVE_STORAGE_ROOT "/storage"
 #endif
-#define CATALOG_STORAGE_ROOT "/mnt/mmc"
-#define LIVE_PATH_BYTES 4096U
+#define CATALOG_GAME_ROOT "/storage/roms"
+#define CATALOG_MEDIA_ROOT "/storage/media"
 #ifndef CATALOG_PATH_MAX_BYTES
 /* Transitional fallback for catalogues generated before this contract was
  * embedded in catalog.generated.h. New catalogues define the same value. */
-#define CATALOG_PATH_MAX_BYTES 4085U
+#define CATALOG_PATH_MAX_BYTES 4095U
 #endif
 #define AUX_RETRY_INITIAL_MS 100UL
 #define AUX_RETRY_MAX_MS 3200UL
@@ -114,16 +114,16 @@ typedef signed long s64;
 #define FAVORITES_RETRY_INITIAL_MS 100UL
 #define FAVORITES_RETRY_MAX_MS 3200UL
 #ifndef LAUNCH_REQUEST
-#define LAUNCH_REQUEST "/run/muos/bird-launch-request"
+#define LAUNCH_REQUEST "/run/bird/bird-launch-request"
 #endif
 #ifndef UI_RESUME_PATH
-#define UI_RESUME_PATH "/run/muos/bird-launcher-ui-resume"
+#define UI_RESUME_PATH "/run/bird/bird-launcher-ui-resume"
 #endif
 #ifndef UI_RESUME_TEMP
 #define UI_RESUME_TEMP UI_RESUME_PATH ".tmp"
 #endif
 #ifndef FRAME_RESUME_PATH
-#define FRAME_RESUME_PATH "/run/muos/bird-launcher-frame-resume"
+#define FRAME_RESUME_PATH "/run/bird/bird-launcher-frame-resume"
 #endif
 #ifndef FRAME_RESUME_TEMP
 #define FRAME_RESUME_TEMP FRAME_RESUME_PATH ".tmp"
@@ -135,19 +135,19 @@ typedef signed long s64;
 #define FRAME_RESUME_MAGIC 0x4246524dU
 #define FRAME_RESUME_VERSION 4U
 #ifndef FAVORITES_PATH
-#define FAVORITES_PATH "/mnt/mmc/MUOS/bespoke-launcher/favorites.txt"
+#define FAVORITES_PATH "/storage/bird-data/Bird/state/favorites.txt"
 #endif
 #ifndef FAVORITES_TEMP
-#define FAVORITES_TEMP "/mnt/mmc/MUOS/bespoke-launcher/favorites.tmp"
+#define FAVORITES_TEMP "/storage/bird-data/Bird/state/favorites.tmp"
 #endif
 #ifndef RECENT_PATH
-#define RECENT_PATH "/mnt/mmc/MUOS/bespoke-launcher/recent.txt"
+#define RECENT_PATH "/storage/bird-data/Bird/state/recent.txt"
 #endif
 #ifndef RECENT_TEMP
-#define RECENT_TEMP "/mnt/mmc/MUOS/bespoke-launcher/recent.tmp"
+#define RECENT_TEMP "/storage/bird-data/Bird/state/recent.tmp"
 #endif
 #ifndef FIRST_FRAME_MARKER
-#define FIRST_FRAME_MARKER "/run/muos/bird-first-frame-ready"
+#define FIRST_FRAME_MARKER "/run/bird/bird-first-frame-ready"
 #endif
 #ifndef STORAGE_ANCHOR_MARKER
 #define STORAGE_ANCHOR_MARKER ""
@@ -519,7 +519,6 @@ static u16 favorite_indices[CATALOG_ENTRY_COUNT];
 static u64 next_favorites_retry;
 static u64 favorites_retry_ms = FAVORITES_RETRY_INITIAL_MS;
 static u32 favorites_retry_count;
-static char live_path[LIVE_PATH_BYTES];
 static struct pending_launch_state pending_launch;
 static u32 pending_render_invalid;
 static u64 footer_background[(MENU_TOP_BAR_WIDTH * MENU_FOOTER_H) / 2U];
@@ -1238,7 +1237,7 @@ static int string_starts_with(const char *text, const char *prefix) {
  * retain the covered empty directory forever. */
 static void open_critical_path_anchors(void) {
     if (runtime_dir_fd < 0)
-        runtime_dir_fd = (int)sys_open("/run/muos", O_RDONLY | O_NONBLOCK);
+        runtime_dir_fd = (int)sys_open("/run/bird", O_RDONLY | O_NONBLOCK);
     if (input_dir_fd < 0)
         input_dir_fd = (int)sys_open("/dev/input", O_RDONLY | O_NONBLOCK);
 }
@@ -1272,12 +1271,12 @@ static void acquire_storage_anchors_once(void) {
 #ifdef BIRD_PROFILE
     if (STORAGE_READY_SIGNAL[0]) {
         bird_profile_storage_sysroot_result =
-            sys_open("/sysroot/storage/bird-data", O_RDONLY | O_NONBLOCK);
+            sys_open("/sysroot/storage", O_RDONLY | O_NONBLOCK);
         storage_dir_fd = (int)bird_profile_storage_sysroot_result;
         if (storage_dir_fd >= 0)
             bird_profile_storage_dir_source = PROFILE_STORAGE_SOURCE_SYSROOT;
         bird_profile_config_sysroot_result =
-            sys_open("/sysroot/storage/.config/bird",
+            sys_open("/sysroot/storage/bird-data/Bird/state",
                      O_RDONLY | O_NONBLOCK);
         config_dir_fd = (int)bird_profile_config_sysroot_result;
         if (config_dir_fd >= 0)
@@ -1289,31 +1288,31 @@ static void acquire_storage_anchors_once(void) {
         if (storage_dir_fd >= 0)
             bird_profile_storage_dir_source = PROFILE_STORAGE_SOURCE_LIVE;
         bird_profile_config_live_result =
-            sys_open("/storage/.config/bird", O_RDONLY | O_NONBLOCK);
+            sys_open("/storage/bird-data/Bird/state", O_RDONLY | O_NONBLOCK);
         config_dir_fd = (int)bird_profile_config_live_result;
         if (config_dir_fd >= 0)
             bird_profile_config_dir_source = PROFILE_STORAGE_SOURCE_LIVE;
     }
 #else
     if (STORAGE_READY_SIGNAL[0]) {
-        storage_dir_fd = (int)sys_open("/sysroot/storage/bird-data",
+        storage_dir_fd = (int)sys_open("/sysroot/storage",
                                       O_RDONLY | O_NONBLOCK);
-        config_dir_fd = (int)sys_open("/sysroot/storage/.config/bird",
+        config_dir_fd = (int)sys_open("/sysroot/storage/bird-data/Bird/state",
                                      O_RDONLY | O_NONBLOCK);
     } else {
         storage_dir_fd = (int)sys_open(LIVE_STORAGE_ROOT,
                                       O_RDONLY | O_NONBLOCK);
-        config_dir_fd = (int)sys_open("/storage/.config/bird",
+        config_dir_fd = (int)sys_open("/storage/bird-data/Bird/state",
                                      O_RDONLY | O_NONBLOCK);
     }
 #endif
 }
 
 static int anchored_dirfd(const char *path, const char **relative) {
-    static const char run_root[] = "/run/muos";
+    static const char run_root[] = "/run/bird";
     static const char input_root[] = "/dev/input";
     static const char power_root[] = "/sys/class/power_supply/battery";
-    static const char config_root[] = "/storage/.config/bird";
+    static const char config_root[] = "/storage/bird-data/Bird/state";
     u64 length;
 
     length = sizeof(run_root) - 1U;
@@ -1382,12 +1381,12 @@ static long fixed_rename(const char *old_path, const char *new_path) {
 }
 
 /*
- * Catalogue paths remain stable across firmware providers. Only live file
- * access is translated, so favorites, recents and launch requests continue
- * to use the canonical /mnt/mmc paths embedded in the cached index.
+ * Canonical catalog paths are also the live fixed-device paths. Validate the
+ * exact game and media roots; do not admit arbitrary files below /storage.
  */
 static int catalog_path_supported(const char *path) {
-    u64 root_length = string_length(CATALOG_STORAGE_ROOT);
+    u64 game_root_length = string_length(CATALOG_GAME_ROOT);
+    u64 media_root_length = string_length(CATALOG_MEDIA_ROOT);
     u64 length = 0;
 
     while (path[length]) {
@@ -1398,29 +1397,17 @@ static int catalog_path_supported(const char *path) {
         length++;
     }
     BIRD_PROFILE_DEEP_STRING_BYTE();
-    return length > root_length &&
-           string_starts_with(path, CATALOG_STORAGE_ROOT) &&
-           path[root_length] == '/';
+    return (length > game_root_length &&
+            string_starts_with(path, CATALOG_GAME_ROOT) &&
+            path[game_root_length] == '/') ||
+           (length > media_root_length &&
+            string_starts_with(path, CATALOG_MEDIA_ROOT) &&
+            path[media_root_length] == '/');
 }
 
 static const char *resolve_live_path(const char *path) {
-    u64 source_length = string_length(CATALOG_STORAGE_ROOT);
-    u64 target_length = string_length(LIVE_STORAGE_ROOT);
-    u64 tail_length;
-    u64 i;
-
     if (!catalog_path_supported(path)) return 0;
-    if (string_equal(CATALOG_STORAGE_ROOT, LIVE_STORAGE_ROOT)) return path;
-    for (i = 0; i < source_length; i++)
-        if (path[i] != CATALOG_STORAGE_ROOT[i]) return path;
-    if (path[source_length] && path[source_length] != '/') return path;
-
-    tail_length = string_length(path + source_length);
-    if (target_length + tail_length + 1U > sizeof(live_path)) return 0;
-    for (i = 0; i < target_length; i++) live_path[i] = LIVE_STORAGE_ROOT[i];
-    for (i = 0; i <= tail_length; i++)
-        live_path[target_length + i] = path[source_length + i];
-    return live_path;
+    return path;
 }
 
 static void log_text(const char *text) {

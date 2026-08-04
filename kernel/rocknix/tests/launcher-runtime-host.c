@@ -7,9 +7,9 @@
 
 #define BIRD_HOST_TEST 1
 #define PERSIST_UI_STATE 1
-#define STORAGE_ANCHOR_MARKER "/run/muos/bird-storage-anchor-ready"
-#define STORAGE_READY_SIGNAL "/run/muos/bird-storage-ready"
-#define HANDOFF_ACTION_PATH "/run/muos/bird-launch-action"
+#define STORAGE_ANCHOR_MARKER "/run/bird/bird-storage-anchor-ready"
+#define STORAGE_READY_SIGNAL "/run/bird/bird-storage-ready"
+#define HANDOFF_ACTION_PATH "/run/bird/bird-launch-action"
 #include "../../../launcher/bird-launcher.c"
 
 #define FAKE_FD 41
@@ -510,7 +510,7 @@ static int run_phase7_catalog_and_favorites_tests(void) {
         }
     }
     {
-        const char *missing = "/mnt/mmc/ROMS/not-in-catalog.bird";
+        const char *missing = "/storage/roms/not-in-catalog.bird";
         ok &= check(catalog_find_entry_by_path(
                         missing, (u32)strlen(missing)) == CATALOG_ENTRY_COUNT,
                     "catalog path index returned a false match");
@@ -880,10 +880,10 @@ static int run_storage_handoff_tests(void) {
                 "post-signal storage acquisition did not close stale and validation descriptors");
     ok &= check(fake_open_path_count == 4 &&
                     strcmp(fake_open_path[0],
-                           "/sysroot/storage/bird-data") == 0 &&
+                           "/sysroot/storage") == 0 &&
                     strcmp(fake_open_path[1],
-                           "/sysroot/storage/.config/bird") == 0 &&
-                    strcmp(fake_open_path[2], "ROMS") == 0,
+                           "/sysroot/storage/bird-data/Bird/state") == 0 &&
+                    strcmp(fake_open_path[2], "roms") == 0,
                 "early handoff did not acquire the exact post-prepare_sysroot paths");
     opens = fake_open_calls;
     closes = fake_close_calls;
@@ -4638,7 +4638,7 @@ static int run_profile_tests(void) {
     }
 
     bird_profile_reset();
-    (void)catalog_path_supported("/mnt/mmc/a");
+    (void)catalog_path_supported("/storage/roms/a");
     (void)catalog_find_entry_by_path(
         catalog_entry_path(0U),
         (u32)strlen(catalog_entry_path(0U)));

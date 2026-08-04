@@ -52,7 +52,7 @@ typedef signed long s64;
 #define GPU_PERFORMANCE_LEVEL "/tmp/.gpu_performance_level"
 #define GREEN_LED "/sys/class/leds/green:power/brightness"
 #define RED_LED "/sys/class/leds/red:status/brightness"
-#define POWER_LOG "/storage/bird-data/MUOS/Bird/log/powerstate-latest.log"
+#define POWER_LOG "/storage/bird-data/Bird/log/powerstate-latest.log"
 
 struct timespec {
     s64 sec;

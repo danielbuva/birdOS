@@ -62,10 +62,10 @@ reset_case() {
 	STATE=$TMP/$CASE/state
 	mkdir -p "$FLASH/extlinux" "$FLASH/bird" \
 		"$DATA/MUOS/runtime" \
-		"$DATA/MUOS/Bird/boot-state/releases/v6.23" "$STATE"
-	ATTEMPTS_FILE=$DATA/MUOS/Bird/boot-state/releases/v6.23/attempts
+		"$DATA/Bird/boot-state/releases/v6.23" "$STATE"
+	ATTEMPTS_FILE=$DATA/Bird/boot-state/releases/v6.23/attempts
 	FIRST_FRAME=$TMP/$CASE/bird-first-frame-ready
-	PRIOR_ATTEMPTS=$DATA/MUOS/Bird/boot-state/releases/v6.22/attempts
+	PRIOR_ATTEMPTS=$DATA/Bird/boot-state/releases/v6.22/attempts
 	mkdir -p "${PRIOR_ATTEMPTS%/*}"
 	touch "$FLASH/mount-storage.sh" "$FLASH/SYSTEM" \
 		"$DATA/MUOS/runtime/ROCKNIX-SYSTEM" \
@@ -265,7 +265,7 @@ assert_failed_without_activation() {
 	fi
 	grep -qx 'candidate-selector' "$FLASH/extlinux/extlinux.conf"
 	[ ! -s "$STATE/reboot.log" ]
-	if find "$FLASH/extlinux" "$DATA/MUOS/Bird/boot-state" \
+	if find "$FLASH/extlinux" "$DATA/Bird/boot-state" \
 		-name '.extlinux.conf.*' -o -name '.attempts.*' | grep -q .; then
 		printf 'case %s left a transaction temporary\n' "$FAILURE" >&2
 		exit 1
@@ -305,7 +305,7 @@ for FAILURE in health-reset-write health-reset-sync health-reset-rename \
 	grep -qx 'candidate-selector' "$FLASH/extlinux/extlinux.conf"
 	[ ! -s "$STATE/reboot.log" ]
 	[ ! -e "$FLASH/bird-loader-failure.txt" ]
-	if find "$DATA/MUOS/Bird/boot-state" -name '.attempts.*' | grep -q .; then
+	if find "$DATA/Bird/boot-state" -name '.attempts.*' | grep -q .; then
 		printf 'case %s left a health-reset transaction temporary\n' \
 			"$FAILURE" >&2
 		exit 1

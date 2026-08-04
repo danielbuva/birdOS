@@ -7,15 +7,15 @@ set -u
 
 LAUNCHER=/flash/bird/bird-launcher
 RUNNER=/flash/bird/run-content.sh
-REQUEST=/run/muos/bird-launch-request
-FIRST_FRAME=/run/muos/bird-first-frame-ready
-HANDOFF_ACTION=/run/muos/bird-launch-action
-EARLY_LOG=/run/muos/initramfs-launcher.log
-EARLY_PID=/run/muos/initramfs-launcher.pid
+REQUEST=/run/bird/bird-launch-request
+FIRST_FRAME=/run/bird/bird-first-frame-ready
+HANDOFF_ACTION=/run/bird/bird-launch-action
+EARLY_LOG=/run/bird/initramfs-launcher.log
+EARLY_PID=/run/bird/initramfs-launcher.pid
 PIDWAIT=/flash/bird/bird-pidwait
 RELEASE_ID=v6.23
-ATTEMPTS=/storage/bird-data/MUOS/Bird/boot-state/releases/$RELEASE_ID/attempts
-LOG_DIR=/storage/bird-data/MUOS/Bird/log
+ATTEMPTS=/storage/bird-data/Bird/boot-state/releases/$RELEASE_ID/attempts
+LOG_DIR=/storage/bird-data/Bird/log
 LOG=$LOG_DIR/stock-root-supervisor.log
 LOG_BOOT_ID=$LOG_DIR/stock-root-supervisor.boot-id
 EARLY_LATEST=$LOG_DIR/early-initramfs-latest.log
@@ -70,7 +70,7 @@ read_single_line_file() {
 	} <"$path"
 }
 
-mkdir -p /run/muos "$LOG_DIR" "${ATTEMPTS%/*}"
+mkdir -p /run/bird "$LOG_DIR" "${ATTEMPTS%/*}"
 IFS= read -r BOOT_ID_FULL </proc/sys/kernel/random/boot_id || BOOT_ID_FULL=
 BOOT_ID=${BOOT_ID_FULL:0:8}
 [ -n "$BOOT_ID" ] || BOOT_ID=unknown

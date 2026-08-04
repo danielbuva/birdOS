@@ -6,7 +6,7 @@
 set -u
 
 BACKLIGHT=/sys/class/backlight/backlight
-LOG=/storage/bird-data/MUOS/Bird/log/first-frame-prep-latest.log
+LOG=/storage/bird-data/Bird/log/first-frame-prep-latest.log
 
 {
 	printf 'Bird first-frame preparation start uptime='

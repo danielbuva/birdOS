@@ -9,7 +9,7 @@ umask 077
 
 SOURCE=/storage/.config/system/configs/system.cfg
 BACKUP=/storage/.config/system/configs/system.cfg.backup
-LOG=/storage/bird-data/MUOS/Bird/log/shutdown-latest.log
+LOG=/storage/bird-data/Bird/log/shutdown-latest.log
 BACKUP_DIR=${BACKUP%/*}
 LOG_DIR=${LOG%/*}
 TEMP=

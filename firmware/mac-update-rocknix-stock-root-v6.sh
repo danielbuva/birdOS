@@ -329,6 +329,13 @@ fi
 
 validate_stock_root_card_identity
 
+NAMESPACE_MARKER=$DATA/Bird/namespace-v1.tsv
+[ -f "$NAMESPACE_MARKER" ] && [ ! -L "$NAMESPACE_MARKER" ] &&
+	[ "$(wc -l <"$NAMESPACE_MARKER" | tr -d ' ')" -eq 2 ] &&
+	grep -Fqx 'revision	bird-canonical-namespace-v1' "$NAMESPACE_MARKER" &&
+	grep -Fqx 'state	committed' "$NAMESPACE_MARKER" ||
+	fail 'canonical namespace v1 is not committed'
+
 # Serialize every host-side card mutation with the same inherited advisory
 # transaction lock used by the explicit Ports migration. The owner symlink is
 # diagnostic; PID plus process-start identity prevents PID-reuse confusion.
@@ -551,7 +558,7 @@ fi
 
 RELEASE=$RELEASES/$RELEASE_ID
 MANIFEST_SHA=$(sha256 "$MANIFEST")
-ATTEMPTS_DIR=$DATA/MUOS/Bird/boot-state/releases/$RELEASE_ID
+ATTEMPTS_DIR=$DATA/Bird/boot-state/releases/$RELEASE_ID
 mkdir -p "$BIRD/extlinux" "$ATTEMPTS_DIR"
 
 manifest_file_field() {

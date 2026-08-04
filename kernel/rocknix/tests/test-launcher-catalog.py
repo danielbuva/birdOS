@@ -22,32 +22,32 @@ SPEC.loader.exec_module(CATALOG)
 
 class CatalogPathContractTests(unittest.TestCase):
     def path_of_bytes(self, size: int) -> str:
-        prefix = "/mnt/mmc/"
+        prefix = "/storage/roms/"
         self.assertLessEqual(len(prefix), size)
         return prefix + "a" * (size - len(prefix))
 
     def test_supported_boundaries(self) -> None:
-        for size in (511, 512, 513, 1024, 4085):
+        for size in (511, 512, 513, 1024, 4095):
             path = self.path_of_bytes(size)
             self.assertEqual(
                 CATALOG.checked_catalog_path(path, f"{size}-byte test"), path
             )
 
     def test_first_unsupported_length(self) -> None:
-        with self.assertRaisesRegex(SystemExit, "4086 UTF-8 bytes"):
-            CATALOG.checked_catalog_path(self.path_of_bytes(4086), "oversized test")
+        with self.assertRaisesRegex(SystemExit, "4096 UTF-8 bytes"):
+            CATALOG.checked_catalog_path(self.path_of_bytes(4096), "oversized test")
 
     def test_protocol_and_control_bytes_are_rejected(self) -> None:
         for byte in ("\n", "\r", "\t", "\x01", "\x1f", "\x7f"):
             with self.subTest(byte=ord(byte)):
                 with self.assertRaises(SystemExit):
                     CATALOG.checked_catalog_path(
-                        f"/mnt/mmc/ROMS/test{byte}name.zip", "control-byte test"
+                        f"/storage/roms/test{byte}name.zip", "control-byte test"
                     )
 
     def test_limit_is_emitted_for_the_launcher(self) -> None:
         rendered = CATALOG.render([], [])
-        self.assertIn("#define CATALOG_PATH_MAX_BYTES 4085U", rendered)
+        self.assertIn("#define CATALOG_PATH_MAX_BYTES 4095U", rendered)
 
 
 class CatalogPathLookupTests(unittest.TestCase):
@@ -69,12 +69,12 @@ class CatalogPathLookupTests(unittest.TestCase):
         ]
 
     def test_duplicate_game_path_is_rejected(self) -> None:
-        path = "/mnt/mmc/ROMS/TEST/duplicate.zip"
+        path = "/storage/roms/TEST/duplicate.zip"
         with self.assertRaisesRegex(SystemExit, "duplicate canonical catalog path"):
             CATALOG.render(self.systems_with_paths((path, path)), [])
 
     def test_duplicate_path_across_game_and_media_is_rejected(self) -> None:
-        path = "/mnt/mmc/shared-path.zip"
+        path = "/storage/roms/shared-path.zip"
         kind = CATALOG.MediaKind("LISTEN", (".zip",), "MPV", "ext-mpv-general")
         media = [
             CATALOG.MediaCategory(
@@ -89,9 +89,9 @@ class CatalogPathLookupTests(unittest.TestCase):
     def test_game_path_order_uses_utf8_bytes(self) -> None:
         systems = self.systems_with_paths(
             (
-                "/mnt/mmc/ROMS/TEST/z.zip",
-                "/mnt/mmc/ROMS/TEST/a.zip",
-                "/mnt/mmc/ROMS/TEST/é.zip",
+                "/storage/roms/TEST/z.zip",
+                "/storage/roms/TEST/a.zip",
+                "/storage/roms/TEST/é.zip",
             )
         )
         self.assertEqual(CATALOG.build_catalog_entry_path_order(systems, []), [1, 0, 2])
@@ -178,7 +178,7 @@ class CompactCatalogRepresentationTests(unittest.TestCase):
                 [
                     (
                         'QUOTED "GAME" \\ É',
-                        "/mnt/mmc/ROMS/TEST/game.zip",
+                        "/storage/roms/TEST/game.zip",
                         "TEST/game.zip",
                     )
                 ],
@@ -191,7 +191,7 @@ class CompactCatalogRepresentationTests(unittest.TestCase):
                 (
                     CATALOG.MediaEntry(
                         "TRACK",
-                        "/mnt/mmc/MEDIA/LISTEN/track.mp3",
+                        "/storage/media/LISTEN/track.mp3",
                         "LISTEN/track.mp3",
                     ),
                 ),

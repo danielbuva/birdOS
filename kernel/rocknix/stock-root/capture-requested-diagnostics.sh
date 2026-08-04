@@ -4,8 +4,8 @@
 
 set -eu
 
-STAGE5_REQUEST=${BIRD_STAGE5_REQUEST:-/storage/bird-data/MUOS/Bird/stage5-idle-window.request}
-BOOT_REQUEST=${BIRD_BOOT_DIAGNOSTICS_REQUEST:-/storage/bird-data/MUOS/Bird/boot-diagnostics.request}
+STAGE5_REQUEST=${BIRD_STAGE5_REQUEST:-/storage/bird-data/Bird/stage5-idle-window.request}
+BOOT_REQUEST=${BIRD_BOOT_DIAGNOSTICS_REQUEST:-/storage/bird-data/Bird/boot-diagnostics.request}
 STAGE5_CAPTURE=${BIRD_STAGE5_CAPTURE:-/flash/bird/capture-stage5-window.sh}
 BOOT_CAPTURE=${BIRD_BOOT_DIAGNOSTICS_CAPTURE:-/flash/bird/capture-boot-state.sh}
 

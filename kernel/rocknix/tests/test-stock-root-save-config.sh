@@ -83,7 +83,7 @@ prepare_case() {
 	CASE_NAME=$1
 	CASE_DIR=$TMP/$CASE_NAME
 	CONFIG_DIR=$CASE_DIR/storage/.config/system/configs
-	LOG_FILE=$CASE_DIR/storage/bird-data/MUOS/Bird/log/shutdown-latest.log
+	LOG_FILE=$CASE_DIR/storage/bird-data/Bird/log/shutdown-latest.log
 	SOURCE_FILE=$CONFIG_DIR/system.cfg
 	BACKUP_FILE=$CONFIG_DIR/system.cfg.backup
 	EXPECTED_OLD=$CASE_DIR/expected-old

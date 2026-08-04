@@ -4,7 +4,7 @@
 # /run and storage; the systemd supervisor adopts its existing PID.
 
 BUSYBOX=/usr/bin/busybox
-RUN=/run/muos
+RUN=/run/bird
 PID_FILE=$RUN/initramfs-launcher.pid
 LOG=$RUN/initramfs-launcher.log
 LAUNCHER=/opt/bird/bird-launcher
