@@ -861,6 +861,16 @@ media, reader, PortMaster, controls, suspend, emergency recovery and shutdown
 worked; boot milestones were 1223/1224/1226 ms. The diagnostic slot is accepted
 and the clean menu-idle request may be armed again without changing binaries.
 
+The repaired slot then produced a clean 60-second short-label menu-idle window
+after a 30-second settle on boot `71d6d1b1`. Aggregate CPU busy was 0.289 percent.
+The launcher and retained journald, udevd, PipeWire, PulseAudio, WirePlumber,
+seatd and supervisor recorded zero runtime in the window; `bird-powerstate`
+used 0.868 ms. The remaining structural floor was kernel dominated: the ADC
+delivered 300.1 interrupts/s and the architecture timer 464.2/s. This is a
+userspace-exhaustion boundary for this state, not calibrated battery evidence
+and not permission to begin kernel optimization before the remaining Stage 5
+matrix and userspace promotion gates pass.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.

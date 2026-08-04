@@ -1247,6 +1247,16 @@ readiness. Pending launch, all tested content, controls, suspend, emergency
 recovery and shutdown passed. Re-arm only the standalone 30-second-settle,
 60-second menu-idle window on the same release; no rebuild is needed.
 
+The clean short-label menu-idle window passed on boot `71d6d1b1` after the
+30-second settle. Over 60 seconds it measured 0.289 percent aggregate CPU busy,
+1,454.5 context switches/s and 949.9 interrupts/s. Launcher and all retained
+resident managers except `bird-powerstate` recorded zero runtime; powerstate
+used 0.868 ms and eight slices. ADC and architecture-timer rates were 300.1/s
+and 464.2/s, with kernel workers dominating runtime. Launcher PSS/USS was
+1,776/1,772 KiB. Treat the instantaneous 437 mA battery-current field as context,
+not energy. Preserve the higher-priority warm-audio and udev decisions; next
+measure marquee idle with identical binaries and acquisition boundaries.
+
 ## Stage 6 — Canonical namespace and hermetic image
 
 Atomically migrate `/run/muos` to `/run/bird`, legacy state to Bird state,

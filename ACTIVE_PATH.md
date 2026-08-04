@@ -1249,6 +1249,20 @@ once at storage readiness; games, music, reader, movie, PortMaster, brightness,
 volume, suspend, emergency recovery and shutdown all returned to their normal
 owners. The clean Stage 5 window may now be armed on this same release.
 
+The clean 30-second-settled, 60-second menu-idle acquisition passed on boot
+`71d6d1b1`. Launcher/input/usable readiness was 1218/1218/1226 ms. Aggregate
+CPU busy time was 0.289 percent; context switches were 1,454.5/s and interrupts
+949.9/s. The launcher, supervisor, journald, udevd, PipeWire, PulseAudio,
+WirePlumber and seatd recorded zero runtime and zero slices in the measured
+window. `bird-powerstate` used 0.868 ms and eight slices. The fixed ADC produced
+300.1 interrupts/s and the architecture timer 464.2/s; kernel workers dominated
+recorded runtime. Launcher PSS/USS was 1,776/1,772 KiB. The warm audio stack was
+20,898 KiB PSS and seatd 263 KiB PSS, but their zero-runtime idle result and
+previous launch-latency gates keep them unchanged. Battery `current_now` was an
+instantaneous 437 mA reading, not calibrated energy. This clean result exhausts
+the obvious resident-userspace wakeup candidates for short-label menu idle; the
+next independent comparison is marquee idle on the same binaries.
+
 ## Launcher visual architecture
 
 The active 720x480 launcher presentation is inspired by Mister Menu's ES-DE
