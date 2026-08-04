@@ -19,15 +19,15 @@ display geometry and hardware policy are deliberate. Older muOS stages,
 source-kernel challengers and clean-root experiments remain useful evidence,
 but they are not alternate active implementations.
 
-The card currently selects the corrected Stage 5 trigger candidate
-`v6.23-stage5-trigger-97dd6ff`, built from clean public source
-`97dd6ffc55b2c1f86650bf1a7bb95cd10d1ff9e0`. Its previous selector is the
-physically accepted one-shot implementation
-`v6.23-stage5-idle-2ca82cd`. The selected release's canonical manifest
+The card currently selects the corrected Stage 5 counter candidate
+`v6.23-stage5-counters-9945f9d`, built from clean public source
+`9945f9d4f43013a0f09df7ea51a7a23dc1812b04`. Its previous selector is the
+physically accepted trigger implementation
+`v6.23-stage5-trigger-97dd6ff`. The selected release's canonical manifest
 digest is
-`505ac5d6674d81f18aff22723117dd2d48fafdffb443d3d961de6229bf2a6af5`,
-and deployment verified all 66 manifest-owned files. The device-contract digest is
-`85ccb8e46e71ee66e2320022ac13228124d6efcea5abdd800b8c18bd190f73cd`
+`f65def91471288ea1aa7fb310ccfbb07fdc18414bf8d85d692d39fbe2814b704`,
+and deployment verified all 67 manifest-owned files. The device-contract digest is
+`eca6a008947c927ca1b47efc275f7e3bde1a94735223837a353db7db2acf0b40`
 and the generated-catalog digest is
 `7e29e491bb43191ca9ae6c18bd566b6ba0c984bf43d1d0103eddd6e534306e62`.
 The immutable-dispatcher, immutable-supervisor, first-frame-preparation and
@@ -1185,6 +1185,24 @@ excludes start-side enumeration. Per-process `schedstat` plus voluntary and
 nonvoluntary context-switch counters identify actual runtime without inferring
 cost from residency alone. The ADC and timer rates remain hypotheses until the
 corrected sample repeats them.
+
+Clean public source `9945f9d4f43013a0f09df7ea51a7a23dc1812b04` is deployed as
+`v6.23-stage5-counters-9945f9d`, canonical manifest
+`f65def91471288ea1aa7fb310ccfbb07fdc18414bf8d85d692d39fbe2814b704`.
+All 67 manifest files verify. Stage5-trigger is the on-card rollback and
+stage5-idle is sealed in the private GitHub release archive. The release
+launcher remains 597,336 bytes and the early launcher 600,600 bytes; the new
+counter endpoint adds one file and the release inventory grows by 3,371 bytes.
+The compressed overlay changes by one byte to 615,258. Both profile variants
+also compile; the profile early launcher is 669,992 bytes and its overlay is
+630,752 bytes. Ordinary boots still execute no sampler. Production remains
+no-serial; diagnostic and fallback entries retain serial.
+
+The next armed boot must remain untouched for about 50 seconds. Acceptance
+requires both versioned `start` and `end` counter blocks, race-tolerant PSS/USS
+records, atomic publication and removal of the one-shot marker. Until that
+physical return, this release is neutral measurement infrastructure and no
+boot, interaction, battery or memory improvement is claimed.
 
 ## Launcher visual architecture
 

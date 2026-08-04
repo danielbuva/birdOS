@@ -1192,6 +1192,24 @@ per-PID shell reads. Add paired per-process `schedstat`/context-switch counters,
 and order the minimal global scheduler timestamp last at start and first at end.
 Only a repeated corrected sample may select the next idle-cost candidate.
 
+Clean source `9945f9d4f43013a0f09df7ea51a7a23dc1812b04`, release
+`v6.23-stage5-counters-9945f9d`, manifest
+`f65def91471288ea1aa7fb310ccfbb07fdc18414bf8d85d692d39fbe2814b704`
+implements that correction with stage5-trigger as rollback. All 67 files
+verify. The launchers are unchanged; the new counter endpoint and race-tolerant
+sampler changes grow the manifest-owned inventory by 3,371 bytes and the
+compressed overlay by one byte to 615,258. Start captures structural state
+before its global boundary; end captures the global boundary before structural
+state. Per-process scheduler and context-switch records permit an attributable
+userspace follow-up. Ordinary boots remain sampler-free.
+
+This is a measurement-only physical gate. Leave the first boot untouched for
+about 50 seconds and require complete versioned start/end blocks, valid PSS/USS
+records and one-shot disarm before selecting an optimization. Production is
+still the no-serial entry; serial remains available only in diagnostic and
+fallback entries. No timing, wakeup, energy or memory improvement is claimed
+before the corrected device sample returns.
+
 ## Stage 6 — Canonical namespace and hermetic image
 
 Atomically migrate `/run/muos` to `/run/bird`, legacy state to Bird state,

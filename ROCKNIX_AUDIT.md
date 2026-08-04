@@ -808,6 +808,23 @@ and brackets the global interval with minimal ordered counter endpoints while
 also recording per-process scheduler/context-switch deltas. Do not attribute
 the timer or ADC cost to userspace or begin kernel work from this single run.
 
+That corrected sampler is deployed from clean source
+`9945f9d4f43013a0f09df7ea51a7a23dc1812b04` as release
+`v6.23-stage5-counters-9945f9d`, manifest
+`f65def91471288ea1aa7fb310ccfbb07fdc18414bf8d85d692d39fbe2814b704`.
+All 67 files verify; stage5-trigger remains the on-card rollback. A separate
+minimal counter endpoint orders structural collection outside the global timed
+interval and records per-process scheduler/context-switch state. PSS/USS now
+reads one process at a time so an ordinary exit cannot invalidate the complete
+sample. The 3,371-byte release-inventory increase is neutral instrumentation,
+not a memory-efficiency regression claim, because it adds no ordinary resident
+mapping, process, timer or syscall. Production remains no-serial and the
+diagnostic/fallback entries retain serial.
+
+The next untouched device boot is the physical gate. Only complete versioned
+start/end blocks and atomic one-shot disarm may replace the contaminated
+screening values or justify an idle-cost candidate.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.
