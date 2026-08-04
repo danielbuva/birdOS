@@ -871,6 +871,14 @@ userspace-exhaustion boundary for this state, not calibrated battery evidence
 and not permission to begin kernel optimization before the remaining Stage 5
 matrix and userspace promotion gates pass.
 
+The second-boot marquee window passed on `cb7daf5b`. Launcher work was 30.1 ms
+and 277 slices over 60 seconds; aggregate busy was 0.318 percent and ADC stayed
+at 300.1 interrupts/s. Boot milestones remained 1217/1218/1226 ms. That cost is
+limited to active scrolling and does not justify reducing visual cadence. The
+same condition-gated sampler may now acquire distinctly labelled paused-game,
+audio-playback, video-playback and external-power menu windows; none adds an
+ordinary-boot process, timer or probe.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.

@@ -1257,6 +1257,14 @@ and 464.2/s, with kernel workers dominating runtime. Launcher PSS/USS was
 not energy. Preserve the higher-priority warm-audio and udev decisions; next
 measure marquee idle with identical binaries and acquisition boundaries.
 
+The marquee sample passed on boot `cb7daf5b` with unchanged 1217/1218/1226 ms
+boot milestones. Scrolling cost the launcher 30.1 ms and 277 slices in 60
+seconds, or 0.050 percent of one core and 4.62 slices/s. Aggregate busy moved
+from 0.289 to 0.318 percent while the fixed ADC rate remained 300.1/s. Keep the
+current marquee behavior. Extend only the explicit one-shot sampler to label
+`game-paused`, `audio-playback`, `video-playback` and
+`external-power-menu-idle`; ordinary boot remains condition-gated and unchanged.
+
 ## Stage 6 — Canonical namespace and hermetic image
 
 Atomically migrate `/run/muos` to `/run/bird`, legacy state to Bird state,

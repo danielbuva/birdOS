@@ -19,7 +19,7 @@ while IFS='=' read -r KEY VALUE; do
 	[ "$KEY" != state ] || STATE=$VALUE
 done <"$REQUEST"
 case "$STATE" in
-	menu-idle|marquee-idle) ;;
+	menu-idle|marquee-idle|game-paused|audio-playback|video-playback|external-power-menu-idle) ;;
 	*) printf 'invalid Stage 5 state: %s\n' "$STATE" >&2; exit 2 ;;
 esac
 case "$SETTLE_SECONDS:$WINDOW_SECONDS" in

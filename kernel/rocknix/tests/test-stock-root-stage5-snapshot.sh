@@ -110,6 +110,19 @@ grep -Fxq 'sleep=60' "$ACQUIRED"
 grep -Fxq 'counter=end' "$ACQUIRED"
 grep -Fxq 'snapshot=menu-idle-final' "$ACQUIRED"
 
+for ACCEPTED_STATE in marquee-idle game-paused audio-playback video-playback \
+	external-power-menu-idle; do
+	printf 'state=%s\n' "$ACCEPTED_STATE" >"$TMP/request"
+	BIRD_STAGE5_REQUEST=$TMP/request BIRD_STAGE5_LOG_DIR=$TMP/log \
+		BIRD_STAGE5_COUNTERS=$TMP/counters BIRD_STAGE5_SNAPSHOT=$TMP/snapshot \
+		BIRD_STAGE5_SLEEP=$TMP/sleep BIRD_STAGE5_BOOT_ID_FILE=$TMP/boot-id \
+		"$ACQUIRE"
+	ACCEPTED_LOG=$TMP/log/stage5-window-12345678-$ACCEPTED_STATE.log
+	grep -Fxq "bird_stage5_acquisition_version=1 state=$ACCEPTED_STATE" \
+		"$ACCEPTED_LOG"
+	grep -Fxq "snapshot=$ACCEPTED_STATE-final" "$ACCEPTED_LOG"
+done
+
 printf '%s\n' 'state=invalid' >"$TMP/request"
 if BIRD_STAGE5_REQUEST=$TMP/request BIRD_STAGE5_LOG_DIR=$TMP/log \
 	BIRD_STAGE5_COUNTERS=$TMP/counters BIRD_STAGE5_SNAPSHOT=$TMP/snapshot \

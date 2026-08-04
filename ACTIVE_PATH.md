@@ -1263,6 +1263,17 @@ instantaneous 437 mA reading, not calibrated energy. This clean result exhausts
 the obvious resident-userspace wakeup candidates for short-label menu idle; the
 next independent comparison is marquee idle on the same binaries.
 
+The marquee comparison passed on second-boot ID `cb7daf5b`. Boot remained
+1217/1218/1226 ms launcher/input/usable. During its 60-second window the
+launcher used 30.1 ms and 277 slices: 0.050 percent of one core and 4.62
+scheduled slices/s while scrolling. Aggregate busy was 0.318 percent versus
+0.289 percent in the short-label sample; ADC remained 300.1 interrupts/s.
+Because the visual update cost is already small and only exists while a selected
+label scrolls, no cadence or smoothness change is justified by these structural
+counters. The request-only sampler now accepts separately labelled paused-game,
+audio-playback, video-playback and external-power menu states so the remaining
+matrix can be acquired without running ordinary-boot diagnostics.
+
 ## Launcher visual architecture
 
 The active 720x480 launcher presentation is inspired by Mister Menu's ES-DE
