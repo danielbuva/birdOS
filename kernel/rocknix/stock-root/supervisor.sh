@@ -111,12 +111,12 @@ trap 'supervisor_signal INT' INT
 
 poweroff_client() {
 	/usr/bin/timeout --signal=TERM --kill-after=1s 3s \
-		systemctl --no-block poweroff
+		systemctl --no-block start poweroff.target
 }
 
 reboot_client() {
 	/usr/bin/timeout --signal=TERM --kill-after=1s 3s \
-		systemctl --no-block reboot
+		systemctl --no-block start reboot.target
 }
 
 request_reboot() {

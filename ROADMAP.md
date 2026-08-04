@@ -1314,6 +1314,17 @@ readiness moved only from 1226 to 1229 ms on the byte-identical launcher. Keep
 this as strong screening evidence rather than a calibrated energy claim, and
 complete the external-power idle matrix next.
 
+The external-power idle window passed on boot `e353f4cd`. USB/charging state
+remained true, all retained userspace managers recorded zero runtime, aggregate
+busy was 0.302 percent and the capacity timer was absent. Usable readiness was
+1222 ms on unchanged binaries. This closes the structural external-power row.
+
+Post-logind shutdown logs consistently show the high-level `systemctl poweroff`
+verb failing through the masked logind interface. Bird now submits
+`poweroff.target`/`reboot.target` directly with the same bounded, non-forced
+systemd client. Physically verify ordered shutdown and reboot before accepting
+this interaction/reliability candidate.
+
 ## Stage 6 — Canonical namespace and hermetic image
 
 Atomically migrate `/run/muos` to `/run/bird`, legacy state to Bird state,

@@ -360,8 +360,12 @@ grep -Fq 'Bird shutdown dispatch failed boot_id=deadbeef exit=124' \
 poweroff_client() { return 0; }
 (request_poweroff)
 grep -Fq 'Bird shutdown dispatch ready boot_id=deadbeef' "$SHUTDOWN_LOG"
-grep -Fq 'systemctl --no-block poweroff' "$SUPERVISOR"
-grep -Fq 'systemctl --no-block reboot' "$SUPERVISOR"
+grep -Fq 'systemctl --no-block start poweroff.target' "$SUPERVISOR"
+grep -Fq 'systemctl --no-block start reboot.target' "$SUPERVISOR"
+if grep -Eq 'systemctl --no-block (poweroff|reboot)$' "$SUPERVISOR"; then
+	printf '%s\n' 'logind-routed systemctl verb returned' >&2
+	exit 1
+fi
 if grep -q 'systemctl .*--force.*poweroff' "$SUPERVISOR"; then
 	printf '%s\n' 'forced poweroff bypass returned' >&2
 	exit 1

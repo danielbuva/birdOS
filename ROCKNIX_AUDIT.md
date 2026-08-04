@@ -938,6 +938,19 @@ physical behavior gate passed. This supports retaining release-mode status
 suppression; calibrated energy and a larger paired set remain required before
 claiming battery improvement.
 
+The external-power menu-idle window passed on boot `e353f4cd`. USB stayed
+online, battery status stayed charging, retained userspace managers recorded
+zero runtime and aggregate four-core busy was 0.302 percent. The capacity timer
+was correctly disarmed. The remaining 300 Hz ADC and timer activity is kernel
+work, not evidence that a retained userspace manager is polling.
+
+With logind intentionally removed, the accepted shutdown trace shows
+`systemctl --no-block poweroff` failing through the masked logind interface.
+The supervisor now directly starts `poweroff.target` or `reboot.target` under
+the same three-second client bound. This keeps systemd's dependency ordering
+and unmount path, avoids a known failed request, and does not reintroduce a
+forced shutdown.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.

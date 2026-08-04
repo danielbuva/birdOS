@@ -1358,6 +1358,22 @@ variation. This is a large same-content screening result, not calibrated energy
 or a statistically promoted battery claim. Retain the candidate and complete
 the external-power idle window next.
 
+The external-power menu-idle window passed on boot `e353f4cd`. USB remained
+online and the battery remained charging throughout. Launcher, power worker,
+PipeWire, PulseAudio, WirePlumber and seatd recorded zero thread runtime. Total
+four-core busy was 0.302 percent, with 1,469 context switches/s and 1,068
+interrupts/s; the fixed 300 Hz ADC source remained unchanged. The discharging
+capacity timer was correctly absent. Launcher/input/usable readiness was
+1215/1216/1222 ms, ordinary variation on unchanged binaries.
+
+The same accepted shutdown logs expose one deterministic failure: after logind
+removal, `systemctl --no-block poweroff` still routes through the masked logind
+interface before Bird's effective shutdown path proceeds. The bounded client
+now directly enqueues `poweroff.target`; reboot directly enqueues
+`reboot.target`. This preserves systemd's ordered shutdown and avoids both the
+known failed round trip and a forced-poweroff bypass. It runs only after a user
+shutdown/reboot request and adds no boot or idle work.
+
 ## Launcher visual architecture
 
 The active 720x480 launcher presentation is inspired by Mister Menu's ES-DE

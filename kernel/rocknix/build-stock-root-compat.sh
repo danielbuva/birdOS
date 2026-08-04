@@ -1211,10 +1211,14 @@ grep -Fq 'mv -f -- "$TEMP" "$BACKUP"' \
 if grep -E 'cp .*\$BACKUP' "$OUTPUT/card/bird/bird-save-config.sh"; then
 	fail 'shutdown direct backup overwrite returned'
 fi
-grep -q 'systemctl --no-block poweroff' \
-	"$OUTPUT/card/bird/supervisor.sh" || fail 'nonblocking poweroff request missing'
-grep -q 'systemctl --no-block reboot' \
-	"$OUTPUT/card/bird/supervisor.sh" || fail 'nonblocking reboot request missing'
+grep -q 'systemctl --no-block start poweroff.target' \
+	"$OUTPUT/card/bird/supervisor.sh" || fail 'ordered poweroff target request missing'
+grep -q 'systemctl --no-block start reboot.target' \
+	"$OUTPUT/card/bird/supervisor.sh" || fail 'ordered reboot target request missing'
+if grep -Eq 'systemctl --no-block (poweroff|reboot)$' \
+	"$OUTPUT/card/bird/supervisor.sh"; then
+	fail 'logind-routed systemctl verb returned'
+fi
 grep -Fq '/usr/bin/timeout --signal=TERM --kill-after=1s 3s' \
 	"$OUTPUT/card/bird/supervisor.sh" || fail 'bounded poweroff client missing'
 if grep -q 'systemctl .*--force.*poweroff' \
