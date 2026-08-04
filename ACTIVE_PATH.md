@@ -1304,6 +1304,20 @@ moved from 440 to 445 mA, but is not calibrated energy. Preserve menu
 responsiveness for now; retain this as a measured battery candidate and acquire
 ordinary audio playback next on identical binaries.
 
+The ordinary MP3 playback window passed on boot `a91f03d0`.
+Launcher/input/usable readiness was 1220/1221/1226 ms, eight milliseconds
+slower at usable readiness than the paused-game boot on unchanged binaries and
+therefore ordinary variation. Over 60 seconds MPV used 1.95 CPU-seconds and
+5,712 slices, or 3.25 percent of one core. Aggregate four-core busy was 3.40
+percent, with 2,166 context switches/s and 1,786 interrupts/s. PipeWire,
+PulseAudio, WirePlumber, seatd, Sway and both Bird MPV helpers recorded
+effectively zero runtime during the measured window. MPV PSS/USS was
+32,373/29,528 KiB; the retained PipeWire/Pulse/WirePlumber stack totaled 18,682
+KiB PSS. The instantaneous battery reading moved from 439 to 442 mA and is not
+calibrated energy. The warm audio managers are now a measured memory/residency
+candidate, but may not be removed unless provider launch and return remain
+non-inferior. Acquire ordinary video playback next on identical binaries.
+
 ## Launcher visual architecture
 
 The active 720x480 launcher presentation is inspired by Mister Menu's ES-DE

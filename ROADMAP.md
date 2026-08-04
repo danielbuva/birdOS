@@ -1285,6 +1285,13 @@ paused-state battery candidate, but changing its cadence must preserve active
 menu responsiveness. Acquire ordinary audio playback next before selecting a
 candidate.
 
+The ordinary MP3 playback window passed on boot `a91f03d0`. MPV consumed 1.95
+CPU-seconds over 60 seconds, while the retained PipeWire, PulseAudio and
+WirePlumber processes consumed none and held 18,682 KiB PSS. Aggregate four-core
+busy was 3.40 percent. Treat the warm audio stack as a measured
+memory/residency candidate only after provider compatibility and launch latency
+are compared. Acquire ordinary video playback next on the same binaries.
+
 ## Stage 6 — Canonical namespace and hermetic image
 
 Atomically migrate `/run/muos` to `/run/bird`, legacy state to Bird state,

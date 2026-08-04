@@ -900,6 +900,15 @@ RetroArch/Sway menu presentation rather than the retained audio managers. It is
 structural evidence, not calibrated energy; preserve responsiveness until an
 independent throttling candidate is measured.
 
+The ordinary MP3 playback window passed on boot `a91f03d0`. MPV used 1.95
+CPU-seconds and 5,712 slices over 60 seconds. PipeWire, PulseAudio, WirePlumber,
+seatd, Sway and the Bird MPV helpers recorded effectively zero runtime during
+the window. The three warm audio managers nevertheless retained 18,682 KiB PSS.
+This proves that this MPV path is not consuming their CPU during steady
+playback; it does not yet prove that other providers can launch, play, suspend
+and return without them. Preserve interaction behavior until that closure is
+measured.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.
