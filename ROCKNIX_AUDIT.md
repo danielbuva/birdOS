@@ -856,6 +856,11 @@ dispatcher. A new host assertion rejects absent unit bind destinations. The
 failed release is archived; stage5-counters remains the on-card known-good
 rollback. Do not arm measurement until final-root behavior passes again.
 
+That recovery gate passed. Final-root ownership, early pending launch, games,
+media, reader, PortMaster, controls, suspend, emergency recovery and shutdown
+worked; boot milestones were 1223/1224/1226 ms. The diagnostic slot is accepted
+and the clean menu-idle request may be armed again without changing binaries.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.

@@ -1243,6 +1243,12 @@ known-good rollback; the failed release is archived privately and removed from
 the card. Measurement is unarmed for the recovery gate. Launchers are unchanged
 and the overlay is 615,252 bytes. Production remains no-serial.
 
+The repaired slot passed the complete RG34XX-SP recovery gate. Launcher, input
+and usable readiness were 1223/1224/1226 ms. Early pending launch dispatched
+once at storage readiness; games, music, reader, movie, PortMaster, brightness,
+volume, suspend, emergency recovery and shutdown all returned to their normal
+owners. The clean Stage 5 window may now be armed on this same release.
+
 ## Launcher visual architecture
 
 The active 720x480 launcher presentation is inspired by Mister Menu's ES-DE

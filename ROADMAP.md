@@ -1242,6 +1242,11 @@ or Stage 5 request there. Host coverage now proves every unit bind target exists
 in the pinned root. Keep measurement unarmed until the complete recovery gate
 passes; stage5-counters is the known-good rollback.
 
+The repaired slot passed physically at 1223/1224/1226 ms launcher/input/usable
+readiness. Pending launch, all tested content, controls, suspend, emergency
+recovery and shutdown passed. Re-arm only the standalone 30-second-settle,
+60-second menu-idle window on the same release; no rebuild is needed.
+
 ## Stage 6 — Canonical namespace and hermetic image
 
 Atomically migrate `/run/muos` to `/run/bird`, legacy state to Bird state,
