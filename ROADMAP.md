@@ -18,7 +18,8 @@ how birdOS arrived here but does not define current work.
 Optimize in this lexicographic order:
 
 1. Power-to-visible, genuinely usable menu.
-2. UI interaction latency, then content launch and return latency.
+2. Interaction latency across menu navigation, application/content launch,
+   application/content close, and restoration of an interactive Bird menu.
 3. Calibrated battery energy and unnecessary wakeups.
 4. Memory and storage efficiency.
 5. Fixed-device kernel work after userspace promotion.
@@ -34,6 +35,16 @@ resolution, every higher-priority metric is non-inferior, and accepted behavior
 remains intact. Cosmetic continuity may not delay honest usability at all.
 Neutral correctness, measurement, rollback and readiness infrastructure may
 promote with no measurable regression.
+
+Priority two and priority three require an explicit fixed-consumer balance,
+not a universal warm or cold policy. Hardcode and keep a process or prepared
+resource warm when device measurements show a material launch/close benefit
+inside the fixed RG34XX-SP application closure. Quiesce or start it on demand
+when calibrated idle-energy savings are material and every boot and interaction
+metric remains within its frozen non-inferiority margin. Near-instant launch
+and return is the direction of travel, but not permission to keep unrelated
+work resident without an energy result. Memory and storage savings never
+justify regressions in boot, interaction, or calibrated battery life.
 
 Every implementation summary reports in this order: current stage, a short
 reason the previous implementation existed, what changed, lexicographic
@@ -1116,6 +1127,15 @@ timer until a proven event source replaces it.
 Measure PSS/USS at usable frame, storage readiness, application readiness,
 content idle and post-return. Reduce memory only where boot, interaction and
 battery remain non-inferior.
+
+The first Stage 5 infrastructure candidate extends only the explicitly armed
+post-autostart diagnostic. `capture-stage5-state.sh` emits a versioned labelled
+raw snapshot of scheduler totals, per-process PSS/USS, wakeup sources, IRQs,
+softirqs, CPU-idle counters and available battery counters. It has no ordinary-
+boot caller and introduces no periodic sampling timer. Two labelled snapshots
+may be differenced inside a controlled state block, but the sampler's own work
+means those counters remain structural evidence rather than calibrated energy.
+Battery promotion still requires an inline shunt or battery-path measurement.
 
 ## Stage 6 — Canonical namespace and hermetic image
 

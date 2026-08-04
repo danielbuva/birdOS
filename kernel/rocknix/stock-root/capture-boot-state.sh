@@ -102,6 +102,9 @@ trap 'exit 1' HUP INT TERM
 	done
 	printf '%s\n' '--- memory ---'
 	cat /proc/meminfo
+	printf '%s\n' '--- Stage 5 structural counters ---'
+	BIRD_STAGE5_LABEL=post-autostart \
+		/flash/bird/capture-stage5-state.sh 2>&1 || :
 	printf '%s\n' '--- fixed memory policy ---'
 	if [ -r /storage/.config/swap.conf ]; then
 		cat /storage/.config/swap.conf

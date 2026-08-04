@@ -42,6 +42,16 @@ machine-readable hardware subset without replacing this experience contract.
 
 ## Fixed behavior
 
+Optimization policy is lexicographic. Power-to-honest-usable Bird is first and
+may not be slowed by later preparation. Interaction is second and includes
+menu navigation, launching and closing every game/application/media provider,
+and restoring Bird input after return. Battery is third: the fixed image may
+keep measured launch-critical resources warm or hardcode their preparation,
+but must not keep every generic process resident by default. Each warm/cold
+decision balances calibrated idle energy against a frozen interaction margin.
+Memory and storage are fourth and may be reduced only when boot, interaction,
+and battery remain non-inferior.
+
 - Language: English only.
 - Startup destination: the custom launcher's four-item main menu.
 - Network: completely off at boot; loaded only for the explicit PortMaster

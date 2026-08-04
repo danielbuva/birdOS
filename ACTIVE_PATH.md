@@ -19,25 +19,33 @@ display geometry and hardware policy are deliberate. Older muOS stages,
 source-kernel challengers and clean-root experiments remain useful evidence,
 but they are not alternate active implementations.
 
-The card currently selects the Stage 4 fixed-application-profile candidate
-`v6.23-fixed-profiles-b87dcc2`, built from clean public source
-`b87dcc2a5c7f7ef0fc8c4737eebf51ac60b2dd87`. Its previous selector is the
-physically accepted fixed-housekeeping checkpoint
-`v6.23-fixed-housekeeping-91b2f58`. The selected candidate's canonical manifest
+The card currently selects the physically accepted Stage 4 warm-manager
+closure `v6.23-warm-managers-72d7fe6`, built from clean public source
+`72d7fe6058dcd21d8c95545871c0acffc3d3dce6`. Its previous selector is the
+functional but interaction-rejected udev-isolation candidate
+`v6.23-udev-isolation-7d74bf6`. The selected release's canonical manifest
 digest is
-`c9dbc12ff1ca1ef98d7436824321db922905dce45afcac50617db18e1ffe0564`,
-and deployment verified all 61 manifest-owned files. The device-contract digest is
+`8b81f34ab5f84e4c1faafee2ee13357de08a26af704f2a8a26e6ac8107f1b545`,
+and deployment verified all 65 manifest-owned files. The device-contract digest is
 `85ccb8e46e71ee66e2320022ac13228124d6efcea5abdd800b8c18bd190f73cd`
 and the generated-catalog digest is
 `7e29e491bb43191ca9ae6c18bd566b6ba0c984bf43d1d0103eddd6e534306e62`.
 The immutable-dispatcher, immutable-supervisor, first-frame-preparation and
-boot-snapshot, complete-toolset, content-shell, fixed-autostart, fixed-session
-and fixed-housekeeping batches passed their full RG34XX-SP gates. The selected
-fixed-application-profile batch passed host, build and deployment gates but
-still requires its RG34XX-SP behavior gate. HDMI and
-Bluetooth remain unchanged; retention or removal of either is an explicit
-later product decision. None of these tuples
+boot-snapshot, complete-toolset, content-shell, fixed-autostart, fixed-session,
+fixed-housekeeping, fixed-application-profile, fixed-performance and warm-
+manager batches passed their RG34XX-SP gates. The manager experiments proved
+that on-demand seatd and post-coldplug udevd exit move work into content launch,
+so both remain warm. HDMI and Bluetooth remain unchanged; retention or removal
+of either is an explicit later product decision. None of these tuples
 replaces the broader source/behavior baseline or immutable fallback named above.
+
+Optimization is lexicographic: honest usable menu first; navigation plus every
+launch, close and interactive return second; calibrated battery life third;
+memory/storage fourth. Interaction and battery use measured fixed-consumer
+decisions rather than an all-warm or all-cold rule. A launch-critical process
+may remain prepared when its latency benefit is material; unrelated residency
+requires a measured energy justification and may be quiesced only inside the
+frozen boot/interaction margins.
 
 ## Authority
 
@@ -1082,6 +1090,22 @@ byte final-root and 600,600-byte early launchers are unchanged; removing the
 udev-idle script reduces manifest-owned bytes by 875 while the compressed
 overlay remains 615,256 bytes. Production remains no-serial; diagnostic and
 fallback entries retain serial.
+
+The warm-manager hardware return passes all tested behavior. Its cold boot
+recorded launcher/input/usable milestones at 1217/1218/1221 ms, inside the
+accepted range and consistent with the operator's unchanged stopwatch result.
+Four stable content sessions reached Sway-ready in 460--490 ms and provider
+dispatch in 700--720 ms. Because the complete runtime implementation is byte-
+equivalent to the earlier fixed-performance checkpoint, the difference from
+the older roughly 630 ms provider sample remains unclaimed run/environment
+variation rather than an attributable regression or improvement.
+
+Stage 5 begins with request-only measurement infrastructure. The existing
+`boot-diagnostics.request` service calls a fixed versioned sampler after
+autostart; ordinary boots do not execute it. The sampler records raw scheduler,
+PSS/USS, wakeup-source, IRQ, CPU-idle and battery counters with an explicit
+state label. These snapshots support paired attribution but are not calibrated
+energy measurements and do not authorize a battery claim.
 
 ## Launcher visual architecture
 

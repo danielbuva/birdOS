@@ -15,6 +15,7 @@ UI=$ROOT/kernel/rocknix/stock-root/essway.service
 TARGET=$ROOT/kernel/rocknix/stock-root/rocknix.target
 REPORT=$ROOT/kernel/rocknix/stock-root/rocknix-report-stats.service
 CAPTURE=$ROOT/kernel/rocknix/stock-root/capture-boot-state.sh
+STAGE5_CAPTURE=$ROOT/kernel/rocknix/stock-root/capture-stage5-state.sh
 MOUNT_STORAGE=$ROOT/kernel/rocknix/stock-root/mount-storage.sh
 RUNNER=$ROOT/kernel/rocknix/stock-root/run-content.sh
 SUSPEND=$ROOT/kernel/rocknix/stock-root/bird-suspend.sh
@@ -43,6 +44,9 @@ grep -Fqx \
 grep -Fqx 'ExecStart=/flash/bird/capture-boot-state.sh' "$REPORT"
 grep -Fq 'stock-root-boot-state-$BOOT_ID.log' "$CAPTURE"
 grep -Fq 'cp -f "$LOG" "$LATEST"' "$CAPTURE"
+grep -Fq '/flash/bird/capture-stage5-state.sh' "$CAPTURE"
+grep -Fq 'bird_stage5_snapshot_version=1' "$STAGE5_CAPTURE"
+grep -Fq 'BIRD_STAGE5_LABEL' "$STAGE5_CAPTURE"
 grep -Fq 'trap cleanup EXIT' "$CAPTURE"
 grep -Fq "trap 'exit 1' HUP INT TERM" "$CAPTURE"
 

@@ -416,7 +416,8 @@ for FILE in 090-ui_service 999-export bird-autostart bird-journald.conf \
 	bird-powerstate.service supervisor.sh run-content.sh bird-mpv-player.sh \
 	prepare-ports.sh verify-portmaster-provider.sh \
 	portmaster-provider.manifest.tsv fixed-storage.sh first-frame-prep.sh \
-	capture-boot-state.sh bird-network.sh bird-fixed-control-exit.sh \
+	capture-boot-state.sh capture-stage5-state.sh \
+	bird-network.sh bird-fixed-control-exit.sh \
 	bird-emergency-recover.sh \
 	bird-save-config.sh bird-save-config.service bird-suspend.sh \
 	bird-restore-suspend-policy.sh bird-volume.sh bird-control-osd.sh \
@@ -456,6 +457,7 @@ chmod 0755 "$OUTPUT/card/post-flash.sh" "$OUTPUT/card/mount-storage.sh" \
 	"$OUTPUT/card/bird/fixed-storage.sh" \
 	"$OUTPUT/card/bird/first-frame-prep.sh" \
 	"$OUTPUT/card/bird/capture-boot-state.sh" \
+	"$OUTPUT/card/bird/capture-stage5-state.sh" \
 	"$OUTPUT/card/bird/bird-network.sh" \
 	"$OUTPUT/card/bird/bird-fixed-control-exit.sh" \
 	"$OUTPUT/card/bird/bird-emergency-recover.sh" \
@@ -487,6 +489,7 @@ for SCRIPT in "$OUTPUT/card/post-flash.sh" \
 	"$OUTPUT/card/bird/fixed-storage.sh" \
 	"$OUTPUT/card/bird/first-frame-prep.sh" \
 	"$OUTPUT/card/bird/capture-boot-state.sh" \
+	"$OUTPUT/card/bird/capture-stage5-state.sh" \
 	"$OUTPUT/card/bird/bird-network.sh" \
 	"$OUTPUT/card/bird/bird-fixed-control-exit.sh" \
 	"$OUTPUT/card/bird/bird-emergency-recover.sh" \
@@ -648,6 +651,12 @@ grep -q 'timeout 2s pactl info' \
 grep -q 'stock-root-boot-state-\$BOOT_ID.log' \
 	"$OUTPUT/card/bird/capture-boot-state.sh" || \
 	fail 'boot-scoped snapshot publication missing'
+grep -q '/flash/bird/capture-stage5-state.sh' \
+	"$OUTPUT/card/bird/capture-boot-state.sh" || \
+	fail 'requested Stage 5 snapshot missing'
+grep -q '^bird_stage5_snapshot_version=1' \
+	"$OUTPUT/card/bird/capture-stage5-state.sh" || \
+	fail 'Stage 5 snapshot revision missing'
 grep -q "^  LINUX /bird-releases/$RELEASE_ID/KERNEL$" \
 	"$OUTPUT/card/extlinux/extlinux.conf" || fail 'versioned KERNEL selector missing'
 grep -q "^  INITRD /bird-releases/$RELEASE_ID/bird-initramfs.cpio.gz$" \

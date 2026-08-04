@@ -28,7 +28,8 @@ and background efficiency; it does not need to block or enter the launcher.
 - systemd as the current final-root service manager;
 - udev for the complete coldplug/rule compatibility pass;
 - D-Bus, PipeWire and WirePlumber for applications and audio;
-- seatd and logind until their exact Sway/application consumers are measured;
+- warm seatd and udevd because on-demand activation measurably entered the
+  content path; logind is removed from the fixed one-user closure;
 - the H700 platform/device quirks, controller setup, config provisioning,
   performance policy, rumble, audio routing and Sway configuration;
 - stock `runemu.sh`, emulator/core selection, standalone wrappers, MPV and
@@ -746,6 +747,15 @@ All 65 manifest files verify. The launchers are unchanged, the rejected udev
 policy file is absent, manifest-owned bytes shrink 875, and the active
 coordinator is again the physically accepted v2 implementation. Production
 remains no-serial while diagnostic and fallback entries retain serial.
+
+The warm-manager physical return passed hardware behavior and recorded
+1217/1218/1221 ms launcher/input/usable readiness. Stable Sway readiness was
+460--490 ms from session start; total provider dispatch was 700--720 ms despite
+implementation equivalence with the earlier warm checkpoint, so the older
+roughly 630 ms sample is not used as a hard regression boundary without a
+larger controlled set. The next audit work is measurement, not another manager
+lifetime guess: an explicitly requested Stage 5 sampler captures raw PSS/USS,
+wakeup, IRQ, CPU-idle and battery counters without entering ordinary boot.
 
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
