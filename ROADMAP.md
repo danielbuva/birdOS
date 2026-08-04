@@ -1210,6 +1210,24 @@ still the no-serial entry; serial remains available only in diagnostic and
 fallback entries. No timing, wakeup, energy or memory improvement is claimed
 before the corrected device sample returns.
 
+The corrected return passed broad hardware behavior. Its 15-second window
+measured 0.45 percent aggregate CPU busy and about 1,484 context switches/s.
+Launcher and powerstate each used less than 0.5 ms; warm audio and seatd used no
+runtime. Udevd used 53.3 ms, but stopping it is already rejected by the higher-
+priority content-launch gate. The remaining dominant work is kernel worker,
+ADC and timer activity. Treat that only as a hypothesis until a longer settled
+window repeats it; no energy claim follows from scheduler counters.
+
+Clean source `56d58d404817f90588e61e0faa58beb0e7547f66`, release
+`v6.23-stage5-settled-56d58d4`, manifest
+`8e0988258c445c4c743f9afe8ae042a86d3bf144aa8a6c78456070641c343ebc`
+moves the one-shot window into its own conditioned service. It waits 30 seconds,
+measures 60 seconds, publishes atomically and disarms. Broad diagnostics no
+longer run in that acquisition. Global CPU/IRQ/softirq counters are adjacent at
+both boundaries. All 69 files verify; ordinary boots add no process or timer.
+The next physical gate is one untouched two-minute menu-idle boot plus the broad
+functional matrix.
+
 ## Stage 6 — Canonical namespace and hermetic image
 
 Atomically migrate `/run/muos` to `/run/bird`, legacy state to Bird state,

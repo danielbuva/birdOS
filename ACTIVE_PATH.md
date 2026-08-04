@@ -19,14 +19,14 @@ display geometry and hardware policy are deliberate. Older muOS stages,
 source-kernel challengers and clean-root experiments remain useful evidence,
 but they are not alternate active implementations.
 
-The card currently selects the corrected Stage 5 counter candidate
-`v6.23-stage5-counters-9945f9d`, built from clean public source
-`9945f9d4f43013a0f09df7ea51a7a23dc1812b04`. Its previous selector is the
-physically accepted trigger implementation
-`v6.23-stage5-trigger-97dd6ff`. The selected release's canonical manifest
+The card currently selects the settled Stage 5 measurement candidate
+`v6.23-stage5-settled-56d58d4`, built from clean public source
+`56d58d404817f90588e61e0faa58beb0e7547f66`. Its previous selector is the
+physically accepted corrected-counter implementation
+`v6.23-stage5-counters-9945f9d`. The selected release's canonical manifest
 digest is
-`f65def91471288ea1aa7fb310ccfbb07fdc18414bf8d85d692d39fbe2814b704`,
-and deployment verified all 67 manifest-owned files. The device-contract digest is
+`8e0988258c445c4c743f9afe8ae042a86d3bf144aa8a6c78456070641c343ebc`,
+and deployment verified all 69 manifest-owned files. The device-contract digest is
 `eca6a008947c927ca1b47efc275f7e3bde1a94735223837a353db7db2acf0b40`
 and the generated-catalog digest is
 `7e29e491bb43191ca9ae6c18bd566b6ba0c984bf43d1d0103eddd6e534306e62`.
@@ -1203,6 +1203,27 @@ requires both versioned `start` and `end` counter blocks, race-tolerant PSS/USS
 records, atomic publication and removal of the one-shot marker. Until that
 physical return, this release is neutral measurement infrastructure and no
 boot, interaction, battery or memory improvement is claimed.
+
+The returned corrected 15-second window completed and the broad hardware gate
+passed. Aggregate CPU was 0.45 percent busy with about 1,484 context switches/s.
+The launcher used 0.423 ms and five scheduling slices; powerstate used 0.380 ms
+and five slices. Warm PipeWire, PulseAudio, WirePlumber and seatd recorded zero
+runtime during the window. Udevd used 53.3 ms and 24 slices, but the prior
+isolated udev experiment measurably delayed content launch and remains rejected.
+The dominant activity was kernel work and the fixed ADC/timer interrupt stream.
+This is structural evidence, not calibrated energy.
+
+Clean source `56d58d404817f90588e61e0faa58beb0e7547f66` is deployed as
+`v6.23-stage5-settled-56d58d4`, manifest
+`8e0988258c445c4c743f9afe8ae042a86d3bf144aa8a6c78456070641c343ebc`.
+All 69 files verify; stage5-counters is the on-card rollback and stage5-trigger
+is sealed in the private GitHub archive. A standalone request-only service now
+settles for 30 seconds and measures for 60 seconds without running the broad
+boot diagnostic. Global CPU, IRQ and softirq boundaries exclude process/sysfs
+enumeration. The inventory adds two files and 1,745 bytes; release launchers
+remain 597,336/600,600 bytes and the overlay shrinks five bytes to 615,253.
+Ordinary boots add no process or timer. Production remains no-serial;
+diagnostic/fallback entries retain serial.
 
 ## Launcher visual architecture
 

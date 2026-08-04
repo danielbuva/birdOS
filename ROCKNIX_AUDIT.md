@@ -825,6 +825,23 @@ The next untouched device boot is the physical gate. Only complete versioned
 start/end blocks and atomic one-shot disarm may replace the contaminated
 screening values or justify an idle-cost candidate.
 
+The corrected return passed. Its 15-second interval recorded 0.45 percent CPU
+busy and about 1,484 context switches/s. Launcher and powerstate each consumed
+under 0.5 ms; PipeWire, PulseAudio, WirePlumber and seatd consumed zero runtime.
+Udevd consumed 53.3 ms, but its earlier quiescence experiment lost the priority-
+two launch gate. The dominant recorded activity is now kernel worker plus fixed
+ADC/timer work, not a warm userspace manager. These counters do not measure
+energy.
+
+Clean source `56d58d404817f90588e61e0faa58beb0e7547f66` deploys the longer
+standalone acquisition as `v6.23-stage5-settled-56d58d4`, manifest
+`8e0988258c445c4c743f9afe8ae042a86d3bf144aa8a6c78456070641c343ebc`.
+All 69 files verify. It separates the one-shot window from broad diagnostics,
+uses a 30-second settle and 60-second interval, suppresses expected disappearing
+`smaps_rollup` errors and brackets CPU/IRQ/softirq counters outside structural
+enumeration. Stage5-counters remains the on-card rollback. This is neutral
+measurement infrastructure; ordinary boots have no new process or timer.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.
