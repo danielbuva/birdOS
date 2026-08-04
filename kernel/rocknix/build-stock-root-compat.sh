@@ -222,7 +222,9 @@ python3 "$ROOT/generate-device-contract.py" \
 		"$ROOT/kernel/rocknix/stock-root/bird-suspend-policy.generated.sh" \
 	--sleep-policy-output "$ROOT/kernel/rocknix/stock-root/bird-sleep.conf" \
 	--logind-policy-output "$ROOT/kernel/rocknix/stock-root/bird-logind.conf" || \
-	fail 'generated fixed-device contract is stale or invalid'
+fail 'generated fixed-device contract is stale or invalid'
+python3 "$ROOT/kernel/rocknix/validate-canonical-namespace.py" || \
+	fail 'canonical namespace contract is stale or invalid'
 if [ "$BIRD_BUILD_PREFLIGHT_ONLY" = 1 ]; then
 	printf 'Canonical pinned-input preflight passed for release %s.\n' "$RELEASE_ID"
 	exit 0

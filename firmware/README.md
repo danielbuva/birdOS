@@ -5,7 +5,7 @@ power-key and clean-root investigation. Its measurements remain hardware
 evidence, but its old deployment paths are not the active stock-root build.
 See [`ACTIVE_PATH.md`](../ACTIVE_PATH.md) for the current system.
 
-Two scripts in this directory do participate in the active path:
+Three tools in this directory do participate in the active path:
 
 - [`mac-update-rocknix-stock-root-v6.sh`](mac-update-rocknix-stock-root-v6.sh)
   transactionally stages and activates the complete manifest-verified release;
@@ -13,9 +13,13 @@ Two scripts in this directory do participate in the active path:
 - [`mac-migrate-rocknix-ports.sh`](mac-migrate-rocknix-ports.sh) performs the
   explicit, resumable same-volume legacy Ports data migration that must finish
   before deployment. Set `BIRD` and `DATA` when either mounted volume uses a
-  custom Finder label.
+  custom Finder label; and
+- [`migrate-bird-namespace.py`](migrate-bird-namespace.py) owns the Stage 6
+  canonical-namespace prepare, commit, status and rollback transaction. It
+  creates fresh active Bird state, copies only live persistence and verified
+  BIOS data, and leaves the complete legacy tree available to the fallback.
 
-Both operations validate the same removable p1/p6 card identity and serialize
+Card-writing operations validate the same removable p1/p6 card identity and serialize
 through one host-side atomic card lock. This protects concurrent Mac processes;
 it is not a claim of FAT metadata durability across sudden power loss.
 

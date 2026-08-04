@@ -1340,6 +1340,24 @@ catalog paths to `/storage/roms`, and normalized BIOS/Ports/media/persistence
 paths. Supply one migration tool, rollback, interruption recovery and mixed-
 state rejection; do not perform piecemeal compatibility removal.
 
+The accepted namespace-v1 transaction boundary is recorded in
+`kernel/rocknix/canonical-namespace-v1.tsv`. The old layout existed because
+Bird initially overlaid the retained ROCKNIX/muOS card and needed the accepted
+fallback to read its original paths. Namespace v1 creates a fresh active
+`/storage/bird-data/Bird` tree rather than copying the 985 MB historical
+`MUOS/Bird` tree. It copies and seals only favorites/recent state and the BIOS
+library, retains every legacy fallback byte, and can resume after interruption
+between the Bird-state and BIOS same-volume publication renames. Runtime
+activation must remain one later candidate: no active path changes until the
+transaction is host-proven and the card payload is committed.
+
+`/storage/bird-data/MUOS/runtime` remains an explicit pinned external boot
+input until the hermetic-image boundary; it is not relabelled as canonical
+Bird state. The active catalog roots become `/storage/roms` and
+`/storage/media`, Ports remain under `/storage/roms/ports`, and the runtime
+namespace converges on `/run/bird`. A populated canonical destination without
+a matching transaction state is mixed state and must fail closed.
+
 Build the complete image with a digest-pinned container or immutable toolchain,
 fixed partition/filesystem identities, deterministic mkfs seeds/options,
 timestamps, owners, modes, ordering and sparse handling. Require two clean

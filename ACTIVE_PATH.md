@@ -1384,6 +1384,18 @@ failure or waited for the three-second client bound. Two clean boots reached
 usable readiness at 1221 ms. Accept the direct-target dispatch and begin the
 Stage 6 active namespace inventory.
 
+The Stage 6 inventory is now frozen by
+`kernel/rocknix/canonical-namespace-v1.tsv` and its strict validator. The old
+paths existed to bridge Bird onto retained ROCKNIX/muOS storage while keeping
+the established fallback runnable. The migration therefore does not rename or
+duplicate the 985 MB legacy `MUOS/Bird` history. It prepares a fresh canonical
+`/storage/bird-data/Bird` tree, copies only favorites/recent persistence and a
+content-verified BIOS tree, retains the old paths for fallback use, and
+publishes the two canonical trees with resumable same-volume renames. This is
+transaction infrastructure only: the currently accepted runtime still uses
+the legacy namespace until the atomic activation candidate passes its own
+host and physical gate.
+
 ## Launcher visual architecture
 
 The active 720x480 launcher presentation is inspired by Mister Menu's ES-DE

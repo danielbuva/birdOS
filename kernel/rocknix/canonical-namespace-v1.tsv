@@ -1,0 +1,12 @@
+schema	bird-canonical-namespace-v1
+# kind	legacy authority	canonical authority	migration policy
+runtime	/run/muos	/run/bird	replace
+state	/storage/bird-data/MUOS/Bird	/storage/bird-data/Bird	fresh-retain-legacy
+persistence	/storage/.config/bird	/storage/bird-data/Bird/state	copy-files-retain-legacy
+games	/mnt/mmc/ROMS	/storage/roms	direct-catalog
+media	/mnt/mmc/MEDIA	/storage/media	direct-catalog
+bios	/storage/bird-data/MUOS/bios	/storage/roms/bios	copy-verify-retain-legacy
+ports	/mnt/mmc/ROMS/Ports	/storage/roms/ports	direct-provider
+logs	/storage/bird-data/MUOS/Bird/log	/storage/bird-data/Bird/log	fresh-retain-legacy
+boot-state	/storage/bird-data/MUOS/Bird/boot-state	/storage/bird-data/Bird/boot-state	fresh-retain-legacy
+external-runtime	/storage/bird-data/MUOS/runtime	/storage/bird-data/MUOS/runtime	pinned-external-until-image
