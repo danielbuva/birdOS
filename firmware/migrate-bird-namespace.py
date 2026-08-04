@@ -285,8 +285,19 @@ class Migration:
                 if source.is_symlink():
                     fail(f"legacy persistence file is a symlink: {source}")
                 if source.is_file():
-                    shutil.copy2(source, bird / "state" / name)
-        shutil.copytree(self.legacy_bios, bios, copy_function=shutil.copy2)
+                    shutil.copyfile(source, bird / "state" / name)
+        # Only file bytes are part of the fixed BIOS authority. copy2() asks
+        # macOS to preserve xattrs on exFAT, which materializes one AppleDouble
+        # `._` sidecar per file and can nearly double the tree. Do not copy
+        # host metadata into the device's canonical content namespace.
+        shutil.copytree(
+            self.legacy_bios,
+            bios,
+            copy_function=shutil.copyfile,
+            ignore=lambda _directory, names: {
+                name for name in names if name == ".DS_Store" or name.startswith("._")
+            },
+        )
         bios_file_count = sum(1 for path in bios.rglob("*") if path.is_file())
         os.replace(temporary, self.prepare)
         write_record(self.inventory_path, [f"revision\t{REVISION}", *payload_inventory(self.prepare / "Bird", self.prepare / "bios")])

@@ -13,6 +13,8 @@ INFO=$TMP/device-info.tsv
 mkdir -p "$BIRD" "$DATA/MUOS/Bird/log" "$DATA/MUOS/bios/sub" "$DATA/ROMS/bios" "$DATA/.config/bird"
 printf 'bios-a\n' >"$DATA/MUOS/bios/a.bin"
 printf 'bios-b\n' >"$DATA/MUOS/bios/sub/b.bin"
+printf 'host metadata must not become a device file\n' \
+	>"$DATA/MUOS/bios/._host-only"
 printf 'fav\n' >"$DATA/.config/bird/favorites.txt"
 printf 'recent\n' >"$DATA/.config/bird/recent.txt"
 printf 'legacy-log\n' >"$DATA/MUOS/Bird/log/keep.log"
@@ -34,6 +36,7 @@ run() {
 python3 "$VALIDATOR"
 run status | grep -Fxq $'state\tnone'
 run prepare | grep -q 'Prepared and verified 2 BIOS files'
+[ ! -e "$DATA/.bird-namespace-v1/prepare/bios/._host-only" ]
 [ ! -e "$DATA/Bird" ]
 [ "$(cat "$DATA/MUOS/Bird/log/keep.log")" = legacy-log ]
 run prepare | grep -q 'already prepared and verified'
