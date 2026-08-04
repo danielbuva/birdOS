@@ -1290,6 +1290,20 @@ usable readiness than the preceding logged boot. Broad menu, content and
 hardware behavior passed. The same release may now acquire one explicitly
 requested paused-game window; this is measurement only, not a timing claim.
 
+The operator-positioned RetroArch paused-menu window passed on boot
+`24facdce`. Launcher/input/usable readiness was 1215/1215/1218 ms, four
+milliseconds faster at usable readiness on unchanged binaries and therefore
+ordinary boot variation, not an optimization claim. Over 60 seconds RetroArch
+used 53.59 CPU-seconds and 41,748 slices; Sway used 5.55 CPU-seconds. Aggregate
+four-core busy was 28.58 percent,
+with 5,902 context switches/s and 4,624 interrupts/s. RetroArch PSS/USS was
+204,267/194,748 KiB. PipeWire, PulseAudio, WirePlumber and seatd recorded zero
+runtime during the window. Thus the paused core does not imply a quiet UI:
+RetroArch/Sway continue presenting its menu. The instantaneous battery reading
+moved from 440 to 445 mA, but is not calibrated energy. Preserve menu
+responsiveness for now; retain this as a measured battery candidate and acquire
+ordinary audio playback next on identical binaries.
+
 ## Launcher visual architecture
 
 The active 720x480 launcher presentation is inspired by Mister Menu's ES-DE

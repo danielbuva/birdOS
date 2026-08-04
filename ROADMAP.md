@@ -1277,6 +1277,14 @@ The unarmed hardware gate passed with 1219/1220/1222 ms
 launcher/input/usable readiness and broad behavior intact. Keep the binaries
 fixed and acquire the paused-game window next.
 
+The RetroArch paused-menu window passed on boot `24facdce`. RetroArch consumed
+53.59 CPU-seconds and Sway 5.55 CPU-seconds over 60 seconds; aggregate four-core
+busy was 28.58 percent. Audio managers recorded zero runtime. RetroArch PSS/USS
+was 204,267/194,748 KiB. This identifies continuous menu presentation as a real
+paused-state battery candidate, but changing its cadence must preserve active
+menu responsiveness. Acquire ordinary audio playback next before selecting a
+candidate.
+
 ## Stage 6 — Canonical namespace and hermetic image
 
 Atomically migrate `/run/muos` to `/run/bird`, legacy state to Bird state,

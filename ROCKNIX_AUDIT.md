@@ -891,6 +891,15 @@ That unarmed gate passed. Launcher/input/usable readiness was
 1219/1220/1222 ms and the broad physical matrix remained functional. The
 paused-game window may now be armed without rebuilding or changing owners.
 
+The operator-positioned RetroArch paused-menu sample passed on boot
+`24facdce`. RetroArch used 53.59 CPU-seconds and Sway 5.55 CPU-seconds in the
+60-second window, while PipeWire, PulseAudio, WirePlumber and seatd used none.
+Aggregate four-core busy was 28.58 percent and RetroArch PSS/USS was
+204,267/194,748 KiB. This attributes the paused-state cost to continuous
+RetroArch/Sway menu presentation rather than the retained audio managers. It is
+structural evidence, not calibrated energy; preserve responsiveness until an
+independent throttling candidate is measured.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.
