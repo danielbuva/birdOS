@@ -47,6 +47,14 @@ may remain prepared when its latency benefit is material; unrelated residency
 requires a measured energy justification and may be quiesced only inside the
 frozen boot/interaction margins.
 
+The operational tie-break is temporal. While a requested navigation, launch,
+switch, close or menu-return transition is active, responsiveness wins and
+noncritical cleanup is deferred. Once responsive ownership is established and
+no action is pending, battery wins and the system should converge promptly to
+its lowest practical idle state. Small precomputed or cached state may remain
+when its measured common-action benefit justifies idle energy; entire generic
+services do not remain warm by default.
+
 ## Authority
 
 | Responsibility | Canonical source |

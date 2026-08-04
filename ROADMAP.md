@@ -46,6 +46,17 @@ and return is the direction of travel, but not permission to keep unrelated
 work resident without an energy result. Memory and storage savings never
 justify regressions in boot, interaction, or calibrated battery life.
 
+The tie-break is temporal: interaction latency wins during an active user-
+requested transition; battery efficiency wins between transitions. A transition
+begins when Bird accepts the action and ends only when the requested UI/content
+owns responsive input, or when Bird has regained responsive input after close.
+Correctness-critical teardown stays in that interval; unrelated persistence,
+diagnostics and cleanup move asynchronously afterward. In inactivity, converge
+quickly to the lowest practical power state with no pending action, polling or
+unjustified hardware/process residency. This is neither an all-warm nor an all-
+cold policy: retain only small measured state whose common-transition benefit
+justifies its usage frequency, idle energy and memory cost.
+
 Every implementation summary reports in this order: current stage, a short
 reason the previous implementation existed, what changed, lexicographic
 priority effects, boot-log timing, tests, hardware verification and next work.

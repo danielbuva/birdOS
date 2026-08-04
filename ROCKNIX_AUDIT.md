@@ -39,6 +39,13 @@ These are retained compatibility components, not permanent design decisions.
 They stay out of the launcher and may run asynchronously whenever their
 dependencies permit.
 
+Lifetime decisions use the product's temporal tie-break. During launch, close,
+switch and return, minimize synchronous work and defer cleanup after responsive
+ownership whenever safe. During menu/content inactivity, eliminate polling and
+unjustified residency as quickly as practical. A retained manager must justify
+both its measured transition benefit and its measured idle energy; a stopped
+manager must not introduce a noticeable common-action delay.
+
 ## v6.15 subtraction
 
 The following common-autostart scripts are deterministic no-ops for the fixed

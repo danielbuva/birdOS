@@ -42,11 +42,16 @@ grep -Fqx \
 	'ConditionPathExists=/storage/.config/bird/boot-diagnostics.request' \
 	"$REPORT"
 grep -Fqx 'ExecStart=/flash/bird/capture-boot-state.sh' "$REPORT"
+grep -Fqx 'RuntimeMaxSec=45s' "$REPORT"
 grep -Fq 'stock-root-boot-state-$BOOT_ID.log' "$CAPTURE"
 grep -Fq 'cp -f "$LOG" "$LATEST"' "$CAPTURE"
 grep -Fq '/flash/bird/capture-stage5-state.sh' "$CAPTURE"
 grep -Fq 'bird_stage5_snapshot_version=1' "$STAGE5_CAPTURE"
 grep -Fq 'BIRD_STAGE5_LABEL' "$STAGE5_CAPTURE"
+grep -Fq 'stage5-idle-window.request' "$CAPTURE"
+grep -Fq 'BIRD_STAGE5_LABEL=menu-idle-start' "$CAPTURE"
+grep -Fq 'BIRD_STAGE5_LABEL=menu-idle-end' "$CAPTURE"
+grep -Fq 'rm -f "$STAGE5_WINDOW_REQUEST"' "$CAPTURE"
 grep -Fq 'trap cleanup EXIT' "$CAPTURE"
 grep -Fq "trap 'exit 1' HUP INT TERM" "$CAPTURE"
 

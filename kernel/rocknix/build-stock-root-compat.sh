@@ -641,7 +641,7 @@ grep -q '^ConditionPathExists=/storage/.config/bird/boot-diagnostics.request$' \
 	fail 'ordinary-boot snapshot gate missing'
 grep -q '^Type=simple$' \
 	"$OUTPUT/card/bird/rocknix-report-stats.service" || fail 'nonblocking snapshot missing'
-grep -q '^RuntimeMaxSec=20s$' \
+grep -q '^RuntimeMaxSec=45s$' \
 	"$OUTPUT/card/bird/rocknix-report-stats.service" || fail 'bounded snapshot runtime missing'
 grep -q '^ExecStart=/flash/bird/capture-boot-state.sh$' \
 	"$OUTPUT/card/bird/rocknix-report-stats.service" || \
@@ -654,6 +654,15 @@ grep -q 'stock-root-boot-state-\$BOOT_ID.log' \
 grep -q '/flash/bird/capture-stage5-state.sh' \
 	"$OUTPUT/card/bird/capture-boot-state.sh" || \
 	fail 'requested Stage 5 snapshot missing'
+grep -q '^STAGE5_WINDOW_REQUEST=/storage/.config/bird/stage5-idle-window.request$' \
+	"$OUTPUT/card/bird/capture-boot-state.sh" || \
+	fail 'one-shot Stage 5 window request missing'
+grep -q 'BIRD_STAGE5_LABEL=menu-idle-start' \
+	"$OUTPUT/card/bird/capture-boot-state.sh" || \
+	fail 'Stage 5 idle start sample missing'
+grep -q 'BIRD_STAGE5_LABEL=menu-idle-end' \
+	"$OUTPUT/card/bird/capture-boot-state.sh" || \
+	fail 'Stage 5 idle end sample missing'
 grep -Fq 'bird_stage5_snapshot_version=1 label=%s' \
 	"$OUTPUT/card/bird/capture-stage5-state.sh" || \
 	fail 'Stage 5 snapshot revision missing'

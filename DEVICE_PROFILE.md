@@ -52,6 +52,14 @@ decision balances calibrated idle energy against a frozen interaction margin.
 Memory and storage are fourth and may be reduced only when boot, interaction,
 and battery remain non-inferior.
 
+During an accepted user action, responsiveness wins until the destination—or
+the returned Bird menu—has working input. Cleanup not required for ownership or
+correctness continues asynchronously after that boundary. Between actions,
+power wins: the device should rapidly become quiet, with no polling, avoidable
+hardware activity or unjustified warm process. Residency, caching, suspension
+and termination are fixed measured choices based on launch/close cost, usage
+frequency, idle energy and memory rather than a universal warm/cold rule.
+
 - Language: English only.
 - Startup destination: the custom launcher's four-item main menu.
 - Network: completely off at boot; loaded only for the explicit PortMaster
