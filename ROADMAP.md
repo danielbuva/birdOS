@@ -1081,6 +1081,19 @@ sealed in the private GitHub archive. The next device cycle attributes udev
 alone: verify hotplug reactivation and compare Sway/provider timing while boot
 must remain inside the accepted range.
 
+The returned isolated cycle recorded 1215/1216/1219 ms for launcher, input and
+usable readiness, a fast single sample without a distribution claim. Warm
+seatd restored stable session-to-Sway-ready median to 470 ms. The total
+session-to-provider boundary remained 690--730 ms instead of roughly 630 ms,
+and the extra 60--70 ms is in the services interval where Sway/providers
+reactivate udevd. Reject udev-idle under the lexicographic interaction gate and
+restore fixed-autostart v2. Stage 4 manager closure therefore retains warm
+seatd, udevd, PipeWire and bounded volatile journald; logind remains removed
+and networking remains PortMaster-only. HDMI and Bluetooth remain unchanged
+until their explicit product decision. After the warm-manager restoration
+passes physically, proceed to Stage 5 measurement and one attributable idle-
+cost candidate at a time.
+
 ## Stage 5 — Battery, suspend and memory closure
 
 Measure calibrated energy, wakeups, IRQs and CPU residency for short-label menu

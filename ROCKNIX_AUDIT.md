@@ -728,6 +728,17 @@ activation sockets retained; seatd again starts through the normal graphical
 path and the explicit content-side join remains as an idempotent early-launch
 guard.
 
+The isolated RG34XX-SP cycle rejects that remaining experiment. Six stable
+sessions reached Sway-ready in a 470 ms median after warm seatd was restored,
+but session-to-provider remained 690--730 ms versus roughly 630 ms with warm
+managers. The delay is concentrated after Sway readiness while udev consumers
+prepare, showing that socket activation moved udevd startup into content launch.
+Restore fixed-autostart v2 and retain udevd through menu idle. This deliberately
+accepts the previously observed manager memory in favor of priority-two content
+latency. The retained audit is closed with warm udevd, warm seatd, warm audio,
+bounded volatile journald, no logind, PortMaster-only networking, and no HDMI or
+Bluetooth removal decision.
+
 The v6.21 physical gate passed those UI and brightness contracts. Four MSX
 games then proved a single provider fault: storage, input, audio and the full
 blueMSX BIOS tree initialized before the pinned `bluemsx_libretro.so` segfaulted.
@@ -818,20 +829,17 @@ The v6.15 audit found the following generic work and defects. Only items marked
 
 ## Next active order
 
-1. Complete the fixed-application-profile physical gate while retaining the
-   accepted fixed-housekeeping checkpoint as previous.
-2. Audit udev coldplug only after a pinned precompiled hwdb and complete live
-   consumer closure exist.
-3. Preserve HDMI and Bluetooth until their explicit product decision.
-4. Audit udev coldplug output and let its manager exit if no retained feature
-   needs runtime hotplug; keep fixed hardware initialization separate from
-   Bird.
-5. Audit logind versus seatd and remaining idle wakeups; journald removal is a
-   later independent candidate now that its volatile policy is explicit.
-6. Remove the muOS-to-ROCKNIX compatibility namespace as an explicit migration:
+1. Physically restore the warm-manager checkpoint after rejecting both
+   on-demand seatd and post-coldplug udevd exit for content latency.
+2. Preserve HDMI and Bluetooth until their explicit product decision.
+3. Measure retained seatd, udevd, PipeWire and volatile journald PSS, wakeups
+   and calibrated energy before proposing another lifetime change.
+4. Keep logind removed and networking PortMaster-only while completing the
+   Stage 5 idle/content/suspend power matrix.
+5. Remove the muOS-to-ROCKNIX compatibility namespace as an explicit migration:
    canonical `/storage/roms`, `/run/bird`, Bird-owned data/config directories,
    native BIOS/Ports paths and no launcher-time path rewriting.
-7. Re-measure menu, storage and application-contract boundaries before kernel
+6. Re-measure menu, storage and application-contract boundaries before kernel
    or U-Boot subtraction.
 
 ## Deliberately deferred

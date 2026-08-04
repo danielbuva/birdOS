@@ -1057,6 +1057,21 @@ manifest-owned bytes by 1,459; the compressed overlay changes by two bytes to
 615,256. No boot-timing improvement is expected because warm seatd remains
 post-usable graphical work and launcher bytes are unchanged.
 
+The returned udev-isolation cycle resolves the combined timing attribution.
+Its cold boot recorded launcher start at 1215 ms, validated input at 1216 ms
+and usable readiness at 1219 ms; this is a fast non-regression sample, not a
+distribution claim. With warm seatd restored, six stable content sessions
+returned to a 470 ms median from session start through Sway readiness. The
+later services-ready/provider boundary remained 690--730 ms from session start,
+roughly 60--70 ms above the warm-manager reference. Sway and providers are
+udev consumers, so stopping udevd after coldplug displaced daemon activation
+into the A-button path rather than eliminating it. The udev-idle candidate is
+rejected and the fixed coordinator returns to revision v2 with udevd warm.
+The retained-userspace audit now intentionally keeps warm seatd and udevd for
+priority-two interaction, keeps volatile journald for recovery, keeps audio
+warm, removes logind, and gates networking to PortMaster. HDMI and Bluetooth
+remain undecided and unchanged.
+
 ## Launcher visual architecture
 
 The active 720x480 launcher presentation is inspired by Mister Menu's ES-DE

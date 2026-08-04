@@ -4,7 +4,7 @@
 # upstream responsibility set are detected, but release boots do not rescan or
 # launch scripts which this fixed profile has already proven unnecessary.
 
-BIRD_AUTOSTART_REVISION=bird-fixed-autostart-v3
+BIRD_AUTOSTART_REVISION=bird-fixed-autostart-v2
 FLASH_ROOT=${BIRD_FLASH_ROOT:-/flash/bird}
 AUTOSTART_ROOT=${BIRD_AUTOSTART_ROOT:-/usr/lib/autostart}
 CUSTOM_ROOT=${BIRD_CUSTOM_ROOT:-/storage/.config/autostart}
@@ -45,7 +45,6 @@ run_step audio "$AUTOSTART_ROOT/common/050-audio"
 run_step turbo-mode "$FLASH_ROOT/bird-fixed-turbo.sh"
 run_step fixed-sway "$FLASH_ROOT/bird-fixed-sway.sh"
 run_step application-ready "$FLASH_ROOT/999-export"
-run_step udev-idle "$FLASH_ROOT/bird-udev-idle.sh"
 
 # Preserve the accepted optional user hook without scanning generic platform,
 # device, or common directories. The pinned card has no custom hook today.
