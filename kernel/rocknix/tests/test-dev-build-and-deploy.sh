@@ -575,6 +575,68 @@ grep -q '^required-host-tests-current[[:space:]]*yes$' "$CASE_ROOT/ready.status"
 grep -q '^ready-for-production-build[[:space:]]*yes$' "$CASE_ROOT/ready.status"
 pass 'first changed invocation is all-local and produces a verified dev-current'
 
+new_case catalog-metadata-ignore
+mkdir -p "$DATA/ROMS/GBA" "$DATA/MEDIA/WATCH"
+initialize_dev
+DEV=$BIRD/bird-releases/dev-current
+DEV_BEFORE=$(tree_digest "$DEV")
+STATE_BEFORE=$(sha256 "$BIRD/bird-dev/state.tsv")
+SELECTOR_BEFORE=$(sha256 "$BIRD/extlinux/extlinux.conf")
+SELECTOR_INODE_BEFORE=$(stat -f '%i' "$BIRD/extlinux/extlinux.conf")
+mkdir -p "$DATA/ROMS/GBA/.hidden" "$DATA/ROMS/GBA/ImGs" \
+	"$DATA/MEDIA/WATCH/IMAGES"
+printf 'apple metadata\n' >"$DATA/ROMS/GBA/._Game.gba"
+printf 'finder metadata\n' >"$DATA/ROMS/.DS_Store"
+printf 'hidden game\n' >"$DATA/ROMS/GBA/.hidden/Secret.gba"
+printf 'artwork bytes\n' >"$DATA/ROMS/GBA/ImGs/Cover.gba"
+printf 'media artwork bytes\n' >"$DATA/MEDIA/WATCH/IMAGES/Poster.mp4"
+run_dev --status >"$CASE_ROOT/ignored.status"
+grep -q '^changed-components[[:space:]]*-$' "$CASE_ROOT/ignored.status"
+run_dev --changed >"$CASE_ROOT/ignored.out"
+grep -q '^No supported payload component changed; card release was not rewritten or reactivated\.$' \
+	"$CASE_ROOT/ignored.out"
+[ "$(tree_digest "$DEV")" = "$DEV_BEFORE" ]
+[ "$(sha256 "$BIRD/bird-dev/state.tsv")" = "$STATE_BEFORE" ]
+[ "$(sha256 "$BIRD/extlinux/extlinux.conf")" = "$SELECTOR_BEFORE" ]
+[ "$(stat -f '%i' "$BIRD/extlinux/extlinux.conf")" = "$SELECTOR_INODE_BEFORE" ]
+printf 'visible game\n' >"$DATA/ROMS/GBA/Visible.gba"
+run_dev --status >"$CASE_ROOT/visible.status"
+grep -q '^changed-components[[:space:]]*catalog$' "$CASE_ROOT/visible.status"
+run_dev --changed >"$CASE_ROOT/visible.out"
+grep -q '^Rebuilt groups: catalog, early-initramfs, launcher$' "$CASE_ROOT/visible.out"
+assert_base_and_fallback_unchanged
+pass 'catalog fingerprint ignores generator-excluded metadata and artwork only'
+
+new_case cleanup-pending-readiness
+initialize_dev
+run_dev --status >"$CASE_ROOT/ready.status"
+grep -q '^ready-for-production-build[[:space:]]*yes$' "$CASE_ROOT/ready.status"
+printf 'interrupted publication\n' \
+	>"$BIRD/.bird-dev-cleanup.tsv.dev-new.orphan"
+run_dev --status >"$CASE_ROOT/publication.status"
+grep -q '^cleanup-authority-pending[[:space:]]*no$' \
+	"$CASE_ROOT/publication.status"
+grep -q '^cleanup-publication-pending[[:space:]]*yes$' \
+	"$CASE_ROOT/publication.status"
+grep -q '^ready-for-production-build[[:space:]]*no$' \
+	"$CASE_ROOT/publication.status"
+rm "$BIRD/.bird-dev-cleanup.tsv.dev-new.orphan"
+if run_dev_failpoint cleanup-after-authority-publication --clean \
+		>"$CASE_ROOT/cleanup.out" 2>"$CASE_ROOT/cleanup.err"; then
+	fail 'cleanup readiness setup did not publish its durable authority'
+fi
+run_dev --status >"$CASE_ROOT/authority.status"
+grep -q '^cleanup-authority-pending[[:space:]]*yes$' \
+	"$CASE_ROOT/authority.status"
+grep -q '^cleanup-publication-pending[[:space:]]*no$' \
+	"$CASE_ROOT/authority.status"
+grep -q '^ready-for-production-build[[:space:]]*no$' \
+	"$CASE_ROOT/authority.status"
+run_dev --recover-production >"$CASE_ROOT/recover.out"
+run_dev --clean-recovered >"$CASE_ROOT/clean-recovered.out"
+assert_base_and_fallback_unchanged
+pass 'status never reports production readiness while cleanup is pending'
+
 new_case profile-status
 run_dev --changed --profile >"$CASE_ROOT/profile-build.out"
 run_dev --status --profile >"$CASE_ROOT/profile.status"

@@ -2,15 +2,24 @@
 
 This document is the authority for the code that builds, installs and runs the
 current birdOS system. The active implementation path is **stock-root v6.23**.
-Commit `79b6e3e03771f2787622a3e4f6f9d8f129b7281f` is the operator-accepted source
-and behavior baseline. The accepted immutable binary fallback is release
+The current human promotion record binds clean public source
+`af83ca945815676d6dabc030ad568c1e5fbb62d2`, immutable release
+`v6.23-20260808-214626`, deploy-manifest digest
+`2a8d51a52e9277e599f6e7a8401513c6c8a2e8edf1e75118360c44a3c5d3eed8`,
+device-contract digest
+`1664a3778abcd3687865a82fd28bba5b468f6c3c7e9a46bf90f7c3acb1e08162`
+and generated-catalog digest
+`6ecb9512dfdcb4c62483cc13fb315e5e39fd7556b29f54e7a9f82ac1b730283d`.
+The complete host gate and broad RG34XX-SP behavior gate passed on 2026-08-08.
+That broad functional result does not establish a new boot-time or power
+distribution. The separately preserved immutable recovery fallback is release
 `v6.23-20260731-054816`, published as `stable-v6.23-20260731-054816`; its
 canonical manifest digest is
 `5f95153bf46239a5e178fde28924f01c7fe586be182562f9bd9f33cf13da02ba`.
 That older release manifest honestly records its own source as commit
 `19ca0bbac47c037a868dac5500aa49c96feeb2f2` plus dirty-state digest
 `d0c3a1d805205cb2bb94b95e4c3d4fb89145ca9c1f693ed12079aa70860792b0`;
-it is not falsely relabelled as a clean build of `79b6e3e...`. A successor
+it is not falsely relabelled as a clean build of the current source. A successor
 becomes the optimization baseline only when its exact clean source, release,
 manifest, contract and catalogue tuple passes the host and physical gates.
 
@@ -19,25 +28,20 @@ display geometry and hardware policy are deliberate. Older muOS stages,
 source-kernel challengers and clean-root experiments remain useful evidence,
 but they are not alternate active implementations.
 
-The card currently selects the Stage 5 power-state measurement candidate
-`v6.23-stage5-states-e8cd4ef`, built from clean public source
-`e8cd4ef2b5546bd158454bccaf0db951298a3237`. Its previous selector is the
-physically accepted diagnostic-slot implementation
-`v6.23-stage5-slot-d0c6e4e`. The selected release's canonical manifest
-digest is
-`9e62d8ffabe2d2091a5b832aca4f53b77e90c1a3cd450c247efc02774c299a18`,
-and deployment verified all 69 manifest-owned files. The device-contract digest is
-`eca6a008947c927ca1b47efc275f7e3bde1a94735223837a353db7db2acf0b40`
-and the generated-catalog digest is
-`7e29e491bb43191ca9ae6c18bd566b6ba0c984bf43d1d0103eddd6e534306e62`.
+The card currently selects `v6.23-20260808-214626`; its previous selector is
+`v6.23-20260808-124816`. Stage 6 namespace v1 is active: the runtime uses
+`/run/bird`, `/storage/roms`, `/storage/media` and
+`/storage/bird-data/Bird`. The corrected canonical provider map and broad
+RetroArch, Flycast, PPSSPP, DraStic, OpenBOR, Ports, media, networking,
+persistence and hardware gate passed. Legacy namespace bytes remain only for
+the separately bootable fallback, not as active-path compatibility rewrites.
 The immutable-dispatcher, immutable-supervisor, first-frame-preparation and
 boot-snapshot, complete-toolset, content-shell, fixed-autostart, fixed-session,
 fixed-housekeeping, fixed-application-profile, fixed-performance and warm-
 manager batches passed their RG34XX-SP gates. The manager experiments proved
 that on-demand seatd and post-coldplug udevd exit move work into content launch,
 so both remain warm. HDMI and Bluetooth remain unchanged; retention or removal
-of either is an explicit later product decision. None of these tuples
-replaces the broader source/behavior baseline or immutable fallback named above.
+of either is an explicit later product decision.
 
 Optimization is lexicographic: honest usable menu first; navigation plus every
 launch, close and interactive return second; calibrated battery life third;
@@ -135,15 +139,22 @@ production invariants verify. Production refuses that authority, interrupted
 workflow and its supported/full-release boundary are authoritative in
 [`DEV_WORKFLOW.md`](DEV_WORKFLOW.md).
 
+The fast path is now in stabilization. Do not add recovery states or safety
+machinery for hypothetical residue. Use `--changed` and `--all-local`, record
+actual duration, rebuild scope, output clarity, rollback/cleanup friction and
+observed failures, and change hardening only from that evidence or a direct
+production/data-loss risk. The current bounded exceptions are ordinary-path
+truthfulness and false-rebuild fixes.
+
 Committed changes to the production builder or updater cannot be validated by
 deriving `dev-current` from an older production manifest: the first development
 build intentionally stops before card writes until a clean canonical release
-from the current commit or a descendant has passed its own RG34XX-SP gate. The
-deployed immutable candidate `v6.23-20260808-124816`, built from
-`2dd4a20ca359d8b2b3544519ea900f5b5b090ff2`, satisfies that source requirement
-through that commit once physically accepted. It does not cover a later
-committed full-release-only change and is not an accepted baseline merely
-because it is installed.
+from the current commit or a descendant has passed its own RG34XX-SP gate.
+Release `v6.23-20260808-214626`, built from
+`af83ca945815676d6dabc030ad568c1e5fbb62d2`, passed that gate and is the current
+eligible `dev-current` base. A later committed full-release-only change creates
+a new transition; the workflow does not add mandatory promotion-record
+machinery during stabilization.
 
 The normal macOS entry point is `./build-and-deploy.sh --release`, or
 `./build-and-deploy.sh --profile` for lightweight launcher counters. It chooses
@@ -255,13 +266,12 @@ published scope without rewriting shared history. The commit did not make
 
 1. **Bootloader:** extlinux selects the active release's versioned unchanged
    ROCKNIX kernel and DTB plus its `bird-initramfs.cpio.gz`, and identifies that
-   release with the `bird_release` command-line parameter. The current Stage 1
-   candidate maps fbcon away from the fixed panel and disables the VT cursor
-   without enabling the serial console on the production entry, so Sway teardown
+   release with the `bird_release` command-line parameter. The accepted
+   production entry maps fbcon away from the fixed panel and disables the VT
+   cursor without enabling the serial console, so Sway teardown
    cannot clear the launcher-owned framebuffer or expose a console cursor before
    the replacement launcher takes ownership. The previous release selector and
-   fixed fallback retain `console=ttyS0,115200` for diagnostics and recovery
-   until this candidate completes its physical gate.
+   fixed fallback retain `console=ttyS0,115200` for diagnostics and recovery.
 2. **Early overlay:** the overlaid ROCKNIX init calls `bird-early.sh start`
    after the special filesystems exist. It creates the storage event channel,
    loads the exact H700 input module and starts the static framebuffer launcher.
@@ -1442,11 +1452,10 @@ duplicate the 985 MB legacy `MUOS/Bird` history. It prepares a fresh canonical
 `/storage/bird-data/Bird` tree, copies only favorites/recent persistence and a
 content-verified BIOS tree, retains the old paths for fallback use, and
 publishes the two canonical trees with resumable same-volume renames. This is
-transaction infrastructure only: the currently accepted runtime still uses
-the legacy namespace until the atomic activation candidate passes its own
-host and physical gate.
+the accepted transaction boundary. The active runtime now uses the canonical
+namespace; the legacy trees remain untouched solely for fallback boot.
 
-The pending atomic activation uses `/run/bird` for the early launcher and all
+The accepted atomic activation uses `/run/bird` for the early launcher and all
 handoff markers, `/storage/bird-data/Bird/state` for favorites and recents,
 `/storage/bird-data/Bird/log` for diagnostics, and direct catalog paths below
 `/storage/roms` and `/storage/media`. It removes the launch-time
@@ -1454,8 +1463,7 @@ handoff markers, `/storage/bird-data/Bird/state` for favorites and recents,
 The launcher opens `/sysroot/storage` once at root-ready (or `/storage` when
 started in final root), preserving one storage descriptor across the mount
 transition. The accepted fallback remains untouched on its legacy paths. This
-candidate is not accepted until its migrated card and new immutable release
-pass the RG34XX-SP gate.
+boundary passed its migrated-card and immutable-release RG34XX-SP gate.
 
 The first namespace-v1 physical screen proved the mount and direct catalog
 paths, plus Ports, media, books, PortMaster, networking and new-state
@@ -1466,8 +1474,9 @@ returned before `runemu.sh`; no ROM read or provider process was attempted.
 The correction matches only the canonical fixed paths and adds a host test for
 all 27 provider tuples plus legacy/malformed rejection. Recovering favorites
 from the retired namespace is explicitly waived; canonical favorites created
-after migration already persist. The corrected release still requires the
-emulator and full physical gate before namespace-v1 is accepted.
+after migration already persist. Commit `74e5a00` supplied that correction;
+the broad gate on `v6.23-20260808-214626` passed the emulator and complete
+functional matrix, so namespace v1 is accepted.
 
 ## Launcher visual architecture
 
@@ -1573,7 +1582,9 @@ Automatic boot recovery and the launcher's B button are unrelated:
 The accepted v6.23 baseline includes early menu/input, asynchronous fixed storage,
 cached games and media, Favorites, exact-page return, supported game/media
 dispatch, system volume and brightness, charging display, suspend/wake,
-global foreground exit and shutdown. The v6.23 hardening pass adds deployment,
+global foreground exit and shutdown. It also includes the canonical
+`/run/bird`, `/storage/roms`, `/storage/media` and Bird-owned persistence
+namespace with direct fixed provider dispatch. The v6.23 hardening pass adds deployment,
 fallback, readiness, supervision and persistence correctness around those
 behaviors. The physical gate also accepts movie resume, internal-speaker audio,
 ROCKNIX volume/brightness notifications, Y-button Favorites, native Menu+Start
@@ -1593,11 +1604,19 @@ not part of the active path.
 
 Kernel trimming, U-Boot timing, earlier LED/display assertion, emulator and
 PortMaster performance, remaining provider cold-load work, final boot effects
-and complete shim removal remain roadmap work. Their absence is not evidence
-that the active stock-root path is incomplete.
+and the hermetic-image/fallback-only legacy boundary remain roadmap work. Their
+absence is not evidence that the active stock-root path is incomplete.
 
 ## Accepted v6.23 evidence
 
+The accepted human promotion binding is clean source
+`af83ca945815676d6dabc030ad568c1e5fbb62d2`, release
+`v6.23-20260808-214626`, manifest
+`2a8d51a52e9277e599f6e7a8401513c6c8a2e8edf1e75118360c44a3c5d3eed8`,
+device contract
+`1664a3778abcd3687865a82fd28bba5b468f6c3c7e9a46bf90f7c3acb1e08162`
+and catalogue
+`6ecb9512dfdcb4c62483cc13fb315e5e39fd7556b29f54e7a9f82ac1b730283d`.
 The v6.23 baseline completed these gates:
 
 1. Build from the pinned inputs and verify every release file through

@@ -42,6 +42,7 @@ CANONICAL_BUILD_TOOLS = {
     "LLD": "/opt/homebrew/opt/lld/bin/ld.lld",
     "READELF": "/opt/homebrew/opt/llvm/bin/llvm-readelf",
 }
+CATALOG_IGNORED_DIRECTORY_NAMES = frozenset(("imgs", "images"))
 # This exact canonical-builder byte sequence is the reviewed shared-compiler
 # extraction introduced with the dev workflow. It is permitted to bootstrap an
 # uncommitted checkout; any later canonical-builder edit remains full-release
@@ -1335,6 +1336,16 @@ def build_toolchain_fingerprint(host_test: bool) -> str:
     return sha256_bytes(("\n".join(identities) + "\n").encode())
 
 
+def catalog_path_is_hidden_or_artwork(relative: pathlib.Path) -> bool:
+    """Mirror the canonical generator's macOS-metadata/artwork exclusion."""
+    return any(
+        part.startswith(".")
+        or part.startswith("._")
+        or part.casefold() in CATALOG_IGNORED_DIRECTORY_NAMES
+        for part in relative.parts
+    )
+
+
 def catalog_card_inventory(data: pathlib.Path) -> str:
     digest = hashlib.sha256()
     for name in ("ROMS", "MEDIA"):
@@ -1342,6 +1353,9 @@ def catalog_card_inventory(data: pathlib.Path) -> str:
         if not root.is_dir():
             continue
         for path in sorted(root.rglob("*")):
+            relative_to_catalog_root = path.relative_to(root)
+            if catalog_path_is_hidden_or_artwork(relative_to_catalog_root):
+                continue
             relative = path.relative_to(data).as_posix()
             info = path.lstat()
             if stat.S_ISREG(info.st_mode):
@@ -2608,9 +2622,16 @@ class Workflow:
                 kind = "malformed-or-incomplete"
         print(f"selector-kind\t{kind}")
         print(f"selector-release\t{selected or '-'}")
+        cleanup_authority_pending = self.cleanup_authority() is not None
+        cleanup_publication_pending = bool(self.stale_cleanup_authority_temporaries())
+        cleanup_pending = cleanup_authority_pending or cleanup_publication_pending
         print(
             "cleanup-authority-pending\t"
-            + ("yes" if self.cleanup_authority() is not None else "no")
+            + ("yes" if cleanup_authority_pending else "no")
+        )
+        print(
+            "cleanup-publication-pending\t"
+            + ("yes" if cleanup_publication_pending else "no")
         )
         print(f"base-production-release\t{state.base_release if state else '-'}")
         print(f"dev-current-exists\t{'yes' if self.dev_root.exists() else 'no'}")
@@ -2702,6 +2723,7 @@ class Workflow:
             and not different
             and not unsupported
             and rebase == "no"
+            and not cleanup_pending
         )
         legacy_readiness = state is not None and state.last_build_kind == "unknown"
         print(f"last-build-kind\t{state.last_build_kind if state else '-'}")

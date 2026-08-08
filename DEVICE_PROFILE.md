@@ -3,14 +3,21 @@
 This is the build contract for the target console. Values here are deliberate
 product decisions, not runtime options.
 
-Commit `79b6e3e03771f2787622a3e4f6f9d8f129b7281f` is the operator-accepted source
-and behavior baseline. The accepted binary fallback is immutable release
-`v6.23-20260731-054816`, whose canonical deploy-manifest digest is
+The operator-accepted source and behavior binding is clean commit
+`af83ca945815676d6dabc030ad568c1e5fbb62d2`, immutable release
+`v6.23-20260808-214626`, deploy-manifest digest
+`2a8d51a52e9277e599f6e7a8401513c6c8a2e8edf1e75118360c44a3c5d3eed8`,
+device-contract digest
+`1664a3778abcd3687865a82fd28bba5b468f6c3c7e9a46bf90f7c3acb1e08162`
+and catalog digest
+`6ecb9512dfdcb4c62483cc13fb315e5e39fd7556b29f54e7a9f82ac1b730283d`.
+The separately preserved immutable recovery fallback remains
+`v6.23-20260731-054816` with manifest digest
 `5f95153bf46239a5e178fde28924f01c7fe586be182562f9bd9f33cf13da02ba`.
-Its manifest retains its actual older dirty source identity rather than
-claiming a clean `79b6e3e...` provenance. `ROADMAP.md` owns successor promotion
-status. This document owns human policy; `bird-device-contract.tsv` owns the
-machine-readable hardware subset without replacing this experience contract.
+Its manifest retains its actual older dirty source identity. `ROADMAP.md` owns
+successor promotion status. This document owns human policy;
+`bird-device-contract.tsv` owns the machine-readable hardware subset without
+replacing this experience contract.
 
 ## Fixed hardware
 
@@ -23,9 +30,9 @@ machine-readable hardware subset without replacing this experience contract.
   and force-feedback closure. Retained hardware captures establish the full
   force-feedback bitmap as `107030000 0`.
 - Primary storage: the OS card's content partition, retained by the early
-  launcher at `/storage/bird-data` and exported to applications through the
-  fixed `/storage/roms` view. `/mnt/mmc` is only the launcher's compiled
-  catalogue namespace; the runner translates it before dispatch.
+  launcher at `/storage/bird-data`. The active catalog and providers use
+  `/storage/roms` and `/storage/media` directly; mutable Bird state lives under
+  `/storage/bird-data/Bird`. No active launcher-time path translation remains.
 - Offline boot targets the internal panel and built-in controls. Alternate
   boards, touchscreens and external-controller setup remain outside this
   product.
@@ -71,7 +78,7 @@ frequency, idle energy and memory rather than a universal warm/cold rule.
   exact readiness, supervisor, content, emergency and shutdown records but do
   not run the broad post-autostart probe set. A full snapshot is explicitly
   armed by persistent marker
-  `/storage/bird-data/MUOS/Bird/boot-diagnostics.request`,
+  `/storage/bird-data/Bird/boot-diagnostics.request`,
   publishes under its own boot ID and refreshes
   `stock-root-boot-state-latest.log`; remove the marker to disarm subsequent
   captures.

@@ -37,6 +37,10 @@ Active development workflow:
   production base, the first development build must stop. Build and physically
   accept a clean canonical release from the current commit (or a descendant)
   before deriving `dev-current`; never bypass that provenance boundary.
+- The fast workflow is in stabilization. Prefer real `--changed`/`--all-local`
+  evidence over speculative recovery states. Add hardening only for an observed
+  recurring failure, an ordinary false rebuild or misleading result, or a
+  direct production/data-loss risk.
 
 Historical muOS launchers, S03birdlauncher, old clean-root experiments, committed launcher objects, and old installers are not the active implementation unless an active build script explicitly references them.
 

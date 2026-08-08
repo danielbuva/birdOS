@@ -6,6 +6,17 @@ every generic boot decision. This audit separates the small menu-critical
 closure from the later application-compatibility closure and replaces generic
 discovery only after its consumers are proven.
 
+The current accepted stock-root binding is clean source
+`af83ca945815676d6dabc030ad568c1e5fbb62d2`, immutable release
+`v6.23-20260808-214626`, deploy-manifest digest
+`2a8d51a52e9277e599f6e7a8401513c6c8a2e8edf1e75118360c44a3c5d3eed8`,
+device-contract digest
+`1664a3778abcd3687865a82fd28bba5b468f6c3c7e9a46bf90f7c3acb1e08162`
+and catalog digest
+`6ecb9512dfdcb4c62483cc13fb315e5e39fd7556b29f54e7a9f82ac1b730283d`.
+Its broad RG34XX-SP functional gate passed on 2026-08-08. This acceptance does
+not establish a new boot-time, latency or power distribution.
+
 ## Measured boundaries
 
 The last physically accepted v6.14 boot recorded:
@@ -78,11 +89,11 @@ The power worker's low-battery red-status threshold is now exactly 41 percent.
 Charging remains kernel/PMIC-owned and the green LED remains the ordinary
 power indicator.
 
-## v6.15 result through the accepted `79b6e3e...` behavior baseline
+## Historical v6.15 result through the `79b6e3e...` behavior checkpoint
 
-The operator accepts public commit
-`79b6e3e03771f2787622a3e4f6f9d8f129b7281f` as the current source and behavior
-baseline. Immutable fallback release `v6.23-20260731-054816` remains separately
+The operator previously accepted public commit
+`79b6e3e03771f2787622a3e4f6f9d8f129b7281f` as a source and behavior
+checkpoint. Immutable fallback release `v6.23-20260731-054816` remains separately
 identified by its actual older dirty source in its manifest. The audit below is
 behavior evidence; it does not rewrite that binary provenance.
 
@@ -996,8 +1007,8 @@ systemd scope whose invocation identity is recorded for the fixed global-exit
 helper, while all runner exits reconcile Sway and optional networking. The same
 pass adds the controls exec handshake, one catalogue/favorites path limit,
 auxiliary-descriptor recovery and an atomic shutdown checkpoint. This is the
-accepted repository and hardware baseline. The host fault-injection suite and
-complete RG34XX-SP functional gate passed on 2026-07-26 with canonical
+historical July 26 repository and hardware foundation. The host fault-injection
+suite and complete RG34XX-SP functional gate passed on 2026-07-26 with canonical
 deploy-manifest digest
 `e441f9c2755173353a9d29969807c2a05411240b7e9d2a1d18ed099d3c91b4d2`.
 
@@ -1008,6 +1019,15 @@ and the translated Stardew launcher; fMSX; standalone PSP; N64 audio; DraStic
 without striped output; and OpenBOR. Repeated boot, launcher recovery, content
 return, brightness, low-level lid wake and shutdown checks completed without
 the reported reboot regression.
+
+Namespace v1 supersedes the active-path namespace described by that historical
+foundation. Activation first proved canonical `/run/bird`, `/storage/roms`,
+`/storage/media` and `/storage/bird-data/Bird` mounts, but exposed an exact
+provider-map mismatch against the retired uppercase ROM namespace. The bounded
+repair changed only those fixed provider tuples. Release
+`v6.23-20260808-214626` then passed RetroArch, Flycast, PPSSPP, DraStic,
+OpenBOR, Ports, media, books, PortMaster, networking, new favorites persistence
+and the broad hardware matrix. Legacy paths now remain fallback-only.
 
 ## Audit findings and current disposition
 
@@ -1048,17 +1068,17 @@ The v6.15 audit found the following generic work and defects. Only items marked
 
 ## Next active order
 
-1. Physically restore the warm-manager checkpoint after rejecting both
-   on-demand seatd and post-coldplug udevd exit for content latency.
-2. Preserve HDMI and Bluetooth until their explicit product decision.
-3. Measure retained seatd, udevd, PipeWire and volatile journald PSS, wakeups
-   and calibrated energy before proposing another lifetime change.
-4. Keep logind removed and networking PortMaster-only while completing the
-   Stage 5 idle/content/suspend power matrix.
-5. Remove the muOS-to-ROCKNIX compatibility namespace as an explicit migration:
-   canonical `/storage/roms`, `/run/bird`, Bird-owned data/config directories,
-   native BIOS/Ports paths and no launcher-time path rewriting.
-6. Re-measure menu, storage and application-contract boundaries before kernel
+1. Stabilize the mutable fast-development path through real `--changed` and
+   `--all-local` use. Record duration, rebuild scope, output clarity and actual
+   cleanup/rollback failures; add safety states only from observed evidence or
+   a direct production/data-loss risk.
+2. Preserve the accepted warm seatd/udevd choice, HDMI and Bluetooth until a
+   measured or explicit product decision changes them.
+3. Continue Stage 6 with the hermetic deterministic-image boundary while the
+   transactional release system remains the development and recovery path.
+4. Complete calibrated retained-service, content, idle and suspend power
+   measurements before another lifetime change.
+5. Re-measure menu, storage and application-contract boundaries before kernel
    or U-Boot subtraction.
 
 ## Deliberately deferred

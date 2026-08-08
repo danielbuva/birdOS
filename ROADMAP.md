@@ -1,13 +1,19 @@
 # birdOS RG34XX-SP optimization roadmap
 
 This is the governing constitution for the active stock-root implementation.
-Commit `79b6e3e03771f2787622a3e4f6f9d8f129b7281f` is the operator-accepted source
-and behavior baseline. Immutable release `v6.23-20260731-054816` remains the
-accepted binary fallback and performance reference. Its canonical manifest
-digest is
+The current human promotion record binds clean source
+`af83ca945815676d6dabc030ad568c1e5fbb62d2`, immutable release
+`v6.23-20260808-214626`, deploy manifest
+`2a8d51a52e9277e599f6e7a8401513c6c8a2e8edf1e75118360c44a3c5d3eed8`,
+device contract
+`1664a3778abcd3687865a82fd28bba5b468f6c3c7e9a46bf90f7c3acb1e08162`
+and catalogue
+`6ecb9512dfdcb4c62483cc13fb315e5e39fd7556b29f54e7a9f82ac1b730283d`.
+Immutable release `v6.23-20260731-054816` remains the separately bootable
+binary fallback. Its canonical manifest digest is
 `5f95153bf46239a5e178fde28924f01c7fe586be182562f9bd9f33cf13da02ba`.
 That manifest retains its actual older dirty source identity; it is not
-represented as a clean build of `79b6e3e...`.
+represented as a clean build of the current source.
 
 The historical version narrative remains in
 [`docs/history/LEGACY_ROADMAP.md`](docs/history/LEGACY_ROADMAP.md). It explains
@@ -93,8 +99,8 @@ Record separately:
 12. Provider/content ready.
 
 `usable_frame_ready` means a successful visible commit, panel readiness and a
-validated open input descriptor. `/run/muos/bird-first-frame-ready` temporarily
-retains that meaning for compatibility. Publishing readiness must not force a
+validated open input descriptor. `/run/bird/bird-first-frame-ready` publishes
+that meaning. Publishing readiness must not force a
 second framebuffer write. Before input works, display only noninteractive
 background/header pixels.
 
@@ -130,7 +136,7 @@ repository. Seal it with a canonical inventory only after acquisition ends.
 Importing sealed evidence into `measurements/` establishes a new source identity
 for all later work and never affects a runtime image.
 
-For every successor to `79b6e3e...`:
+For every successor to the current accepted binding:
 
 1. Publish a clean commit and verify local, origin and public identity.
 2. Build all pinned inputs under a fresh immutable release ID.
@@ -141,8 +147,21 @@ For every successor to `79b6e3e...`:
 7. Seal the evidence and create the exact promotion record.
 8. Only then update authority documents to name the successor as accepted.
 
-If any physical gate fails, retain `79b6e3e...` as the accepted source/behavior
-reference and `v6.23-20260731-054816` as the accepted binary fallback.
+If any physical gate fails, retain the preceding accepted source/release tuple
+as the behavior reference and `v6.23-20260731-054816` as the binary fallback.
+
+### Fast-workflow stabilization policy — 2026-08-08
+
+The mutable `dev-current` path is now exercised rather than extended. After the
+bounded catalog-metadata and cleanup-readiness corrections, freeze new recovery
+states and safety machinery. Use `--changed` for ordinary candidates and
+`--all-local` for the complete local gate; record actual duration, selected
+groups, unnecessary rebuilds, output clarity, rollback/cleanup friction and
+real failures. Harden further only for observed recurring friction or a direct
+production/data-loss risk. Rare recoverable residue remains documented unless
+it occurs. The human promotion binding remains authoritative, but the fast
+workflow gains no mandatory promotion-record enforcement or state-schema
+expansion during stabilization.
 
 ## Stage 1 — Low-risk release-path cleanup
 
@@ -1329,9 +1348,9 @@ The release `v6.23-stage5-shutdown-d221dfd` physical gate passed reboot, quick
 shutdown and post-content shutdown. The quick path acknowledged dispatch in
 about 140 ms; the post-content path entered the target before the client could
 write its final record. Ordered config checkpoints completed, no logind failure
-returned and usable readiness remained 1221 ms. Accept this candidate and begin
-Stage 6 with a complete active `/run/muos` namespace inventory before the atomic
-migration.
+returned and usable readiness remained 1221 ms. That checkpoint began Stage 6
+with a complete active `/run/muos` namespace inventory before the atomic
+migration described below.
 
 ## Stage 6 — Canonical namespace and hermetic image
 
@@ -1348,8 +1367,8 @@ fallback to read its original paths. Namespace v1 creates a fresh active
 `MUOS/Bird` tree. It copies and seals only favorites/recent state and the BIOS
 library, retains every legacy fallback byte, and can resume after interruption
 between the Bird-state and BIOS same-volume publication renames. Runtime
-activation remains one separately promotable candidate: the accepted card does
-not change until the transaction is host-proven and the payload is committed.
+activation remained one separately promotable candidate until the transaction,
+provider repair and full RG34XX-SP behavior gate passed.
 
 `/storage/bird-data/MUOS/runtime` remains an explicit pinned external boot
 input until the hermetic-image boundary; it is not relabelled as canonical
@@ -1358,7 +1377,7 @@ Bird state. The active catalog roots become `/storage/roms` and
 namespace converges on `/run/bird`. A populated canonical destination without
 a matching transaction state is mixed state and must fail closed.
 
-The namespace-v1 activation candidate now removes active `/run/muos` use,
+The accepted namespace-v1 activation removes active `/run/muos` use,
 emits catalog and request paths directly under `/storage/roms` and
 `/storage/media`, stores mutable Bird state under
 `/storage/bird-data/Bird`, publishes media as one fixed bind and removes the
@@ -1366,8 +1385,7 @@ nested legacy BIOS bind. The launcher retains `/storage` itself at the
 root-ready edge, so the same PID can cross final-root handoff and reach both
 canonical libraries without a path translation. Deployment and the boot hook
 reject an absent or mixed migration marker. This is correctness/subtraction
-infrastructure, not a claimed hardware latency or energy improvement; it needs
-the complete physical gate before acceptance.
+infrastructure, not a claimed hardware latency or energy improvement.
 
 The first physical screen accepted canonical mounts, direct content browsing,
 Ports, media, books, PortMaster, networking and fresh favorites persistence,
@@ -1378,8 +1396,11 @@ the retired `*/ROMS/*` namespace. The bounded repair changes that in-process
 map to exact `/storage/roms/*` paths and host-tests every supported provider;
 it adds no boot, idle, mount or filesystem work. Historical favorites recovery
 is waived by product decision while new canonical favorites remain required to
-persist. Re-run RetroArch, Flycast, PPSSPP, DraStic and OpenBOR before accepting
-the namespace.
+persist. The exact-path repair then passed RetroArch, Flycast, PPSSPP, DraStic,
+OpenBOR, Ports, media, books, PortMaster, networking, persistence and the broad
+hardware matrix in immutable release `v6.23-20260808-214626`, source
+`af83ca945815676d6dabc030ad568c1e5fbb62d2`. Namespace v1 is accepted. This
+functional gate makes no new boot-time or energy claim.
 
 Build the complete image with a digest-pinned container or immutable toolchain,
 fixed partition/filesystem identities, deterministic mkfs seeds/options,

@@ -146,13 +146,12 @@ descendant, run its separate RG34XX-SP physical gate, and only then use that
 accepted release as the base for the first `dev-current`. Do not bypass the
 refusal or broadly reclassify production tooling as a fast-development input.
 
-The immutable candidate `v6.23-20260808-124816`, built from
-`2dd4a20ca359d8b2b3544519ea900f5b5b090ff2`, satisfies the source side of the
-transition through that commit. It becomes an eligible development base for
-that source only after its physical gate passes; until then it remains a
-candidate rather than an accepted baseline. Any later committed
-full-release-only change establishes a new transition and requires a newer
-canonical base.
+Immutable release `v6.23-20260808-214626`, built from clean source
+`af83ca945815676d6dabc030ad568c1e5fbb62d2` with deploy-manifest digest
+`2a8d51a52e9277e599f6e7a8401513c6c8a2e8edf1e75118360c44a3c5d3eed8`,
+passed its RG34XX-SP gate and is the current eligible development base. Any
+later committed full-release-only change establishes a new transition and
+requires a newer canonical base.
 
 ## Supported fast-development groups
 
@@ -210,6 +209,12 @@ The embedded catalog follows the same rule. Its header and inventory must
 match deterministic generation from the mounted card's ROM and media names.
 The workflow rejects stale or hand-edited generated catalog sources rather
 than recording source bytes that were not compiled.
+
+The card-side catalog fingerprint mirrors the generator's ordinary metadata
+policy: it ignores a path when any relative component starts with `.`,
+including `._*`, `.DS_Store` and other hidden entries, or when a component is
+`imgs` or `images` case-insensitively. Those names cannot alter the generated
+catalog and therefore must not rebuild the launcher or initramfs.
 
 ## How change detection works
 
@@ -349,9 +354,21 @@ ready-for-production-build   yes|no|unknown
 
 They are current only when the recorded all-local build and versioned required
 host-test set match the exact present source inventory. Older state schemas are
-read safely but report unknown readiness. `ready-for-production-build` is only
-the software-side result; it never records or implies that the RG34XX-SP
-physical gate passed.
+read safely but report unknown readiness. A durable cleanup authority or an
+in-progress cleanup-authority publication always forces
+`ready-for-production-build=no`. The readiness value is only the software-side
+result; it never records or implies that the RG34XX-SP physical gate passed.
+
+## Stabilization policy
+
+The workflow is now exercised rather than expanded. Use `--changed` during
+ordinary development and record real duration, rebuild scope, output clarity,
+rollback/cleanup friction and observed failures. Add fast-path hardening only
+for a recurring observed problem, an ordinary misleading result, or a direct
+production/data-loss risk. Rare recoverable residue remains documented unless
+real use shows that another state transition is justified. Do not add mandatory
+promotion-record enforcement, duplicate cleanup authorities or another state
+schema merely for theoretical completeness.
 
 ## Production promotion
 
