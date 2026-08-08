@@ -1,0 +1,2342 @@
+#!/usr/bin/env python3
+"""Build and transactionally activate the mutable birdOS dev-current release."""
+
+from __future__ import annotations
+
+import argparse
+import dataclasses
+import errno
+import gzip
+import hashlib
+import os
+import pathlib
+import re
+import shutil
+import stat
+import subprocess
+import sys
+import tempfile
+from collections.abc import Iterable, Sequence
+
+
+DEV_RELEASE = "dev-current"
+STATE_SCHEMA = "bird-dev-state-v1"
+MANIFEST_SCHEMA = "bird-deploy-v1"
+# This exact canonical-builder byte sequence is the reviewed shared-compiler
+# extraction introduced with the dev workflow. It is permitted to bootstrap an
+# uncommitted checkout; any later canonical-builder edit remains full-release
+# work until it receives its own explicit mapping and focused validation.
+SAFE_COMPAT_HELPER_EXTRACTION_SHA256 = "15f2d88c002025e256d2e221010b013ade2abb88ebd16936bd310ff7be072e4b"
+EXPECTED_INPUTS = {
+    "KERNEL",
+    "KERNEL.fallback",
+    "PortMaster.zip",
+    "PortMaster/PortMaster.sh",
+    "PortMaster/funcs.txt",
+    "PortMaster/harbourmaster",
+    "PortMaster/mod_ROCKNIX.txt",
+    "PortMaster/pugwash",
+    "ROCKNIX-STORAGE",
+    "ROCKNIX-SYSTEM",
+    "dtb.img",
+    "initramfs/busybox",
+    "initramfs/init",
+    "rocknix-singleadc-joypad.ko",
+    "usr/bin/autostart",
+}
+EARLY_INPUT_DIGESTS = {
+    "initramfs/init": "3473415af0cf5df44e70259c3392817b1df421a12a617ec083ec018ff51dbc48",
+    "initramfs/busybox": "5ee3d20d8ea5fd9b3ba5109da80599eaf46a5a337d9e40d4c67d28eef44d5dc8",
+    "rocknix-singleadc-joypad.ko": "a8ac6cacfa89672fa08dec7fa02179bb108a4a2303fd5c1eb5834f916089b79b",
+}
+
+RUNTIME_FILES = (
+    "090-ui_service",
+    "999-export",
+    "bird-autostart",
+    "bird-journald.conf",
+    "essway.service",
+    "rocknix.target",
+    "rocknix-automount.service",
+    "rocknix-autostart.service",
+    "rocknix-report-stats.service",
+    "NetworkManager.service",
+    "iwd.service",
+    "systemd-resolved.service",
+    "systemd-timesyncd.service",
+    "systemd-rfkill.service",
+    "bird-fixed-controls.service",
+    "bird-powerstate.service",
+    "supervisor.sh",
+    "run-content.sh",
+    "bird-mpv-player.sh",
+    "prepare-ports.sh",
+    "verify-portmaster-provider.sh",
+    "fixed-storage.sh",
+    "first-frame-prep.sh",
+    "capture-boot-state.sh",
+    "capture-requested-diagnostics.sh",
+    "capture-stage5-state.sh",
+    "capture-stage5-window-counters.sh",
+    "capture-stage5-window.sh",
+    "bird-network.sh",
+    "bird-fixed-control-exit.sh",
+    "bird-emergency-recover.sh",
+    "bird-save-config.sh",
+    "bird-save-config.service",
+    "bird-suspend.sh",
+    "bird-restore-suspend-policy.sh",
+    "bird-volume.sh",
+    "bird-control-osd.sh",
+    "bird-fixed-sway.sh",
+    "bird-fixed-platform.sh",
+    "bird-fixed-logging.sh",
+    "bird-fixed-pico8.sh",
+    "bird-fixed-controller.sh",
+    "bird-fixed-setup.sh",
+    "bird-fixed-performance.sh",
+    "bird-fixed-gpu-overclock.sh",
+    "bird-fixed-rumble.sh",
+    "bird-fixed-turbo.sh",
+    "bird-controller-profile",
+    "bird-swap.conf",
+    "bird-suspend-policy.generated.sh",
+    "bird-sleep.conf",
+    "mpv-input.conf",
+)
+
+SCRIPT_RUNTIME_FILES = {
+    name
+    for name in RUNTIME_FILES
+    if name.endswith(".sh") or name in {"090-ui_service", "999-export", "bird-autostart"}
+}
+
+GENERATED_DEVICE_PATHS = {
+    "launcher/bird-device-contract.h",
+    "kernel/rocknix/stock-root/bird-suspend-policy.generated.sh",
+    "kernel/rocknix/stock-root/bird-sleep.conf",
+    "kernel/rocknix/stock-root/bird-logind.conf",
+}
+
+KNOWN_STANDALONE_HOST_TESTS = {
+    "test-application-contract.sh",
+    "test-build-and-deploy.sh",
+    "test-canonical-namespace.sh",
+    "test-emergency-recovery.sh",
+    "test-fixed-control-exit-publication.sh",
+    "test-fixed-controller-profile.py",
+    "test-fixed-controls-c.sh",
+    "test-launcher-boot-frame.sh",
+    "test-launcher-catalog.py",
+    "test-launcher-runtime-c.sh",
+    "test-mac-removable-device.sh",
+    "test-mpv-controls-c.sh",
+    "test-portmaster-provider-manifest.py",
+    "test-post-flash-transactions.sh",
+    "test-stage-zero-contract.py",
+    "test-stock-root-brightness.sh",
+    "test-stock-root-build-reproducibility.sh",
+    "test-stock-root-content-scope.sh",
+    "test-stock-root-fixed-autostart.sh",
+    "test-stock-root-fixed-housekeeping.sh",
+    "test-stock-root-fixed-performance.sh",
+    "test-stock-root-fixed-setup.sh",
+    "test-stock-root-media-audio-policy.sh",
+    "test-stock-root-migration.sh",
+    "test-stock-root-mount-storage.sh",
+    "test-stock-root-mpv-controls.sh",
+    "test-stock-root-prepare-ports.sh",
+    "test-stock-root-rom-provider-map.sh",
+    "test-stock-root-save-config.sh",
+    "test-stock-root-stage5-snapshot.sh",
+    "test-stock-root-supervisor.sh",
+    "test-stock-root-suspend-policy.sh",
+    "test-stock-root-unit-ordering.sh",
+    "test-stock-root-updater.sh",
+}
+HOST_HARNESS_RUNNERS = {
+    "fixed-controls-host.c": "test-fixed-controls-c.sh",
+    "launcher-runtime-host.c": "test-launcher-runtime-c.sh",
+    "mpv-controls-host.c": "test-mpv-controls-c.sh",
+}
+
+
+class DevError(RuntimeError):
+    """A deliberate fail-closed development workflow error."""
+
+
+def fail(message: str) -> None:
+    raise DevError(message)
+
+
+def sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def sha256_file(path: pathlib.Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def run(
+    command: Sequence[str],
+    *,
+    cwd: pathlib.Path | None = None,
+    env: dict[str, str] | None = None,
+    capture: bool = False,
+) -> subprocess.CompletedProcess[bytes]:
+    result = subprocess.run(
+        command,
+        cwd=cwd,
+        env=env,
+        stdout=subprocess.PIPE if capture else None,
+        stderr=subprocess.PIPE if capture else None,
+        check=False,
+    )
+    if result.returncode != 0:
+        detail = ""
+        if capture:
+            detail = (result.stderr or result.stdout).decode("utf-8", "replace").strip()
+        fail(f"command failed ({result.returncode}): {' '.join(command)}" + (f": {detail}" if detail else ""))
+    return result
+
+
+def safe_relative(value: str) -> str:
+    if not value or value.startswith("/") or "\x00" in value or "\t" in value or "\n" in value:
+        fail(f"unsafe manifest path: {value!r}")
+    path = pathlib.PurePosixPath(value)
+    if any(part in {"", ".", ".."} for part in path.parts):
+        fail(f"unsafe manifest path: {value!r}")
+    if not re.fullmatch(r"[A-Za-z0-9._/-]+", value):
+        fail(f"unsafe manifest path: {value!r}")
+    return value
+
+
+def require_regular(path: pathlib.Path, description: str) -> None:
+    try:
+        mode = path.lstat().st_mode
+    except FileNotFoundError:
+        fail(f"{description} is missing: {path}")
+    if not stat.S_ISREG(mode) or path.is_symlink():
+        fail(f"{description} is not a safe regular file: {path}")
+
+
+def require_directory(path: pathlib.Path, description: str) -> None:
+    try:
+        mode = path.lstat().st_mode
+    except FileNotFoundError:
+        fail(f"{description} is missing: {path}")
+    if not stat.S_ISDIR(mode) or path.is_symlink():
+        fail(f"{description} is not a safe directory: {path}")
+
+
+def fixed_directory_chain(root: pathlib.Path, parts: Sequence[str], *, create: bool) -> pathlib.Path:
+    current = root
+    require_directory(current, "fixed directory root")
+    for part in parts:
+        if not re.fullmatch(r"[A-Za-z0-9._-]+", part):
+            fail(f"unsafe fixed directory component: {part!r}")
+        current = current / part
+        if current.exists() or current.is_symlink():
+            require_directory(current, "fixed directory chain")
+        elif create:
+            current.mkdir(mode=0o755)
+            fsync_directory(current.parent)
+        else:
+            return current
+    return current
+
+
+def fsync_directory(path: pathlib.Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY)
+    try:
+        try:
+            os.fsync(descriptor)
+        except OSError as error:
+            if error.errno not in {errno.EINVAL, errno.ENOTSUP, errno.EBADF}:
+                raise
+            # FAT implementations on macOS may not support directory fsync.
+            # A global sync is the strongest available fallback.
+            os.sync()
+    finally:
+        os.close(descriptor)
+
+
+def sync_storage() -> None:
+    os.sync()
+
+
+def remove_appledouble_sibling(path: pathlib.Path) -> None:
+    """Remove the FAT sidecar macOS may create while replacing one file."""
+    sidecar = path.with_name(f"._{path.name}")
+    if not sidecar.exists() and not sidecar.is_symlink():
+        return
+    require_regular(sidecar, "atomic-write AppleDouble sidecar")
+    sidecar.unlink()
+
+
+def atomic_write(path: pathlib.Path, data: bytes, mode: int = 0o644) -> None:
+    require_directory(path.parent, "atomic-write parent")
+    temporary = path.parent / f".{path.name}.dev-new.{os.getpid()}"
+    if temporary.exists() or temporary.is_symlink():
+        fail(f"atomic temporary is occupied: {temporary}")
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
+    try:
+        view = memoryview(data)
+        while view:
+            written = os.write(descriptor, view)
+            if written <= 0:
+                fail(f"short write while publishing {path}")
+            view = view[written:]
+        os.fsync(descriptor)
+    except BaseException:
+        os.close(descriptor)
+        temporary.unlink(missing_ok=True)
+        remove_appledouble_sibling(temporary)
+        raise
+    else:
+        os.close(descriptor)
+    if temporary.read_bytes() != data:
+        temporary.unlink(missing_ok=True)
+        remove_appledouble_sibling(temporary)
+        fail(f"atomic temporary verification failed: {path}")
+    try:
+        os.replace(temporary, path)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        remove_appledouble_sibling(temporary)
+        raise
+    remove_appledouble_sibling(temporary)
+    remove_appledouble_sibling(path)
+    fsync_directory(path.parent)
+    if path.read_bytes() != data:
+        fail(f"atomic publication verification failed: {path}")
+
+
+def atomic_write_if_changed(path: pathlib.Path, data: bytes, mode: int = 0o644) -> bool:
+    """Publish data atomically only when the destination bytes differ."""
+    if path.exists() or path.is_symlink():
+        require_regular(path, "atomic-write destination")
+        if path.read_bytes() == data:
+            return False
+    atomic_write(path, data, mode)
+    return True
+
+
+def remove_appledouble(root: pathlib.Path) -> None:
+    for path in sorted(root.rglob("._*"), reverse=True):
+        if path.is_symlink() or not path.is_file():
+            fail(f"unsafe AppleDouble path in dev release: {path}")
+        path.unlink()
+
+
+@dataclasses.dataclass(frozen=True)
+class SourceIdentity:
+    commit: str
+    state: str
+    inventory: dict[str, tuple[str, int, int, str]]
+    inventory_bytes: bytes
+
+
+def git_bytes(root: pathlib.Path, *arguments: str) -> bytes:
+    result = subprocess.run(
+        ["git", "-C", str(root), *arguments],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if result.returncode != 0:
+        fail(
+            f"could not read source identity: git {' '.join(arguments)}: "
+            f"{result.stderr.decode('utf-8', 'replace').strip()}"
+        )
+    return result.stdout
+
+
+def inventory_entry(root: pathlib.Path, relative: str) -> tuple[str, int, int, str]:
+    path = root / relative
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return ("missing", 0, 0, "-")
+    mode = stat.S_IMODE(info.st_mode)
+    if stat.S_ISREG(info.st_mode):
+        return ("file", mode, info.st_size, sha256_file(path))
+    if stat.S_ISLNK(info.st_mode):
+        target = os.readlink(path).encode("utf-8", "surrogateescape")
+        return ("symlink", mode, len(target), sha256_bytes(target))
+    return ("special", mode, info.st_size, "-")
+
+
+def capture_source_identity(root: pathlib.Path) -> SourceIdentity:
+    commit = git_bytes(root, "rev-parse", "--verify", "HEAD").decode().strip()
+    if not re.fullmatch(r"[0-9a-f]{40}", commit):
+        fail("source commit is not a full lowercase object ID")
+    status = git_bytes(root, "status", "--porcelain", "--untracked-files=normal").decode(
+        "utf-8", "surrogateescape"
+    ).rstrip("\n")
+    untracked = sorted(
+        item
+        for item in git_bytes(root, "ls-files", "--others", "--exclude-standard", "-z")
+        .decode("utf-8", "surrogateescape")
+        .split("\0")
+        if item
+    )
+    fingerprint = bytearray((status + "\n").encode("utf-8", "surrogateescape"))
+    fingerprint.extend(git_bytes(root, "diff", "--binary", "HEAD", "--"))
+    for relative in untracked:
+        kind, mode, size, digest = inventory_entry(root, relative)
+        if kind == "file":
+            fingerprint.extend(
+                f"untracked\t{relative}\t{mode:o}\t{size}\t{digest}\n".encode(
+                    "utf-8", "surrogateescape"
+                )
+            )
+    state = "clean" if not status else f"dirty:{sha256_bytes(bytes(fingerprint))}"
+
+    paths = set(
+        item
+        for item in git_bytes(root, "ls-files", "-c", "-o", "--exclude-standard", "-z")
+        .decode("utf-8", "surrogateescape")
+        .split("\0")
+        if item
+    )
+    inventory = {relative: inventory_entry(root, relative) for relative in sorted(paths)}
+    lines = ["schema\tbird-source-inventory-v1"]
+    for relative, (kind, mode, size, digest) in inventory.items():
+        lines.append(f"path\t{relative}\t{kind}\t{mode:o}\t{size}\t{digest}")
+    inventory_bytes = ("\n".join(lines) + "\n").encode("utf-8", "surrogateescape")
+    return SourceIdentity(commit, state, inventory, inventory_bytes)
+
+
+def dirty_paths(root: pathlib.Path) -> set[str]:
+    raw = git_bytes(root, "status", "--porcelain", "-z", "--untracked-files=all")
+    records = raw.decode("utf-8", "surrogateescape").split("\0")
+    paths: set[str] = set()
+    index = 0
+    while index < len(records):
+        record = records[index]
+        index += 1
+        if not record:
+            continue
+        if len(record) < 4:
+            fail("could not parse source status")
+        status = record[:2]
+        paths.add(record[3:])
+        if "R" in status or "C" in status:
+            if index >= len(records) or not records[index]:
+                fail("could not parse renamed source status")
+            paths.add(records[index])
+            index += 1
+    return paths
+
+
+def committed_paths_since(root: pathlib.Path, base_commit: str, head_commit: str) -> set[str]:
+    if base_commit == head_commit:
+        return set()
+    exists = subprocess.run(
+        ["git", "-C", str(root), "cat-file", "-e", f"{base_commit}^{{commit}}"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    if exists.returncode != 0:
+        fail("base release source commit is unavailable locally; use the full release workflow")
+    ancestor = subprocess.run(
+        ["git", "-C", str(root), "merge-base", "--is-ancestor", base_commit, head_commit],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    if ancestor.returncode != 0:
+        fail("base release source commit is not an ancestor of HEAD; use the full release workflow")
+    raw = git_bytes(root, "diff", "--no-renames", "--name-only", "-z", f"{base_commit}..{head_commit}")
+    return {
+        value
+        for value in raw.decode("utf-8", "surrogateescape").split("\0")
+        if value
+    }
+
+
+def parse_inventory(data: bytes) -> dict[str, tuple[str, int, int, str]]:
+    lines = data.decode("utf-8", "surrogateescape").splitlines()
+    if not lines or lines[0] != "schema\tbird-source-inventory-v1":
+        fail("saved source inventory has an invalid schema")
+    result: dict[str, tuple[str, int, int, str]] = {}
+    for line in lines[1:]:
+        fields = line.split("\t")
+        if len(fields) != 6 or fields[0] != "path" or fields[1] in result:
+            fail("saved source inventory is malformed")
+        try:
+            mode = int(fields[3], 8)
+            size = int(fields[4])
+        except ValueError:
+            fail("saved source inventory has invalid numeric fields")
+        result[fields[1]] = (fields[2], mode, size, fields[5])
+    return result
+
+
+@dataclasses.dataclass
+class Manifest:
+    release: str
+    source_commit: str
+    source_state: str
+    inputs: list[str]
+    dirs: list[tuple[str, str]]
+    files: list[tuple[str, str, int, str]]
+    artifacts: dict[str, tuple[str, str]]
+
+    @property
+    def file_modes(self) -> dict[str, str]:
+        return {path: mode for path, mode, _size, _digest in self.files}
+
+    @property
+    def input_digests(self) -> dict[str, str]:
+        return {line.split("\t")[1]: line.split("\t")[4] for line in self.inputs}
+
+
+def parse_manifest(path: pathlib.Path, expected_release: str | None = None) -> Manifest:
+    require_regular(path, "deploy manifest")
+    schema = release = policy = source = 0
+    release_id = source_commit = source_state = ""
+    inputs: list[str] = []
+    input_names: set[str] = set()
+    dirs: list[tuple[str, str]] = []
+    files: list[tuple[str, str, int, str]] = []
+    paths: set[str] = set()
+    artifacts: dict[str, tuple[str, str]] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        fields = line.split("\t")
+        kind = fields[0] if fields else ""
+        if kind == "schema" and len(fields) == 2 and fields[1] == MANIFEST_SCHEMA:
+            schema += 1
+        elif kind == "release" and len(fields) == 2:
+            release += 1
+            release_id = fields[1]
+        elif kind == "target-mode-policy" and fields == ["target-mode-policy", "fat-capability"]:
+            policy += 1
+        elif kind == "source-commit" and len(fields) == 3:
+            source += 1
+            source_commit, source_state = fields[1], fields[2]
+        elif kind == "artifact" and len(fields) == 4:
+            name, artifact_path, digest = fields[1:]
+            if name not in {"device-contract", "catalog"} or name in artifacts:
+                fail("deploy manifest has invalid artifact records")
+            safe_relative(artifact_path)
+            if not re.fullmatch(r"[0-9a-f]{64}", digest):
+                fail("deploy manifest has an invalid artifact digest")
+            artifacts[name] = (artifact_path, digest)
+        elif kind == "input" and len(fields) == 6:
+            name = safe_relative(fields[1])
+            if name in input_names or not re.fullmatch(r"[0-7]{3}", fields[2]):
+                fail("deploy manifest has invalid input records")
+            if not fields[3].isdigit() or not re.fullmatch(r"[0-9a-f]{64}", fields[4]) or not fields[5]:
+                fail("deploy manifest has invalid input records")
+            input_names.add(name)
+            inputs.append(line)
+        elif kind == "dir" and len(fields) == 3:
+            relative = safe_relative(fields[1])
+            if relative in paths or not re.fullmatch(r"[0-7]{3}", fields[2]):
+                fail("deploy manifest has invalid directory records")
+            paths.add(relative)
+            dirs.append((relative, fields[2]))
+        elif kind == "file" and len(fields) == 5:
+            relative = safe_relative(fields[1])
+            if relative in paths or not re.fullmatch(r"[0-7]{3}", fields[2]):
+                fail("deploy manifest has invalid file records")
+            if not fields[3].isdigit() or not re.fullmatch(r"[0-9a-f]{64}", fields[4]):
+                fail("deploy manifest has invalid file records")
+            paths.add(relative)
+            files.append((relative, fields[2], int(fields[3]), fields[4]))
+        else:
+            fail(f"deploy manifest is malformed at record: {line!r}")
+    if (schema, release, policy, source) != (1, 1, 1, 1):
+        fail("deploy manifest has duplicate or missing authority records")
+    if not re.fullmatch(r"[0-9a-f]{40}", source_commit):
+        fail("deploy manifest source commit is not a full lowercase object ID")
+    if source_state != "clean" and not re.fullmatch(r"dirty:[0-9a-f]{64}", source_state):
+        fail("deploy manifest source state is invalid")
+    if expected_release is not None and release_id != expected_release:
+        fail(f"deploy manifest release mismatch: expected {expected_release}, got {release_id}")
+    if input_names != EXPECTED_INPUTS or len(inputs) != 15:
+        fail("deploy manifest external-input set changed")
+    if set(artifacts) != {"device-contract", "catalog"}:
+        fail("deploy manifest artifact set changed")
+    if artifacts["device-contract"][0] != "bird/bird-device-contract.tsv":
+        fail("deploy manifest device-contract path changed")
+    if artifacts["catalog"][0] != "launcher/catalog.generated.h":
+        fail("deploy manifest catalog path changed")
+    return Manifest(release_id, source_commit, source_state, inputs, dirs, files, artifacts)
+
+
+def verify_early_input_compatibility(manifest: Manifest) -> None:
+    for name, expected in EARLY_INPUT_DIGESTS.items():
+        actual = manifest.input_digests.get(name)
+        if actual != expected:
+            fail(
+                f"base release input {name} does not match the pinned external-initramfs builder; "
+                "use the full release workflow"
+            )
+
+
+def effective_mode_ok(path: pathlib.Path, intended: str, synthetic: bool) -> bool:
+    if synthetic:
+        owner = int(intended[0])
+        if not os.access(path, os.R_OK):
+            return False
+        if owner & 2 and not os.access(path, os.W_OK):
+            return False
+        if owner & 1 and not os.access(path, os.X_OK):
+            return False
+        return True
+    return stat.S_IMODE(path.stat().st_mode) == int(intended, 8)
+
+
+def verify_release(
+    root: pathlib.Path,
+    release_id: str,
+    synthetic_modes: bool,
+    *,
+    require_complete: bool = True,
+) -> Manifest:
+    require_directory(root, f"release {release_id}")
+    manifest_path = root / "deploy-manifest.tsv"
+    complete_path = root / ".complete"
+    require_regular(manifest_path, "release manifest")
+    if require_complete:
+        require_regular(complete_path, "release completion marker")
+        marker = complete_path.read_text(encoding="ascii").strip()
+        if not re.fullmatch(r"[0-9a-f]{64}", marker) or sha256_file(manifest_path) != marker:
+            fail(f"release is incomplete or its completion marker changed: {release_id}")
+    elif complete_path.exists() or complete_path.is_symlink():
+        fail(f"precommit release unexpectedly has a completion marker: {release_id}")
+    manifest = parse_manifest(manifest_path, release_id)
+    expected_files: set[str] = set()
+    for relative, mode, size, digest in manifest.files:
+        target = root / relative
+        require_regular(target, f"release file {release_id}/{relative}")
+        if target.stat().st_size != size or sha256_file(target) != digest:
+            fail(f"release file changed: {release_id}/{relative}")
+        if not effective_mode_ok(target, mode, synthetic_modes):
+            fail(f"release file mode contract failed: {release_id}/{relative}")
+        expected_files.add(relative)
+    for relative, mode in manifest.dirs:
+        target = root / relative
+        require_directory(target, f"release directory {release_id}/{relative}")
+        if not effective_mode_ok(target, mode, synthetic_modes):
+            fail(f"release directory mode contract failed: {release_id}/{relative}")
+    actual_files: set[str] = set()
+    for target in root.rglob("*"):
+        relative = target.relative_to(root).as_posix()
+        info = target.lstat()
+        if stat.S_ISLNK(info.st_mode) or not (stat.S_ISREG(info.st_mode) or stat.S_ISDIR(info.st_mode)):
+            fail(f"release contains a symlink or special node: {release_id}/{relative}")
+        if stat.S_ISREG(info.st_mode) and relative not in {"deploy-manifest.tsv", ".complete"}:
+            actual_files.add(relative)
+    if actual_files != expected_files:
+        missing = sorted(expected_files - actual_files)
+        extra = sorted(actual_files - expected_files)
+        fail(f"release file inventory differs from manifest: missing={missing} extra={extra}")
+    actual_empty = {
+        target.relative_to(root).as_posix()
+        for target in root.rglob("*")
+        if target.is_dir() and not any(target.iterdir())
+    }
+    expected_empty = {relative for relative, _mode in manifest.dirs}
+    if actual_empty != expected_empty:
+        fail(f"release empty-directory inventory differs from manifest: {release_id}")
+    contract_file = root / "bird/bird-device-contract.tsv"
+    if sha256_file(contract_file) != manifest.artifacts["device-contract"][1]:
+        fail(f"release device-contract artifact binding changed: {release_id}")
+    return manifest
+
+
+def release_snapshot(root: pathlib.Path) -> dict[str, tuple[str, int, str]]:
+    result: dict[str, tuple[str, int, str]] = {}
+    for path in sorted(root.rglob("*")):
+        relative = path.relative_to(root).as_posix()
+        info = path.lstat()
+        if stat.S_ISREG(info.st_mode):
+            result[relative] = ("file", info.st_size, sha256_file(path))
+        elif stat.S_ISDIR(info.st_mode):
+            result[relative] = ("dir", 0, "")
+        elif stat.S_ISLNK(info.st_mode):
+            result[relative] = ("symlink", 0, os.readlink(path))
+        else:
+            result[relative] = ("special", 0, "")
+    return result
+
+
+def verify_safe_removal_tree(root: pathlib.Path, description: str) -> None:
+    require_directory(root, description)
+    for path in root.rglob("*"):
+        info = path.lstat()
+        if not (stat.S_ISREG(info.st_mode) or stat.S_ISDIR(info.st_mode)):
+            fail(f"{description} contains a symlink or special node: {path}")
+
+
+def parse_selector(data: bytes) -> str | None:
+    try:
+        text = data.decode("ascii")
+    except UnicodeDecodeError:
+        fail("selector is not ASCII")
+    matches = re.findall(r"(?<!\S)bird_release=([A-Za-z0-9._-]+)(?=\s|$)", text)
+    if not matches:
+        return None
+    if len(matches) != 1:
+        fail("selector does not contain exactly one Bird release ID")
+    return matches[0]
+
+
+def verify_selector_for_release(data: bytes, release_id: str) -> None:
+    if parse_selector(data) != release_id:
+        fail(f"selector does not name release exactly: {release_id}")
+    text = data.decode("ascii")
+    required = (
+        f"LINUX /bird-releases/{release_id}/KERNEL",
+        f"INITRD /bird-releases/{release_id}/bird-initramfs.cpio.gz",
+        f"FDT /bird-releases/{release_id}/dtb.img",
+    )
+    if any(text.count(value) != 1 for value in required):
+        fail(f"selector paths do not name release exactly: {release_id}")
+
+
+@dataclasses.dataclass
+class DevState:
+    activation: str
+    base_release: str
+    base_selector_sha: str
+    repository_commit: str
+    source_state: str
+    profile: str
+    manifest_sha: str
+    inventory_sha: str
+    components: dict[str, str]
+
+
+def load_state(state_path: pathlib.Path) -> DevState | None:
+    if not state_path.exists() and not state_path.is_symlink():
+        return None
+    require_regular(state_path, "dev state")
+    singles: dict[str, str] = {}
+    components: dict[str, str] = {}
+    for line in state_path.read_text(encoding="utf-8").splitlines():
+        fields = line.split("\t")
+        if len(fields) == 2 and fields[0] != "component":
+            if fields[0] in singles:
+                fail("dev state has duplicate fields")
+            singles[fields[0]] = fields[1]
+        elif len(fields) == 3 and fields[0] == "component":
+            if fields[1] in components or not re.fullmatch(r"[0-9a-f]{64}", fields[2]):
+                fail("dev state has malformed component fingerprints")
+            components[fields[1]] = fields[2]
+        else:
+            fail("dev state is malformed")
+    required = {
+        "schema",
+        "activation",
+        "dev-release",
+        "base-release",
+        "base-selector-sha256",
+        "repository-commit",
+        "source-state",
+        "profile",
+        "manifest-sha256",
+        "source-inventory-sha256",
+    }
+    if set(singles) != required or singles["schema"] != STATE_SCHEMA:
+        fail("dev state has an invalid schema")
+    if singles["dev-release"] != DEV_RELEASE or singles["activation"] not in {"complete", "incomplete"}:
+        fail("dev state identity is invalid")
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", singles["base-release"]):
+        fail("dev state base release is invalid")
+    if not re.fullmatch(r"[0-9a-f]{40}", singles["repository-commit"]):
+        fail("dev state repository commit is invalid")
+    if singles["source-state"] != "clean" and not re.fullmatch(
+        r"dirty:[0-9a-f]{64}", singles["source-state"]
+    ):
+        fail("dev state source state is invalid")
+    if singles["profile"] not in {"release", "profile"}:
+        fail("dev state profile is invalid")
+    for field in ("base-selector-sha256",):
+        if not re.fullmatch(r"[0-9a-f]{64}", singles[field]):
+            fail(f"dev state has an invalid {field}")
+    for field in ("manifest-sha256", "source-inventory-sha256"):
+        if singles[field] != "pending" and not re.fullmatch(r"[0-9a-f]{64}", singles[field]):
+            fail(f"dev state has an invalid {field}")
+    if singles["activation"] == "complete":
+        expected_components = all_component_groups() | {"authority:toolchain"}
+        if set(components) != expected_components:
+            fail("complete dev state has an incomplete component fingerprint set")
+        if singles["manifest-sha256"] == "pending" or singles["source-inventory-sha256"] == "pending":
+            fail("complete dev state retains pending authority digests")
+    elif set(components) != {"authority:toolchain"}:
+        fail("incomplete dev state lacks its toolchain authority fingerprint")
+    return DevState(
+        singles["activation"],
+        singles["base-release"],
+        singles["base-selector-sha256"],
+        singles["repository-commit"],
+        singles["source-state"],
+        singles["profile"],
+        singles["manifest-sha256"],
+        singles["source-inventory-sha256"],
+        components,
+    )
+
+
+def state_bytes(state: DevState) -> bytes:
+    lines = [
+        f"schema\t{STATE_SCHEMA}",
+        f"activation\t{state.activation}",
+        f"dev-release\t{DEV_RELEASE}",
+        f"base-release\t{state.base_release}",
+        f"base-selector-sha256\t{state.base_selector_sha}",
+        f"repository-commit\t{state.repository_commit}",
+        f"source-state\t{state.source_state}",
+        f"profile\t{state.profile}",
+        f"manifest-sha256\t{state.manifest_sha}",
+        f"source-inventory-sha256\t{state.inventory_sha}",
+    ]
+    for name, digest in sorted(state.components.items()):
+        lines.append(f"component\t{name}\t{digest}")
+    return ("\n".join(lines) + "\n").encode()
+
+
+def changed_inventory_paths(
+    previous: dict[str, tuple[str, int, int, str]],
+    current: dict[str, tuple[str, int, int, str]],
+) -> set[str]:
+    return {
+        path
+        for path in set(previous) | set(current)
+        if previous.get(path) != current.get(path)
+    }
+
+
+def source_hash(root: pathlib.Path, paths: Iterable[str], values: Iterable[str] = ()) -> str:
+    digest = hashlib.sha256()
+    for value in values:
+        digest.update(b"value\0" + value.encode() + b"\0")
+    for relative in sorted(set(paths)):
+        kind, mode, size, file_digest = inventory_entry(root, relative)
+        digest.update(
+            f"{relative}\0{kind}\0{mode:o}\0{size}\0{file_digest}\n".encode(
+                "utf-8", "surrogateescape"
+            )
+        )
+    return digest.hexdigest()
+
+
+def resolved_tool_identity(name: str, configured: str | None = None) -> str:
+    candidate = configured or shutil.which(name)
+    if not candidate:
+        return f"{name}\tmissing"
+    path = pathlib.Path(candidate).expanduser()
+    try:
+        resolved = path.resolve(strict=True)
+        info = resolved.lstat()
+    except (FileNotFoundError, OSError):
+        return f"{name}\tmissing\t{candidate}"
+    if not stat.S_ISREG(info.st_mode):
+        return f"{name}\tunsafe\t{resolved}"
+    return f"{name}\t{resolved}\t{info.st_size}\t{sha256_file(resolved)}"
+
+
+def build_toolchain_fingerprint() -> str:
+    identities = (
+        resolved_tool_identity("clang", os.environ.get("CLANG", "/opt/homebrew/opt/llvm/bin/clang")),
+        resolved_tool_identity("ld.lld", os.environ.get("LLD", "/opt/homebrew/opt/lld/bin/ld.lld")),
+        resolved_tool_identity(
+            "llvm-readelf", os.environ.get("READELF", "/opt/homebrew/opt/llvm/bin/llvm-readelf")
+        ),
+        resolved_tool_identity("cpio"),
+        resolved_tool_identity("gzip"),
+    )
+    return sha256_bytes(("\n".join(identities) + "\n").encode())
+
+
+def catalog_card_inventory(data: pathlib.Path) -> str:
+    digest = hashlib.sha256()
+    for name in ("ROMS", "MEDIA"):
+        root = data / name
+        if not root.is_dir():
+            continue
+        for path in sorted(root.rglob("*")):
+            relative = path.relative_to(data).as_posix()
+            info = path.lstat()
+            if stat.S_ISREG(info.st_mode):
+                kind = "file"
+            elif stat.S_ISDIR(info.st_mode):
+                kind = "dir"
+            else:
+                fail(f"catalog source contains a symlink or special node: {path}")
+            digest.update(f"{kind}\t{relative}\n".encode("utf-8", "surrogateescape"))
+    return digest.hexdigest()
+
+
+def require_repository_file(root: pathlib.Path, relative: str) -> None:
+    safe_relative(relative)
+    current = root
+    for part in pathlib.PurePosixPath(relative).parts[:-1]:
+        current = current / part
+        require_directory(current, f"repository source parent for {relative}")
+    require_regular(root / relative, f"repository source {relative}")
+
+
+def validate_component_sources(root: pathlib.Path, groups: set[str]) -> None:
+    paths: set[str] = set()
+    if groups:
+        paths.update(
+            {
+                "bird-device-contract.tsv",
+                "generate-device-contract.py",
+                *GENERATED_DEVICE_PATHS,
+            }
+        )
+    launcher_common = {
+        "kernel/rocknix/build-bird-local-binary.sh",
+        "launcher/bird-launcher.c",
+        "launcher/bird-device-contract.h",
+        "launcher/catalog.generated.h",
+        "bird-device-contract.tsv",
+    }
+    if groups & {"launcher", "early-initramfs", "catalog"}:
+        paths.update(
+            {
+                "generate-launcher-catalog.py",
+                "launcher/catalog.generated.h",
+                "launcher/library.inventory.tsv",
+            }
+        )
+    if "launcher" in groups:
+        paths.update(launcher_common)
+    if "pidwait" in groups:
+        paths.update({"kernel/rocknix/build-bird-local-binary.sh", "launcher/bird-pidwait.c"})
+    if "powerstate" in groups:
+        paths.update({"kernel/rocknix/build-bird-local-binary.sh", "launcher/bird-powerstate.c"})
+    if "fixed-controls" in groups:
+        paths.update(
+            {
+                "kernel/rocknix/build-bird-local-binary.sh",
+                "kernel/rocknix/stock-root/bird-fixed-controls.c",
+                "launcher/bird-device-contract.h",
+            }
+        )
+    if "mpv-controls" in groups:
+        paths.update(
+            {
+                "kernel/rocknix/build-bird-local-binary.sh",
+                "kernel/rocknix/stock-root/bird-mpv-controls.c",
+                "launcher/bird-device-contract.h",
+            }
+        )
+    if "early-initramfs" in groups:
+        paths.update(
+            {
+                *launcher_common,
+                "kernel/rocknix/build-stock-root-early-initramfs.sh",
+                "kernel/rocknix/stock-root/bird-early.sh",
+                "kernel/rocknix/stock-root/bird-release-loader.sh",
+                "firmware/normalize-newc.py",
+                "firmware/generate-launcher-bootlogo.py",
+                "firmware/assets/bird-launcher-backdrop.png",
+            }
+        )
+    if "boot-assets" in groups:
+        paths.update(
+            {
+                "firmware/generate-launcher-bootlogo.py",
+                "firmware/assets/bird-launcher-backdrop.png",
+            }
+        )
+    direct = {
+        "selector": "kernel/rocknix/stock-root/extlinux.conf",
+        "post-flash": "kernel/rocknix/stock-root/post-flash.sh",
+        "mount-storage": "kernel/rocknix/stock-root/mount-storage.sh",
+    }
+    for group in groups:
+        if group in direct:
+            paths.add(direct[group])
+        elif group.startswith("runtime:"):
+            paths.add("kernel/rocknix/stock-root/" + group.removeprefix("runtime:"))
+    for relative in sorted(paths):
+        require_repository_file(root, relative)
+
+
+def component_fingerprints(root: pathlib.Path, data: pathlib.Path, profile: str) -> dict[str, str]:
+    helper = "kernel/rocknix/build-bird-local-binary.sh"
+    launcher_common = [
+        helper,
+        "launcher/bird-launcher.c",
+        "launcher/bird-device-contract.h",
+        "launcher/catalog.generated.h",
+        "bird-device-contract.tsv",
+    ]
+    result = {
+        "authority:toolchain": build_toolchain_fingerprint(),
+        "launcher": source_hash(root, launcher_common, [profile]),
+        "pidwait": source_hash(root, [helper, "launcher/bird-pidwait.c"]),
+        "powerstate": source_hash(root, [helper, "launcher/bird-powerstate.c"]),
+        "fixed-controls": source_hash(
+            root,
+            [helper, "kernel/rocknix/stock-root/bird-fixed-controls.c", "launcher/bird-device-contract.h"],
+        ),
+        "mpv-controls": source_hash(
+            root,
+            [helper, "kernel/rocknix/stock-root/bird-mpv-controls.c", "launcher/bird-device-contract.h"],
+        ),
+        "device-contract": source_hash(
+            root,
+            ["bird-device-contract.tsv", "generate-device-contract.py", *GENERATED_DEVICE_PATHS],
+        ),
+        "catalog": source_hash(
+            root,
+            [
+                "generate-launcher-catalog.py",
+                "launcher/catalog.generated.h",
+                "launcher/library.inventory.tsv",
+            ],
+            [catalog_card_inventory(data)],
+        ),
+        "boot-assets": source_hash(
+            root,
+            ["firmware/generate-launcher-bootlogo.py", "firmware/assets/bird-launcher-backdrop.png"],
+        ),
+        "early-initramfs": source_hash(
+            root,
+            [
+                helper,
+                "kernel/rocknix/build-stock-root-early-initramfs.sh",
+                "kernel/rocknix/stock-root/bird-early.sh",
+                "kernel/rocknix/stock-root/bird-release-loader.sh",
+                "firmware/normalize-newc.py",
+                "firmware/generate-launcher-bootlogo.py",
+                "firmware/assets/bird-launcher-backdrop.png",
+                *launcher_common,
+            ],
+            [profile, DEV_RELEASE, "gzip-9", "reuse-frame-0"],
+        ),
+        "selector": source_hash(root, ["kernel/rocknix/stock-root/extlinux.conf"], [DEV_RELEASE]),
+        "post-flash": source_hash(root, ["kernel/rocknix/stock-root/post-flash.sh"]),
+        "mount-storage": source_hash(root, ["kernel/rocknix/stock-root/mount-storage.sh"]),
+    }
+    for name in RUNTIME_FILES:
+        result[f"runtime:{name}"] = source_hash(root, [f"kernel/rocknix/stock-root/{name}"], [DEV_RELEASE])
+    return result
+
+
+def classify_path(path: str) -> tuple[str, set[str]]:
+    if path.endswith(".md") or path.startswith("measurements/"):
+        return ("documentation", set())
+    if path.startswith("kernel/rocknix/tests/"):
+        return ("test", set())
+    if path in {"dev-build-and-deploy.sh", "kernel/rocknix/dev-release-tool.py"}:
+        return ("workflow", set())
+    if path == "kernel/rocknix/build-stock-root-compat.sh":
+        return ("reviewed-workflow-extraction", set())
+    if path == "launcher/bird-launcher.c":
+        return ("supported", {"launcher", "early-initramfs"})
+    if path in {"launcher/catalog.generated.h", "launcher/library.inventory.tsv", "generate-launcher-catalog.py"}:
+        return ("supported", {"catalog", "launcher", "early-initramfs"})
+    if path == "launcher/catalog.revision":
+        return ("workflow", set())
+    if path == "generate-launcher-catalog.sh":
+        return ("full-release-only", set())
+    if path in {"bird-device-contract.tsv", "generate-device-contract.py", *GENERATED_DEVICE_PATHS}:
+        return (
+            "supported",
+            {"device-contract", "launcher", "fixed-controls", "mpv-controls", "early-initramfs", "runtime:bird-suspend-policy.generated.sh", "runtime:bird-sleep.conf"},
+        )
+    if path == "kernel/rocknix/build-bird-local-binary.sh":
+        return ("supported", {"launcher", "pidwait", "powerstate", "fixed-controls", "mpv-controls", "early-initramfs"})
+    if path == "launcher/bird-pidwait.c":
+        return ("supported", {"pidwait"})
+    if path == "launcher/bird-powerstate.c":
+        return ("supported", {"powerstate"})
+    if path == "kernel/rocknix/stock-root/bird-fixed-controls.c":
+        return ("supported", {"fixed-controls"})
+    if path == "kernel/rocknix/stock-root/bird-mpv-controls.c":
+        return ("supported", {"mpv-controls"})
+    if path in {
+        "kernel/rocknix/build-stock-root-early-initramfs.sh",
+        "kernel/rocknix/stock-root/bird-early.sh",
+        "kernel/rocknix/stock-root/bird-release-loader.sh",
+        "firmware/normalize-newc.py",
+    }:
+        return ("supported", {"early-initramfs"})
+    if path in {"firmware/generate-launcher-bootlogo.py", "firmware/assets/bird-launcher-backdrop.png"}:
+        return ("supported", {"boot-assets", "early-initramfs"})
+    if path == "kernel/rocknix/stock-root/extlinux.conf":
+        return ("supported", {"selector"})
+    if path == "kernel/rocknix/stock-root/post-flash.sh":
+        return ("supported", {"post-flash"})
+    if path == "kernel/rocknix/stock-root/mount-storage.sh":
+        return ("supported", {"mount-storage"})
+    prefix = "kernel/rocknix/stock-root/"
+    if path.startswith(prefix):
+        name = path[len(prefix) :]
+        if name == "portmaster-provider.manifest.tsv":
+            return ("full-release-only", set())
+        if name in RUNTIME_FILES:
+            return ("supported", {f"runtime:{name}"})
+        if name == "bird-logind.conf":
+            return ("supported", {"device-contract"})
+        if name == "extlinux.fallback.conf":
+            return ("full-release-only", set())
+    full_only = {
+        "build-and-deploy.sh",
+        "build-launcher-object.sh",
+        "rebuild-library.command",
+        "firmware/mac-update-rocknix-stock-root-v6.sh",
+    }
+    if path in full_only or path.startswith("kernel/rocknix/source/") or path.startswith("kernel/rocknix/patches/"):
+        return ("full-release-only", set())
+    return ("unsupported", set())
+
+
+def all_component_groups() -> set[str]:
+    fixed = {
+        "launcher",
+        "pidwait",
+        "powerstate",
+        "fixed-controls",
+        "mpv-controls",
+        "device-contract",
+        "catalog",
+        "boot-assets",
+        "early-initramfs",
+        "selector",
+        "post-flash",
+        "mount-storage",
+    }
+    return fixed | {f"runtime:{name}" for name in RUNTIME_FILES}
+
+
+def expand_dependencies(groups: set[str]) -> set[str]:
+    expanded = set(groups)
+    if "device-contract" in expanded:
+        expanded.update(
+            {
+                "launcher",
+                "fixed-controls",
+                "mpv-controls",
+                "early-initramfs",
+                "runtime:bird-suspend-policy.generated.sh",
+                "runtime:bird-sleep.conf",
+            }
+        )
+    if "catalog" in expanded:
+        expanded.update({"launcher", "early-initramfs"})
+    if "launcher" in expanded or "boot-assets" in expanded:
+        expanded.add("early-initramfs")
+    return expanded
+
+
+def changed_paths_for_state(root: pathlib.Path, identity: SourceIdentity, state_dir: pathlib.Path, state: DevState | None) -> set[str]:
+    if state is None or state.inventory_sha == "pending":
+        return dirty_paths(root)
+    inventory_path = state_dir / "source-inventory.tsv"
+    require_regular(inventory_path, "saved source inventory")
+    data = inventory_path.read_bytes()
+    if sha256_bytes(data) != state.inventory_sha:
+        fail("saved source inventory digest changed")
+    return changed_inventory_paths(parse_inventory(data), identity.inventory)
+
+
+def render_dev_manifest(
+    base: Manifest,
+    dev_root: pathlib.Path,
+    identity: SourceIdentity,
+    contract_digest: str,
+    catalog_digest: str,
+) -> bytes:
+    lines = [
+        f"schema\t{MANIFEST_SCHEMA}",
+        f"release\t{DEV_RELEASE}",
+        "target-mode-policy\tfat-capability",
+        f"source-commit\t{identity.commit}\t{identity.state}",
+        f"artifact\tdevice-contract\tbird/bird-device-contract.tsv\t{contract_digest}",
+        f"artifact\tcatalog\tlauncher/catalog.generated.h\t{catalog_digest}",
+        *base.inputs,
+    ]
+    for relative, mode in base.dirs:
+        lines.append(f"dir\t{relative}\t{mode}")
+    for relative, mode, _size, _digest in base.files:
+        target = dev_root / relative
+        require_regular(target, f"dev release file {relative}")
+        lines.append(f"file\t{relative}\t{mode}\t{target.stat().st_size}\t{sha256_file(target)}")
+    return ("\n".join(lines) + "\n").encode()
+
+
+def copy_manifest_release(source: pathlib.Path, destination: pathlib.Path, manifest: Manifest, host_test: bool) -> None:
+    destination.mkdir(mode=0o755)
+    for relative, mode in manifest.dirs:
+        target = destination / relative
+        target.mkdir(parents=True, exist_ok=True)
+        if host_test:
+            target.chmod(int(mode, 8))
+    for relative, mode, size, digest in manifest.files:
+        source_file = source / relative
+        require_regular(source_file, f"base release file {relative}")
+        target = destination / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source_file, target)
+        if target.stat().st_size != size or sha256_file(target) != digest:
+            fail(f"base release copy verification failed: {relative}")
+        if host_test:
+            target.chmod(int(mode, 8))
+
+
+def specialize_selector(source: bytes, source_id: str) -> bytes:
+    try:
+        text = source.decode("ascii")
+    except UnicodeDecodeError:
+        fail("release selector is not ASCII")
+    if text.count(f"bird_release={source_id}") != 1:
+        fail("base release selector does not contain its exact release argument")
+    text = text.replace(f"/bird-releases/{source_id}/", f"/bird-releases/{DEV_RELEASE}/")
+    text = text.replace(f"bird_release={source_id}", f"bird_release={DEV_RELEASE}")
+    result = text.encode("ascii")
+    verify_selector_for_release(result, DEV_RELEASE)
+    return result
+
+
+def extract_newc_member(compressed: pathlib.Path, requested: str) -> bytes:
+    data = gzip.decompress(compressed.read_bytes())
+    offset = 0
+    while offset + 110 <= len(data):
+        header = data[offset : offset + 110]
+        if header[:6] != b"070701":
+            fail("generated initramfs is not normalized newc")
+        namesize = int(header[94:102], 16)
+        filesize = int(header[54:62], 16)
+        offset += 110
+        name = data[offset : offset + namesize - 1].decode("utf-8", "surrogateescape")
+        offset = (offset + namesize + 3) & ~3
+        payload = data[offset : offset + filesize]
+        offset = (offset + filesize + 3) & ~3
+        if name == "TRAILER!!!":
+            break
+        if name.lstrip("./") == requested.lstrip("/"):
+            return payload
+    fail(f"generated initramfs member is missing: {requested}")
+
+
+def copy_test_output(fixture: pathlib.Path, relative: str, destination: pathlib.Path) -> None:
+    source = fixture / relative
+    require_regular(source, f"host-test build fixture {relative}")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source, destination)
+
+
+def prepare_outputs(
+    root: pathlib.Path,
+    bird: pathlib.Path,
+    data: pathlib.Path,
+    groups: set[str],
+    profile: str,
+    work: pathlib.Path,
+    host_test: bool,
+) -> tuple[pathlib.Path, str | None, list[str]]:
+    updates = work / "updates"
+    updates.mkdir()
+    generated = work / "generated"
+    generated.mkdir()
+    tests: list[str] = []
+    fixture_value = os.environ.get("BIRD_DEV_TEST_BUILD_FIXTURE", "")
+    fixture = pathlib.Path(fixture_value) if fixture_value else None
+
+    contract_header = generated / "bird-device-contract.h"
+    suspend_policy = generated / "bird-suspend-policy.generated.sh"
+    sleep_policy = generated / "bird-sleep.conf"
+    logind_policy = generated / "bird-logind.conf"
+    if not host_test:
+        run(
+            [
+                "python3",
+                str(root / "generate-device-contract.py"),
+                str(root / "bird-device-contract.tsv"),
+                str(contract_header),
+                "--suspend-policy-output",
+                str(suspend_policy),
+                "--sleep-policy-output",
+                str(sleep_policy),
+                "--logind-policy-output",
+                str(logind_policy),
+            ],
+            cwd=root,
+        )
+        tests.append("generated device-contract outputs")
+    else:
+        shutil.copyfile(root / "launcher/bird-device-contract.h", contract_header)
+        shutil.copyfile(root / "kernel/rocknix/stock-root/bird-suspend-policy.generated.sh", suspend_policy)
+        shutil.copyfile(root / "kernel/rocknix/stock-root/bird-sleep.conf", sleep_policy)
+        shutil.copyfile(root / "kernel/rocknix/stock-root/bird-logind.conf", logind_policy)
+
+    catalog_header = generated / "catalog.generated.h"
+    catalog_inventory = generated / "library.inventory.tsv"
+    catalog_digest: str | None = None
+    needs_catalog = bool(groups & {"catalog", "launcher", "early-initramfs"})
+    if needs_catalog:
+        if host_test:
+            shutil.copyfile(root / "launcher/catalog.generated.h", catalog_header)
+            shutil.copyfile(root / "launcher/library.inventory.tsv", catalog_inventory)
+        else:
+            run(
+                [
+                    "python3",
+                    str(root / "generate-launcher-catalog.py"),
+                    str(data / "ROMS"),
+                    "--media-root",
+                    str(data / "MEDIA"),
+                    "--output",
+                    str(catalog_header),
+                    "--inventory-output",
+                    str(catalog_inventory),
+                ],
+                cwd=root,
+            )
+            tests.append("generated embedded catalog")
+            if catalog_header.read_bytes() != (root / "launcher/catalog.generated.h").read_bytes() or (
+                catalog_inventory.read_bytes() != (root / "launcher/library.inventory.tsv").read_bytes()
+            ):
+                fail(
+                    "generated catalog sources are stale or hand-edited; run "
+                    "./generate-launcher-catalog.sh against this BIRD-DATA content first"
+                )
+        catalog_digest = sha256_file(catalog_header)
+
+    overlay = work / "source/launcher"
+    overlay.mkdir(parents=True)
+    shutil.copyfile(contract_header, overlay / "bird-device-contract.h")
+    if groups & {"launcher", "early-initramfs"}:
+        shutil.copyfile(root / "launcher/bird-launcher.c", overlay / "bird-launcher.c")
+        shutil.copyfile(catalog_header, overlay / "catalog.generated.h")
+
+    helper = root / "kernel/rocknix/build-bird-local-binary.sh"
+    build_env = os.environ.copy()
+    build_env["BIRD_LAUNCHER_PROFILE"] = "profile" if profile == "profile" else "none"
+    build_env["BIRD_LOCAL_LAUNCHER_DIR"] = str(overlay)
+
+    def build_binary(component: str, relative: str) -> None:
+        output = updates / relative
+        output.parent.mkdir(parents=True, exist_ok=True)
+        if host_test:
+            if fixture is None:
+                fail("host-test binary build fixture is required")
+            copy_test_output(fixture, relative, output)
+        else:
+            object_path = work / f"{component}.o"
+            run(
+                [
+                    "sh",
+                    str(helper),
+                    "--build",
+                    component,
+                    "--object",
+                    str(object_path),
+                    "--output",
+                    str(output),
+                ],
+                cwd=root,
+                env=build_env,
+            )
+        tests.append(f"static AArch64/PT_INTERP: {relative}")
+
+    if "launcher" in groups:
+        build_binary("final-launcher", "bird/bird-launcher")
+    for group, component, relative in (
+        ("pidwait", "bird-pidwait", "bird/bird-pidwait"),
+        ("powerstate", "bird-powerstate", "bird/bird-powerstate"),
+        ("fixed-controls", "bird-fixed-controls", "bird/bird-fixed-controls"),
+        ("mpv-controls", "bird-mpv-controls", "bird/bird-mpv-controls"),
+    ):
+        if group in groups:
+            build_binary(component, relative)
+
+    if "early-initramfs" in groups:
+        early = work / "early"
+        (early / "build").mkdir(parents=True)
+        (early / "card").mkdir()
+        (early / "build/build-flags.tsv").write_text("component\tmode\tflags\n", encoding="utf-8")
+        if host_test:
+            if fixture is None:
+                fail("host-test initramfs build fixture is required")
+            copy_test_output(fixture, "bird-initramfs.cpio.gz", updates / "bird-initramfs.cpio.gz")
+        else:
+            early_env = build_env.copy()
+            early_env.update(
+                {
+                    "OUTPUT": str(early),
+                    "BIRD_RELEASE_ID": DEV_RELEASE,
+                    "BIRD_INITRAMFS_GZIP_LEVEL": "9",
+                    "BIRD_DEV_LOCAL_BUILD": "1",
+                    "BIRD_REUSE_UBOOT_FRAME": "0",
+                    "BIRD_BOOT_FRAME_VERIFIED_CONTRACT": "",
+                }
+            )
+            run(["sh", str(root / "kernel/rocknix/build-stock-root-early-initramfs.sh")], cwd=root, env=early_env)
+            shutil.copyfile(early / "card/bird-initramfs.cpio.gz", updates / "bird-initramfs.cpio.gz")
+        loader = extract_newc_member(updates / "bird-initramfs.cpio.gz", "bird-release-loader.sh")
+        if f"BIRD_LOADER_RELEASE={DEV_RELEASE}\n".encode() not in loader:
+            fail("generated initramfs release loader does not name dev-current")
+        extract_newc_member(updates / "bird-initramfs.cpio.gz", "opt/bird/bird-launcher")
+        tests.append("external initramfs release-loader and launcher")
+
+    if "boot-assets" in groups:
+        contract = updates / "bird/boot-frame.contract"
+        xrgb = updates / "bird/launcher-base.xrgb"
+        contract.parent.mkdir(parents=True, exist_ok=True)
+        if host_test:
+            if fixture is None:
+                fail("host-test boot asset fixture is required")
+            copy_test_output(fixture, "bird/boot-frame.contract", contract)
+            copy_test_output(fixture, "bird/launcher-base.xrgb", xrgb)
+        else:
+            run(
+                [
+                    "python3",
+                    str(root / "firmware/generate-launcher-bootlogo.py"),
+                    str(work / "bird-frame-zero.bmp"),
+                    "--contract",
+                    str(contract),
+                    "--xrgb-output",
+                    str(xrgb),
+                ],
+                cwd=root,
+            )
+        tests.append("boot-frame generated asset contract")
+
+    if "device-contract" in groups:
+        (updates / "bird").mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(root / "bird-device-contract.tsv", updates / "bird/bird-device-contract.tsv")
+        shutil.copyfile(suspend_policy, updates / "bird/bird-suspend-policy.generated.sh")
+        shutil.copyfile(sleep_policy, updates / "bird/bird-sleep.conf")
+
+    stock = root / "kernel/rocknix/stock-root"
+    if "post-flash" in groups:
+        shutil.copyfile(stock / "post-flash.sh", updates / "post-flash.sh")
+    if "mount-storage" in groups:
+        shutil.copyfile(stock / "mount-storage.sh", updates / "mount-storage.sh")
+    for name in RUNTIME_FILES:
+        if f"runtime:{name}" not in groups:
+            continue
+        destination = updates / f"bird/{name}"
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if name == "supervisor.sh":
+            source = (stock / name).read_text(encoding="utf-8")
+            transformed, count = re.subn(r"^RELEASE_ID=v6\.23$", f"RELEASE_ID={DEV_RELEASE}", source, flags=re.MULTILINE)
+            if count != 1:
+                fail("supervisor release specialization contract changed")
+            destination.write_text(transformed, encoding="utf-8", newline="\n")
+        elif name == "bird-suspend-policy.generated.sh":
+            shutil.copyfile(suspend_policy, destination)
+        elif name == "bird-sleep.conf":
+            shutil.copyfile(sleep_policy, destination)
+        else:
+            shutil.copyfile(stock / name, destination)
+        if name in SCRIPT_RUNTIME_FILES:
+            run(["bash", "-n", str(destination)], cwd=root)
+            tests.append(f"shell syntax: bird/{name}")
+    for group, relative in (("post-flash", "post-flash.sh"), ("mount-storage", "mount-storage.sh")):
+        if group in groups:
+            run(["bash", "-n", str(updates / relative)], cwd=root)
+            tests.append(f"shell syntax: {relative}")
+
+    return updates, catalog_digest, tests
+
+
+def verify_generated_device_sources(root: pathlib.Path) -> None:
+    run(
+        [
+            "python3",
+            str(root / "generate-device-contract.py"),
+            str(root / "bird-device-contract.tsv"),
+            str(root / "launcher/bird-device-contract.h"),
+            "--suspend-policy-output",
+            str(root / "kernel/rocknix/stock-root/bird-suspend-policy.generated.sh"),
+            "--sleep-policy-output",
+            str(root / "kernel/rocknix/stock-root/bird-sleep.conf"),
+            "--logind-policy-output",
+            str(root / "kernel/rocknix/stock-root/bird-logind.conf"),
+            "--check",
+        ],
+        cwd=root,
+    )
+
+
+def run_host_only_checks(root: pathlib.Path, paths: Iterable[str]) -> list[str]:
+    """Run non-mutating syntax checks for changed documentation/test/workflow inputs."""
+    checks: list[str] = []
+    executed_tests: set[str] = set()
+
+    def run_named_test(name: str) -> None:
+        if name in executed_tests:
+            return
+        test = root / "kernel/rocknix/tests" / name
+        require_regular(test, f"mapped host test {name}")
+        command = ["python3", str(test)] if name.endswith(".py") else ["sh", str(test)]
+        run(command, cwd=root)
+        executed_tests.add(name)
+
+    for relative in sorted(set(paths)):
+        source = root / relative
+        if not source.exists():
+            checks.append(f"removed host-only source classified: {relative}")
+            continue
+        require_regular(source, f"host-only source {relative}")
+        if relative == "kernel/rocknix/build-stock-root-compat.sh":
+            if sha256_file(source) != SAFE_COMPAT_HELPER_EXTRACTION_SHA256:
+                fail("canonical compatibility builder changed beyond the reviewed compiler extraction")
+            run_named_test("test-bird-local-binary.sh")
+            checks.append("shared compiler extraction contract and byte identity")
+        elif relative == "kernel/rocknix/tests/test-bird-local-binary.sh":
+            run_named_test("test-bird-local-binary.sh")
+            checks.append("bird local binary focused test")
+        elif relative == "kernel/rocknix/tests/test-dev-build-and-deploy.sh":
+            run_named_test("test-dev-build-and-deploy.sh")
+            checks.append("dev-current host transaction suite")
+        elif relative in {"dev-build-and-deploy.sh", "kernel/rocknix/dev-release-tool.py"}:
+            run_named_test("test-dev-build-and-deploy.sh")
+            checks.append("dev-current host transaction suite")
+        elif relative.startswith("kernel/rocknix/tests/"):
+            name = pathlib.PurePosixPath(relative).name
+            if name in HOST_HARNESS_RUNNERS:
+                runner = HOST_HARNESS_RUNNERS[name]
+                run_named_test(runner)
+                checks.append(f"mapped host test: {runner}")
+            elif name in KNOWN_STANDALONE_HOST_TESTS:
+                run_named_test(name)
+                checks.append(f"host test: {name}")
+            else:
+                fail(f"test-only source lacks an explicit safe host-check mapping: {relative}")
+        elif relative.endswith(".py"):
+            run(
+                [
+                    "python3",
+                    "-c",
+                    "import ast,pathlib,sys; ast.parse(pathlib.Path(sys.argv[1]).read_bytes())",
+                    str(source),
+                ],
+                cwd=root,
+            )
+            checks.append(f"Python syntax: {relative}")
+        elif relative.endswith(".sh") or source.read_bytes()[:2] == b"#!":
+            run(["bash", "-n", str(source)], cwd=root)
+            checks.append(f"shell syntax: {relative}")
+        else:
+            checks.append(f"host-only source classified: {relative}")
+    return checks
+
+
+def compare_invariants(before: dict[pathlib.Path, tuple[bool, int, str]], description: str) -> None:
+    for path, (existed, size, digest) in before.items():
+        exists = path.exists() and not path.is_symlink() and path.is_file()
+        if exists != existed:
+            fail(f"{description} path existence changed: {path}")
+        if existed and (path.stat().st_size != size or sha256_file(path) != digest):
+            fail(f"{description} bytes changed: {path}")
+
+
+def snapshot_files(paths: Iterable[pathlib.Path]) -> dict[pathlib.Path, tuple[bool, int, str]]:
+    result: dict[pathlib.Path, tuple[bool, int, str]] = {}
+    for path in paths:
+        if path.exists() or path.is_symlink():
+            require_regular(path, "protected fallback/selector file")
+            result[path] = (True, path.stat().st_size, sha256_file(path))
+        else:
+            result[path] = (False, 0, "")
+    return result
+
+
+class Workflow:
+    def __init__(self, args: argparse.Namespace) -> None:
+        self.root = args.root.resolve()
+        self.bird = args.bird.absolute()
+        self.data = args.data.absolute()
+        self.mode = args.mode
+        self.profile = "profile" if args.profile else "release"
+        self.dry_run = bool(args.dry_run)
+        self.host_test = os.environ.get("BIRD_DEV_HOST_TEST_MODE", "0") == "1"
+        self.synthetic_modes = not self.host_test
+        self.releases = self.bird / "bird-releases"
+        self.dev_root = self.releases / DEV_RELEASE
+        self.state_dir = self.bird / "bird-dev"
+        self.state_path = self.state_dir / "state.tsv"
+        self.base_selector_path = self.state_dir / "base-selector.conf"
+        self.inventory_path = self.state_dir / "source-inventory.tsv"
+        self.selector_path = self.bird / "extlinux/extlinux.conf"
+        self.failure_point = os.environ.get("BIRD_DEV_TEST_FAILPOINT", "")
+        self.rollback_selector: bytes | None = None
+        self.restore_on_failure = False
+        self.mutation_started = False
+        self.changed_release_paths: list[tuple[str, str, str]] = []
+        self.tests: list[str] = []
+
+    def inject(self, name: str) -> None:
+        if self.host_test and self.failure_point == name:
+            fail(f"host-only injected failure: {name}")
+
+    def read_selector(self) -> bytes:
+        require_regular(self.selector_path, "active extlinux selector")
+        return self.selector_path.read_bytes()
+
+    def selector_kind(self, data: bytes) -> tuple[str, str | None]:
+        selected = parse_selector(data)
+        if selected is not None:
+            return ("development" if selected == DEV_RELEASE else "production", selected)
+        fallback = self.bird / "extlinux/extlinux.fallback.conf"
+        if fallback.is_file() and not fallback.is_symlink() and data == fallback.read_bytes():
+            return ("fallback", None)
+        return ("legacy-or-malformed", None)
+
+    def verify_named_release(self, release_id: str) -> Manifest:
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", release_id):
+            fail(f"unsafe release ID: {release_id}")
+        return verify_release(self.releases / release_id, release_id, self.synthetic_modes)
+
+    def verify_selector_release(self, selector: bytes, release_id: str) -> Manifest:
+        verify_selector_for_release(selector, release_id)
+        manifest = self.verify_named_release(release_id)
+        release_selector = self.releases / release_id / "extlinux/extlinux.conf"
+        require_regular(release_selector, "release selector")
+        if release_selector.read_bytes() != selector:
+            fail(f"top-level selector differs from complete release selector: {release_id}")
+        return manifest
+
+    def saved_base_selector(self, state: DevState) -> bytes:
+        require_regular(self.base_selector_path, "saved production selector")
+        data = self.base_selector_path.read_bytes()
+        if sha256_bytes(data) != state.base_selector_sha:
+            fail("saved production selector digest changed")
+        self.verify_selector_release(data, state.base_release)
+        return data
+
+    def verify_complete_state_binding(self, state: DevState) -> Manifest:
+        if state.activation != "complete":
+            fail("dev state is incomplete; use --rebase, --rollback, or --clean")
+        manifest = self.verify_named_release(DEV_RELEASE)
+        manifest_path = self.dev_root / "deploy-manifest.tsv"
+        if sha256_file(manifest_path) != state.manifest_sha:
+            fail("dev state does not bind the installed dev-current manifest")
+        require_regular(self.inventory_path, "saved source inventory")
+        if sha256_file(self.inventory_path) != state.inventory_sha:
+            fail("dev state does not bind the saved source inventory")
+        return manifest
+
+    def status(
+        self,
+        identity: SourceIdentity,
+        state: DevState | None,
+        changed_paths: set[str],
+        fingerprints: dict[str, str],
+        state_error: str | None = None,
+    ) -> None:
+        selector = self.read_selector()
+        try:
+            kind, selected = self.selector_kind(selector)
+        except DevError:
+            kind, selected = "malformed-or-incomplete", None
+        selector_verified = False
+        if kind in {"production", "development"} and selected is not None:
+            try:
+                self.verify_selector_release(selector, selected)
+                selector_verified = True
+            except DevError:
+                kind = "malformed-or-incomplete"
+        print(f"selector-kind\t{kind}")
+        print(f"selector-release\t{selected or '-'}")
+        print(f"base-production-release\t{state.base_release if state else '-'}")
+        print(f"dev-current-exists\t{'yes' if self.dev_root.exists() else 'no'}")
+        dev_verified = "no"
+        state_verified = state is not None and state_error is None
+        if state_error is None and self.dev_root.exists() and not self.dev_root.is_symlink():
+            try:
+                self.verify_named_release(DEV_RELEASE)
+                if state is not None and state.activation == "complete":
+                    if sha256_file(self.dev_root / "deploy-manifest.tsv") != state.manifest_sha:
+                        fail("state/manifest binding mismatch")
+                    require_regular(self.inventory_path, "saved source inventory")
+                    if sha256_file(self.inventory_path) != state.inventory_sha:
+                        fail("state/inventory binding mismatch")
+                dev_verified = "yes"
+            except DevError:
+                dev_verified = "no"
+                if state is not None and state.activation == "complete":
+                    state_verified = False
+        print(f"dev-current-verifies\t{dev_verified}")
+        print(f"dev-state-verifies\t{'yes' if state_verified else 'no'}")
+        print(f"dev-current-selected\t{'yes' if selected == DEV_RELEASE else 'no'}")
+        print(f"repository-head\t{identity.commit}")
+        print(f"source-state\t{identity.state}")
+        different = sorted(
+            group
+            for group, digest in fingerprints.items()
+            if state is None or state.components.get(group) != digest
+        )
+        print(f"changed-components\t{','.join(different) if different else '-'}")
+        unsupported = []
+        for path in sorted(changed_paths):
+            classification, _groups = classify_path(path)
+            if classification == "supported" and not (self.root / path).exists() and not (
+                self.root / path
+            ).is_symlink():
+                unsupported.append(f"{path}:deployed/source-path-removal")
+            elif classification == "reviewed-workflow-extraction":
+                if not (self.root / path).is_file() or sha256_file(self.root / path) != SAFE_COMPAT_HELPER_EXTRACTION_SHA256:
+                    unsupported.append(f"{path}:full-release-only")
+            elif classification in {"unsupported", "full-release-only"}:
+                unsupported.append(f"{path}:{classification}")
+        if (
+            state is not None
+            and state.components.get("authority:toolchain") != fingerprints.get("authority:toolchain")
+        ):
+            unsupported.append("resolved-build-toolchain:full-release-only")
+        print(f"full-release-only-changes\t{','.join(unsupported) if unsupported else '-'}")
+        rebase = "no"
+        if state_error is not None:
+            rebase = "yes"
+        if kind not in {"production", "development"} or not selector_verified:
+            rebase = "yes"
+        if state is not None and kind == "production" and selected != state.base_release:
+            rebase = "yes"
+        if state is not None and state.activation != "complete":
+            rebase = "yes"
+        if self.dev_root.exists() and dev_verified != "yes":
+            rebase = "yes"
+        if state is not None and not self.dev_root.exists():
+            rebase = "yes"
+        if state is not None:
+            try:
+                self.saved_base_selector(state)
+            except DevError:
+                rebase = "yes"
+        print(f"rebase-required\t{rebase}")
+
+    def choose_base(self, state: DevState | None, selector: bytes) -> tuple[str, bytes, Manifest]:
+        kind, selected = self.selector_kind(selector)
+        if self.mode == "rebase":
+            if kind == "production" and selected is not None:
+                return selected, selector, self.verify_selector_release(selector, selected)
+            fail("--rebase requires a selected complete production release")
+        if state is None:
+            if kind != "production" or selected is None:
+                fail("first dev invocation requires a selected complete production release")
+            return selected, selector, self.verify_selector_release(selector, selected)
+        saved = self.saved_base_selector(state)
+        if kind == "production" and selected != state.base_release:
+            fail(f"selected production release differs from dev base ({state.base_release}); use --rebase")
+        if kind not in {"production", "development"}:
+            fail("active selector is fallback, legacy, or malformed; restore production before dev work")
+        if kind == "development" and selected != DEV_RELEASE:
+            fail("active development selector is malformed")
+        if kind == "development":
+            self.verify_selector_release(selector, DEV_RELEASE)
+        return state.base_release, saved, self.verify_named_release(state.base_release)
+
+    def preflight_changes(
+        self,
+        changed_paths: set[str],
+        fingerprints: dict[str, str],
+        state: DevState | None,
+    ) -> tuple[set[str], list[str], list[str]]:
+        requested: set[str] = set()
+        docs_tests: list[str] = []
+        forbidden: list[str] = []
+        for path in sorted(changed_paths):
+            classification, groups = classify_path(path)
+            if classification == "supported":
+                source = self.root / path
+                if not source.exists() and not source.is_symlink():
+                    forbidden.append(f"{path} (deployed/source-path removal requires full release)")
+                    continue
+                requested.update(groups)
+                if path in {
+                    "kernel/rocknix/build-bird-local-binary.sh",
+                    "kernel/rocknix/build-stock-root-early-initramfs.sh",
+                }:
+                    docs_tests.append("kernel/rocknix/tests/test-bird-local-binary.sh")
+            elif classification in {"documentation", "test", "workflow"}:
+                docs_tests.append(path)
+            elif classification == "reviewed-workflow-extraction":
+                source = self.root / path
+                if source.is_file() and not source.is_symlink() and sha256_file(source) == SAFE_COMPAT_HELPER_EXTRACTION_SHA256:
+                    docs_tests.append(path)
+                else:
+                    forbidden.append(f"{path} (full-release-only canonical-builder change)")
+            else:
+                forbidden.append(f"{path} ({classification})")
+        if forbidden:
+            fail("changed paths require the full release workflow: " + ", ".join(forbidden))
+        if (
+            state is not None
+            and state.components.get("authority:toolchain") != fingerprints.get(
+                "authority:toolchain"
+            )
+        ):
+            fail("resolved compiler/linker/readelf/cpio/compressor identity changed; use the full release workflow")
+        if self.mode in {"all-local", "rebase"} or state is None:
+            requested = all_component_groups()
+        elif self.mode == "changed":
+            requested.update(
+                group
+                for group, digest in fingerprints.items()
+                if state.components.get(group) != digest
+            )
+        return expand_dependencies(requested), docs_tests, forbidden
+
+    def protected_files(self) -> dict[pathlib.Path, tuple[bool, int, str]]:
+        return snapshot_files(
+            [
+                self.bird / "extlinux/extlinux.previous.conf",
+                self.bird / "extlinux/extlinux.fallback.conf",
+                self.bird / "KERNEL.fallback",
+                self.bird / "dtb.img",
+            ]
+        )
+
+    def ensure_space(
+        self,
+        manifest: Manifest,
+        replacing: bool,
+        rebase: bool,
+        updates: pathlib.Path,
+        source_inventory_bytes: int,
+    ) -> None:
+        allowance = 2 * 1024 * 1024
+        update_files = [path for path in updates.rglob("*") if path.is_file()]
+        largest_atomic_replacement = max((path.stat().st_size for path in update_files), default=0)
+        metadata_peak = max(
+            source_inventory_bytes,
+            (self.dev_root / "deploy-manifest.tsv").stat().st_size if replacing else 0,
+            256 * 1024,
+        )
+        if not replacing:
+            base_sizes = {path: size for path, _mode, size, _digest in manifest.files}
+            positive_growth = sum(
+                max(0, source.stat().st_size - base_sizes.get(source.relative_to(updates).as_posix(), 0))
+                for source in update_files
+            )
+            required = (
+                sum(size for _path, _mode, size, _digest in manifest.files)
+                + positive_growth
+                + largest_atomic_replacement
+                + metadata_peak
+                + allowance
+            )
+        else:
+            positive_growth = 0
+            for source in update_files:
+                relative = source.relative_to(updates)
+                destination = self.dev_root / relative
+                old_size = destination.stat().st_size if destination.is_file() and not destination.is_symlink() else 0
+                positive_growth += max(0, source.stat().st_size - old_size)
+            required = positive_growth + largest_atomic_replacement + metadata_peak + allowance
+        override = os.environ.get("BIRD_DEV_TEST_FREE_BYTES", "") if self.host_test else ""
+        available = int(override) if override else shutil.disk_usage(self.bird).free
+        recoverable = 0
+        if rebase and self.dev_root.is_dir() and not self.dev_root.is_symlink():
+            recoverable = sum(path.stat().st_size for path in self.dev_root.rglob("*") if path.is_file())
+        if available + recoverable < required:
+            fail(
+                f"insufficient space for dev-current: required={required} available={available} "
+                f"recoverable-dev-bytes={recoverable}"
+            )
+
+    def restore_selector(self, selector: bytes) -> None:
+        atomic_write_if_changed(self.selector_path, selector)
+        if self.read_selector() != selector:
+            fail("production selector restoration did not verify")
+
+    def write_incomplete_state(
+        self,
+        base_id: str,
+        base_selector: bytes,
+        identity: SourceIdentity,
+        toolchain_digest: str,
+    ) -> None:
+        self.state_dir.mkdir(mode=0o755, exist_ok=True)
+        require_directory(self.state_dir, "dev metadata directory")
+        atomic_write(self.base_selector_path, base_selector)
+        incomplete = DevState(
+            "incomplete",
+            base_id,
+            sha256_bytes(base_selector),
+            identity.commit,
+            identity.state,
+            self.profile,
+            "pending",
+            "pending",
+            {"authority:toolchain": toolchain_digest},
+        )
+        atomic_write(self.state_path, state_bytes(incomplete))
+
+    def install_updates(self, updates: pathlib.Path, manifest: Manifest) -> None:
+        modes = manifest.file_modes
+        for source in sorted(path for path in updates.rglob("*") if path.is_file()):
+            relative = source.relative_to(updates).as_posix()
+            if relative not in modes:
+                fail(f"fast workflow attempted to add a new release path: {relative}")
+            destination = self.dev_root / relative
+            require_directory(destination.parent, "dev release destination parent")
+            old = sha256_file(destination) if destination.is_file() and not destination.is_symlink() else "missing"
+            atomic_write_if_changed(destination, source.read_bytes(), int(modes[relative], 8))
+            new = sha256_file(destination)
+            if old != new:
+                self.changed_release_paths.append((relative, old, new))
+
+    def activate_selector(self, selector: bytes) -> str:
+        atomic_write(self.selector_path, selector)
+        self.inject("after-selector-rename")
+        if self.read_selector() != selector:
+            fail("dev selector activation did not verify")
+        return sha256_bytes(selector)
+
+    def reset_dev_attempts(self) -> None:
+        directory = fixed_directory_chain(
+            self.data,
+            ("Bird", "boot-state", "releases", DEV_RELEASE),
+            create=True,
+        )
+        atomic_write(directory / "attempts", b"0\n", 0o600)
+
+    def commit_state(
+        self,
+        base_id: str,
+        base_selector: bytes,
+        identity: SourceIdentity,
+        fingerprints: dict[str, str],
+        manifest_sha: str,
+    ) -> None:
+        atomic_write(self.inventory_path, identity.inventory_bytes)
+        if not self.host_test:
+            sync_storage()
+        complete = DevState(
+            "complete",
+            base_id,
+            sha256_bytes(base_selector),
+            identity.commit,
+            identity.state,
+            self.profile,
+            manifest_sha,
+            sha256_bytes(identity.inventory_bytes),
+            fingerprints,
+        )
+        atomic_write(self.state_path, state_bytes(complete))
+
+    def rollback(self, state: DevState | None) -> None:
+        if state is None:
+            fail("no dev state exists; there is no saved production selector")
+        selector = self.saved_base_selector(state)
+        if self.dry_run:
+            print(f"dry-run: would restore exact production selector for {state.base_release}")
+            return
+        self.restore_selector(selector)
+        print(f"Restored production selector: {state.base_release}")
+
+    def clean(self, state: DevState | None) -> None:
+        if state is None:
+            fail("no verified dev metadata exists; refusing ambiguous clean")
+        selector = self.saved_base_selector(state)
+        if self.dev_root.exists() or self.dev_root.is_symlink():
+            verify_safe_removal_tree(self.dev_root, "dev-current release")
+            if (self.dev_root / ".complete").exists():
+                self.verify_named_release(DEV_RELEASE)
+        attempts_parent = fixed_directory_chain(
+            self.data,
+            ("Bird", "boot-state", "releases"),
+            create=False,
+        )
+        attempts = attempts_parent / DEV_RELEASE
+        if attempts.exists() or attempts.is_symlink():
+            verify_safe_removal_tree(attempts, "dev attempt state")
+        verify_safe_removal_tree(self.state_dir, "dev metadata directory")
+        if self.dry_run:
+            print(f"dry-run: would restore {state.base_release} and remove only dev-current metadata/release")
+            return
+        self.restore_selector(selector)
+        if self.dev_root.exists():
+            shutil.rmtree(self.dev_root)
+        if attempts.exists() or attempts.is_symlink():
+            shutil.rmtree(attempts)
+        shutil.rmtree(self.state_dir)
+        fsync_directory(self.releases)
+        fsync_directory(self.bird)
+        if attempts_parent.exists():
+            fsync_directory(attempts_parent)
+        print("Removed only dev-current, its attempt state, and bird-dev metadata.")
+
+    def deploy(
+        self,
+        identity: SourceIdentity,
+        state: DevState | None,
+        groups: set[str],
+        fingerprints: dict[str, str],
+        docs_tests: list[str],
+    ) -> None:
+        selector_before = self.read_selector()
+        base_id, base_selector, base_manifest = self.choose_base(state, selector_before)
+        base_root = self.releases / base_id
+        base_snapshot = release_snapshot(base_root)
+        protected = self.protected_files()
+        # Render and validate every source-derived selector byte before any
+        # card write or incomplete-state publication.
+        selector_bytes = specialize_selector(
+            (self.root / "kernel/rocknix/stock-root/extlinux.conf").read_bytes(),
+            "v6.23",
+        )
+        if "early-initramfs" in groups:
+            verify_early_input_compatibility(base_manifest)
+        previous_dev_manifest: Manifest | None = None
+        if self.dev_root.exists() and state is not None and state.activation == "complete":
+            previous_dev_manifest = self.verify_named_release(DEV_RELEASE)
+
+        if not groups and self.mode == "changed":
+            self.tests.extend(run_host_only_checks(self.root, docs_tests))
+            kind, selected = self.selector_kind(selector_before)
+            if not docs_tests and kind == "production" and selected == base_id:
+                dev_selector_path = self.dev_root / "extlinux/extlinux.conf"
+                require_regular(dev_selector_path, "dev-current selector")
+                dev_selector = dev_selector_path.read_bytes()
+                self.verify_selector_release(dev_selector, DEV_RELEASE)
+                if self.dry_run:
+                    print("dry-run: would reactivate the unchanged verified dev-current release")
+                    return
+                self.rollback_selector = base_selector
+                self.restore_on_failure = True
+                self.reset_dev_attempts()
+                if not self.host_test:
+                    sync_storage()
+                selector_sha = self.activate_selector(dev_selector)
+                if not self.host_test:
+                    sync_storage()
+                self.restore_on_failure = False
+                print("Reactivated unchanged verified dev-current; no release payload file was rewritten.")
+                print(f"Selector SHA-256: {selector_sha}")
+                return
+            print("No supported payload component changed; card release was not rewritten or reactivated.")
+            if self.tests:
+                print("Tests: " + "; ".join(dict.fromkeys(self.tests)))
+            return
+
+        if self.dry_run:
+            print(f"dry-run: base={base_id} dev={DEV_RELEASE} profile={self.profile}")
+            print("dry-run: component groups=" + (",".join(sorted(groups)) if groups else "none"))
+            return
+
+        with tempfile.TemporaryDirectory(prefix="bird-dev-build-") as temporary:
+            work = pathlib.Path(temporary)
+            # Compilation is host-side, but an actual build failure still
+            # returns the card to the saved production selector. An explicit
+            # insufficient-space decision below remains wholly read-only.
+            self.rollback_selector = base_selector
+            self.restore_on_failure = True
+            updates, generated_catalog_digest, build_tests = prepare_outputs(
+                self.root, self.bird, self.data, groups, self.profile, work, self.host_test
+            )
+            self.tests.extend(build_tests)
+            self.tests.extend(run_host_only_checks(self.root, docs_tests))
+            identity_after = capture_source_identity(self.root)
+            if (identity_after.commit, identity_after.state, identity_after.inventory_bytes) != (
+                identity.commit,
+                identity.state,
+                identity.inventory_bytes,
+            ):
+                fail("source tree changed while dev bytes were being built")
+            if build_toolchain_fingerprint() != fingerprints["authority:toolchain"]:
+                fail("build toolchain changed while dev bytes were being built")
+
+            self.restore_on_failure = False
+            replacing = self.dev_root.exists() and self.mode != "rebase"
+            self.ensure_space(
+                base_manifest,
+                replacing,
+                self.mode == "rebase",
+                updates,
+                len(identity.inventory_bytes),
+            )
+
+            self.restore_on_failure = True
+            self.restore_selector(base_selector)
+            self.verify_selector_release(self.read_selector(), base_id)
+            self.inject("after-base-selector-restoration")
+
+            # Publish recoverable intent before every mutation, including an
+            # incremental update. A crash after .complete removal must never
+            # leave metadata claiming that dev-current is still complete.
+            self.write_incomplete_state(
+                base_id,
+                base_selector,
+                identity,
+                fingerprints["authority:toolchain"],
+            )
+            if not self.host_test:
+                sync_storage()
+
+            if self.mode == "rebase" and self.dev_root.exists():
+                verify_safe_removal_tree(self.dev_root, "previous dev-current release")
+                if state is not None and state.activation == "complete":
+                    self.verify_named_release(DEV_RELEASE)
+                shutil.rmtree(self.dev_root)
+
+            if not self.dev_root.exists():
+                stage = self.releases / f".{DEV_RELEASE}.new.{os.getpid()}"
+                if stage.exists() or stage.is_symlink():
+                    fail("dev release staging path is occupied")
+                try:
+                    copy_manifest_release(base_root, stage, base_manifest, self.host_test)
+                    os.replace(stage, self.dev_root)
+                except BaseException:
+                    if stage.exists() and not stage.is_symlink() and stage.is_dir():
+                        shutil.rmtree(stage)
+                    raise
+                fsync_directory(self.releases)
+            else:
+                self.verify_named_release(DEV_RELEASE)
+
+            self.mutation_started = True
+            complete = self.dev_root / ".complete"
+            complete.unlink(missing_ok=True)
+            fsync_directory(self.dev_root)
+            self.inject("after-dev-incomplete")
+            self.install_updates(updates, base_manifest)
+
+            selector_relative = self.dev_root / "extlinux/extlinux.conf"
+            old_selector_digest = sha256_file(selector_relative)
+            atomic_write_if_changed(
+                selector_relative,
+                selector_bytes,
+                int(base_manifest.file_modes["extlinux/extlinux.conf"], 8),
+            )
+            new_selector_digest = sha256_file(selector_relative)
+            if old_selector_digest != new_selector_digest:
+                self.changed_release_paths.append(("extlinux/extlinux.conf", old_selector_digest, new_selector_digest))
+
+            supervisor = self.dev_root / "bird/supervisor.sh"
+            if f"RELEASE_ID={DEV_RELEASE}\n".encode() not in supervisor.read_bytes():
+                fail("dev supervisor does not name dev-current")
+            if "early-initramfs" not in groups:
+                loader = extract_newc_member(self.dev_root / "bird-initramfs.cpio.gz", "bird-release-loader.sh")
+                if f"BIRD_LOADER_RELEASE={DEV_RELEASE}\n".encode() not in loader:
+                    fail("existing dev initramfs does not name dev-current")
+
+            remove_appledouble(self.dev_root)
+            file_inventory = {
+                path.relative_to(self.dev_root).as_posix()
+                for path in self.dev_root.rglob("*")
+                if path.is_file() and path.name not in {"deploy-manifest.tsv", ".complete"}
+            }
+            expected_inventory = {path for path, _mode, _size, _digest in base_manifest.files}
+            if file_inventory != expected_inventory:
+                fail("dev release path inventory differs from the base manifest")
+
+            catalog_digest = generated_catalog_digest
+            if catalog_digest is None and previous_dev_manifest is not None:
+                catalog_digest = previous_dev_manifest.artifacts["catalog"][1]
+            if catalog_digest is None:
+                fail("no authoritative catalog digest is available for dev-current")
+            manifest_data = render_dev_manifest(
+                base_manifest,
+                self.dev_root,
+                identity,
+                sha256_file(self.dev_root / "bird/bird-device-contract.tsv"),
+                catalog_digest,
+            )
+            manifest_path = self.dev_root / "deploy-manifest.tsv"
+            atomic_write(manifest_path, manifest_data)
+            manifest_sha = sha256_bytes(manifest_data)
+            precommit_manifest = verify_release(
+                self.dev_root,
+                DEV_RELEASE,
+                self.synthetic_modes,
+                require_complete=False,
+            )
+            if precommit_manifest.inputs != base_manifest.inputs:
+                fail("dev manifest changed immutable input records")
+            atomic_write(complete, (manifest_sha + "\n").encode())
+            verify_release(self.dev_root, DEV_RELEASE, self.synthetic_modes)
+
+            if release_snapshot(base_root) != base_snapshot:
+                fail("base production release changed during dev transaction")
+            compare_invariants(protected, "fallback/recovery")
+            self.reset_dev_attempts()
+            if self.host_test:
+                self.tests.append("host fixture reached pre-activation sync boundary")
+            else:
+                sync_storage()
+            self.inject("before-selector-activation")
+            selector_sha = self.activate_selector(selector_bytes)
+            self.commit_state(base_id, base_selector, identity, fingerprints, manifest_sha)
+            self.inject("after-state-commit")
+            if self.host_test:
+                self.tests.append("host fixture reached final sync boundary")
+            else:
+                sync_storage()
+            verify_release(self.dev_root, DEV_RELEASE, self.synthetic_modes)
+            if self.read_selector() != selector_bytes:
+                fail("committed dev selector changed after state publication")
+            if release_snapshot(base_root) != base_snapshot:
+                fail("base production release changed after activation")
+            compare_invariants(protected, "fallback/recovery")
+            self.mutation_started = False
+            self.restore_on_failure = False
+
+        print(f"Base release: {base_id}")
+        print(f"Development release: {DEV_RELEASE}")
+        print(f"Source: {identity.commit} {identity.state}")
+        print("Rebuilt groups: " + ", ".join(sorted(groups)))
+        for relative, old, new in sorted(set(self.changed_release_paths)):
+            print(f"changed\t{relative}\t{old}\t{new}")
+        print("Reused unchanged: KERNEL, KERNEL.fallback, dtb.img, ROCKNIX SYSTEM/STORAGE, PortMaster, KOReader, fallback selector")
+        print(f"Manifest SHA-256: {manifest_sha}")
+        print(f"Selector SHA-256: {selector_sha}")
+        if self.tests:
+            print("Tests: " + "; ".join(dict.fromkeys(self.tests)))
+        whole = os.environ.get("BIRD_DEV_WHOLE", "CARD")
+        print(f"Safe eject: diskutil eject /dev/{whole}")
+
+    def execute(self) -> None:
+        require_directory(self.root, "repository root")
+        require_directory(self.bird, "BIRD volume")
+        require_directory(self.data, "BIRD-DATA volume")
+        require_directory(self.bird / "extlinux", "extlinux directory")
+        require_directory(self.releases, "release root")
+        malformed_state_error: str | None = None
+        try:
+            state = load_state(self.state_path)
+        except DevError as error:
+            if self.mode != "status":
+                raise
+            state = None
+            malformed_state_error = str(error)
+        orphan_status_error: str | None = None
+        if state is None and (self.state_dir.exists() or self.state_dir.is_symlink()):
+            orphan_status_error = "orphaned bird-dev metadata exists without a valid state"
+        if state is None and (self.dev_root.exists() or self.dev_root.is_symlink()):
+            orphan_status_error = "orphaned dev-current exists without verified metadata"
+        if orphan_status_error is not None and self.mode != "status":
+            fail(orphan_status_error + "; refusing implicit adoption")
+        if self.mode == "rollback":
+            self.rollback(state)
+            return
+        if self.mode == "clean":
+            if (
+                state is not None
+                and state.activation == "complete"
+                and self.dev_root.exists()
+            ):
+                self.verify_complete_state_binding(state)
+            self.clean(state)
+            return
+        if (
+            state is not None
+            and state.activation == "complete"
+            and self.mode in {"changed", "all-local", "rebase"}
+            and (self.mode != "rebase" or self.dev_root.exists())
+        ):
+            self.verify_complete_state_binding(state)
+        if state is not None and state.activation == "incomplete" and self.mode in {"changed", "all-local"}:
+            fail("dev-current transaction is incomplete; select production and use --rebase")
+
+        identity = capture_source_identity(self.root)
+        state_error: str | None = malformed_state_error or orphan_status_error
+        try:
+            changed_paths = changed_paths_for_state(self.root, identity, self.state_dir, state)
+        except DevError as error:
+            if self.mode != "status":
+                raise
+            state_error = str(error)
+            changed_paths = dirty_paths(self.root)
+        if state is None or self.mode == "rebase":
+            selector = self.read_selector()
+            try:
+                kind, selected = self.selector_kind(selector)
+            except DevError:
+                kind, selected = "malformed-or-incomplete", None
+            if kind == "production" and selected is not None:
+                source_base = self.verify_selector_release(selector, selected)
+                changed_paths.update(
+                    committed_paths_since(self.root, source_base.source_commit, identity.commit)
+                )
+        fingerprints = component_fingerprints(self.root, self.data, self.profile)
+
+        if self.mode == "status":
+            self.status(identity, state, changed_paths, fingerprints, state_error)
+            return
+        groups, docs_tests, _forbidden = self.preflight_changes(changed_paths, fingerprints, state)
+        validate_component_sources(self.root, groups)
+        if "device-contract" in groups:
+            verify_generated_device_sources(self.root)
+            self.tests.append("generated device-contract source drift check")
+        self.deploy(identity, state, groups, fingerprints, docs_tests)
+
+    def emergency_restore(self) -> None:
+        if self.rollback_selector is None or not (self.mutation_started or self.restore_on_failure):
+            return
+        if self.mutation_started:
+            try:
+                current_state = load_state(self.state_path)
+                if current_state is not None and current_state.activation == "complete":
+                    incomplete = DevState(
+                        "incomplete",
+                        current_state.base_release,
+                        current_state.base_selector_sha,
+                        current_state.repository_commit,
+                        current_state.source_state,
+                        current_state.profile,
+                        "pending",
+                        "pending",
+                        {"authority:toolchain": current_state.components["authority:toolchain"]},
+                    )
+                    atomic_write(self.state_path, state_bytes(incomplete))
+                complete = self.dev_root / ".complete"
+                if complete.exists() or complete.is_symlink():
+                    require_regular(complete, "failed dev completion marker")
+                    complete.unlink()
+                    fsync_directory(self.dev_root)
+                if not self.host_test:
+                    sync_storage()
+            except BaseException as error:  # noqa: BLE001 - preserve restoration attempt.
+                print(f"error: failed dev marker invalidation also failed: {error}", file=sys.stderr)
+        try:
+            self.restore_selector(self.rollback_selector)
+        except BaseException as error:  # noqa: BLE001 - report both failures at transaction boundary.
+            print(f"error: production selector emergency restoration also failed: {error}", file=sys.stderr)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--root", type=pathlib.Path, required=True)
+    parser.add_argument("--bird", type=pathlib.Path, required=True)
+    parser.add_argument("--data", type=pathlib.Path, required=True)
+    parser.add_argument("--mode", choices=("changed", "all-local", "status", "rollback", "rebase", "clean"), required=True)
+    parser.add_argument("--profile", type=int, choices=(0, 1), required=True)
+    parser.add_argument("--dry-run", type=int, choices=(0, 1), required=True)
+    return parser.parse_args()
+
+
+def main() -> int:
+    workflow = Workflow(parse_args())
+    try:
+        workflow.execute()
+    except DevError as error:
+        workflow.emergency_restore()
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:
+        workflow.emergency_restore()
+        print("error: interrupted; production selector restoration was attempted", file=sys.stderr)
+        return 130
+    except BaseException as error:  # noqa: BLE001 - transaction boundary must restore on OS failures.
+        workflow.emergency_restore()
+        print(f"error: unexpected dev workflow failure: {error}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -84,6 +84,20 @@ esac
 [ "${#RELEASE_ID}" -le 64 ] || fail 'Bird release ID is longer than 64 bytes'
 export BIRD_RELEASE_ID="$RELEASE_ID"
 
+# Production builds must never inherit an ambient off-tree launcher override.
+# The narrowly scoped dev workflow is the only caller allowed to opt in, and
+# only for its explicitly mutable release.
+case "${BIRD_DEV_LOCAL_BUILD:-0}" in
+	0|'') unset BIRD_LOCAL_LAUNCHER_DIR ;;
+	1)
+		[ "$RELEASE_ID" = dev-current ] || \
+			fail 'local launcher override is restricted to dev-current'
+		[ -n "${BIRD_LOCAL_LAUNCHER_DIR:-}" ] || \
+			fail 'dev local build requires its private launcher directory'
+		;;
+	*) fail 'invalid Bird dev local-build mode' ;;
+esac
+
 BIRD_INITRAMFS_GZIP_LEVEL=${BIRD_INITRAMFS_GZIP_LEVEL:-9}
 case "$BIRD_INITRAMFS_GZIP_LEVEL" in
 	1|9) ;;
@@ -91,14 +105,9 @@ case "$BIRD_INITRAMFS_GZIP_LEVEL" in
 esac
 export BIRD_INITRAMFS_GZIP_LEVEL
 
-LAUNCHER_PROFILE_FLAGS=
-LAUNCHER_BINARY_MAX_BYTES=600000
 case "${BIRD_LAUNCHER_PROFILE:-none}" in
 	none|0|'') ;;
-	profile|1)
-		LAUNCHER_PROFILE_FLAGS=-DBIRD_PROFILE
-		LAUNCHER_BINARY_MAX_BYTES=660000
-		;;
+	profile|1) ;;
 	deep) fail 'BIRD_PROFILE_DEEP is host-test-only' ;;
 	*) fail "unknown BIRD_LAUNCHER_PROFILE mode: $BIRD_LAUNCHER_PROFILE" ;;
 esac
@@ -242,20 +251,7 @@ DEVICE_CONTRACT_SHA=$(sha256 "$ROOT/bird-device-contract.tsv")
 CATALOG_SHA=$(sha256 "$ROOT/launcher/catalog.generated.h")
 {
 	printf 'component\tmode\tflags\n'
-	printf 'final-launcher-compile\t%s\t%s\n' "${BIRD_LAUNCHER_PROFILE:-release}" \
-		"--target=aarch64-linux-gnu -mcpu=cortex-a53 -O2 -ffreestanding -ffunction-sections -fdata-sections -fno-builtin -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-ident -fvisibility=hidden -nostdlib -Wall -Wextra -Werror -Wno-unused-function -DROM_ROOT=\"/storage/roms\" -DLIVE_STORAGE_ROOT=\"/storage\" -DFAVORITES_PATH=\"/storage/bird-data/Bird/state/favorites.txt\" -DFAVORITES_TEMP=\"/storage/bird-data/Bird/state/favorites.tmp\" -DRECENT_PATH=\"/storage/bird-data/Bird/state/recent.txt\" -DRECENT_TEMP=\"/storage/bird-data/Bird/state/recent.tmp\" -DBIRD_STATIC_BASE_PATH=\"/flash/bird/launcher-base.xrgb\" -DPERSIST_UI_STATE ${LAUNCHER_PROFILE_FLAGS:-} -c launcher/bird-launcher.c"
-	printf 'final-launcher-link\t%s\t%s\n' "${BIRD_LAUNCHER_PROFILE:-release}" \
-		'-static --gc-sections --build-id=none -z noexecstack -s -e _start'
-	printf 'bird-pidwait-compile\trelease\t%s\n' \
-		'--target=aarch64-linux-gnu -mcpu=cortex-a53 -Os -ffreestanding -ffunction-sections -fdata-sections -fno-builtin -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-ident -fvisibility=hidden -nostdlib -Wall -Wextra -Werror -c launcher/bird-pidwait.c'
-	printf 'bird-fixed-controls-compile\trelease\t%s\n' \
-		'--target=aarch64-linux-gnu -mcpu=cortex-a53 -Os -ffreestanding -ffunction-sections -fdata-sections -fno-builtin -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-ident -fvisibility=hidden -nostdlib -Wall -Wextra -Werror -I launcher -c kernel/rocknix/stock-root/bird-fixed-controls.c'
-	printf 'bird-mpv-controls-compile\trelease\t%s\n' \
-		'--target=aarch64-linux-gnu -mcpu=cortex-a53 -Os -ffreestanding -ffunction-sections -fdata-sections -fno-builtin -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-ident -fvisibility=hidden -nostdlib -Wall -Wextra -Werror -I launcher -c kernel/rocknix/stock-root/bird-mpv-controls.c'
-	printf 'bird-powerstate-compile\trelease\t%s\n' \
-		'--target=aarch64-linux-gnu -mcpu=cortex-a53 -Os -ffreestanding -ffunction-sections -fdata-sections -fno-builtin -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-ident -fvisibility=hidden -nostdlib -Wall -Wextra -Werror -c launcher/bird-powerstate.c'
-	printf 'small-worker-link\trelease\t%s\n' \
-		'-static --gc-sections --build-id=none -z noexecstack -s -e _start'
+	sh "$ROOT/kernel/rocknix/build-bird-local-binary.sh" --contract final
 	printf 'initramfs\trelease\t%s\n' \
 		"find . -print | LC_ALL=C sort | cpio -o --format newc --owner 0:0; gzip -n -$BIRD_INITRAMFS_GZIP_LEVEL -c"
 } >"$OUTPUT/build/build-flags.tsv"
@@ -300,103 +296,20 @@ extract_portmaster_input mod_ROCKNIX.txt 0644 895 "$PORTMASTER_MOD_SHA"
 extract_portmaster_input funcs.txt 0644 4281 "$PORTMASTER_FUNCS_SHA"
 extract_portmaster_input harbourmaster 0755 18807 "$PORTMASTER_HARBOURMASTER_SHA"
 
-"$CLANG" --target=aarch64-linux-gnu -mcpu=cortex-a53 -O2 \
-	-ffreestanding -ffunction-sections -fdata-sections \
-	-fno-builtin -fno-stack-protector -fno-unwind-tables \
-	-fno-asynchronous-unwind-tables -fno-ident -fvisibility=hidden \
-	-nostdlib -Wall -Wextra -Werror -Wno-unused-function \
-	'-DROM_ROOT="/storage/roms"' \
-	'-DLIVE_STORAGE_ROOT="/storage"' \
-	'-DFAVORITES_PATH="/storage/bird-data/Bird/state/favorites.txt"' \
-	'-DFAVORITES_TEMP="/storage/bird-data/Bird/state/favorites.tmp"' \
-	'-DRECENT_PATH="/storage/bird-data/Bird/state/recent.txt"' \
-	'-DRECENT_TEMP="/storage/bird-data/Bird/state/recent.tmp"' \
-	'-DBIRD_STATIC_BASE_PATH="/flash/bird/launcher-base.xrgb"' \
-	-DPERSIST_UI_STATE \
-	$LAUNCHER_PROFILE_FLAGS \
-	-c "$ROOT/launcher/bird-launcher.c" \
-	-o "$OUTPUT/build/bird-launcher.o"
-"$LLD" -static --gc-sections --build-id=none -z noexecstack -s \
-	-e _start -o "$OUTPUT/card/bird/bird-launcher" \
-	"$OUTPUT/build/bird-launcher.o"
-chmod 0755 "$OUTPUT/card/bird/bird-launcher"
-file "$OUTPUT/card/bird/bird-launcher" | \
-	grep -q 'ARM aarch64.*statically linked' || fail 'launcher is not static AArch64'
-if "$READELF" -l "$OUTPUT/card/bird/bird-launcher" | grep -q ' INTERP '; then
-	fail 'launcher unexpectedly has an interpreter'
-fi
-[ "$(file_bytes "$OUTPUT/card/bird/bird-launcher")" -le \
-	"$LAUNCHER_BINARY_MAX_BYTES" ] || fail 'final-root launcher exceeded its binary budget'
-
-"$CLANG" --target=aarch64-linux-gnu -mcpu=cortex-a53 -Os \
-	-ffreestanding -ffunction-sections -fdata-sections \
-	-fno-builtin -fno-stack-protector -fno-unwind-tables \
-	-fno-asynchronous-unwind-tables -fno-ident -fvisibility=hidden \
-	-nostdlib -Wall -Wextra -Werror \
-	-c "$ROOT/launcher/bird-pidwait.c" \
-	-o "$OUTPUT/build/bird-pidwait.o"
-"$LLD" -static --gc-sections --build-id=none -z noexecstack -s \
-	-e _start -o "$OUTPUT/card/bird/bird-pidwait" \
-	"$OUTPUT/build/bird-pidwait.o"
-chmod 0755 "$OUTPUT/card/bird/bird-pidwait"
-file "$OUTPUT/card/bird/bird-pidwait" | \
-	grep -q 'ARM aarch64.*statically linked' || fail 'pid waiter is not static AArch64'
-if "$READELF" -l "$OUTPUT/card/bird/bird-pidwait" | grep -q ' INTERP '; then
-	fail 'pid waiter unexpectedly has an interpreter'
-fi
-
-"$CLANG" --target=aarch64-linux-gnu -mcpu=cortex-a53 -Os \
-	-ffreestanding -ffunction-sections -fdata-sections \
-	-fno-builtin -fno-stack-protector -fno-unwind-tables \
-	-fno-asynchronous-unwind-tables -fno-ident -fvisibility=hidden \
-	-nostdlib -Wall -Wextra -Werror \
-	-I "$ROOT/launcher" \
-	-c "$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" \
-	-o "$OUTPUT/build/bird-fixed-controls.o"
-"$LLD" -static --gc-sections --build-id=none -z noexecstack -s \
-	-e _start -o "$OUTPUT/card/bird/bird-fixed-controls" \
-	"$OUTPUT/build/bird-fixed-controls.o"
-chmod 0755 "$OUTPUT/card/bird/bird-fixed-controls"
-file "$OUTPUT/card/bird/bird-fixed-controls" | \
-	grep -q 'ARM aarch64.*statically linked' || fail 'fixed controls are not static AArch64'
-if "$READELF" -l "$OUTPUT/card/bird/bird-fixed-controls" | grep -q ' INTERP '; then
-	fail 'fixed controls unexpectedly have an interpreter'
-fi
-
-"$CLANG" --target=aarch64-linux-gnu -mcpu=cortex-a53 -Os \
-	-ffreestanding -ffunction-sections -fdata-sections \
-	-fno-builtin -fno-stack-protector -fno-unwind-tables \
-	-fno-asynchronous-unwind-tables -fno-ident -fvisibility=hidden \
-	-nostdlib -Wall -Wextra -Werror \
-	-I "$ROOT/launcher" \
-	-c "$ROOT/kernel/rocknix/stock-root/bird-mpv-controls.c" \
-	-o "$OUTPUT/build/bird-mpv-controls.o"
-"$LLD" -static --gc-sections --build-id=none -z noexecstack -s \
-	-e _start -o "$OUTPUT/card/bird/bird-mpv-controls" \
-	"$OUTPUT/build/bird-mpv-controls.o"
-chmod 0755 "$OUTPUT/card/bird/bird-mpv-controls"
-file "$OUTPUT/card/bird/bird-mpv-controls" | \
-	grep -q 'ARM aarch64.*statically linked' || fail 'MPV controls are not static AArch64'
-if "$READELF" -l "$OUTPUT/card/bird/bird-mpv-controls" | grep -q ' INTERP '; then
-	fail 'MPV controls unexpectedly have an interpreter'
-fi
-
-"$CLANG" --target=aarch64-linux-gnu -mcpu=cortex-a53 -Os \
-	-ffreestanding -ffunction-sections -fdata-sections \
-	-fno-builtin -fno-stack-protector -fno-unwind-tables \
-	-fno-asynchronous-unwind-tables -fno-ident -fvisibility=hidden \
-	-nostdlib -Wall -Wextra -Werror \
-	-c "$ROOT/launcher/bird-powerstate.c" \
-	-o "$OUTPUT/build/bird-powerstate.o"
-"$LLD" -static --gc-sections --build-id=none -z noexecstack -s \
-	-e _start -o "$OUTPUT/card/bird/bird-powerstate" \
-	"$OUTPUT/build/bird-powerstate.o"
-chmod 0755 "$OUTPUT/card/bird/bird-powerstate"
-file "$OUTPUT/card/bird/bird-powerstate" | \
-	grep -q 'ARM aarch64.*statically linked' || fail 'fixed powerstate is not static AArch64'
-if "$READELF" -l "$OUTPUT/card/bird/bird-powerstate" | grep -q ' INTERP '; then
-	fail 'fixed powerstate unexpectedly has an interpreter'
-fi
+build_bird_local_binary() {
+	BIRD_LOCAL_COMPONENT=$1
+	BIRD_LOCAL_NAME=$2
+	CLANG="$CLANG" LLD="$LLD" READELF="$READELF" \
+		sh "$ROOT/kernel/rocknix/build-bird-local-binary.sh" \
+		--build "$BIRD_LOCAL_COMPONENT" \
+		--object "$OUTPUT/build/$BIRD_LOCAL_NAME.o" \
+		--output "$OUTPUT/card/bird/$BIRD_LOCAL_NAME"
+}
+build_bird_local_binary final-launcher bird-launcher
+build_bird_local_binary bird-pidwait bird-pidwait
+build_bird_local_binary bird-fixed-controls bird-fixed-controls
+build_bird_local_binary bird-mpv-controls bird-mpv-controls
+build_bird_local_binary bird-powerstate bird-powerstate
 
 OUTPUT="$OUTPUT" OFFICIAL_INIT="$OFFICIAL_INIT" JOYPAD="$JOYPAD" \
 	INIT_BUSYBOX="$INIT_BUSYBOX" \

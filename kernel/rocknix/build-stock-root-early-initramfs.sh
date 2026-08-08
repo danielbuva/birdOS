@@ -63,22 +63,29 @@ case "$RELEASE_ID" in
 esac
 [ "${#RELEASE_ID}" -le 64 ] || fail 'Bird release ID is longer than 64 bytes'
 
+# Ignore ambient off-tree source overrides in canonical builds. Only the
+# mutable dev-current workflow may explicitly pass its generated source tree.
+case "${BIRD_DEV_LOCAL_BUILD:-0}" in
+	0|'') unset BIRD_LOCAL_LAUNCHER_DIR ;;
+	1)
+		[ "$RELEASE_ID" = dev-current ] || \
+			fail 'local launcher override is restricted to dev-current'
+		[ -n "${BIRD_LOCAL_LAUNCHER_DIR:-}" ] || \
+			fail 'dev local build requires its private launcher directory'
+		;;
+	*) fail 'invalid Bird dev local-build mode' ;;
+esac
+
 BIRD_INITRAMFS_GZIP_LEVEL=${BIRD_INITRAMFS_GZIP_LEVEL:-9}
 case "$BIRD_INITRAMFS_GZIP_LEVEL" in
 	1|9) ;;
 	*) fail 'Bird initramfs gzip level must be 1 or 9' ;;
 esac
 
-LAUNCHER_PROFILE_FLAGS=
-BOOT_FRAME_REUSE_FLAGS=
-EARLY_STATIC_BASE_FLAGS=
 EARLY_STATIC_ASSET_BYTES=1382400
-EARLY_LAUNCHER_BINARY_MAX_BYTES=610000
 EARLY_INITRAMFS_GZIP_MAX_BYTES=786432
 case "${BIRD_REUSE_UBOOT_FRAME:-0}" in
-	0|'')
-		EARLY_STATIC_BASE_FLAGS='-DBIRD_STATIC_BASE_PATH="/opt/bird/launcher-base.xrgb"'
-		;;
+	0|'') ;;
 	1)
 		EARLY_STATIC_ASSET_BYTES=0
 		EARLY_INITRAMFS_GZIP_MAX_BYTES=262144
@@ -87,10 +94,7 @@ case "${BIRD_REUSE_UBOOT_FRAME:-0}" in
 esac
 case "${BIRD_LAUNCHER_PROFILE:-none}" in
 	none|0|'') ;;
-	profile|1)
-		LAUNCHER_PROFILE_FLAGS=-DBIRD_PROFILE
-		EARLY_LAUNCHER_BINARY_MAX_BYTES=670000
-		;;
+	profile|1) ;;
 	deep) fail 'BIRD_PROFILE_DEEP is host-test-only' ;;
 	*) fail "unknown BIRD_LAUNCHER_PROFILE mode: $BIRD_LAUNCHER_PROFILE" ;;
 esac
@@ -138,7 +142,6 @@ case "${BIRD_REUSE_UBOOT_FRAME:-0}" in
 			fail 'U-Boot frame reuse requires a hardware-verified contract'
 		cmp "$BOOT_FRAME_CONTRACT" "$VERIFIED_CONTRACT" >/dev/null || \
 			fail 'hardware-verified boot frame does not match this build contract'
-		BOOT_FRAME_REUSE_FLAGS='-DBIRD_REUSE_UBOOT_FRAME -DBIRD_BOOT_FRAME_MANIFEST_VERIFIED -DBIRD_BOOT_FRAME_VISIBLE_HASH_A=0x849df1c7262d2e3eUL -DBIRD_BOOT_FRAME_VISIBLE_HASH_B=0x754469f5749caa71UL -DBIRD_BOOT_FRAME_ASSET_ID=0xfca1176e4247c5b3UL'
 		;;
 	*) fail 'invalid BIRD_REUSE_UBOOT_FRAME mode' ;;
 esac
@@ -186,47 +189,15 @@ if [ "$EARLY_STATIC_ASSET_BYTES" -eq 1382400 ]; then
 chmod 0644 "$PAYLOAD/opt/bird/launcher-base.xrgb"
 fi
 
-printf 'early-launcher-compile\t%s\t%s\n' "${BIRD_LAUNCHER_PROFILE:-release}" \
-	"--target=aarch64-linux-gnu -mcpu=cortex-a53 -O2 -ffreestanding -ffunction-sections -fdata-sections -fno-builtin -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-ident -fvisibility=hidden -nostdlib -Wall -Wextra -Werror -Wno-unused-function -DROM_ROOT=\"/storage/roms\" -DLIVE_STORAGE_ROOT=\"/storage\" -DFAVORITES_PATH=\"/storage/bird-data/Bird/state/favorites.txt\" -DFAVORITES_TEMP=\"/storage/bird-data/Bird/state/favorites.tmp\" -DRECENT_PATH=\"/storage/bird-data/Bird/state/recent.txt\" -DRECENT_TEMP=\"/storage/bird-data/Bird/state/recent.tmp\" -DHANDOFF_ACTION_PATH=\"/run/bird/bird-launch-action\" -DSTORAGE_ANCHOR_MARKER=\"/run/bird/bird-storage-anchor-ready\" -DSTORAGE_READY_SIGNAL=\"/run/bird/bird-storage-ready\" -DPERSIST_UI_STATE -DDEVICE_WAIT_MS=20000UL ${LAUNCHER_PROFILE_FLAGS:-} ${BOOT_FRAME_REUSE_FLAGS:-} ${EARLY_STATIC_BASE_FLAGS:-} -c launcher/bird-launcher.c" \
-	>>"$OUTPUT/build/build-flags.tsv"
-printf 'early-launcher-link\t%s\t%s\n' "${BIRD_LAUNCHER_PROFILE:-release}" \
-	'-static --gc-sections --build-id=none -z noexecstack -s -e _start' \
+sh "$ROOT/kernel/rocknix/build-bird-local-binary.sh" --contract early \
 	>>"$OUTPUT/build/build-flags.tsv"
 printf 'early-initramfs-compress\trelease\t%s\n' \
 	"gzip -n -$BIRD_INITRAMFS_GZIP_LEVEL -c" \
 	>>"$OUTPUT/build/build-flags.tsv"
 
-"$CLANG" --target=aarch64-linux-gnu -mcpu=cortex-a53 -O2 \
-	-ffreestanding -ffunction-sections -fdata-sections \
-	-fno-builtin -fno-stack-protector -fno-unwind-tables \
-	-fno-asynchronous-unwind-tables -fno-ident -fvisibility=hidden \
-	-nostdlib -Wall -Wextra -Werror -Wno-unused-function \
-	'-DROM_ROOT="/storage/roms"' \
-	'-DLIVE_STORAGE_ROOT="/storage"' \
-	'-DFAVORITES_PATH="/storage/bird-data/Bird/state/favorites.txt"' \
-	'-DFAVORITES_TEMP="/storage/bird-data/Bird/state/favorites.tmp"' \
-	'-DRECENT_PATH="/storage/bird-data/Bird/state/recent.txt"' \
-	'-DRECENT_TEMP="/storage/bird-data/Bird/state/recent.tmp"' \
-	'-DHANDOFF_ACTION_PATH="/run/bird/bird-launch-action"' \
-	'-DSTORAGE_ANCHOR_MARKER="/run/bird/bird-storage-anchor-ready"' \
-	'-DSTORAGE_READY_SIGNAL="/run/bird/bird-storage-ready"' \
-	-DPERSIST_UI_STATE \
-	-DDEVICE_WAIT_MS=20000UL \
-	$LAUNCHER_PROFILE_FLAGS \
-	$BOOT_FRAME_REUSE_FLAGS \
-	$EARLY_STATIC_BASE_FLAGS \
-	-c "$ROOT/launcher/bird-launcher.c" -o "$OBJECT"
-"$LLD" -static --gc-sections --build-id=none -z noexecstack -s \
-	-e _start -o "$LAUNCHER" "$OBJECT"
-chmod 0755 "$LAUNCHER"
-file "$LAUNCHER" | grep -q 'ARM aarch64.*statically linked' || \
-	fail 'early launcher is not static AArch64'
-if "$READELF" -l "$LAUNCHER" | grep -q ' INTERP '; then
-	fail 'early launcher unexpectedly has an interpreter'
-fi
-[ "$(stat -f %z "$LAUNCHER" 2>/dev/null || stat -c %s "$LAUNCHER")" -le \
-	"$EARLY_LAUNCHER_BINARY_MAX_BYTES" ] || \
-	fail 'early launcher exceeded its binary budget'
+CLANG="$CLANG" LLD="$LLD" READELF="$READELF" \
+	sh "$ROOT/kernel/rocknix/build-bird-local-binary.sh" \
+	--build early-launcher --object "$OBJECT" --output "$LAUNCHER"
 
 # Inject three fixed calls into the pinned upstream init. Bird starts after the
 # special filesystems exist. After prepare_sysroot moves the complete storage
