@@ -1323,33 +1323,33 @@ run_managed() {
 
 rocknix_tuple() {
 	case "$HOST_PATH" in
-		*/ROMS/A2600/*)      printf '%s %s %s\n' atari2600 retroarch stella ;;
-		*/ROMS/ATOMISWAVE/*) printf '%s %s %s\n' atomiswave retroarch flycast2021 ;;
-		*/ROMS/CPS1/*)       printf '%s %s %s\n' cps1 retroarch fbneo ;;
-		*/ROMS/CPS2/*)       printf '%s %s %s\n' cps2 retroarch fbneo ;;
-		*/ROMS/CPS3/*)       printf '%s %s %s\n' cps3 retroarch fbneo ;;
-		*/ROMS/DOS/*)        printf '%s %s %s\n' pc retroarch dosbox_pure ;;
-		*/ROMS/DREAMCAST/*)  printf '%s %s %s\n' dreamcast retroarch flycast2021 ;;
-		*/ROMS/FBNEO/*)      printf '%s %s %s\n' fbneo retroarch fbneo ;;
-		*/ROMS/FC/*)         printf '%s %s %s\n' famicom retroarch nestopia ;;
-		*/ROMS/GB/*)         printf '%s %s %s\n' gb retroarch gambatte ;;
-		*/ROMS/GBA/*)        printf '%s %s %s\n' gba retroarch mgba ;;
-		*/ROMS/GBC/*)        printf '%s %s %s\n' gbc retroarch gambatte ;;
-		*/ROMS/GG/*)         printf '%s %s %s\n' gamegear retroarch gearsystem ;;
-		*/ROMS/GW/*)         printf '%s %s %s\n' gameandwatch retroarch gw ;;
-		*/ROMS/HBMAME/*)     printf '%s %s %s\n' arcade retroarch fbneo ;;
-		*/ROMS/MAME/*)       printf '%s %s %s\n' mame retroarch mame2003_plus ;;
-		*/ROMS/MD/*)         printf '%s %s %s\n' megadrive retroarch genesis_plus_gx ;;
-		*/ROMS/MSX/*)        printf '%s %s %s\n' msx retroarch fmsx ;;
-		*/ROMS/N64/*)        printf '%s %s %s\n' n64 retroarch mupen64plus_next ;;
-		*/ROMS/NAOMI/*)      printf '%s %s %s\n' naomi retroarch flycast2021 ;;
-		*/ROMS/NDS/*)        printf '%s %s %s\n' nds drastic drastic-sa ;;
-		*/ROMS/OPENBOR/*)    printf '%s %s %s\n' openbor OpenBOR OpenBOR ;;
-		*/ROMS/PCE/*)        printf '%s %s %s\n' pcengine retroarch beetle_pce_fast ;;
-		*/ROMS/PICO/*)       printf '%s %s %s\n' pico-8 retroarch fake08 ;;
-		*/ROMS/PSP/*)        printf '%s %s %s\n' psp ppsspp ppsspp-sa ;;
-		*/ROMS/Ports/*)      printf '%s %s %s\n' ports portmaster portmaster ;;
-		*/ROMS/SNES/*)       printf '%s %s %s\n' snes retroarch snes9x ;;
+		/storage/roms/A2600/*)      printf '%s %s %s\n' atari2600 retroarch stella ;;
+		/storage/roms/ATOMISWAVE/*) printf '%s %s %s\n' atomiswave retroarch flycast2021 ;;
+		/storage/roms/CPS1/*)       printf '%s %s %s\n' cps1 retroarch fbneo ;;
+		/storage/roms/CPS2/*)       printf '%s %s %s\n' cps2 retroarch fbneo ;;
+		/storage/roms/CPS3/*)       printf '%s %s %s\n' cps3 retroarch fbneo ;;
+		/storage/roms/DOS/*)        printf '%s %s %s\n' pc retroarch dosbox_pure ;;
+		/storage/roms/DREAMCAST/*)  printf '%s %s %s\n' dreamcast retroarch flycast2021 ;;
+		/storage/roms/FBNEO/*)      printf '%s %s %s\n' fbneo retroarch fbneo ;;
+		/storage/roms/FC/*)         printf '%s %s %s\n' famicom retroarch nestopia ;;
+		/storage/roms/GB/*)         printf '%s %s %s\n' gb retroarch gambatte ;;
+		/storage/roms/GBA/*)        printf '%s %s %s\n' gba retroarch mgba ;;
+		/storage/roms/GBC/*)        printf '%s %s %s\n' gbc retroarch gambatte ;;
+		/storage/roms/GG/*)         printf '%s %s %s\n' gamegear retroarch gearsystem ;;
+		/storage/roms/GW/*)         printf '%s %s %s\n' gameandwatch retroarch gw ;;
+		/storage/roms/HBMAME/*)     printf '%s %s %s\n' arcade retroarch fbneo ;;
+		/storage/roms/MAME/*)       printf '%s %s %s\n' mame retroarch mame2003_plus ;;
+		/storage/roms/MD/*)         printf '%s %s %s\n' megadrive retroarch genesis_plus_gx ;;
+		/storage/roms/MSX/*)        printf '%s %s %s\n' msx retroarch fmsx ;;
+		/storage/roms/N64/*)        printf '%s %s %s\n' n64 retroarch mupen64plus_next ;;
+		/storage/roms/NAOMI/*)      printf '%s %s %s\n' naomi retroarch flycast2021 ;;
+		/storage/roms/NDS/*)        printf '%s %s %s\n' nds drastic drastic-sa ;;
+		/storage/roms/OPENBOR/*)    printf '%s %s %s\n' openbor OpenBOR OpenBOR ;;
+		/storage/roms/PCE/*)        printf '%s %s %s\n' pcengine retroarch beetle_pce_fast ;;
+		/storage/roms/PICO/*)       printf '%s %s %s\n' pico-8 retroarch fake08 ;;
+		/storage/roms/PSP/*)        printf '%s %s %s\n' psp ppsspp ppsspp-sa ;;
+		/storage/roms/Ports/*)      printf '%s %s %s\n' ports portmaster portmaster ;;
+		/storage/roms/SNES/*)       printf '%s %s %s\n' snes retroarch snes9x ;;
 		*) return 1 ;;
 	esac
 }

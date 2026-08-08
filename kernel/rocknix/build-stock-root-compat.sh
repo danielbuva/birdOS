@@ -543,6 +543,11 @@ chmod 0644 "$OUTPUT/card/bird/bird-suspend-policy.generated.sh" \
 [ "$(sha256 "$OUTPUT/card/KERNEL")" = "$KERNEL_SHA" ] || fail 'copied KERNEL changed'
 [ "$(sha256 "$OUTPUT/card/dtb.img")" = "$DTB_SHA" ] || fail 'copied DTB changed'
 grep -q 'runemu.sh' "$OUTPUT/card/bird/run-content.sh" || fail 'ROCKNIX dispatcher missing'
+grep -Fq '/storage/roms/A2600/*)' "$OUTPUT/card/bird/run-content.sh" || \
+	fail 'canonical ROM provider mapping missing'
+if grep -Fq '*/ROMS/A2600/*)' "$OUTPUT/card/bird/run-content.sh"; then
+	fail 'legacy ROM provider mapping remains active'
+fi
 grep -q 'PortMaster.zip' "$OUTPUT/card/bird/prepare-ports.sh" || fail 'exact PortMaster bootstrap missing'
 grep -Fq 'FIXED_STORAGE=/flash/bird/fixed-storage.sh' \
 	"$OUTPUT/card/bird/prepare-ports.sh" || \

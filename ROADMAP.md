@@ -1369,6 +1369,18 @@ reject an absent or mixed migration marker. This is correctness/subtraction
 infrastructure, not a claimed hardware latency or energy improvement; it needs
 the complete physical gate before acceptance.
 
+The first physical screen accepted canonical mounts, direct content browsing,
+Ports, media, books, PortMaster, networking and fresh favorites persistence,
+but rejected the activation candidate because every emulator provider returned
+immediately. Device logs showed readable `/storage/roms` requests and no
+`runemu.sh` start. The remaining fixed tuple map was case-sensitively matching
+the retired `*/ROMS/*` namespace. The bounded repair changes that in-process
+map to exact `/storage/roms/*` paths and host-tests every supported provider;
+it adds no boot, idle, mount or filesystem work. Historical favorites recovery
+is waived by product decision while new canonical favorites remain required to
+persist. Re-run RetroArch, Flycast, PPSSPP, DraStic and OpenBOR before accepting
+the namespace.
+
 Build the complete image with a digest-pinned container or immutable toolchain,
 fixed partition/filesystem identities, deterministic mkfs seeds/options,
 timestamps, owners, modes, ordering and sparse handling. Require two clean

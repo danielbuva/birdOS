@@ -1407,6 +1407,18 @@ transition. The accepted fallback remains untouched on its legacy paths. This
 candidate is not accepted until its migrated card and new immutable release
 pass the RG34XX-SP gate.
 
+The first namespace-v1 physical screen proved the mount and direct catalog
+paths, plus Ports, media, books, PortMaster, networking and new-state
+persistence. It also exposed one exact dispatcher mismatch: `rocknix_tuple()`
+still matched legacy `*/ROMS/<system>/*` strings after the catalog began
+emitting `/storage/roms/<system>/*`. Every emulator selection therefore
+returned before `runemu.sh`; no ROM read or provider process was attempted.
+The correction matches only the canonical fixed paths and adds a host test for
+all 27 provider tuples plus legacy/malformed rejection. Recovering favorites
+from the retired namespace is explicitly waived; canonical favorites created
+after migration already persist. The corrected release still requires the
+emulator and full physical gate before namespace-v1 is accepted.
+
 ## Launcher visual architecture
 
 The active 720x480 launcher presentation is inspired by Mister Menu's ES-DE
