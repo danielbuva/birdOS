@@ -20,6 +20,19 @@ from collections.abc import Iterable, Sequence
 
 
 DEV_RELEASE = "dev-current"
+DEV_STAGE_PREFIX = f".{DEV_RELEASE}.new."
+DEV_CLEANUP_AUTHORITY = "bird-dev-cleanup.tsv"
+DEV_CLEANUP_TEMP_PREFIX = f".{DEV_CLEANUP_AUTHORITY}.dev-new."
+DEV_CLEANUP_AUTHORITY_SIDECAR = f"._{DEV_CLEANUP_AUTHORITY}"
+DEV_CLEANUP_TEMP_SIDECAR_PREFIX = f"._{DEV_CLEANUP_TEMP_PREFIX}"
+DEV_CLEANUP_SCHEMA = "bird-dev-cleanup-v1"
+MAX_SELECTOR_BYTES = 16 * 1024
+CLEANUP_PROTECTED_PATHS = (
+    "extlinux/extlinux.previous.conf",
+    "extlinux/extlinux.fallback.conf",
+    "KERNEL.fallback",
+    "dtb.img",
+)
 STATE_SCHEMA = "bird-dev-state-v2"
 LEGACY_STATE_SCHEMA = "bird-dev-state-v1"
 MANIFEST_SCHEMA = "bird-deploy-v1"
@@ -354,6 +367,31 @@ def is_dev_release_id(value: str) -> bool:
     return value.lower() == DEV_RELEASE
 
 
+def same_filesystem_entry(first: pathlib.Path, second: pathlib.Path) -> bool:
+    """Treat one case-insensitive FAT entry as one path, not two aliases."""
+    if first == second:
+        return True
+    try:
+        return os.path.samefile(first, second)
+    except (FileNotFoundError, OSError):
+        return False
+
+
+def reject_distinct_case_entries(
+    parent: pathlib.Path,
+    canonical: pathlib.Path,
+    normalized_name: str,
+    description: str,
+) -> None:
+    """Allow one differently cased FAT name, never two directory entries."""
+    require_directory(parent, f"{description} parent")
+    matches = [entry for entry in parent.iterdir() if entry.name.lower() == normalized_name]
+    if len(matches) > 1:
+        fail(f"multiple case aliases of {description} block cleanup: {matches}")
+    if matches and not same_filesystem_entry(matches[0], canonical):
+        fail(f"ambiguous case alias of {description} blocks cleanup: {matches[0]}")
+
+
 def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -434,6 +472,23 @@ def fixed_directory_chain(root: pathlib.Path, parts: Sequence[str], *, create: b
             fsync_directory(current.parent)
         else:
             return current
+    return current
+
+
+def optional_fixed_directory_chain(
+    root: pathlib.Path,
+    parts: Sequence[str],
+) -> pathlib.Path | None:
+    """Validate an existing exact chain without shortening a missing path."""
+    current = root
+    require_directory(current, "fixed directory root")
+    for part in parts:
+        if not re.fullmatch(r"[A-Za-z0-9._-]+", part):
+            fail(f"unsafe fixed directory component: {part!r}")
+        current = current / part
+        if not current.exists() and not current.is_symlink():
+            return None
+        require_directory(current, "fixed directory chain")
     return current
 
 
@@ -640,12 +695,43 @@ def committed_paths_since(root: pathlib.Path, base_commit: str, head_commit: str
     )
     if ancestor.returncode != 0:
         fail("base release source commit is not an ancestor of HEAD; use the full release workflow")
-    raw = git_bytes(root, "diff", "--no-renames", "--name-only", "-z", f"{base_commit}..{head_commit}")
-    return {
+    commits = [
         value
-        for value in raw.decode("utf-8", "surrogateescape").split("\0")
+        for value in git_bytes(
+            root,
+            "rev-list",
+            "--reverse",
+            "--topo-order",
+            f"{base_commit}..{head_commit}",
+        )
+        .decode("ascii")
+        .splitlines()
         if value
-    }
+    ]
+    paths: set[str] = set()
+    for commit in commits:
+        # Inspect each commit rather than only the endpoint trees. This keeps a
+        # production-boundary path authoritative even when a later commit
+        # reverts its bytes. -m deliberately compares a merge result with every
+        # parent; --no-renames deliberately reports both sides of a rename.
+        raw = git_bytes(
+            root,
+            "diff-tree",
+            "--root",
+            "--no-commit-id",
+            "--name-only",
+            "-r",
+            "-m",
+            "--no-renames",
+            "-z",
+            commit,
+        )
+        paths.update(
+            value
+            for value in raw.decode("utf-8", "surrogateescape").split("\0")
+            if value
+        )
+    return paths
 
 
 def parse_inventory(data: bytes) -> dict[str, tuple[str, int, int, str]]:
@@ -889,6 +975,137 @@ def verify_selector_for_release(data: bytes, release_id: str) -> None:
     )
     if any(text.count(value) != 1 for value in required):
         fail(f"selector paths do not name release exactly: {release_id}")
+
+
+@dataclasses.dataclass(frozen=True)
+class CleanupAuthority:
+    base_release: str
+    selector: bytes
+    manifest_sha: str
+    protected: tuple[tuple[str, bool, int, str], ...]
+
+
+def cleanup_authority_bytes(
+    release_id: str,
+    selector: bytes,
+    manifest_sha: str,
+    protected: tuple[tuple[str, bool, int, str], ...],
+) -> bytes:
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", release_id):
+        fail("cleanup authority has an unsafe production release ID")
+    if is_dev_release_id(release_id):
+        fail("cleanup authority cannot name mutable dev-current")
+    if not selector or len(selector) > MAX_SELECTOR_BYTES:
+        fail("cleanup authority selector size is outside the fixed safety bound")
+    if not re.fullmatch(r"[0-9a-f]{64}", manifest_sha):
+        fail("cleanup authority has an invalid production manifest digest")
+    if tuple(path for path, _exists, _size, _digest in protected) != CLEANUP_PROTECTED_PATHS:
+        fail("cleanup authority protected-file inventory changed")
+    verify_selector_for_release(selector, release_id)
+    prefix = (
+        f"schema\t{DEV_CLEANUP_SCHEMA}\n"
+        f"base-release\t{release_id}\n"
+        f"base-manifest-sha256\t{manifest_sha}\n"
+        f"base-selector-bytes\t{len(selector)}\n"
+        f"base-selector-sha256\t{sha256_bytes(selector)}\n"
+        f"base-selector-hex\t{selector.hex()}\n"
+    )
+    protected_lines: list[str] = []
+    for relative, exists, size, digest in protected:
+        if exists:
+            if size < 0 or not re.fullmatch(r"[0-9a-f]{64}", digest):
+                fail("cleanup authority has an invalid protected-file record")
+            protected_lines.append(
+                f"protected\t{relative}\tpresent\t{size}\t{digest}\n"
+            )
+        else:
+            if size != 0 or digest:
+                fail("cleanup authority has an invalid missing-file record")
+            protected_lines.append(f"protected\t{relative}\tmissing\t0\t-\n")
+    return (prefix + "".join(protected_lines)).encode("ascii")
+
+
+def parse_cleanup_authority(path: pathlib.Path) -> CleanupAuthority:
+    require_regular(path, "development cleanup authority")
+    maximum_record_bytes = (MAX_SELECTOR_BYTES * 2) + 1024
+    if path.stat().st_size > maximum_record_bytes:
+        fail("development cleanup authority exceeds its fixed size bound")
+    raw = path.read_bytes()
+    if not raw.endswith(b"\n") or b"\r" in raw or b"\0" in raw:
+        fail("development cleanup authority is not canonical TSV")
+    try:
+        lines = raw.decode("ascii").splitlines()
+    except UnicodeDecodeError:
+        fail("development cleanup authority is not ASCII")
+    if len(lines) != 6 + len(CLEANUP_PROTECTED_PATHS):
+        fail("development cleanup authority has an invalid record count")
+    fields: list[tuple[str, str]] = []
+    for line in lines[:6]:
+        parts = line.split("\t")
+        if len(parts) != 2:
+            fail("development cleanup authority is malformed")
+        fields.append((parts[0], parts[1]))
+    expected_names = (
+        "schema",
+        "base-release",
+        "base-manifest-sha256",
+        "base-selector-bytes",
+        "base-selector-sha256",
+        "base-selector-hex",
+    )
+    if tuple(name for name, _value in fields) != expected_names:
+        fail("development cleanup authority has unknown, duplicate, or reordered fields")
+    values = {name: value for name, value in fields}
+    if values["schema"] != DEV_CLEANUP_SCHEMA:
+        fail("development cleanup authority has an invalid schema")
+    release_id = values["base-release"]
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", release_id):
+        fail("development cleanup authority has an unsafe production release ID")
+    if is_dev_release_id(release_id):
+        fail("development cleanup authority names mutable dev-current")
+    manifest_sha = values["base-manifest-sha256"]
+    if not re.fullmatch(r"[0-9a-f]{64}", manifest_sha):
+        fail("development cleanup authority has an invalid production manifest digest")
+    if not re.fullmatch(r"[0-9]+", values["base-selector-bytes"]):
+        fail("development cleanup authority has an invalid selector size")
+    selector_size = int(values["base-selector-bytes"])
+    if selector_size <= 0 or selector_size > MAX_SELECTOR_BYTES:
+        fail("development cleanup authority selector size is outside the fixed safety bound")
+    if not re.fullmatch(r"[0-9a-f]{64}", values["base-selector-sha256"]):
+        fail("development cleanup authority has an invalid selector digest")
+    selector_hex = values["base-selector-hex"]
+    if len(selector_hex) != selector_size * 2 or not re.fullmatch(r"[0-9a-f]+", selector_hex):
+        fail("development cleanup authority has an invalid selector encoding")
+    selector = bytes.fromhex(selector_hex)
+    if sha256_bytes(selector) != values["base-selector-sha256"]:
+        fail("development cleanup authority selector digest changed")
+    protected: list[tuple[str, bool, int, str]] = []
+    for expected_path, line in zip(CLEANUP_PROTECTED_PATHS, lines[6:], strict=True):
+        parts = line.split("\t")
+        if len(parts) != 5 or parts[0] != "protected" or parts[1] != expected_path:
+            fail("development cleanup authority protected-file inventory changed")
+        state, size_text, digest = parts[2:]
+        if not re.fullmatch(r"[0-9]+", size_text):
+            fail("development cleanup authority has an invalid protected-file size")
+        size = int(size_text)
+        if state == "present":
+            if not re.fullmatch(r"[0-9a-f]{64}", digest):
+                fail("development cleanup authority has an invalid protected-file digest")
+            protected.append((expected_path, True, size, digest))
+        elif state == "missing" and size == 0 and digest == "-":
+            protected.append((expected_path, False, 0, ""))
+        else:
+            fail("development cleanup authority has an invalid protected-file state")
+    verify_selector_for_release(selector, release_id)
+    authority = CleanupAuthority(release_id, selector, manifest_sha, tuple(protected))
+    if raw != cleanup_authority_bytes(
+        authority.base_release,
+        authority.selector,
+        authority.manifest_sha,
+        authority.protected,
+    ):
+        fail("development cleanup authority is not canonically encoded")
+    return authority
 
 
 @dataclasses.dataclass
@@ -1872,7 +2089,14 @@ def run_host_only_checks(
 
 def compare_invariants(before: dict[pathlib.Path, tuple[bool, int, str]], description: str) -> None:
     for path, (existed, size, digest) in before.items():
-        exists = path.exists() and not path.is_symlink() and path.is_file()
+        try:
+            info = path.lstat()
+        except FileNotFoundError:
+            exists = False
+        else:
+            if not stat.S_ISREG(info.st_mode) or path.is_symlink():
+                fail(f"{description} path became a symlink, directory, or special node: {path}")
+            exists = True
         if exists != existed:
             fail(f"{description} path existence changed: {path}")
         if existed and (path.stat().st_size != size or sha256_file(path) != digest):
@@ -1906,6 +2130,7 @@ class Workflow:
         self.state_path = self.state_dir / "state.tsv"
         self.base_selector_path = self.state_dir / "base-selector.conf"
         self.inventory_path = self.state_dir / "source-inventory.tsv"
+        self.cleanup_authority_path = self.bird / DEV_CLEANUP_AUTHORITY
         self.selector_path = self.bird / "extlinux/extlinux.conf"
         self.failure_point = os.environ.get("BIRD_DEV_TEST_FAILPOINT", "")
         self.rollback_selector: bytes | None = None
@@ -1955,8 +2180,8 @@ class Workflow:
         self.verify_selector_release(data, state.base_release)
         return data
 
-    def recover_production(self) -> None:
-        """Restore the independently saved production selector without state.tsv."""
+    def independently_saved_base_selector(self) -> tuple[str, bytes]:
+        """Verify the recovery authority without reading mutable state.tsv."""
         require_directory(self.state_dir, "dev metadata directory")
         require_regular(self.base_selector_path, "saved production selector")
         selector = self.base_selector_path.read_bytes()
@@ -1966,6 +2191,339 @@ class Workflow:
         if is_dev_release_id(release_id):
             fail("saved recovery selector names mutable dev-current, not production")
         self.verify_selector_release(selector, release_id)
+        return release_id, selector
+
+    def cleanup_authority(self) -> CleanupAuthority | None:
+        """Load the durable cleanup authority, accepting one FAT case alias."""
+        reject_distinct_case_entries(
+            self.bird,
+            self.cleanup_authority_path,
+            DEV_CLEANUP_AUTHORITY,
+            "cleanup authority",
+        )
+        if not self.cleanup_authority_path.exists() and not self.cleanup_authority_path.is_symlink():
+            return None
+        authority = parse_cleanup_authority(self.cleanup_authority_path)
+        self.verify_selector_release(authority.selector, authority.base_release)
+        manifest_path = self.releases / authority.base_release / "deploy-manifest.tsv"
+        if sha256_file(manifest_path) != authority.manifest_sha:
+            fail("cleanup authority production manifest digest changed")
+        return authority
+
+    def cleanup_protected_records(
+        self,
+        snapshot: dict[pathlib.Path, tuple[bool, int, str]] | None = None,
+    ) -> tuple[tuple[str, bool, int, str], ...]:
+        current = self.protected_files() if snapshot is None else snapshot
+        return tuple(
+            (relative, *current[self.bird / relative])
+            for relative in CLEANUP_PROTECTED_PATHS
+        )
+
+    def authority_protected_snapshot(
+        self,
+        authority: CleanupAuthority,
+    ) -> dict[pathlib.Path, tuple[bool, int, str]]:
+        return {
+            self.bird / relative: (exists, size, digest)
+            for relative, exists, size, digest in authority.protected
+        }
+
+    def publish_cleanup_authority(self, release_id: str, selector: bytes) -> CleanupAuthority:
+        """Commit the independent selector authority before destructive cleanup."""
+        existing = self.cleanup_authority()
+        if existing is not None:
+            if existing.base_release != release_id or existing.selector != selector:
+                fail("pending cleanup authority names a different production release")
+            return existing
+        self.verify_named_release(release_id)
+        manifest_sha = sha256_file(self.releases / release_id / "deploy-manifest.tsv")
+        expected = cleanup_authority_bytes(
+            release_id,
+            selector,
+            manifest_sha,
+            self.cleanup_protected_records(),
+        )
+        publication_temporary = self.bird / (
+            f".{self.cleanup_authority_path.name}.dev-new.{os.getpid()}"
+        )
+        if publication_temporary.exists() or publication_temporary.is_symlink():
+            require_regular(publication_temporary, "interrupted cleanup-authority temporary")
+            if publication_temporary.read_bytes() != expected:
+                fail("cleanup-authority atomic temporary is occupied by different bytes")
+            os.replace(publication_temporary, self.cleanup_authority_path)
+            remove_appledouble_sibling(publication_temporary)
+            remove_appledouble_sibling(self.cleanup_authority_path)
+            fsync_directory(self.bird)
+        else:
+            atomic_write(self.cleanup_authority_path, expected, 0o600)
+        if not self.host_test:
+            sync_storage()
+        published = self.cleanup_authority()
+        if published is None or published.base_release != release_id or published.selector != selector:
+            fail("development cleanup authority did not verify after publication")
+        return published
+
+    def stale_dev_stages(self) -> list[pathlib.Path]:
+        """Return only the reserved interrupted-copy stages, failing unsafe."""
+        require_directory(self.releases, "release root")
+        stages: list[pathlib.Path] = []
+        for entry in self.releases.iterdir():
+            if not entry.name.lower().startswith(DEV_STAGE_PREFIX):
+                continue
+            require_directory(entry, "stale dev-current staging directory")
+            verify_safe_removal_tree(entry, "stale dev-current staging directory")
+            stages.append(entry)
+        return sorted(stages, key=lambda item: item.name.lower())
+
+    def stale_cleanup_authority_temporaries(self) -> list[pathlib.Path]:
+        """Inventory only interrupted atomic publications of the tombstone."""
+        temporaries: list[pathlib.Path] = []
+        for entry in self.bird.iterdir():
+            lowered = entry.name.lower()
+            if not (
+                lowered.startswith(DEV_CLEANUP_TEMP_PREFIX)
+                or lowered == DEV_CLEANUP_AUTHORITY_SIDECAR
+                or lowered.startswith(DEV_CLEANUP_TEMP_SIDECAR_PREFIX)
+            ):
+                continue
+            require_regular(entry, "interrupted cleanup-authority temporary")
+            temporaries.append(entry)
+        return sorted(temporaries, key=lambda item: item.name.lower())
+
+    def reject_ambiguous_dev_cleanup_aliases(
+        self,
+        attempts_parent: pathlib.Path | None,
+    ) -> None:
+        """Accept one FAT entry, but reject true aliases on case-sensitive hosts."""
+        reject_distinct_case_entries(
+            self.bird,
+            self.state_dir,
+            "bird-dev",
+            "bird-dev",
+        )
+        reject_distinct_case_entries(
+            self.bird,
+            self.cleanup_authority_path,
+            DEV_CLEANUP_AUTHORITY,
+            "cleanup authority",
+        )
+        reject_distinct_case_entries(
+            self.releases,
+            self.dev_root,
+            DEV_RELEASE,
+            "dev-current",
+        )
+        if attempts_parent is not None:
+            reject_distinct_case_entries(
+                attempts_parent,
+                attempts_parent / DEV_RELEASE,
+                DEV_RELEASE,
+                "dev attempt state",
+            )
+
+    def remove_stale_dev_stages(self) -> int:
+        stages = self.stale_dev_stages()
+        for stage in stages:
+            # Revalidate at the deletion boundary even though the card lock is
+            # held by the shell wrapper for every real mutating invocation.
+            require_directory(stage, "stale dev-current staging directory")
+            verify_safe_removal_tree(stage, "stale dev-current staging directory")
+            shutil.rmtree(stage)
+        if stages:
+            fsync_directory(self.releases)
+        return len(stages)
+
+    def verify_production_development_boundary_clear(self) -> str:
+        """Mirror the reserved-state predicates enforced by production."""
+        selector = self.read_selector()
+        kind, release_id = self.selector_kind(selector)
+        if kind != "production" or release_id is None:
+            fail("active selector is not a verified production selector after cleanup")
+        self.verify_selector_release(selector, release_id)
+        for entry in self.bird.iterdir():
+            if entry.name.lower() == "bird-dev":
+                fail("development metadata remains after cleanup")
+            if entry.name.lower() == DEV_CLEANUP_AUTHORITY:
+                fail("development cleanup authority remains after cleanup")
+            lowered = entry.name.lower()
+            if (
+                lowered.startswith(DEV_CLEANUP_TEMP_PREFIX)
+                or lowered == DEV_CLEANUP_AUTHORITY_SIDECAR
+                or lowered.startswith(DEV_CLEANUP_TEMP_SIDECAR_PREFIX)
+            ):
+                fail("interrupted cleanup-authority temporary remains after cleanup")
+        for entry in self.releases.iterdir():
+            lowered = entry.name.lower()
+            if lowered == DEV_RELEASE or lowered.startswith(DEV_STAGE_PREFIX):
+                fail("reserved mutable development release state remains after cleanup")
+        return release_id
+
+    def cleanup_targets(
+        self,
+    ) -> tuple[
+        list[pathlib.Path],
+        list[pathlib.Path],
+        pathlib.Path | None,
+        pathlib.Path | None,
+    ]:
+        """Inventory every reserved deletion target before removing any byte."""
+        if self.dev_root.exists() or self.dev_root.is_symlink():
+            verify_safe_removal_tree(self.dev_root, "dev-current release")
+        stages = self.stale_dev_stages()
+        attempts_parent = optional_fixed_directory_chain(
+            self.data,
+            ("Bird", "boot-state", "releases"),
+        )
+        attempts = attempts_parent / DEV_RELEASE if attempts_parent is not None else None
+        self.reject_ambiguous_dev_cleanup_aliases(attempts_parent)
+        if attempts is not None and (attempts.exists() or attempts.is_symlink()):
+            verify_safe_removal_tree(attempts, "dev attempt state")
+        if self.state_dir.exists() or self.state_dir.is_symlink():
+            verify_safe_removal_tree(self.state_dir, "dev metadata directory")
+        cleanup_temporaries = self.stale_cleanup_authority_temporaries()
+        return stages, cleanup_temporaries, attempts_parent, attempts
+
+    def verify_cleanup_precommit(
+        self,
+        authority: CleanupAuthority,
+        attempts_parent: pathlib.Path | None,
+        base_snapshot: dict[str, tuple[str, int, str]],
+        protected: dict[pathlib.Path, tuple[bool, int, str]],
+    ) -> None:
+        """Prove only the tombstone remains before committing cleanup."""
+        active = self.read_selector()
+        if active != authority.selector:
+            fail("active production selector changed during development cleanup")
+        self.verify_selector_release(active, authority.base_release)
+        if release_snapshot(self.releases / authority.base_release) != base_snapshot:
+            fail("base production release changed during development cleanup")
+        compare_invariants(protected, "fallback/recovery")
+        for entry in self.bird.iterdir():
+            lowered = entry.name.lower()
+            if lowered == "bird-dev":
+                fail("development metadata remains before cleanup commit")
+            if lowered == DEV_CLEANUP_AUTHORITY:
+                if not same_filesystem_entry(entry, self.cleanup_authority_path):
+                    fail("ambiguous cleanup authority remains before cleanup commit")
+                continue
+            if (
+                lowered.startswith(DEV_CLEANUP_TEMP_PREFIX)
+                or lowered == DEV_CLEANUP_AUTHORITY_SIDECAR
+                or lowered.startswith(DEV_CLEANUP_TEMP_SIDECAR_PREFIX)
+            ):
+                fail("interrupted cleanup-authority temporary remains before cleanup commit")
+        for entry in self.releases.iterdir():
+            lowered = entry.name.lower()
+            if lowered == DEV_RELEASE or lowered.startswith(DEV_STAGE_PREFIX):
+                fail("reserved mutable development release state remains before cleanup commit")
+        if attempts_parent is not None:
+            for entry in attempts_parent.iterdir():
+                if entry.name.lower() == DEV_RELEASE:
+                    fail("development attempt state remains before cleanup commit")
+        current = self.cleanup_authority()
+        if current != authority:
+            fail("development cleanup authority changed before cleanup commit")
+
+    def finish_cleanup(
+        self,
+        authority: CleanupAuthority,
+        stages: list[pathlib.Path],
+        cleanup_temporaries: list[pathlib.Path],
+        attempts_parent: pathlib.Path | None,
+        attempts: pathlib.Path | None,
+    ) -> None:
+        """Run a restartable deletion transaction and unlink authority last."""
+        base_root = self.releases / authority.base_release
+        base_snapshot = release_snapshot(base_root)
+        protected = self.authority_protected_snapshot(authority)
+        compare_invariants(protected, "fallback/recovery since cleanup publication")
+
+        # A prior process may have become visible after rename but died before
+        # its directory sync. Make the authority durable again on every resume
+        # before any selector or deletion boundary can become persistent.
+        if not self.host_test:
+            sync_storage()
+
+        self.restore_selector(authority.selector)
+        self.inject("cleanup-after-selector-restoration")
+
+        if self.dev_root.exists() or self.dev_root.is_symlink():
+            verify_safe_removal_tree(self.dev_root, "dev-current release")
+            shutil.rmtree(self.dev_root)
+            fsync_directory(self.releases)
+        self.inject("cleanup-after-dev-release-removal")
+
+        if attempts is not None and (attempts.exists() or attempts.is_symlink()):
+            verify_safe_removal_tree(attempts, "dev attempt state")
+            shutil.rmtree(attempts)
+            if attempts_parent is not None:
+                fsync_directory(attempts_parent)
+        self.inject("cleanup-after-attempt-state-removal")
+
+        for stage in stages:
+            if not stage.exists() and not stage.is_symlink():
+                continue
+            require_directory(stage, "stale dev-current staging directory")
+            verify_safe_removal_tree(stage, "stale dev-current staging directory")
+            shutil.rmtree(stage)
+            fsync_directory(self.releases)
+        self.inject("cleanup-after-stale-stage-removal")
+
+        for temporary in cleanup_temporaries:
+            if not temporary.exists() and not temporary.is_symlink():
+                continue
+            require_regular(temporary, "interrupted cleanup-authority temporary")
+            lowered = temporary.name.lower()
+            temporary.unlink()
+            if not (
+                lowered == DEV_CLEANUP_AUTHORITY_SIDECAR
+                or lowered.startswith(DEV_CLEANUP_TEMP_SIDECAR_PREFIX)
+            ):
+                remove_appledouble_sibling(temporary)
+            fsync_directory(self.bird)
+        self.inject("cleanup-after-authority-temporary-removal")
+
+        if self.state_dir.exists() or self.state_dir.is_symlink():
+            verify_safe_removal_tree(self.state_dir, "dev metadata directory")
+            shutil.rmtree(self.state_dir)
+            fsync_directory(self.bird)
+        self.inject("cleanup-after-metadata-removal")
+
+        self.verify_cleanup_precommit(
+            authority,
+            attempts_parent,
+            base_snapshot,
+            protected,
+        )
+        # BIRD and BIRD-DATA are separate filesystems. Force every selector
+        # and deletion boundary durable before removing the sole cross-restart
+        # cleanup authority from BIRD.
+        if not self.host_test:
+            sync_storage()
+        self.inject("cleanup-before-authority-removal")
+        remove_appledouble_sibling(self.cleanup_authority_path)
+        fsync_directory(self.bird)
+        if not self.host_test:
+            sync_storage()
+        self.inject("cleanup-after-authority-sidecar-removal")
+        require_regular(self.cleanup_authority_path, "development cleanup authority")
+        self.cleanup_authority_path.unlink()
+        fsync_directory(self.bird)
+        verified_release = self.verify_production_development_boundary_clear()
+        if verified_release != authority.base_release:
+            fail("active production release changed at cleanup commit")
+        if release_snapshot(base_root) != base_snapshot:
+            fail("base production release changed at cleanup commit")
+        compare_invariants(protected, "fallback/recovery")
+
+    def recover_production(self) -> None:
+        """Restore the independently saved production selector without state.tsv."""
+        authority = self.cleanup_authority()
+        if authority is not None:
+            release_id, selector = authority.base_release, authority.selector
+        else:
+            release_id, selector = self.independently_saved_base_selector()
         if self.dry_run:
             print(f"dry-run: would restore independently verified production selector for {release_id}")
             return
@@ -1973,6 +2531,48 @@ class Workflow:
         self.verify_selector_release(self.read_selector(), release_id)
         print(f"Recovered exact verified production selector: {release_id}")
         print("Damaged development metadata was left untouched for diagnosis.")
+
+    def clean_recovered(self) -> None:
+        """Remove only reserved dev state after independent production recovery."""
+        authority = self.cleanup_authority()
+        if authority is None:
+            release_id, selector = self.independently_saved_base_selector()
+        else:
+            release_id, selector = authority.base_release, authority.selector
+        active_selector = self.read_selector()
+        if active_selector != selector:
+            fail(
+                "active selector is not byte-identical to the independently verified "
+                "production selector; run --recover-production first"
+            )
+        self.verify_selector_release(active_selector, release_id)
+        stale_stages, cleanup_temporaries, attempts_parent, attempts = self.cleanup_targets()
+
+        if self.dry_run:
+            print(
+                f"dry-run: would remove recovered dev-current state after verified "
+                f"production selector {release_id}"
+            )
+            print(f"dry-run: would remove {len(stale_stages)} stale dev-current staging directories")
+            print(
+                "dry-run: would remove "
+                f"{len(cleanup_temporaries)} interrupted cleanup-authority temporaries"
+            )
+            return
+        authority = self.publish_cleanup_authority(release_id, selector)
+        self.inject("cleanup-after-authority-publication")
+        self.finish_cleanup(
+            authority,
+            stale_stages,
+            cleanup_temporaries,
+            attempts_parent,
+            attempts,
+        )
+        print(
+            "Removed only recovered dev-current, its attempt state, stale copy stages, "
+            "and bird-dev metadata."
+        )
+        print(f"Production development-state guards are clear for: {release_id}")
 
     def verify_complete_state_binding(self, state: DevState) -> Manifest:
         if state.activation != "complete":
@@ -2008,6 +2608,10 @@ class Workflow:
                 kind = "malformed-or-incomplete"
         print(f"selector-kind\t{kind}")
         print(f"selector-release\t{selected or '-'}")
+        print(
+            "cleanup-authority-pending\t"
+            + ("yes" if self.cleanup_authority() is not None else "no")
+        )
         print(f"base-production-release\t{state.base_release if state else '-'}")
         print(f"dev-current-exists\t{'yes' if self.dev_root.exists() else 'no'}")
         dev_verified = "no"
@@ -2141,10 +2745,13 @@ class Workflow:
         changed_paths: set[str],
         fingerprints: dict[str, str],
         state: DevState | None,
+        committed_transition_paths: set[str],
+        working_tree_paths: set[str],
     ) -> tuple[set[str], list[str], list[str]]:
         requested: set[str] = set()
         docs_tests: list[str] = []
         forbidden: list[str] = []
+        full_release_forbidden_paths: set[str] = set()
         for path in sorted(changed_paths):
             classification, groups = classify_path(path)
             if classification == "supported":
@@ -2166,10 +2773,29 @@ class Workflow:
                     docs_tests.append(path)
                 else:
                     forbidden.append(f"{path} (full-release-only canonical-builder change)")
+                    full_release_forbidden_paths.add(path)
             else:
                 forbidden.append(f"{path} ({classification})")
+                if classification == "full-release-only":
+                    full_release_forbidden_paths.add(path)
         if forbidden:
-            fail("changed paths require the full release workflow: " + ", ".join(forbidden))
+            message = "changed paths require the full release workflow: " + ", ".join(forbidden)
+            if state is None and full_release_forbidden_paths:
+                dirty_full_release = full_release_forbidden_paths & working_tree_paths
+                committed_full_release = full_release_forbidden_paths & committed_transition_paths
+                if dirty_full_release:
+                    message += (
+                        "; uncommitted full-release-only bytes are not contained in current HEAD; "
+                        "commit the intended bytes, then build and physically verify one canonical "
+                        "release from the resulting commit before using it as the dev-current base"
+                    )
+                elif committed_full_release:
+                    message += (
+                        "; the selected production base predates current source authority; "
+                        "build and physically verify one canonical release from current HEAD, "
+                        "then use that immutable release as the dev-current base"
+                    )
+            fail(message)
         if (
             state is not None
             and state.components.get("authority:toolchain") != fingerprints.get(
@@ -2204,6 +2830,8 @@ class Workflow:
         rebase: bool,
         updates: pathlib.Path,
         source_inventory_bytes: int,
+        base_selector_bytes: int,
+        incomplete_state_bytes: int,
     ) -> None:
         allowance = 2 * 1024 * 1024
         update_files = [path for path in updates.rglob("*") if path.is_file()]
@@ -2239,6 +2867,37 @@ class Workflow:
         recoverable = 0
         if rebase and self.dev_root.is_dir() and not self.dev_root.is_symlink():
             recoverable = sum(path.stat().st_size for path in self.dev_root.rglob("*") if path.is_file())
+        if rebase:
+            recoverable += sum(
+                path.stat().st_size
+                for stage in self.stale_dev_stages()
+                for path in stage.rglob("*")
+                if path.is_file()
+            )
+        if rebase:
+            # Reclaimable dev/staging bytes do not exist as free space until
+            # after the production selector and recoverable incomplete state
+            # have been published. Reserve each possible atomic temporary plus
+            # the general filesystem allowance now. Rebase does not publish a
+            # cleanup tombstone, but retaining its fixed maximum here ensures a
+            # later recovery cleanup is not stranded at the same space edge.
+            cleanup_authority_reserve = (MAX_SELECTOR_BYTES * 2) + 1024
+            required_before_reclaim = (
+                allowance
+                + (2 * base_selector_bytes)
+                + incomplete_state_bytes
+                + cleanup_authority_reserve
+            )
+            if available < required_before_reclaim:
+                fail(
+                    "insufficient immediate space for rebase recovery metadata: "
+                    f"required-before-reclaim={required_before_reclaim} available={available} "
+                    f"recoverable-dev-bytes={recoverable}; recoverable bytes cannot fund "
+                    "pre-reclaim atomic writes"
+                )
+        # The source-inventory temporary and completed release publications
+        # happen after rebase has safely reclaimed the old mutable bytes. Their
+        # peak is included in required through metadata_peak above.
         if available + recoverable < required:
             fail(
                 f"insufficient space for dev-current: required={required} available={available} "
@@ -2247,19 +2906,23 @@ class Workflow:
 
     def restore_selector(self, selector: bytes) -> None:
         atomic_write_if_changed(self.selector_path, selector)
+        # A previous process can die after rename but before its directory
+        # barrier. Even when bytes already match on retry, make that visible
+        # selector durable before reporting recovery or beginning cleanup.
+        remove_appledouble_sibling(self.selector_path)
+        fsync_directory(self.selector_path.parent)
+        if not self.host_test:
+            sync_storage()
         if self.read_selector() != selector:
             fail("production selector restoration did not verify")
 
-    def write_incomplete_state(
+    def incomplete_state_bytes(
         self,
         base_id: str,
         base_selector: bytes,
         identity: SourceIdentity,
         toolchain_digest: str,
-    ) -> None:
-        self.state_dir.mkdir(mode=0o755, exist_ok=True)
-        require_directory(self.state_dir, "dev metadata directory")
-        atomic_write(self.base_selector_path, base_selector)
+    ) -> bytes:
         incomplete = DevState(
             "incomplete",
             base_id,
@@ -2275,7 +2938,17 @@ class Workflow:
             "none",
             {"authority:toolchain": toolchain_digest},
         )
-        atomic_write(self.state_path, state_bytes(incomplete))
+        return state_bytes(incomplete)
+
+    def write_incomplete_state(
+        self,
+        base_selector: bytes,
+        incomplete_state: bytes,
+    ) -> None:
+        self.state_dir.mkdir(mode=0o755, exist_ok=True)
+        require_directory(self.state_dir, "dev metadata directory")
+        atomic_write(self.base_selector_path, base_selector)
+        atomic_write(self.state_path, incomplete_state)
 
     def install_updates(self, updates: pathlib.Path, manifest: Manifest) -> None:
         modes = manifest.file_modes
@@ -2390,29 +3063,27 @@ class Workflow:
             verify_safe_removal_tree(self.dev_root, "dev-current release")
             if (self.dev_root / ".complete").exists():
                 self.verify_named_release(DEV_RELEASE)
-        attempts_parent = fixed_directory_chain(
-            self.data,
-            ("Bird", "boot-state", "releases"),
-            create=False,
-        )
-        attempts = attempts_parent / DEV_RELEASE
-        if attempts.exists() or attempts.is_symlink():
-            verify_safe_removal_tree(attempts, "dev attempt state")
-        verify_safe_removal_tree(self.state_dir, "dev metadata directory")
+        stale_stages, cleanup_temporaries, attempts_parent, attempts = self.cleanup_targets()
         if self.dry_run:
-            print(f"dry-run: would restore {state.base_release} and remove only dev-current metadata/release")
+            print(
+                f"dry-run: would restore {state.base_release} and remove only dev-current "
+                f"metadata/release plus {len(stale_stages)} stale copy stages and "
+                f"{len(cleanup_temporaries)} interrupted authority temporaries"
+            )
             return
-        self.restore_selector(selector)
-        if self.dev_root.exists():
-            shutil.rmtree(self.dev_root)
-        if attempts.exists() or attempts.is_symlink():
-            shutil.rmtree(attempts)
-        shutil.rmtree(self.state_dir)
-        fsync_directory(self.releases)
-        fsync_directory(self.bird)
-        if attempts_parent.exists():
-            fsync_directory(attempts_parent)
-        print("Removed only dev-current, its attempt state, and bird-dev metadata.")
+        authority = self.publish_cleanup_authority(state.base_release, selector)
+        self.inject("cleanup-after-authority-publication")
+        self.finish_cleanup(
+            authority,
+            stale_stages,
+            cleanup_temporaries,
+            attempts_parent,
+            attempts,
+        )
+        print(
+            "Removed only dev-current, its attempt state, stale copy stages, "
+            "and bird-dev metadata."
+        )
 
     def deploy(
         self,
@@ -2513,12 +3184,20 @@ class Workflow:
 
             self.restore_on_failure = False
             replacing = self.dev_root.exists() and self.mode != "rebase"
+            incomplete_state = self.incomplete_state_bytes(
+                base_id,
+                base_selector,
+                identity,
+                fingerprints["authority:toolchain"],
+            )
             self.ensure_space(
                 base_manifest,
                 replacing,
                 self.mode == "rebase",
                 updates,
                 len(identity.inventory_bytes),
+                len(base_selector),
+                len(incomplete_state),
             )
 
             self.restore_on_failure = True
@@ -2530,13 +3209,14 @@ class Workflow:
             # incremental update. A crash after .complete removal must never
             # leave metadata claiming that dev-current is still complete.
             self.write_incomplete_state(
-                base_id,
                 base_selector,
-                identity,
-                fingerprints["authority:toolchain"],
+                incomplete_state,
             )
             if not self.host_test:
                 sync_storage()
+
+            if self.mode == "rebase":
+                self.remove_stale_dev_stages()
 
             if self.mode == "rebase" and self.dev_root.exists():
                 verify_safe_removal_tree(self.dev_root, "previous dev-current release")
@@ -2674,8 +3354,32 @@ class Workflow:
         require_directory(self.data, "BIRD-DATA volume")
         require_directory(self.bird / "extlinux", "extlinux directory")
         require_directory(self.releases, "release root")
+        cleanup_authority = self.cleanup_authority()
+        cleanup_temporaries = self.stale_cleanup_authority_temporaries()
+        if cleanup_authority is not None and self.mode not in {
+            "status",
+            "recover-production",
+            "clean-recovered",
+        }:
+            fail(
+                "a durable development cleanup is pending; run --recover-production "
+                "then --clean-recovered"
+            )
+        if cleanup_temporaries and self.mode not in {
+            "status",
+            "recover-production",
+            "clean-recovered",
+            "clean",
+        }:
+            fail(
+                "an interrupted cleanup-authority publication is pending; run "
+                "--recover-production then --clean-recovered"
+            )
         if self.mode == "recover-production":
             self.recover_production()
+            return
+        if self.mode == "clean-recovered":
+            self.clean_recovered()
             return
         malformed_state_error: str | None = None
         try:
@@ -2717,6 +3421,8 @@ class Workflow:
             fail("dev-current transaction is incomplete; select production and use --rebase")
 
         identity = capture_source_identity(self.root)
+        working_tree_paths = dirty_paths(self.root)
+        committed_transition_paths: set[str] = set()
         state_error: str | None = malformed_state_error or orphan_status_error
         try:
             changed_paths = changed_paths_for_state(self.root, identity, self.state_dir, state)
@@ -2733,9 +3439,12 @@ class Workflow:
                 kind, selected = "malformed-or-incomplete", None
             if kind == "production" and selected is not None:
                 source_base = self.verify_selector_release(selector, selected)
-                changed_paths.update(
-                    committed_paths_since(self.root, source_base.source_commit, identity.commit)
+                committed_transition_paths = committed_paths_since(
+                    self.root,
+                    source_base.source_commit,
+                    identity.commit,
                 )
+                changed_paths.update(committed_transition_paths)
         fingerprints = component_fingerprints(
             self.root,
             self.data,
@@ -2746,7 +3455,13 @@ class Workflow:
         if self.mode == "status":
             self.status(identity, state, changed_paths, fingerprints, state_error)
             return
-        groups, docs_tests, _forbidden = self.preflight_changes(changed_paths, fingerprints, state)
+        groups, docs_tests, _forbidden = self.preflight_changes(
+            changed_paths,
+            fingerprints,
+            state,
+            committed_transition_paths,
+            working_tree_paths,
+        )
         validate_component_sources(self.root, groups)
         if "device-contract" in groups:
             verify_generated_device_sources(self.root)
@@ -2804,6 +3519,7 @@ def parse_args() -> argparse.Namespace:
             "status",
             "rollback",
             "recover-production",
+            "clean-recovered",
             "rebase",
             "clean",
         ),

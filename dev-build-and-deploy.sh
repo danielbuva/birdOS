@@ -29,6 +29,8 @@ Exactly one MODE is required:
   --rollback    Restore the exact saved production selector
   --recover-production
                 Restore verified production even when dev state is damaged
+  --clean-recovered
+                Remove damaged dev state after verified production recovery
   --rebase      Recreate dev-current from the selected production release
   --clean       Roll back, then remove only dev-current and its metadata
 
@@ -51,6 +53,7 @@ while [ "$#" -gt 0 ]; do
 		--status) set_mode status ;;
 		--rollback) set_mode rollback ;;
 		--recover-production) set_mode recover-production ;;
+		--clean-recovered) set_mode clean-recovered ;;
 		--rebase) set_mode rebase ;;
 		--clean) set_mode clean ;;
 		--profile) PROFILE=1 ;;
@@ -63,7 +66,7 @@ done
 
 [ -n "$MODE" ] || fail 'choose exactly one primary mode'
 case "$MODE:$PROFILE" in
-	rollback:1|recover-production:1|clean:1) fail "--profile is not valid with --$MODE" ;;
+	rollback:1|recover-production:1|clean-recovered:1|clean:1) fail "--profile is not valid with --$MODE" ;;
 esac
 
 case "$HOST_TEST_MODE" in

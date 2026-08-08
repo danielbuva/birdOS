@@ -21,12 +21,22 @@ Active development workflow:
 - `dev-current` is mutable test state. It is never an accepted production
   release, previous production selector, rollback release or archive target.
 - Never run the canonical production deployment while `dev-current` or
-  `/flash/bird-dev` exists. Run `./dev-build-and-deploy.sh --clean` first.
+  `/flash/bird-dev` exists. Run `./dev-build-and-deploy.sh --clean` first. A
+  pending `/flash/bird-dev-cleanup.tsv` or
+  `/flash/.bird-dev-cleanup.tsv.dev-new.*` also blocks production.
 - If malformed development metadata blocks rollback while `dev-current` is
   selected, use `./dev-build-and-deploy.sh --recover-production`; do not
-  reconstruct or guess a production selector.
+  reconstruct or guess a production selector. After retaining needed evidence,
+  use `./dev-build-and-deploy.sh --clean-recovered` to cross the verified
+  production boundary without parsing the damaged state. The top-level cleanup
+  authority is the restart record after deletion begins; never remove or
+  reconstruct it manually.
 - A successful `dev-current` test is not production acceptance. Promotion still
   requires the canonical immutable build and its separate physical gate.
+- If committed full-release-only tooling changes are newer than the selected
+  production base, the first development build must stop. Build and physically
+  accept a clean canonical release from the current commit (or a descendant)
+  before deriving `dev-current`; never bypass that provenance boundary.
 
 Historical muOS launchers, S03birdlauncher, old clean-root experiments, committed launcher objects, and old installers are not the active implementation unless an active build script explicitly references them.
 

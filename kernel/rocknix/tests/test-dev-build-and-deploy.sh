@@ -399,6 +399,43 @@ assert not target.with_name("._state.tsv").exists()
 PY
 pass 'atomic publication removes the matching FAT AppleDouble sidecar'
 
+mkdir -p "$CASE_ROOT/selector/BIRD/extlinux" "$CASE_ROOT/selector/DATA"
+printf 'already visible selector\n' \
+	>"$CASE_ROOT/selector/BIRD/extlinux/extlinux.conf"
+printf 'stale selector metadata\n' \
+	>"$CASE_ROOT/selector/BIRD/extlinux/._extlinux.conf"
+BIRD_DEV_HOST_TEST_MODE=1 python3 - \
+	"$REPO/kernel/rocknix/dev-release-tool.py" \
+	"$REPO" "$CASE_ROOT/selector/BIRD" "$CASE_ROOT/selector/DATA" <<'PY'
+import argparse
+import importlib.util
+import pathlib
+import sys
+
+module_path = pathlib.Path(sys.argv[1])
+spec = importlib.util.spec_from_file_location("bird_dev_release_tool", module_path)
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+arguments = argparse.Namespace(
+    root=pathlib.Path(sys.argv[2]),
+    bird=pathlib.Path(sys.argv[3]),
+    data=pathlib.Path(sys.argv[4]),
+    mode="recover-production",
+    profile=0,
+    dry_run=0,
+)
+workflow = module.Workflow(arguments)
+selector = workflow.selector_path.read_bytes()
+barriers = []
+module.fsync_directory = lambda path: barriers.append(path)
+workflow.restore_selector(selector)
+assert barriers == [workflow.selector_path.parent]
+assert not workflow.selector_path.with_name("._extlinux.conf").exists()
+assert workflow.selector_path.read_bytes() == selector
+PY
+pass 'selector recovery is durable even when retry bytes already match'
+
 python3 - "$REPO/kernel/rocknix/dev-release-tool.py" <<'PY'
 import importlib.util
 import os
@@ -424,6 +461,69 @@ assert module.build_tool_configuration(False) == module.CANONICAL_BUILD_TOOLS
 assert module.build_tool_configuration(True)["CLANG"] == "/bin/sh"
 PY
 pass 'real development pins canonical compiler tools while host fixtures remain overridable'
+
+python3 - "$SOURCE_ROOT/kernel/rocknix/dev-release-tool.py" "$TMP/committed-history" <<'PY'
+import importlib.util
+import pathlib
+import subprocess
+import sys
+
+module_path = pathlib.Path(sys.argv[1])
+repository = pathlib.Path(sys.argv[2])
+spec = importlib.util.spec_from_file_location("bird_dev_release_tool", module_path)
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+assert spec.loader is not None
+spec.loader.exec_module(module)
+
+def git(*args: str) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(repository), *args],
+        check=True,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    return result.stdout.strip()
+
+repository.mkdir()
+git("init", "-q")
+git("config", "user.name", "birdOS history test")
+git("config", "user.email", "bird-history-test@example.invalid")
+(repository / "production-tool.sh").write_text("original\n", encoding="utf-8")
+(repository / "rename-old.txt").write_text("rename me\n", encoding="utf-8")
+git("add", "-A")
+git("commit", "-qm", "test: seed history")
+base = git("rev-parse", "HEAD")
+main_branch = git("branch", "--show-current")
+
+(repository / "production-tool.sh").write_text("changed\n", encoding="utf-8")
+git("add", "production-tool.sh")
+git("commit", "-qm", "test: change production tool")
+git("revert", "--no-edit", "HEAD")
+
+git("checkout", "-qb", "rename-side")
+git("mv", "rename-old.txt", "rename-new.txt")
+git("commit", "-qm", "test: rename source")
+git("checkout", "-q", main_branch)
+(repository / "main-only.txt").write_text("main\n", encoding="utf-8")
+git("add", "main-only.txt")
+git("commit", "-qm", "test: main-side change")
+git("merge", "--no-ff", "--no-commit", "rename-side")
+(repository / "merge-only.txt").write_text("merge resolution\n", encoding="utf-8")
+git("add", "merge-only.txt")
+git("commit", "-qm", "test: merge with explicit resolution bytes")
+
+paths = module.committed_paths_since(repository, base, git("rev-parse", "HEAD"))
+expected = {
+    "production-tool.sh",
+    "rename-old.txt",
+    "rename-new.txt",
+    "main-only.txt",
+    "merge-only.txt",
+}
+assert expected <= paths, (expected - paths, paths)
+PY
+pass 'committed history retains reverted, renamed, and merge-resolution paths'
 
 python3 - "$SOURCE_ROOT/kernel/rocknix/dev-release-tool.py" \
 	"$SOURCE_ROOT/kernel/rocknix/tests/test-canonical-namespace.sh" \
@@ -675,9 +775,11 @@ with path.open("a", encoding="utf-8") as output:
 PY
 BEFORE=$(tree_digest "$BIRD")
 if BIRD_DEV_TEST_FREE_BYTES=5000000 run_dev --changed \
-	>"$CASE_ROOT/space.out" 2>"$CASE_ROOT/space.err"; then
+		>"$CASE_ROOT/space.out" 2>"$CASE_ROOT/space.err"; then
+	unset BIRD_DEV_TEST_FREE_BYTES
 	fail 'actual enlarged output was not included in the space gate'
 fi
+unset BIRD_DEV_TEST_FREE_BYTES
 grep -q 'insufficient space for dev-current' "$CASE_ROOT/space.err"
 [ "$(tree_digest "$BIRD")" = "$BEFORE" ]
 pass 'space gate uses actual built output growth before card writes'
@@ -713,6 +815,86 @@ grep -q 'bird-network.sh (deployed/source-path removal requires full release)' \
 [ "$(tree_digest "$BIRD")" = "$BEFORE" ]
 pass 'removing an existing deployed source requires the full release workflow'
 
+# Dirty production-tool bytes are not represented by HEAD, so the transition
+# guidance must first require committing the intended source authority.
+new_case dirty-production-tooling-guidance
+printf '\n# uncommitted production builder delta\n' >>"$REPO/build-and-deploy.sh"
+BEFORE_BIRD=$(tree_digest "$BIRD")
+BEFORE_DATA=$(tree_digest "$DATA")
+if run_dev --changed >"$CASE_ROOT/dirty-transition.out" \
+		2>"$CASE_ROOT/dirty-transition.err"; then
+	fail 'dirty full-release-only tooling was accepted by the fast workflow'
+fi
+grep -q 'uncommitted full-release-only bytes are not contained in current HEAD' \
+	"$CASE_ROOT/dirty-transition.err"
+grep -q 'commit the intended bytes' "$CASE_ROOT/dirty-transition.err"
+if grep -q 'canonical release from current HEAD' "$CASE_ROOT/dirty-transition.err"; then
+	fail 'dirty transition guidance falsely claimed current HEAD contained intended bytes'
+fi
+[ "$(tree_digest "$BIRD")" = "$BEFORE_BIRD" ]
+[ "$(tree_digest "$DATA")" = "$BEFORE_DATA" ]
+pass 'dirty full-release guidance requires committing intended bytes before transition'
+
+# A committed production-tool change remains an authority boundary even when
+# another commit restores the endpoint bytes exactly.
+new_case reverted-production-tooling-transition
+BASE_TOOL_SHA=$(sha256 "$REPO/generate-launcher-catalog.sh")
+printf '\n# temporary committed production catalog-tool delta\n' \
+	>>"$REPO/generate-launcher-catalog.sh"
+git -C "$REPO" add generate-launcher-catalog.sh
+git -C "$REPO" commit -qm 'test: temporary production tooling change'
+git -C "$REPO" revert --no-edit HEAD >/dev/null
+[ "$(sha256 "$REPO/generate-launcher-catalog.sh")" = "$BASE_TOOL_SHA" ]
+[ -z "$(git -C "$REPO" status --porcelain)" ]
+BEFORE_BIRD=$(tree_digest "$BIRD")
+BEFORE_DATA=$(tree_digest "$DATA")
+if run_dev --changed >"$CASE_ROOT/reverted-transition.out" \
+		2>"$CASE_ROOT/reverted-transition.err"; then
+	fail 'committed then reverted production-tooling change disappeared from provenance'
+fi
+grep -q 'generate-launcher-catalog.sh (full-release-only)' \
+	"$CASE_ROOT/reverted-transition.err"
+grep -q 'build and physically verify one canonical release from current HEAD' \
+	"$CASE_ROOT/reverted-transition.err"
+[ "$(tree_digest "$BIRD")" = "$BEFORE_BIRD" ]
+[ "$(tree_digest "$DATA")" = "$BEFORE_DATA" ]
+pass 'committed production-tool history survives an exact committed revert'
+
+# A production release from before committed production-only tooling changes
+# is intentionally not a valid first fast-development base.
+new_case older-production-tooling-transition
+OLD_BASE_COMMIT=$(git -C "$REPO" rev-parse HEAD)
+printf '%s\n' '#!/bin/sh' 'exit 0' >"$REPO/build-and-deploy.sh"
+printf '%s\n' '#!/bin/sh' 'exit 0' \
+	>"$REPO/firmware/mac-update-rocknix-stock-root-v6.sh"
+git -C "$REPO" add build-and-deploy.sh firmware/mac-update-rocknix-stock-root-v6.sh
+git -C "$REPO" commit -qm 'fix: change canonical production tooling'
+[ "$(git -C "$REPO" rev-parse HEAD)" != "$OLD_BASE_COMMIT" ]
+BEFORE_BIRD=$(tree_digest "$BIRD")
+BEFORE_DATA=$(tree_digest "$DATA")
+for MODE in --changed --all-local; do
+	if run_dev "$MODE" >"$CASE_ROOT/transition.out" 2>"$CASE_ROOT/transition.err"; then
+		fail "$MODE accepted an older base across committed production-tooling changes"
+	fi
+	grep -q 'build-and-deploy.sh (full-release-only)' "$CASE_ROOT/transition.err"
+	grep -q 'mac-update-rocknix-stock-root-v6.sh (full-release-only)' \
+		"$CASE_ROOT/transition.err"
+	grep -q 'build and physically verify one canonical release from current HEAD' \
+		"$CASE_ROOT/transition.err"
+	[ "$(tree_digest "$BIRD")" = "$BEFORE_BIRD" ]
+	[ "$(tree_digest "$DATA")" = "$BEFORE_DATA" ]
+done
+create_release prod-current
+select_release prod-current
+CURRENT_BASE_BEFORE=$(tree_digest "$BIRD/bird-releases/prod-current")
+initialize_dev
+[ "$(selector_release)" = dev-current ]
+grep -q '^base-release[[:space:]]*prod-current$' "$BIRD/bird-dev/state.tsv"
+grep -q '^activation[[:space:]]*complete$' "$BIRD/bird-dev/state.tsv"
+[ "$(tree_digest "$BIRD/bird-releases/prod-current")" = "$CURRENT_BASE_BEFORE" ]
+assert_base_and_fallback_unchanged
+pass 'one canonical current-HEAD release closes the older-base transition'
+
 # 9. A selected production change requires an explicit, successful rebase.
 new_case base-rebase
 initialize_dev
@@ -734,6 +916,66 @@ grep -q '^base-release[[:space:]]*prod-b$' "$BIRD/bird-dev/state.tsv"
 [ "$(tree_digest "$BIRD/bird-releases/prod-a")" = "$BASE_BEFORE" ]
 pass 'production base mismatch is rejected until explicit rebase'
 
+# Rebase must have enough currently free space to publish its recovery
+# metadata before it may count old mutable/staging bytes as reclaimable.
+new_case rebase-pre-reclaim-space
+initialize_dev
+run_dev --rollback >"$CASE_ROOT/rollback.out"
+STALE_STAGE=$BIRD/bird-releases/.dev-current.new.space-recovery
+mkdir "$STALE_STAGE"
+python3 - "$STALE_STAGE/recoverable-payload" <<'PY'
+import pathlib
+import sys
+with pathlib.Path(sys.argv[1]).open("wb") as output:
+    output.truncate(8 * 1024 * 1024)
+PY
+BEFORE_BIRD=$(tree_digest "$BIRD")
+BEFORE_DATA=$(tree_digest "$DATA")
+if BIRD_DEV_TEST_FREE_BYTES=65536 run_dev --rebase \
+		>"$CASE_ROOT/rebase-space.out" 2>"$CASE_ROOT/rebase-space.err"; then
+	unset BIRD_DEV_TEST_FREE_BYTES
+	fail 'rebase funded pre-reclaim metadata from bytes that were not free yet'
+fi
+unset BIRD_DEV_TEST_FREE_BYTES
+grep -q 'insufficient immediate space for rebase recovery metadata' \
+	"$CASE_ROOT/rebase-space.err"
+grep -q 'recoverable bytes cannot fund pre-reclaim atomic writes' \
+	"$CASE_ROOT/rebase-space.err"
+[ "$(tree_digest "$BIRD")" = "$BEFORE_BIRD" ]
+[ "$(tree_digest "$DATA")" = "$BEFORE_DATA" ]
+[ "$(selector_release)" = prod-a ]
+assert_base_and_fallback_unchanged
+pass 'rebase requires immediate recovery-metadata headroom before card mutation'
+
+# Passing the immediate metadata gate does not replace the independent final
+# capacity check for the completed release after safe reclamation.
+new_case rebase-final-capacity
+initialize_dev
+run_dev --rollback >"$CASE_ROOT/rollback.out"
+python3 - "$REPO/kernel/rocknix/stock-root/bird-network.sh" <<'PY'
+import pathlib
+import sys
+with pathlib.Path(sys.argv[1]).open("ab") as output:
+    output.write(b"#" + (b"x" * (5 * 1024 * 1024)) + b"\n")
+PY
+BEFORE_BIRD=$(tree_digest "$BIRD")
+BEFORE_DATA=$(tree_digest "$DATA")
+if BIRD_DEV_TEST_FREE_BYTES=3145728 run_dev --rebase \
+		>"$CASE_ROOT/rebase-capacity.out" 2>"$CASE_ROOT/rebase-capacity.err"; then
+	unset BIRD_DEV_TEST_FREE_BYTES
+	fail 'rebase accepted insufficient final capacity after metadata headroom passed'
+fi
+unset BIRD_DEV_TEST_FREE_BYTES
+grep -q '^error: insufficient space for dev-current:' "$CASE_ROOT/rebase-capacity.err"
+if grep -q 'insufficient immediate space' "$CASE_ROOT/rebase-capacity.err"; then
+	fail 'final-capacity fixture did not pass the immediate metadata gate'
+fi
+[ "$(tree_digest "$BIRD")" = "$BEFORE_BIRD" ]
+[ "$(tree_digest "$DATA")" = "$BEFORE_DATA" ]
+[ "$(selector_release)" = prod-a ]
+assert_base_and_fallback_unchanged
+pass 'rebase separately proves final post-reclaim capacity before card mutation'
+
 # 10. Rollback restores the saved production selector byte-for-byte.
 new_case exact-rollback
 initialize_dev
@@ -748,7 +990,6 @@ pass 'rollback restores the exact saved production selector and retains dev-curr
 new_case malformed-state-recovery
 initialize_dev
 SAVED_SELECTOR_SHA=$(sha256 "$BIRD/bird-dev/base-selector.conf")
-DEV_BEFORE=$(tree_digest "$BIRD/bird-releases/dev-current")
 printf 'damaged-state-kept-for-diagnosis\n' >"$BIRD/bird-dev/state.tsv"
 DAMAGED_STATE_SHA=$(sha256 "$BIRD/bird-dev/state.tsv")
 if run_dev --rollback >"$CASE_ROOT/rollback.out" 2>"$CASE_ROOT/rollback.err"; then
@@ -760,9 +1001,63 @@ grep -q '^Recovered exact verified production selector: prod-a$' "$CASE_ROOT/rec
 [ "$(selector_release)" = prod-a ]
 [ "$(sha256 "$BIRD/extlinux/extlinux.conf")" = "$SAVED_SELECTOR_SHA" ]
 [ "$(sha256 "$BIRD/bird-dev/state.tsv")" = "$DAMAGED_STATE_SHA" ]
-[ "$(tree_digest "$BIRD/bird-releases/dev-current")" = "$DEV_BEFORE" ]
+STALE_STAGE=$BIRD/bird-releases/.DEV-CURRENT.NEW.killed-copy
+UNRELATED_HIDDEN=$BIRD/bird-releases/.other-hidden-release
+mkdir "$STALE_STAGE" "$UNRELATED_HIDDEN"
+printf 'partial development copy\n' >"$STALE_STAGE/payload"
+printf 'unrelated hidden bytes\n' >"$UNRELATED_HIDDEN/payload"
+UNRELATED_HIDDEN_SHA=$(sha256 "$UNRELATED_HIDDEN/payload")
+RECOVERED_BEFORE_BIRD=$(tree_digest "$BIRD")
+RECOVERED_BEFORE_DATA=$(tree_digest "$DATA")
+run_dev --clean-recovered --dry-run >"$CASE_ROOT/clean-recovered-dry.out"
+[ "$(tree_digest "$BIRD")" = "$RECOVERED_BEFORE_BIRD" ]
+[ "$(tree_digest "$DATA")" = "$RECOVERED_BEFORE_DATA" ]
+run_dev --clean-recovered >"$CASE_ROOT/clean-recovered.out"
+grep -q '^Production development-state guards are clear for: prod-a$' \
+	"$CASE_ROOT/clean-recovered.out"
+[ "$(selector_release)" = prod-a ]
+[ "$(sha256 "$BIRD/extlinux/extlinux.conf")" = "$SAVED_SELECTOR_SHA" ]
+[ ! -e "$BIRD/bird-dev" ]
+[ ! -e "$BIRD/bird-releases/dev-current" ]
+[ ! -e "$DATA/Bird/boot-state/releases/dev-current" ]
+[ ! -e "$STALE_STAGE" ]
+[ "$(sha256 "$UNRELATED_HIDDEN/payload")" = "$UNRELATED_HIDDEN_SHA" ]
+[ -z "$(find "$BIRD" -mindepth 1 -maxdepth 1 -iname bird-dev -print -quit)" ]
+[ -z "$(find "$BIRD/bird-releases" -mindepth 1 -maxdepth 1 \
+	\( -iname dev-current -o -iname '.dev-current.new.*' \) -print -quit)" ]
 assert_base_and_fallback_unchanged
-pass 'emergency production recovery ignores damaged state and preserves it for diagnosis'
+pass 'emergency recovery and state-independent cleanup restore a production-ready boundary'
+
+new_case clean-recovered-needs-active-base
+initialize_dev
+printf 'damaged state\n' >"$BIRD/bird-dev/state.tsv"
+BEFORE=$(tree_digest "$BIRD")
+if run_dev --clean-recovered >"$CASE_ROOT/clean-recovered.out" \
+		2>"$CASE_ROOT/clean-recovered.err"; then
+	fail 'recovered cleanup accepted an active development selector'
+fi
+grep -q 'run --recover-production first' "$CASE_ROOT/clean-recovered.err"
+[ "$(tree_digest "$BIRD")" = "$BEFORE" ]
+[ "$(selector_release)" = dev-current ]
+assert_base_and_fallback_unchanged
+pass 'recovered cleanup requires the exact independently verified production selector'
+
+new_case clean-recovered-unsafe-tree
+initialize_dev
+printf 'damaged state\n' >"$BIRD/bird-dev/state.tsv"
+run_dev --recover-production >"$CASE_ROOT/recover.out"
+ln -s "$CASE_ROOT" "$BIRD/bird-releases/dev-current/unsafe-link"
+BEFORE=$(tree_digest "$BIRD")
+if run_dev --clean-recovered >"$CASE_ROOT/clean-recovered.out" \
+		2>"$CASE_ROOT/clean-recovered.err"; then
+	fail 'recovered cleanup accepted a symlink in development state'
+fi
+grep -q 'dev-current release contains a symlink or special node' \
+	"$CASE_ROOT/clean-recovered.err"
+[ "$(tree_digest "$BIRD")" = "$BEFORE" ]
+[ -d "$BIRD/bird-dev" ]
+assert_base_and_fallback_unchanged
+pass 'recovered cleanup inventories all reserved trees before deletion'
 
 new_case unsafe-recovery-selector
 initialize_dev
@@ -839,6 +1134,353 @@ run_dev --clean >"$CASE_ROOT/clean.out"
 [ "$(tree_digest "$BIRD/bird-releases/prod-extra")" = "$EXTRA_BEFORE" ]
 assert_base_and_fallback_unchanged
 pass 'clean cannot remove a production release'
+
+# Cleanup publishes a durable, state-independent selector authority before
+# changing the selector or removing any reserved development tree. Every
+# interruption boundary must remain recoverable even when bird-dev is then
+# only partially readable.
+for CLEANUP_FAILPOINT in \
+	cleanup-after-authority-publication \
+	cleanup-after-selector-restoration \
+	cleanup-after-dev-release-removal \
+	cleanup-after-attempt-state-removal \
+	cleanup-after-stale-stage-removal \
+	cleanup-after-authority-temporary-removal \
+	cleanup-after-metadata-removal \
+	cleanup-before-authority-removal \
+	cleanup-after-authority-sidecar-removal; do
+	new_case "durable-$CLEANUP_FAILPOINT"
+	initialize_dev
+	STALE_STAGE=$BIRD/bird-releases/.DEV-CURRENT.NEW.cleanup-interruption
+	cp -R "$BIRD/bird-releases/dev-current" "$STALE_STAGE"
+	CLEANUP_COMMAND=--clean
+	if [ "$CLEANUP_FAILPOINT" = cleanup-after-authority-sidecar-removal ]; then
+		if run_dev_failpoint cleanup-after-metadata-removal --clean \
+				>"$CASE_ROOT/setup-fail.out" 2>"$CASE_ROOT/setup-fail.err"; then
+			fail 'sidecar-boundary setup did not interrupt cleanup'
+		fi
+		printf 'late AppleDouble metadata\n' >"$BIRD/._bird-dev-cleanup.tsv"
+		CLEANUP_COMMAND=--clean-recovered
+	fi
+	if run_dev_failpoint "$CLEANUP_FAILPOINT" "$CLEANUP_COMMAND" \
+			>"$CASE_ROOT/clean-fail.out" 2>"$CASE_ROOT/clean-fail.err"; then
+		fail "$CLEANUP_FAILPOINT did not interrupt cleanup"
+	fi
+	grep -q "host-only injected failure: $CLEANUP_FAILPOINT" \
+		"$CASE_ROOT/clean-fail.err"
+	[ -f "$BIRD/bird-dev-cleanup.tsv" ]
+	grep -q '^schema[[:space:]]*bird-dev-cleanup-v1$' \
+		"$BIRD/bird-dev-cleanup.tsv"
+	grep -q '^base-release[[:space:]]*prod-a$' \
+		"$BIRD/bird-dev-cleanup.tsv"
+	if [ "$CLEANUP_FAILPOINT" = cleanup-after-authority-sidecar-removal ]; then
+		[ ! -e "$BIRD/._bird-dev-cleanup.tsv" ]
+	fi
+	# Model a hard interruption in recursive metadata deletion. Recovery must
+	# now depend only on the durable top-level authority.
+	if [ -d "$BIRD/bird-dev" ]; then
+		rm -f "$BIRD/bird-dev/state.tsv" "$BIRD/bird-dev/base-selector.conf"
+	fi
+	for BLOCKED_MODE in --changed --all-local --rebase --rollback --clean; do
+		if run_dev "$BLOCKED_MODE" >"$CASE_ROOT/blocked.out" \
+				2>"$CASE_ROOT/blocked.err"; then
+			fail "$BLOCKED_MODE accepted a pending cleanup authority"
+		fi
+		grep -q 'durable development cleanup is pending' "$CASE_ROOT/blocked.err"
+	done
+	run_dev --recover-production >"$CASE_ROOT/recover.out"
+	[ "$(selector_release)" = prod-a ]
+	run_dev --clean-recovered >"$CASE_ROOT/clean-recovered.out"
+	[ "$(selector_release)" = prod-a ]
+	[ ! -e "$BIRD/bird-dev-cleanup.tsv" ]
+	[ ! -e "$BIRD/bird-dev" ]
+	[ ! -e "$BIRD/bird-releases/dev-current" ]
+	[ ! -e "$DATA/Bird/boot-state/releases/dev-current" ]
+	[ ! -e "$STALE_STAGE" ]
+	assert_base_and_fallback_unchanged
+	pass "$CLEANUP_FAILPOINT retains restartable cleanup authority"
+done
+
+new_case cleanup-cross-restart-fallback-binding
+initialize_dev
+if run_dev_failpoint cleanup-after-authority-publication --clean \
+		>"$CASE_ROOT/fail.out" 2>"$CASE_ROOT/fail.err"; then
+	fail 'cleanup authority publication failpoint did not fire'
+fi
+cp "$BIRD/extlinux/extlinux.fallback.conf" "$CASE_ROOT/fallback.good"
+printf 'changed after cleanup publication\n' \
+	>"$BIRD/extlinux/extlinux.fallback.conf"
+run_dev --recover-production >"$CASE_ROOT/recover.out"
+BEFORE_DEV=$(tree_digest "$BIRD/bird-releases/dev-current")
+if run_dev --clean-recovered >"$CASE_ROOT/clean.out" 2>"$CASE_ROOT/clean.err"; then
+	fail 'cleanup committed after a cross-restart fallback change'
+fi
+grep -q 'fallback/recovery since cleanup publication bytes changed' \
+	"$CASE_ROOT/clean.err"
+[ -f "$BIRD/bird-dev-cleanup.tsv" ]
+[ "$(tree_digest "$BIRD/bird-releases/dev-current")" = "$BEFORE_DEV" ]
+cp "$CASE_ROOT/fallback.good" "$BIRD/extlinux/extlinux.fallback.conf"
+run_dev --clean-recovered >"$CASE_ROOT/clean-retry.out"
+[ ! -e "$BIRD/bird-dev-cleanup.tsv" ]
+assert_base_and_fallback_unchanged
+pass 'durable cleanup authority binds fallback and recovery bytes across restart'
+
+new_case cleanup-missing-protected-type-invariant
+initialize_dev
+rm "$BIRD/extlinux/extlinux.previous.conf"
+if run_dev_failpoint cleanup-after-authority-publication --clean \
+		>"$CASE_ROOT/fail.out" 2>"$CASE_ROOT/fail.err"; then
+	fail 'missing-protected cleanup setup did not publish authority'
+fi
+run_dev --recover-production >"$CASE_ROOT/recover.out"
+AUTHORITY_SHA=$(sha256 "$BIRD/bird-dev-cleanup.tsv")
+DEV_SHA=$(tree_digest "$BIRD/bird-releases/dev-current")
+for PROTECTED_TYPE in directory symlink fifo; do
+	case "$PROTECTED_TYPE" in
+		directory) mkdir "$BIRD/extlinux/extlinux.previous.conf" ;;
+		symlink) ln -s "$CASE_ROOT" "$BIRD/extlinux/extlinux.previous.conf" ;;
+		fifo) mkfifo "$BIRD/extlinux/extlinux.previous.conf" ;;
+	esac
+	BEFORE_BIRD=$(tree_digest "$BIRD")
+	BEFORE_DATA=$(tree_digest "$DATA")
+	if run_dev --clean-recovered >"$CASE_ROOT/$PROTECTED_TYPE.out" \
+			2>"$CASE_ROOT/$PROTECTED_TYPE.err"; then
+		fail "cleanup accepted $PROTECTED_TYPE at a protected missing path"
+	fi
+	grep -q 'fallback/recovery since cleanup publication path became a symlink, directory, or special node' \
+		"$CASE_ROOT/$PROTECTED_TYPE.err"
+	[ "$(sha256 "$BIRD/bird-dev-cleanup.tsv")" = "$AUTHORITY_SHA" ]
+	[ "$(tree_digest "$BIRD/bird-releases/dev-current")" = "$DEV_SHA" ]
+	[ "$(tree_digest "$BIRD")" = "$BEFORE_BIRD" ]
+	[ "$(tree_digest "$DATA")" = "$BEFORE_DATA" ]
+	case "$PROTECTED_TYPE" in
+		directory) rmdir "$BIRD/extlinux/extlinux.previous.conf" ;;
+		symlink|fifo) rm "$BIRD/extlinux/extlinux.previous.conf" ;;
+	esac
+done
+run_dev --clean-recovered >"$CASE_ROOT/clean.out"
+[ ! -e "$BIRD/bird-dev-cleanup.tsv" ]
+[ ! -e "$BIRD/bird-releases/dev-current" ]
+[ "$(selector_release)" = prod-a ]
+[ "$(tree_digest "$BIRD/bird-releases/prod-a")" = "$BASE_BEFORE" ]
+[ "$(sha256 "$BIRD/extlinux/extlinux.fallback.conf")" = \
+	"$FALLBACK_SELECTOR_BEFORE" ]
+[ "$(sha256 "$BIRD/KERNEL.fallback")" = "$TOP_FALLBACK_BEFORE" ]
+[ "$(sha256 "$BIRD/dtb.img")" = "$TOP_DTB_BEFORE" ]
+[ "$(sha256 "$DATA/Bird/boot-state/releases/prod-a/attempts")" = \
+	"$PRODUCTION_ATTEMPTS_BEFORE" ]
+pass 'protected missing paths reject directories, symlinks, and special nodes across restart'
+
+new_case interrupted-cleanup-authority-temporary
+initialize_dev
+run_dev --rollback >"$CASE_ROOT/rollback.out"
+CLEANUP_TEMP=$BIRD/.BIRD-DEV-CLEANUP.TSV.DEV-NEW.interrupted
+printf 'unpublished cleanup authority bytes\n' >"$CLEANUP_TEMP"
+printf 'orphan authority metadata\n' >"$BIRD/._bird-dev-cleanup.tsv"
+printf 'orphan temporary metadata\n' \
+	>"$BIRD/._.bird-dev-cleanup.tsv.dev-new.orphan"
+printf 'near-prefix authority metadata\n' \
+	>"$BIRD/._bird-dev-cleanup.tsv.keep"
+printf 'near-prefix temporary metadata\n' \
+	>"$BIRD/._.bird-dev-cleanup.tsv.dev-newish.keep"
+printf 'double-prefix authority near name\n' \
+	>"$BIRD/._._bird-dev-cleanup.tsv"
+printf 'double-prefix temporary near name\n' \
+	>"$BIRD/._._.bird-dev-cleanup.tsv.dev-new.orphan"
+NEAR_AUTHORITY_SHA=$(sha256 "$BIRD/._bird-dev-cleanup.tsv.keep")
+NEAR_TEMP_SHA=$(sha256 \
+	"$BIRD/._.bird-dev-cleanup.tsv.dev-newish.keep")
+DOUBLE_AUTHORITY_SHA=$(sha256 "$BIRD/._._bird-dev-cleanup.tsv")
+DOUBLE_TEMP_SHA=$(sha256 \
+	"$BIRD/._._.bird-dev-cleanup.tsv.dev-new.orphan")
+if run_dev --changed >"$CASE_ROOT/changed.out" 2>"$CASE_ROOT/changed.err"; then
+	fail 'development build accepted an interrupted cleanup-authority temporary'
+fi
+grep -q 'interrupted cleanup-authority publication is pending' \
+	"$CASE_ROOT/changed.err"
+run_dev --clean >"$CASE_ROOT/clean.out"
+[ ! -e "$CLEANUP_TEMP" ]
+[ ! -e "$BIRD/bird-dev-cleanup.tsv" ]
+[ ! -e "$BIRD/._bird-dev-cleanup.tsv" ]
+[ ! -e "$BIRD/._.bird-dev-cleanup.tsv.dev-new.orphan" ]
+[ "$(sha256 "$BIRD/._bird-dev-cleanup.tsv.keep")" = "$NEAR_AUTHORITY_SHA" ]
+[ "$(sha256 "$BIRD/._.bird-dev-cleanup.tsv.dev-newish.keep")" = \
+	"$NEAR_TEMP_SHA" ]
+[ "$(sha256 "$BIRD/._._bird-dev-cleanup.tsv")" = \
+	"$DOUBLE_AUTHORITY_SHA" ]
+[ "$(sha256 "$BIRD/._._.bird-dev-cleanup.tsv.dev-new.orphan")" = \
+	"$DOUBLE_TEMP_SHA" ]
+[ "$(selector_release)" = prod-a ]
+assert_base_and_fallback_unchanged
+pass 'clean removes only reserved interrupted cleanup-authority temporaries'
+
+new_case unsafe-cleanup-authority-residue
+initialize_dev
+run_dev --rollback >"$CASE_ROOT/rollback.out"
+ln -s "$CASE_ROOT" "$BIRD/._bird-dev-cleanup.tsv"
+BEFORE_BIRD=$(tree_digest "$BIRD")
+BEFORE_DATA=$(tree_digest "$DATA")
+if run_dev --clean >"$CASE_ROOT/symlink.out" 2>"$CASE_ROOT/symlink.err"; then
+	fail 'cleanup accepted a symlinked cleanup-authority sidecar'
+fi
+grep -q 'interrupted cleanup-authority temporary is not a safe regular file' \
+	"$CASE_ROOT/symlink.err"
+[ "$(tree_digest "$BIRD")" = "$BEFORE_BIRD" ]
+[ "$(tree_digest "$DATA")" = "$BEFORE_DATA" ]
+rm "$BIRD/._bird-dev-cleanup.tsv"
+mkfifo "$BIRD/._.bird-dev-cleanup.tsv.dev-new.special"
+BEFORE_BIRD=$(tree_digest "$BIRD")
+BEFORE_DATA=$(tree_digest "$DATA")
+if run_dev --clean >"$CASE_ROOT/special.out" 2>"$CASE_ROOT/special.err"; then
+	fail 'cleanup accepted a special cleanup-authority sidecar'
+fi
+grep -q 'interrupted cleanup-authority temporary is not a safe regular file' \
+	"$CASE_ROOT/special.err"
+[ "$(tree_digest "$BIRD")" = "$BEFORE_BIRD" ]
+[ "$(tree_digest "$DATA")" = "$BEFORE_DATA" ]
+rm "$BIRD/._.bird-dev-cleanup.tsv.dev-new.special"
+run_dev --clean >"$CASE_ROOT/clean.out"
+assert_base_and_fallback_unchanged
+pass 'cleanup residue symlinks and special nodes fail before mutation'
+
+new_case strict-cleanup-authority
+initialize_dev
+if run_dev_failpoint cleanup-after-authority-publication --clean \
+		>"$CASE_ROOT/clean-fail.out" 2>"$CASE_ROOT/clean-fail.err"; then
+	fail 'cleanup authority publication failpoint did not fire'
+fi
+cp "$BIRD/bird-dev-cleanup.tsv" "$CASE_ROOT/authority.good"
+for AUTHORITY_DAMAGE in duplicate unknown reordered digest encoding trailing-cr; do
+	cp "$CASE_ROOT/authority.good" "$BIRD/bird-dev-cleanup.tsv"
+	case "$AUTHORITY_DAMAGE" in
+		duplicate) printf 'schema\tbird-dev-cleanup-v1\n' >>"$BIRD/bird-dev-cleanup.tsv" ;;
+		unknown) sed 's/^base-selector-bytes/new-field/' "$CASE_ROOT/authority.good" \
+			>"$BIRD/bird-dev-cleanup.tsv" ;;
+		reordered) awk 'NR == 2 { saved=$0; next } NR == 3 { print; print saved; next } { print }' \
+			"$CASE_ROOT/authority.good" >"$BIRD/bird-dev-cleanup.tsv" ;;
+		digest) sed 's/^base-selector-sha256.*/base-selector-sha256\t0000000000000000000000000000000000000000000000000000000000000000/' \
+			"$CASE_ROOT/authority.good" >"$BIRD/bird-dev-cleanup.tsv" ;;
+		encoding) sed 's/^base-selector-hex.*/base-selector-hex\tzz/' \
+			"$CASE_ROOT/authority.good" >"$BIRD/bird-dev-cleanup.tsv" ;;
+		trailing-cr) perl -pe 's/\n/\r\n/g' "$CASE_ROOT/authority.good" \
+			>"$BIRD/bird-dev-cleanup.tsv" ;;
+	esac
+	if run_dev --recover-production >"$CASE_ROOT/$AUTHORITY_DAMAGE.out" \
+			2>"$CASE_ROOT/$AUTHORITY_DAMAGE.err"; then
+		fail "cleanup authority accepted $AUTHORITY_DAMAGE damage"
+	fi
+done
+cp "$CASE_ROOT/authority.good" "$BIRD/bird-dev-cleanup.tsv"
+run_dev --recover-production >"$CASE_ROOT/recover.out"
+run_dev --clean-recovered >"$CASE_ROOT/clean.out"
+assert_base_and_fallback_unchanged
+pass 'cleanup authority parser rejects noncanonical, reordered, and damaged records'
+
+new_case recovered-cleanup-publication
+initialize_dev
+printf 'damaged state\n' >"$BIRD/bird-dev/state.tsv"
+run_dev --recover-production >"$CASE_ROOT/recover.out"
+if run_dev_failpoint cleanup-after-authority-publication --clean-recovered \
+		>"$CASE_ROOT/fail.out" 2>"$CASE_ROOT/fail.err"; then
+	fail 'clean-recovered did not publish authority before interruption'
+fi
+[ -f "$BIRD/bird-dev-cleanup.tsv" ]
+rm -f "$BIRD/bird-dev/base-selector.conf" "$BIRD/bird-dev/state.tsv"
+run_dev --recover-production >"$CASE_ROOT/recover-again.out"
+run_dev --clean-recovered >"$CASE_ROOT/clean-again.out"
+[ ! -e "$BIRD/bird-dev-cleanup.tsv" ]
+[ ! -e "$BIRD/bird-dev" ]
+[ "$(selector_release)" = prod-a ]
+assert_base_and_fallback_unchanged
+pass 'clean-recovered also publishes restartable authority before deletion'
+
+new_case true-case-alias-cleanup-rejection
+initialize_dev
+run_dev --rollback >"$CASE_ROOT/rollback.out"
+if mkdir "$BIRD/BIRD-DEV" 2>/dev/null; then
+	printf 'distinct alias\n' >"$BIRD/BIRD-DEV/evidence"
+	BEFORE=$(tree_digest "$BIRD")
+	if run_dev --clean >"$CASE_ROOT/alias.out" 2>"$CASE_ROOT/alias.err"; then
+		fail 'cleanup accepted two distinct case aliases'
+	fi
+	grep -Eq 'multiple case aliases of bird-dev|ambiguous case alias of bird-dev' \
+		"$CASE_ROOT/alias.err"
+	[ "$(tree_digest "$BIRD")" = "$BEFORE" ]
+	rm -rf "$BIRD/BIRD-DEV"
+fi
+run_dev --clean >"$CASE_ROOT/clean.out"
+assert_base_and_fallback_unchanged
+pass 'cleanup rejects only a true distinct case alias on case-sensitive fixtures'
+
+new_case single-fat-case-entry-cleanup
+initialize_dev
+run_dev --rollback >"$CASE_ROOT/rollback.out"
+mv "$BIRD/bird-dev" "$BIRD/BIRD-DEV"
+if [ -d "$BIRD/bird-dev" ]; then
+	mv "$BIRD/bird-releases/dev-current" "$BIRD/bird-releases/DEV-CURRENT"
+	mv "$DATA/Bird/boot-state/releases/dev-current" \
+		"$DATA/Bird/boot-state/releases/DEV-CURRENT"
+	run_dev --clean >"$CASE_ROOT/clean.out"
+	[ ! -e "$BIRD/BIRD-DEV" ]
+	[ ! -e "$BIRD/bird-releases/DEV-CURRENT" ]
+	[ ! -e "$DATA/Bird/boot-state/releases/DEV-CURRENT" ]
+else
+	# A case-sensitive fixture cannot model a single FAT directory entry under
+	# two path spellings; restore the canonical spelling and retain the direct
+	# distinct-alias coverage above.
+	mv "$BIRD/BIRD-DEV" "$BIRD/bird-dev"
+	run_dev --clean >"$CASE_ROOT/clean.out"
+fi
+assert_base_and_fallback_unchanged
+pass 'one differently cased FAT entry is cleaned by filesystem identity'
+
+new_case hard-killed-stage-clean
+initialize_dev
+run_dev --rollback >"$CASE_ROOT/rollback.out"
+STALE_STAGE=$BIRD/bird-releases/.DEV-CURRENT.NEW.killed-copy
+UNRELATED_HIDDEN=$BIRD/bird-releases/.other-hidden-release
+cp -R "$BIRD/bird-releases/dev-current" "$STALE_STAGE"
+mkdir "$UNRELATED_HIDDEN"
+printf 'unrelated hidden bytes\n' >"$UNRELATED_HIDDEN/payload"
+UNRELATED_HIDDEN_SHA=$(sha256 "$UNRELATED_HIDDEN/payload")
+rm -rf "$BIRD/bird-releases/dev-current"
+run_dev --clean >"$CASE_ROOT/clean.out"
+[ ! -e "$STALE_STAGE" ]
+[ ! -e "$BIRD/bird-dev" ]
+[ "$(sha256 "$UNRELATED_HIDDEN/payload")" = "$UNRELATED_HIDDEN_SHA" ]
+[ "$(selector_release)" = prod-a ]
+assert_base_and_fallback_unchanged
+pass 'clean removes a hard-killed initial-copy stage and leaves unrelated hidden state'
+
+new_case stale-stage-rebase
+initialize_dev
+run_dev --rollback >"$CASE_ROOT/rollback.out"
+STALE_STAGE=$BIRD/bird-releases/.dev-current.new.interrupted
+UNRELATED_HIDDEN=$BIRD/bird-releases/.unrelated-stage
+cp -R "$BIRD/bird-releases/dev-current" "$STALE_STAGE"
+mkdir "$UNRELATED_HIDDEN"
+printf 'unrelated hidden bytes\n' >"$UNRELATED_HIDDEN/payload"
+UNRELATED_HIDDEN_SHA=$(sha256 "$UNRELATED_HIDDEN/payload")
+run_dev --rebase >"$CASE_ROOT/rebase.out"
+[ ! -e "$STALE_STAGE" ]
+[ "$(sha256 "$UNRELATED_HIDDEN/payload")" = "$UNRELATED_HIDDEN_SHA" ]
+[ "$(selector_release)" = dev-current ]
+assert_base_and_fallback_unchanged
+pass 'rebase removes stale dev copy stages without touching other hidden releases'
+
+new_case stale-stage-symlink
+initialize_dev
+run_dev --rollback >"$CASE_ROOT/rollback.out"
+ln -s "$CASE_ROOT" "$BIRD/bird-releases/.dev-current.new.unsafe"
+BEFORE=$(tree_digest "$BIRD")
+if run_dev --clean >"$CASE_ROOT/clean.out" 2>"$CASE_ROOT/clean.err"; then
+	fail 'clean accepted a symlinked stale dev copy stage'
+fi
+grep -q 'stale dev-current staging directory is not a safe directory' \
+	"$CASE_ROOT/clean.err"
+[ "$(tree_digest "$BIRD")" = "$BEFORE" ]
+assert_base_and_fallback_unchanged
+pass 'stale development stages fail closed on symlinks and special nodes'
 
 # 12. Dry-run is read-only even on the first invocation.
 new_case dry-run

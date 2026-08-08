@@ -582,6 +582,111 @@ grep -Fq 'run ./dev-build-and-deploy.sh --clean' "$CASE_ROOT/err"
 [ ! -e "$TEST_STATE/builder-release-id" ]
 [ ! -e "$TEST_STATE/updater-ran" ]
 
+new_case pending-dev-cleanup-production-rejection
+printf '%s\n' 'schema	bird-dev-cleanup-v1' \
+	>"$BIRD/BIRD-DEV-CLEANUP.TSV"
+CLEANUP_AUTHORITY_SHA=$(sha256 "$BIRD/BIRD-DEV-CLEANUP.TSV")
+if run_command --release >"$CASE_ROOT/out" 2>"$CASE_ROOT/err"; then
+	fail 'pending durable development cleanup was accepted by production'
+fi
+grep -q 'development cleanup authority exists at BIRD/bird-dev-cleanup.tsv' \
+	"$CASE_ROOT/err"
+grep -Fq 'run ./dev-build-and-deploy.sh --recover-production then --clean-recovered' \
+	"$CASE_ROOT/err"
+[ "$(sha256 "$BIRD/BIRD-DEV-CLEANUP.TSV")" = "$CLEANUP_AUTHORITY_SHA" ]
+[ ! -e "$TEST_STATE/builder-preflight-release-id" ]
+[ ! -e "$TEST_STATE/builder-release-id" ]
+[ ! -e "$TEST_STATE/updater-ran" ]
+
+new_case interrupted-cleanup-authority-production-rejection
+printf 'unpublished authority bytes\n' \
+	>"$BIRD/.BIRD-DEV-CLEANUP.TSV.DEV-NEW.killed"
+CLEANUP_TEMP_SHA=$(sha256 \
+	"$BIRD/.BIRD-DEV-CLEANUP.TSV.DEV-NEW.killed")
+if run_command --release >"$CASE_ROOT/out" 2>"$CASE_ROOT/err"; then
+	fail 'interrupted cleanup-authority publication was accepted by production'
+fi
+grep -q 'interrupted development cleanup-authority publication exists' \
+	"$CASE_ROOT/err"
+[ "$(sha256 "$BIRD/.BIRD-DEV-CLEANUP.TSV.DEV-NEW.killed")" = \
+	"$CLEANUP_TEMP_SHA" ]
+[ ! -e "$TEST_STATE/builder-preflight-release-id" ]
+[ ! -e "$TEST_STATE/builder-release-id" ]
+[ ! -e "$TEST_STATE/updater-ran" ]
+
+new_case cleanup-authority-sidecar-production-rejection
+printf 'orphan authority metadata\n' >"$BIRD/._bird-dev-cleanup.tsv"
+printf 'orphan temporary metadata\n' \
+	>"$BIRD/._.BIRD-DEV-CLEANUP.TSV.DEV-NEW.killed"
+printf 'near-prefix metadata\n' >"$BIRD/._bird-dev-cleanup.tsv.keep"
+AUTHORITY_SIDECAR_SHA=$(sha256 "$BIRD/._bird-dev-cleanup.tsv")
+TEMP_SIDECAR_SHA=$(sha256 \
+	"$BIRD/._.BIRD-DEV-CLEANUP.TSV.DEV-NEW.killed")
+NEAR_SIDECAR_SHA=$(sha256 "$BIRD/._bird-dev-cleanup.tsv.keep")
+if run_command --release >"$CASE_ROOT/out" 2>"$CASE_ROOT/err"; then
+	fail 'cleanup-authority AppleDouble metadata was accepted by production'
+fi
+grep -q 'interrupted development cleanup-authority metadata exists' \
+	"$CASE_ROOT/err"
+[ "$(sha256 "$BIRD/._bird-dev-cleanup.tsv")" = "$AUTHORITY_SIDECAR_SHA" ]
+[ "$(sha256 "$BIRD/._.BIRD-DEV-CLEANUP.TSV.DEV-NEW.killed")" = \
+	"$TEMP_SIDECAR_SHA" ]
+[ "$(sha256 "$BIRD/._bird-dev-cleanup.tsv.keep")" = "$NEAR_SIDECAR_SHA" ]
+[ ! -e "$TEST_STATE/builder-preflight-release-id" ]
+[ ! -e "$TEST_STATE/builder-release-id" ]
+[ ! -e "$TEST_STATE/updater-ran" ]
+
+# A hard-killed first development copy can leave this hidden stage without a
+# dev-current directory or metadata. Production must still stop before
+# preflight or writes. Matching is case-insensitive, while unrelated hidden
+# release directories remain outside the reserved namespace and untouched.
+new_case stale-dev-stage-production-rejection
+STALE_DEV_STAGE=$BIRD/bird-releases/.DEV-CURRENT.NEW.killed-copy
+UNRELATED_HIDDEN=$BIRD/bird-releases/.dev-current.newish.keep
+mkdir "$STALE_DEV_STAGE" "$UNRELATED_HIDDEN"
+printf 'partial development copy\n' >"$STALE_DEV_STAGE/payload"
+printf 'unrelated hidden bytes\n' >"$UNRELATED_HIDDEN/payload"
+STALE_DEV_STAGE_SHA=$(sha256 "$STALE_DEV_STAGE/payload")
+UNRELATED_HIDDEN_SHA=$(sha256 "$UNRELATED_HIDDEN/payload")
+if run_command --release >"$CASE_ROOT/out" 2>"$CASE_ROOT/err"; then
+	fail 'stale hidden development stage was accepted by production'
+fi
+grep -Fq 'stale mutable release stage exists at BIRD/bird-releases/.dev-current.new.*' \
+	"$CASE_ROOT/err"
+grep -Fq 'run ./dev-build-and-deploy.sh --clean' "$CASE_ROOT/err"
+[ "$(sha256 "$STALE_DEV_STAGE/payload")" = "$STALE_DEV_STAGE_SHA" ]
+[ "$(sha256 "$UNRELATED_HIDDEN/payload")" = "$UNRELATED_HIDDEN_SHA" ]
+[ ! -e "$TEST_STATE/builder-preflight-release-id" ]
+[ ! -e "$TEST_STATE/builder-release-id" ]
+[ ! -e "$TEST_STATE/updater-ran" ]
+
+# With all reserved development state absent, a near-prefix hidden directory
+# must not block the established production dry-run path or alter production
+# and fallback authority bytes.
+new_case cleaned-dev-boundary-production-dry-run
+UNRELATED_HIDDEN=$BIRD/bird-releases/.dev-current.newish.keep
+mkdir "$UNRELATED_HIDDEN"
+printf 'unrelated hidden bytes\n' >"$UNRELATED_HIDDEN/payload"
+printf 'near-prefix cleanup metadata\n' \
+	>"$BIRD/._bird-dev-cleanup.tsv.keep"
+UNRELATED_HIDDEN_SHA=$(sha256 "$UNRELATED_HIDDEN/payload")
+UNRELATED_CLEANUP_SHA=$(sha256 "$BIRD/._bird-dev-cleanup.tsv.keep")
+PRODUCTION_SELECTOR_SHA=$(sha256 "$BIRD/extlinux/extlinux.conf")
+PRODUCTION_FALLBACK_SELECTOR_SHA=$(sha256 \
+	"$BIRD/extlinux/extlinux.fallback.conf")
+PRODUCTION_FALLBACK_KERNEL_SHA=$(sha256 "$BIRD/KERNEL.fallback")
+run_command --release --dry-run >"$CASE_ROOT/out"
+grep -q 'Deployment result: not run' "$CASE_ROOT/out"
+[ "$(sha256 "$UNRELATED_HIDDEN/payload")" = "$UNRELATED_HIDDEN_SHA" ]
+[ "$(sha256 "$BIRD/._bird-dev-cleanup.tsv.keep")" = \
+	"$UNRELATED_CLEANUP_SHA" ]
+[ "$(sha256 "$BIRD/extlinux/extlinux.conf")" = "$PRODUCTION_SELECTOR_SHA" ]
+[ "$(sha256 "$BIRD/extlinux/extlinux.fallback.conf")" = \
+	"$PRODUCTION_FALLBACK_SELECTOR_SHA" ]
+[ "$(sha256 "$BIRD/KERNEL.fallback")" = "$PRODUCTION_FALLBACK_KERNEL_SHA" ]
+[ ! -e "$TEST_STATE/builder-release-id" ]
+[ ! -e "$TEST_STATE/updater-ran" ]
+
 new_case missing-volume
 rm -rf "$DATA"
 if run_command --release >"$CASE_ROOT/out" 2>"$CASE_ROOT/err"; then

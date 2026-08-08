@@ -69,7 +69,19 @@ The production path fails closed while `dev-current` or its metadata exists.
 If damaged development metadata prevents ordinary rollback while
 `dev-current` is selected, `./dev-build-and-deploy.sh --recover-production`
 verifies and restores the separately saved production selector without
-altering the damaged evidence.
+altering the damaged evidence. After retaining any evidence you need, run
+`./dev-build-and-deploy.sh --clean-recovered` to remove only the reserved
+development state without trusting the damaged metadata. Production also
+refuses stale `.dev-current.new.*` copies left by a hard interruption. Cleanup
+is restartable through the durable top-level `bird-dev-cleanup.tsv` authority;
+while that record or its `.bird-dev-cleanup.tsv.dev-new.*` publication
+temporary exists, recover production and finish with `--clean-recovered`.
+
+After committed production-builder or updater changes, an older production
+base intentionally cannot initialize `dev-current`. Build and physically
+accept a clean canonical release from the current commit or a descendant first;
+then use that release as the development base. See the one-time transition in
+[`DEV_WORKFLOW.md`](DEV_WORKFLOW.md).
 
 ## Build and deploy from macOS
 

@@ -343,6 +343,93 @@ assert_production_dev_rejection_unchanged \
 	"$DEV_GUARD_ORIGINAL_SELECTOR_SHA"
 rm -rf "$BIRD/bird-releases/DEV-CURRENT"
 
+printf '%s\n' 'schema	bird-dev-cleanup-v1' \
+	>"$BIRD/BIRD-DEV-CLEANUP.TSV"
+DEV_GUARD_CLEANUP_SHA=$(sha256 "$BIRD/BIRD-DEV-CLEANUP.TSV")
+if run_updater none >"$TMP/dev-cleanup.out" \
+		2>"$TMP/dev-cleanup.err"; then
+	printf '%s\n' 'production updater accepted pending development cleanup' >&2
+	exit 1
+fi
+grep -q 'development cleanup authority exists at BIRD/bird-dev-cleanup.tsv' \
+	"$TMP/dev-cleanup.err"
+grep -Fq 'run ./dev-build-and-deploy.sh --recover-production then --clean-recovered' \
+	"$TMP/dev-cleanup.err"
+[ "$(sha256 "$BIRD/BIRD-DEV-CLEANUP.TSV")" = "$DEV_GUARD_CLEANUP_SHA" ]
+assert_production_dev_rejection_unchanged \
+	"$DEV_GUARD_ORIGINAL_SELECTOR_SHA"
+rm -f "$BIRD/BIRD-DEV-CLEANUP.TSV"
+
+printf 'unpublished authority bytes\n' \
+	>"$BIRD/.BIRD-DEV-CLEANUP.TSV.DEV-NEW.killed"
+DEV_GUARD_CLEANUP_TEMP_SHA=$(sha256 \
+	"$BIRD/.BIRD-DEV-CLEANUP.TSV.DEV-NEW.killed")
+if run_updater none >"$TMP/dev-cleanup-temp.out" \
+		2>"$TMP/dev-cleanup-temp.err"; then
+	printf '%s\n' 'production updater accepted interrupted cleanup authority' >&2
+	exit 1
+fi
+grep -q 'interrupted development cleanup-authority publication exists' \
+	"$TMP/dev-cleanup-temp.err"
+[ "$(sha256 "$BIRD/.BIRD-DEV-CLEANUP.TSV.DEV-NEW.killed")" = \
+	"$DEV_GUARD_CLEANUP_TEMP_SHA" ]
+assert_production_dev_rejection_unchanged \
+	"$DEV_GUARD_ORIGINAL_SELECTOR_SHA"
+rm -f "$BIRD/.BIRD-DEV-CLEANUP.TSV.DEV-NEW.killed"
+
+printf 'orphan authority metadata\n' >"$BIRD/._bird-dev-cleanup.tsv"
+printf 'orphan temporary metadata\n' \
+	>"$BIRD/._.BIRD-DEV-CLEANUP.TSV.DEV-NEW.killed"
+printf 'near-prefix metadata\n' >"$BIRD/._bird-dev-cleanup.tsv.keep"
+DEV_GUARD_AUTHORITY_SIDECAR_SHA=$(sha256 \
+	"$BIRD/._bird-dev-cleanup.tsv")
+DEV_GUARD_TEMP_SIDECAR_SHA=$(sha256 \
+	"$BIRD/._.BIRD-DEV-CLEANUP.TSV.DEV-NEW.killed")
+DEV_GUARD_NEAR_SIDECAR_SHA=$(sha256 \
+	"$BIRD/._bird-dev-cleanup.tsv.keep")
+if run_updater none >"$TMP/dev-cleanup-sidecar.out" \
+		2>"$TMP/dev-cleanup-sidecar.err"; then
+	printf '%s\n' 'production updater accepted cleanup AppleDouble metadata' >&2
+	exit 1
+fi
+grep -q 'interrupted development cleanup-authority metadata exists' \
+	"$TMP/dev-cleanup-sidecar.err"
+[ "$(sha256 "$BIRD/._bird-dev-cleanup.tsv")" = \
+	"$DEV_GUARD_AUTHORITY_SIDECAR_SHA" ]
+[ "$(sha256 "$BIRD/._.BIRD-DEV-CLEANUP.TSV.DEV-NEW.killed")" = \
+	"$DEV_GUARD_TEMP_SIDECAR_SHA" ]
+[ "$(sha256 "$BIRD/._bird-dev-cleanup.tsv.keep")" = \
+	"$DEV_GUARD_NEAR_SIDECAR_SHA" ]
+assert_production_dev_rejection_unchanged \
+	"$DEV_GUARD_ORIGINAL_SELECTOR_SHA"
+rm -f "$BIRD/._bird-dev-cleanup.tsv" \
+	"$BIRD/._.BIRD-DEV-CLEANUP.TSV.DEV-NEW.killed"
+
+# A SIGKILL or power interruption during the initial development copy can
+# leave only the hidden publication sibling. It is reserved case-insensitively
+# and must block production before provider, fallback, storage, release or
+# selector mutation. Other hidden release directories are not development
+# state and must remain untouched.
+STALE_DEV_STAGE=$BIRD/bird-releases/.DEV-CURRENT.NEW.killed-copy
+UNRELATED_HIDDEN=$BIRD/bird-releases/.dev-current.newish.keep
+mkdir "$STALE_DEV_STAGE" "$UNRELATED_HIDDEN"
+printf 'partial development copy\n' >"$STALE_DEV_STAGE/payload"
+printf 'unrelated hidden bytes\n' >"$UNRELATED_HIDDEN/payload"
+STALE_DEV_STAGE_SHA=$(sha256 "$STALE_DEV_STAGE/payload")
+UNRELATED_HIDDEN_SHA=$(sha256 "$UNRELATED_HIDDEN/payload")
+if run_updater none >"$TMP/dev-stage.out" 2>"$TMP/dev-stage.err"; then
+	printf '%s\n' 'production updater accepted stale development stage' >&2
+	exit 1
+fi
+grep -Fq 'stale mutable release stage exists at BIRD/bird-releases/.dev-current.new.*' \
+	"$TMP/dev-stage.err"
+grep -Fq 'run ./dev-build-and-deploy.sh --clean' "$TMP/dev-stage.err"
+[ "$(sha256 "$STALE_DEV_STAGE/payload")" = "$STALE_DEV_STAGE_SHA" ]
+[ "$(sha256 "$UNRELATED_HIDDEN/payload")" = "$UNRELATED_HIDDEN_SHA" ]
+assert_production_dev_rejection_unchanged \
+	"$DEV_GUARD_ORIGINAL_SELECTOR_SHA"
+rm -rf "$STALE_DEV_STAGE"
+
 # The early read-only guard is not sufficient: a completed development
 # transaction can publish mutable state while production is preparing its
 # manifest. The updater must reject that state again after it owns the shared
@@ -379,6 +466,44 @@ grep -q 'development metadata exists at BIRD/bird-dev' \
 assert_production_dev_rejection_unchanged \
 	"$DEV_GUARD_ORIGINAL_SELECTOR_SHA"
 rm -rf "$BIRD/bird-dev"
+MANIFEST_GATE=
+[ "$(sha256 "$BIRD/._bird-dev-cleanup.tsv.keep")" = \
+	"$DEV_GUARD_NEAR_SIDECAR_SHA" ]
+rm -f "$BIRD/._bird-dev-cleanup.tsv.keep"
+
+MANIFEST_GATE=$TMP/cleanup-authority-post-lock-gate
+mkdir "$MANIFEST_GATE"
+run_updater none >"$TMP/cleanup-post-lock.out" \
+	2>"$TMP/cleanup-post-lock.err" &
+CLEANUP_POST_LOCK_JOB=$!
+CLEANUP_POST_LOCK_WAIT=0
+while [ ! -f "$MANIFEST_GATE/snapshot-ready" ]; do
+	CLEANUP_POST_LOCK_WAIT=$((CLEANUP_POST_LOCK_WAIT + 1))
+	[ "$CLEANUP_POST_LOCK_WAIT" -le 400 ] || {
+		cat "$TMP/cleanup-post-lock.err" >&2
+		printf '%s\n' 'updater did not reach cleanup-authority race gate' >&2
+		exit 1
+	}
+	sleep 0.02
+done
+printf 'published cleanup authority after preflight\n' \
+	>"$BIRD/BIRD-DEV-CLEANUP.TSV"
+CLEANUP_POST_LOCK_SHA=$(sha256 "$BIRD/BIRD-DEV-CLEANUP.TSV")
+: >"$MANIFEST_GATE/release-snapshot"
+set +e
+wait "$CLEANUP_POST_LOCK_JOB"
+CLEANUP_POST_LOCK_STATUS=$?
+set -e
+[ "$CLEANUP_POST_LOCK_STATUS" -ne 0 ] || {
+	printf '%s\n' 'updater accepted cleanup authority published after preflight' >&2
+	exit 1
+}
+grep -q 'development cleanup authority exists at BIRD/bird-dev-cleanup.tsv' \
+	"$TMP/cleanup-post-lock.err"
+[ "$(sha256 "$BIRD/BIRD-DEV-CLEANUP.TSV")" = "$CLEANUP_POST_LOCK_SHA" ]
+assert_production_dev_rejection_unchanged \
+	"$DEV_GUARD_ORIGINAL_SELECTOR_SHA"
+rm -f "$BIRD/BIRD-DEV-CLEANUP.TSV"
 MANIFEST_GATE=
 
 # Revalidation must remain bound to the same whole disk whose lock is held.

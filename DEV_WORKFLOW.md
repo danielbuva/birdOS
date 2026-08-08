@@ -47,6 +47,7 @@ Exactly one primary mode is required:
 ./dev-build-and-deploy.sh --status
 ./dev-build-and-deploy.sh --rollback
 ./dev-build-and-deploy.sh --recover-production
+./dev-build-and-deploy.sh --clean-recovered
 ./dev-build-and-deploy.sh --rebase
 ./dev-build-and-deploy.sh --clean
 ```
@@ -66,11 +67,18 @@ Exactly one primary mode is required:
 - `--rollback` restores the exact saved production selector atomically. It
   leaves `dev-current` installed so it can be selected again by a later build.
 - `--recover-production` is the state-independent emergency rollback. It does
-  not parse `state.tsv`: it validates the separately saved
-  `base-selector.conf`, its non-development release ID, the complete release
-  manifest and inventory, completion marker and embedded selector, then
-  atomically restores those exact selector bytes. Damaged development metadata
-  remains untouched for diagnosis.
+  not parse `state.tsv`. Before cleanup starts it uses the separately saved
+  `base-selector.conf`; after cleanup authority is published it instead uses
+  `/Volumes/BIRD/bird-dev-cleanup.tsv`. In either case it validates the exact
+  non-development selector and complete release before durably restoring those
+  selector bytes. Damaged development metadata remains untouched for diagnosis.
+- `--clean-recovered` completes that emergency path without parsing
+  `state.tsv`. It requires the active selector to be byte-identical to the
+  independently verified saved production selector, inventories every reserved
+  development tree, rejects symlinks and special nodes, and removes only
+  `dev-current`, its attempt state, stale `.dev-current.new.*` copy stages, and
+  `bird-dev` metadata. It resumes an interrupted cleanup from the durable
+  cleanup authority and removes that authority only as the final commit.
 - `--rebase` makes the currently selected complete, versioned production
   release the new base, replaces only the identified `dev-current`, applies an
   all-local build, verifies it, and activates it. Select the intended production
@@ -123,6 +131,28 @@ and readiness records are updated only after successful activation and tests.
 If the production base on the card no longer matches the recorded base,
 `--changed` and `--all-local` stop before card mutation. Select the intended
 complete production release and use `--rebase`.
+
+### One-time transition after production-tooling changes
+
+The first development build compares current `HEAD` with the source commit
+recorded by the selected production release. If that committed range changes a
+full-release-only path, including `build-and-deploy.sh` or
+`firmware/mac-update-rocknix-stock-root-v6.sh`, both `--changed` and
+`--all-local` intentionally stop before card mutation. A mutable release cannot
+prove a change to the production builder or updater that creates it.
+
+Build a clean canonical immutable release from the current commit or a
+descendant, run its separate RG34XX-SP physical gate, and only then use that
+accepted release as the base for the first `dev-current`. Do not bypass the
+refusal or broadly reclassify production tooling as a fast-development input.
+
+The immutable candidate `v6.23-20260808-124816`, built from
+`2dd4a20ca359d8b2b3544519ea900f5b5b090ff2`, satisfies the source side of the
+transition through that commit. It becomes an eligible development base for
+that source only after its physical gate passes; until then it remains a
+candidate rather than an accepted baseline. Any later committed
+full-release-only change establishes a new transition and requires a newer
+canonical base.
 
 ## Supported fast-development groups
 
@@ -266,8 +296,33 @@ production boot-attempt state.
 If `state.tsv` is malformed while `dev-current` remains selected, use
 `--recover-production`. Recovery fails closed unless the separately saved
 production selector and the complete release it names both verify fully. It
-leaves the malformed metadata and development release in place for diagnosis;
-it is not a cleanup or repair operation.
+leaves the malformed metadata and development release in place for diagnosis.
+After recording any evidence you need, complete the supported recovery with
+`--clean-recovered`; that command is also independent of `state.tsv` and refuses
+to run unless the exact recovered production selector is active.
+
+Before either cleanup mode changes the selector or removes development bytes,
+it atomically publishes `/Volumes/BIRD/bird-dev-cleanup.tsv`. This strict,
+versioned record contains the exact production selector, its release and
+manifest identity, and the pre-cleanup identities of the previous/fallback
+selectors, fallback kernel and fallback DTB. It is independent of `bird-dev`,
+is forced durable before deletions on both card filesystems, and remains the
+restart authority through a power loss or partially completed recursive
+deletion. While it exists, ordinary build, rebase, rollback and clean modes
+stop; run `--recover-production`, then `--clean-recovered`. Cleanup removes the
+record atomically last only after every reserved development path is gone and
+the production and fallback invariants still match.
+
+An interrupted atomic publication can leave only
+`.bird-dev-cleanup.tsv.dev-new.*`. That exact prefix is also reserved. Cleanup
+inventories and removes only safe regular files with that prefix; production
+and ordinary development work refuse them until cleanup completes.
+
+A hard interruption during the first base-release copy can leave a hidden
+`.dev-current.new.*` sibling. The prefix is reserved case-insensitively.
+Production refuses it, while `--clean`, `--clean-recovered`, and `--rebase`
+inventory and remove only exact matching stages. Near matches and unrelated
+hidden release directories remain untouched.
 
 ## Status and software readiness
 
@@ -312,8 +367,11 @@ pipeline:
 ```
 
 The production builder and updater reject the reserved release ID
-`dev-current`, an active or inactive `dev-current` release, and any remaining
-`bird-dev` metadata. This prevents mutable development bytes from becoming a
-previous selector, rollback release or archive candidate. The full command,
-not `dev-current`, creates the immutable candidate used for production
+`dev-current`, an active or inactive `dev-current` release, any remaining
+`bird-dev` metadata, a pending `bird-dev-cleanup.tsv`, interrupted
+`.bird-dev-cleanup.tsv.dev-new.*` publications, and stale `.dev-current.new.*`
+stages. This prevents
+mutable development bytes from becoming a previous selector, rollback release
+or archive candidate—or from silently consuming production staging space. The
+full command, not `dev-current`, creates the immutable candidate used for production
 acceptance, reproducibility evidence, release archival and later rollback.

@@ -303,9 +303,28 @@ reject_dev_current_production_state() {
 	for DEV_ENTRY in "$BIRD"/*; do
 		[ -e "$DEV_ENTRY" ] || [ -L "$DEV_ENTRY" ] || continue
 		DEV_ENTRY_NAME=${DEV_ENTRY##*/}
-		if [ "$(printf '%s' "$DEV_ENTRY_NAME" | LC_ALL=C tr '[:upper:]' '[:lower:]')" = bird-dev ]; then
-			fail 'development metadata exists at BIRD/bird-dev; run ./dev-build-and-deploy.sh --clean before production deployment'
-		fi
+		case "$(printf '%s' "$DEV_ENTRY_NAME" | LC_ALL=C tr '[:upper:]' '[:lower:]')" in
+			bird-dev)
+				fail 'development metadata exists at BIRD/bird-dev; run ./dev-build-and-deploy.sh --clean before production deployment'
+				;;
+			bird-dev-cleanup.tsv)
+				fail 'development cleanup authority exists at BIRD/bird-dev-cleanup.tsv; run ./dev-build-and-deploy.sh --recover-production then --clean-recovered'
+				;;
+		esac
+	done
+	for DEV_ENTRY in "$BIRD"/.*; do
+		[ -e "$DEV_ENTRY" ] || [ -L "$DEV_ENTRY" ] || continue
+		DEV_ENTRY_NAME=${DEV_ENTRY##*/}
+		DEV_ENTRY_NORMALIZED=$(printf '%s' "$DEV_ENTRY_NAME" | \
+			LC_ALL=C tr '[:upper:]' '[:lower:]')
+		case "$DEV_ENTRY_NORMALIZED" in
+			.bird-dev-cleanup.tsv.dev-new.*)
+				fail 'interrupted development cleanup-authority publication exists at BIRD/.bird-dev-cleanup.tsv.dev-new.*; run ./dev-build-and-deploy.sh --clean or --clean-recovered'
+				;;
+			._bird-dev-cleanup.tsv|._.bird-dev-cleanup.tsv.dev-new.*)
+				fail 'interrupted development cleanup-authority metadata exists on BIRD; run ./dev-build-and-deploy.sh --clean or --clean-recovered'
+				;;
+		esac
 	done
 	for DEV_ENTRY in "$BIRD/bird-releases"/*; do
 		[ -e "$DEV_ENTRY" ] || [ -L "$DEV_ENTRY" ] || continue
@@ -313,6 +332,21 @@ reject_dev_current_production_state() {
 		if [ "$(printf '%s' "$DEV_ENTRY_NAME" | LC_ALL=C tr '[:upper:]' '[:lower:]')" = dev-current ]; then
 			fail 'mutable release exists at BIRD/bird-releases/dev-current; run ./dev-build-and-deploy.sh --clean before production deployment'
 		fi
+	done
+	# A hard interruption during the first development copy can leave the
+	# same-filesystem staging sibling behind. Hidden stages are excluded from
+	# ordinary production release enumeration, so reserve this exact normalized
+	# prefix explicitly instead of allowing the stale copy to consume space.
+	for DEV_ENTRY in "$BIRD/bird-releases"/.*; do
+		[ -e "$DEV_ENTRY" ] || [ -L "$DEV_ENTRY" ] || continue
+		DEV_ENTRY_NAME=${DEV_ENTRY##*/}
+		DEV_ENTRY_NORMALIZED=$(printf '%s' "$DEV_ENTRY_NAME" | \
+			LC_ALL=C tr '[:upper:]' '[:lower:]')
+		case "$DEV_ENTRY_NORMALIZED" in
+			.dev-current.new.*)
+				fail 'stale mutable release stage exists at BIRD/bird-releases/.dev-current.new.*; run ./dev-build-and-deploy.sh --clean before production deployment'
+				;;
+		esac
 	done
 }
 

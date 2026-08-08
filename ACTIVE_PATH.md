@@ -122,8 +122,28 @@ its `/flash/bird-dev` metadata remains. If malformed metadata prevents ordinary
 rollback while `dev-current` is selected,
 `./dev-build-and-deploy.sh --recover-production` restores only the separately
 saved, fully verified production selector and preserves the damaged metadata
-for diagnosis. The complete workflow and its supported/full-release boundary
-are authoritative in [`DEV_WORKFLOW.md`](DEV_WORKFLOW.md).
+for diagnosis. `./dev-build-and-deploy.sh --clean-recovered` then verifies that
+exact selector without parsing the damaged state and removes only the reserved
+development release, attempts, metadata, and stale `.dev-current.new.*` copy
+stages. Before deleting anything, both cleanup modes publish the strict
+top-level `bird-dev-cleanup.tsv` authority containing the exact production
+selector, production manifest digest, and fallback/recovery byte identities.
+It survives partial metadata deletion and is removed only after cleanup and
+production invariants verify. Production refuses that authority, interrupted
+`.bird-dev-cleanup.tsv.dev-new.*` publications, and hidden copy stages until
+`--recover-production` plus `--clean-recovered` completes. The complete
+workflow and its supported/full-release boundary are authoritative in
+[`DEV_WORKFLOW.md`](DEV_WORKFLOW.md).
+
+Committed changes to the production builder or updater cannot be validated by
+deriving `dev-current` from an older production manifest: the first development
+build intentionally stops before card writes until a clean canonical release
+from the current commit or a descendant has passed its own RG34XX-SP gate. The
+deployed immutable candidate `v6.23-20260808-124816`, built from
+`2dd4a20ca359d8b2b3544519ea900f5b5b090ff2`, satisfies that source requirement
+through that commit once physically accepted. It does not cover a later
+committed full-release-only change and is not an accepted baseline merely
+because it is installed.
 
 The normal macOS entry point is `./build-and-deploy.sh --release`, or
 `./build-and-deploy.sh --profile` for lightweight launcher counters. It chooses
