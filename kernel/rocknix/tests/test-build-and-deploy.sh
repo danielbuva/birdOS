@@ -517,6 +517,71 @@ if "$COMMAND" --release --release-id '../unsafe' >"$TMP/id.out" 2>"$TMP/id.err";
 fi
 grep -q 'unsafe Bird release ID' "$TMP/id.err"
 
+new_case reserved-dev-release-id
+for RESERVED_ID in dev-current Dev-Current DEV-CURRENT; do
+	if run_command --release --release-id "$RESERVED_ID" \
+			>"$CASE_ROOT/out" 2>"$CASE_ROOT/err"; then
+		fail "reserved mutable development release ID was accepted: $RESERVED_ID"
+	fi
+	grep -q 'production release ID dev-current is reserved' "$CASE_ROOT/err"
+	grep -Fq 'run ./dev-build-and-deploy.sh --clean' "$CASE_ROOT/err"
+done
+[ ! -e "$TEST_STATE/builder-preflight-release-id" ]
+[ ! -e "$TEST_STATE/builder-release-id" ]
+[ ! -e "$TEST_STATE/updater-ran" ]
+
+new_case active-dev-selector-production-rejection
+printf '%s\n' \
+	'LABEL BIRD-DEV' \
+	'  LINUX /bird-releases/DEV-CURRENT/KERNEL' \
+	'  APPEND bird_release=DEV-CURRENT' >"$BIRD/extlinux/extlinux.conf"
+DEV_SELECTOR_SHA=$(sha256 "$BIRD/extlinux/extlinux.conf")
+STALE_OUTPUT=$WORK_ROOT/bird-rocknix-stock-root-v6.23
+mkdir "$STALE_OUTPUT"
+printf 'must survive dev guard\n' >"$STALE_OUTPUT/stale-marker"
+if run_command --release >"$CASE_ROOT/out" 2>"$CASE_ROOT/err"; then
+	fail 'active mutable development selector was accepted by production'
+fi
+grep -q 'active selector names mutable dev-current' "$CASE_ROOT/err"
+grep -Fq 'run ./dev-build-and-deploy.sh --clean' "$CASE_ROOT/err"
+[ "$(sha256 "$BIRD/extlinux/extlinux.conf")" = "$DEV_SELECTOR_SHA" ]
+[ -f "$STALE_OUTPUT/stale-marker" ]
+[ ! -e "$TEST_STATE/builder-preflight-release-id" ]
+[ ! -e "$TEST_STATE/builder-release-id" ]
+[ ! -e "$TEST_STATE/updater-ran" ]
+
+new_case dev-metadata-production-rejection
+mkdir "$BIRD/BIRD-DEV"
+printf 'must survive dev guard\n' >"$BIRD/BIRD-DEV/state.tsv"
+DEV_METADATA_SHA=$(sha256 "$BIRD/BIRD-DEV/state.tsv")
+if run_command --release >"$CASE_ROOT/out" 2>"$CASE_ROOT/err"; then
+	fail 'development metadata was accepted by production'
+fi
+grep -q 'development metadata exists at BIRD/bird-dev' "$CASE_ROOT/err"
+grep -Fq 'run ./dev-build-and-deploy.sh --clean' "$CASE_ROOT/err"
+[ "$(sha256 "$BIRD/BIRD-DEV/state.tsv")" = "$DEV_METADATA_SHA" ]
+[ ! -e "$TEST_STATE/builder-preflight-release-id" ]
+[ ! -e "$TEST_STATE/builder-release-id" ]
+[ ! -e "$TEST_STATE/updater-ran" ]
+
+new_case inactive-dev-release-production-rejection
+mkdir "$BIRD/bird-releases/DEV-CURRENT"
+printf 'must survive dev guard\n' \
+	>"$BIRD/bird-releases/DEV-CURRENT/.complete"
+DEV_RELEASE_MARKER_SHA=$(sha256 \
+	"$BIRD/bird-releases/DEV-CURRENT/.complete")
+if run_command --release >"$CASE_ROOT/out" 2>"$CASE_ROOT/err"; then
+	fail 'installed mutable development release was accepted by production'
+fi
+grep -q 'mutable release exists at BIRD/bird-releases/dev-current' \
+	"$CASE_ROOT/err"
+grep -Fq 'run ./dev-build-and-deploy.sh --clean' "$CASE_ROOT/err"
+[ "$(sha256 "$BIRD/bird-releases/DEV-CURRENT/.complete")" = \
+	"$DEV_RELEASE_MARKER_SHA" ]
+[ ! -e "$TEST_STATE/builder-preflight-release-id" ]
+[ ! -e "$TEST_STATE/builder-release-id" ]
+[ ! -e "$TEST_STATE/updater-ran" ]
+
 new_case missing-volume
 rm -rf "$DATA"
 if run_command --release >"$CASE_ROOT/out" 2>"$CASE_ROOT/err"; then

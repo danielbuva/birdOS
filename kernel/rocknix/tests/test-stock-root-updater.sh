@@ -250,6 +250,176 @@ run_migration() {
 		"$MIGRATION"
 }
 
+assert_production_dev_rejection_unchanged() {
+	EXPECTED_SELECTOR_SHA=$1
+	[ "$(sha256 "$BIRD/extlinux/extlinux.conf")" = \
+		"$EXPECTED_SELECTOR_SHA" ]
+	[ "$(sha256 "$BIRD/KERNEL")" = "$DEV_GUARD_KERNEL_SHA" ]
+	[ "$(sha256 "$DATA/ROMS/Ports/PortMaster/.bird-release-complete")" = \
+		"$DEV_GUARD_MARKER_SHA" ]
+	[ ! -e "$BIRD/KERNEL.fallback" ]
+	[ ! -e "$DATA/MUOS/runtime/ROCKNIX-STORAGE" ]
+	[ ! -e "$BIRD/bird-releases/v6.23" ]
+	if find "$BIRD/bird-releases" -maxdepth 1 -name '.v6.23.new.*' \
+		-print 2>/dev/null | grep -q .; then
+		printf '%s\n' 'production dev guard left a release stage' >&2
+		exit 1
+	fi
+}
+
+# dev-current is mutable development state. Neither a requested production ID,
+# an active dev selector, dev metadata, nor an installed inactive dev release
+# may enter the production updater. Each rejection must precede provider marker
+# migration, fallback/storage creation, release staging and selector writes.
+DEV_GUARD_ORIGINAL_SELECTOR=$TMP/dev-guard-original-selector.conf
+cp "$BIRD/extlinux/extlinux.conf" "$DEV_GUARD_ORIGINAL_SELECTOR"
+DEV_GUARD_ORIGINAL_SELECTOR_SHA=$(sha256 "$DEV_GUARD_ORIGINAL_SELECTOR")
+DEV_GUARD_KERNEL_SHA=$(sha256 "$BIRD/KERNEL")
+DEV_GUARD_MARKER_SHA=$(sha256 \
+	"$DATA/ROMS/Ports/PortMaster/.bird-release-complete")
+
+for UPDATER_RELEASE_ID in dev-current Dev-Current DEV-CURRENT; do
+	if run_updater none >"$TMP/dev-id.out" 2>"$TMP/dev-id.err"; then
+		printf 'production updater accepted reserved release ID: %s\n' \
+			"$UPDATER_RELEASE_ID" >&2
+		exit 1
+	fi
+	grep -q 'production release ID dev-current is reserved' "$TMP/dev-id.err"
+	grep -Fq 'run ./dev-build-and-deploy.sh --clean' "$TMP/dev-id.err"
+	assert_production_dev_rejection_unchanged \
+		"$DEV_GUARD_ORIGINAL_SELECTOR_SHA"
+done
+UPDATER_RELEASE_ID=v6.23
+
+printf '%s\n' \
+	'LABEL BIRD-DEV' \
+	'  LINUX /bird-releases/DEV-CURRENT/KERNEL' \
+	'  APPEND bird_release=DEV-CURRENT' >"$BIRD/extlinux/extlinux.conf"
+DEV_GUARD_ACTIVE_SELECTOR_SHA=$(sha256 "$BIRD/extlinux/extlinux.conf")
+if run_updater none >"$TMP/dev-active.out" 2>"$TMP/dev-active.err"; then
+	printf '%s\n' 'production updater accepted active dev-current selector' >&2
+	exit 1
+fi
+grep -q 'active selector names mutable dev-current' "$TMP/dev-active.err"
+grep -Fq 'run ./dev-build-and-deploy.sh --clean' "$TMP/dev-active.err"
+assert_production_dev_rejection_unchanged \
+	"$DEV_GUARD_ACTIVE_SELECTOR_SHA"
+cp "$DEV_GUARD_ORIGINAL_SELECTOR" "$BIRD/extlinux/extlinux.conf"
+
+mkdir "$BIRD/BIRD-DEV"
+printf 'must survive production rejection\n' >"$BIRD/BIRD-DEV/state.tsv"
+DEV_GUARD_METADATA_SHA=$(sha256 "$BIRD/BIRD-DEV/state.tsv")
+if run_updater none >"$TMP/dev-metadata.out" \
+		2>"$TMP/dev-metadata.err"; then
+	printf '%s\n' 'production updater accepted development metadata' >&2
+	exit 1
+fi
+grep -q 'development metadata exists at BIRD/bird-dev' \
+	"$TMP/dev-metadata.err"
+grep -Fq 'run ./dev-build-and-deploy.sh --clean' \
+	"$TMP/dev-metadata.err"
+[ "$(sha256 "$BIRD/BIRD-DEV/state.tsv")" = "$DEV_GUARD_METADATA_SHA" ]
+assert_production_dev_rejection_unchanged \
+	"$DEV_GUARD_ORIGINAL_SELECTOR_SHA"
+rm -rf "$BIRD/BIRD-DEV"
+
+mkdir -p "$BIRD/bird-releases/DEV-CURRENT"
+printf 'must survive production rejection\n' \
+	>"$BIRD/bird-releases/DEV-CURRENT/.complete"
+DEV_GUARD_RELEASE_SHA=$(sha256 \
+	"$BIRD/bird-releases/DEV-CURRENT/.complete")
+if run_updater none >"$TMP/dev-release.out" \
+		2>"$TMP/dev-release.err"; then
+	printf '%s\n' 'production updater accepted installed dev-current' >&2
+	exit 1
+fi
+grep -q 'mutable release exists at BIRD/bird-releases/dev-current' \
+	"$TMP/dev-release.err"
+grep -Fq 'run ./dev-build-and-deploy.sh --clean' \
+	"$TMP/dev-release.err"
+[ "$(sha256 "$BIRD/bird-releases/DEV-CURRENT/.complete")" = \
+	"$DEV_GUARD_RELEASE_SHA" ]
+assert_production_dev_rejection_unchanged \
+	"$DEV_GUARD_ORIGINAL_SELECTOR_SHA"
+rm -rf "$BIRD/bird-releases/DEV-CURRENT"
+
+# The early read-only guard is not sufficient: a completed development
+# transaction can publish mutable state while production is preparing its
+# manifest. The updater must reject that state again after it owns the shared
+# card lock and before any deployment mutation.
+MANIFEST_GATE=$TMP/dev-post-lock-gate
+mkdir "$MANIFEST_GATE"
+run_updater none >"$TMP/dev-post-lock.out" 2>"$TMP/dev-post-lock.err" &
+DEV_POST_LOCK_JOB=$!
+DEV_POST_LOCK_WAIT=0
+while [ ! -f "$MANIFEST_GATE/snapshot-ready" ]; do
+	DEV_POST_LOCK_WAIT=$((DEV_POST_LOCK_WAIT + 1))
+	[ "$DEV_POST_LOCK_WAIT" -le 400 ] || {
+		cat "$TMP/dev-post-lock.err" >&2
+		printf '%s\n' 'updater did not reach the post-preflight dev race gate' >&2
+		exit 1
+	}
+	sleep 0.02
+done
+mkdir "$BIRD/bird-dev"
+printf 'published after production preflight\n' >"$BIRD/bird-dev/state.tsv"
+DEV_POST_LOCK_STATE_SHA=$(sha256 "$BIRD/bird-dev/state.tsv")
+: >"$MANIFEST_GATE/release-snapshot"
+set +e
+wait "$DEV_POST_LOCK_JOB"
+DEV_POST_LOCK_STATUS=$?
+set -e
+[ "$DEV_POST_LOCK_STATUS" -ne 0 ] || {
+	printf '%s\n' 'updater accepted dev-current state published after preflight' >&2
+	exit 1
+}
+grep -q 'development metadata exists at BIRD/bird-dev' \
+	"$TMP/dev-post-lock.err"
+[ "$(sha256 "$BIRD/bird-dev/state.tsv")" = "$DEV_POST_LOCK_STATE_SHA" ]
+assert_production_dev_rejection_unchanged \
+	"$DEV_GUARD_ORIGINAL_SELECTOR_SHA"
+rm -rf "$BIRD/bird-dev"
+MANIFEST_GATE=
+
+# Revalidation must remain bound to the same whole disk whose lock is held.
+# Swapping the identity fixture after preflight models an unmount/remount race;
+# production must stop before touching the newly resolved card.
+ORIGINAL_INFO=$TMP/device-info-original.tsv
+SWITCHED_INFO=$TMP/device-info-switched.tsv
+cp "$INFO" "$ORIGINAL_INFO"
+sed 's/testdisk/otherdisk/g' "$ORIGINAL_INFO" >"$SWITCHED_INFO"
+LOCK_GATE=$TMP/identity-post-lock-gate
+mkdir "$LOCK_GATE"
+run_updater hold-after-lock >"$TMP/identity-post-lock.out" \
+	2>"$TMP/identity-post-lock.err" &
+IDENTITY_POST_LOCK_JOB=$!
+IDENTITY_POST_LOCK_WAIT=0
+while [ ! -f "$LOCK_GATE/owner-ready" ]; do
+	IDENTITY_POST_LOCK_WAIT=$((IDENTITY_POST_LOCK_WAIT + 1))
+	[ "$IDENTITY_POST_LOCK_WAIT" -le 400 ] || {
+		cat "$TMP/identity-post-lock.err" >&2
+		printf '%s\n' 'updater did not reach the identity-switch race gate' >&2
+		exit 1
+	}
+	sleep 0.02
+done
+cp "$SWITCHED_INFO" "$INFO"
+: >"$LOCK_GATE/release-owner"
+set +e
+wait "$IDENTITY_POST_LOCK_JOB"
+IDENTITY_POST_LOCK_STATUS=$?
+set -e
+[ "$IDENTITY_POST_LOCK_STATUS" -ne 0 ] || {
+	printf '%s\n' 'updater accepted a different card after acquiring its lock' >&2
+	exit 1
+}
+grep -q 'card identity changed after acquiring its production transaction lock' \
+	"$TMP/identity-post-lock.err"
+assert_production_dev_rejection_unchanged \
+	"$DEV_GUARD_ORIGINAL_SELECTOR_SHA"
+cp "$ORIGINAL_INFO" "$INFO"
+LOCK_GATE=
+
 ACTIVE_BEFORE=$(sha256 "$BIRD/extlinux/extlinux.conf")
 mkdir -p "$DATA/ports/LegacyGame"
 if run_updater none >"$TMP/legacy.out" 2>"$TMP/legacy.err"; then

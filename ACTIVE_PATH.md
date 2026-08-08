@@ -65,6 +65,7 @@ services do not remain warm by default.
 | Launcher | [`launcher/bird-launcher.c`](launcher/bird-launcher.c) and its generated catalogue |
 | Launcher visual source | [`firmware/assets/bird-launcher-backdrop.png`](firmware/assets/bird-launcher-backdrop.png) and [`firmware/generate-launcher-bootlogo.py`](firmware/generate-launcher-bootlogo.py) |
 | Card deployment | [`firmware/mac-update-rocknix-stock-root-v6.sh`](firmware/mac-update-rocknix-stock-root-v6.sh) |
+| Mutable local development | [`dev-build-and-deploy.sh`](dev-build-and-deploy.sh) and [`DEV_WORKFLOW.md`](DEV_WORKFLOW.md) |
 | Legacy Ports data migration | [`firmware/mac-migrate-rocknix-ports.sh`](firmware/mac-migrate-rocknix-ports.sh), run separately before deployment |
 | Accepted hardware and product policy | [`DEVICE_PROFILE.md`](DEVICE_PROFILE.md) |
 | Current optimization work | [`ROADMAP.md`](ROADMAP.md) and [`ROCKNIX_AUDIT.md`](ROCKNIX_AUDIT.md) |
@@ -105,6 +106,24 @@ services, integration scripts and activation metadata. It does not claim to
 rebuild or trim the release kernel yet.
 
 ## Build and deployment
+
+Supported birdOS-owned local changes use
+`./dev-build-and-deploy.sh --changed` during iteration. The one mutable
+`dev-current` release is derived from a verified immutable production release,
+is rebuilt only through its complete manifest, and is never an accepted
+release, production rollback, previous selector or archive target.
+`./dev-build-and-deploy.sh --all-local` is the complete local rebuild and
+host-test gate before the final development-device physical gate. A passing
+development gate still does not confer production acceptance.
+
+Canonical production deployment requires
+`./dev-build-and-deploy.sh --clean` first and fails closed if `dev-current` or
+its `/flash/bird-dev` metadata remains. If malformed metadata prevents ordinary
+rollback while `dev-current` is selected,
+`./dev-build-and-deploy.sh --recover-production` restores only the separately
+saved, fully verified production selector and preserves the damaged metadata
+for diagnosis. The complete workflow and its supported/full-release boundary
+are authoritative in [`DEV_WORKFLOW.md`](DEV_WORKFLOW.md).
 
 The normal macOS entry point is `./build-and-deploy.sh --release`, or
 `./build-and-deploy.sh --profile` for lightweight launcher counters. It chooses
@@ -200,6 +219,17 @@ rename, only the complete new release is selected. A partially copied tree is
 never a valid activation target. The selector lives on FAT, so this is not a
 claim that arbitrary power loss during a FAT metadata update is boot-atomic.
 True power-loss recovery requires the later U-Boot A/B design in the roadmap.
+
+### Development-workflow scope record
+
+Commit `036c0423a8f4b491f273eee051289af197c51f6a` introduced the mutable
+`dev-current` lifecycle. Its subject mentions host-only transaction tests, but
+its actual scope also added the operator entry point and 2,342-line deployment
+engine, extracted the shared local binary compiler contract, modified both
+canonical final-root and early-initramfs builders, documented the workflow and
+added its compiler and transaction suites. This note records that already
+published scope without rewriting shared history. The commit did not make
+`dev-current` a production or acceptance authority.
 
 ## Boot and runtime sequence
 

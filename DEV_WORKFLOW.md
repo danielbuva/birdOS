@@ -10,8 +10,8 @@ entire Bird payload, and its deployment transaction. That remains the only
 production and promotion path. The development workflow avoids repeating that
 work when only local Bird files changed.
 
-`dev-current` is a test release, never an accepted or archival production
-release.
+`dev-current` is mutable test state. It is never an accepted or archival
+production release, production rollback, previous selector or archive target.
 
 ## Typical use
 
@@ -31,6 +31,9 @@ For a broad local change that still touches only supported Bird-owned files:
 ./dev-build-and-deploy.sh --all-local
 ```
 
+This is the complete local rebuild and host-test gate for the exact current
+source inventory. It does not record or imply RG34XX-SP acceptance.
+
 Before removing the card, use the exact safe-eject command printed by a
 successful deployment.
 
@@ -43,6 +46,7 @@ Exactly one primary mode is required:
 ./dev-build-and-deploy.sh --all-local
 ./dev-build-and-deploy.sh --status
 ./dev-build-and-deploy.sh --rollback
+./dev-build-and-deploy.sh --recover-production
 ./dev-build-and-deploy.sh --rebase
 ./dev-build-and-deploy.sh --clean
 ```
@@ -57,9 +61,16 @@ Exactly one primary mode is required:
   bytes.
 - `--status` is read-only. It reports the selected release, recorded production
   base, `dev-current` verification state, repository provenance, changed
-  component groups, unsupported paths, and whether a rebase is required.
+  component groups, unsupported paths, active development profile, requested
+  target profile, software readiness, and whether a rebase is required.
 - `--rollback` restores the exact saved production selector atomically. It
   leaves `dev-current` installed so it can be selected again by a later build.
+- `--recover-production` is the state-independent emergency rollback. It does
+  not parse `state.tsv`: it validates the separately saved
+  `base-selector.conf`, its non-development release ID, the complete release
+  manifest and inventory, completion marker and embedded selector, then
+  atomically restores those exact selector bytes. Damaged development metadata
+  remains untouched for diagnosis.
 - `--rebase` makes the currently selected complete, versioned production
   release the new base, replaces only the identified `dev-current`, applies an
   all-local build, verifies it, and activates it. Select the intended production
@@ -77,9 +88,9 @@ Available modifiers are:
 --help
 ```
 
-- `--profile` selects the supported profiling build mode. Build mode is part of
-  component fingerprints, so changing it causes the affected binaries to be
-  rebuilt.
+- `--profile` selects the supported profiling build mode for build operations
+  and previews that target with `--status`. Build mode is part of component
+  fingerprints, so changing it causes the affected binaries to be rebuilt.
 - `--dry-run` performs classification, verification, and planning without card
   writes.
 - `--help` prints command help.
@@ -104,7 +115,10 @@ base production release remains byte-for-byte untouched.
 Development state is stored outside the immutable release under
 `/Volumes/BIRD/bird-dev`. It records the base selector and release, source
 provenance, successful component fingerprints, and development-manifest
-digest. Fingerprints are updated only after successful activation.
+digest. The `bird-dev-state-v2` state also records the last build kind, the
+source inventory for the last complete all-local rebuild, the source inventory
+for the required host-test result and the versioned host-test set. Fingerprints
+and readiness records are updated only after successful activation and tests.
 
 If the production base on the card no longer matches the recorded base,
 `--changed` and `--all-local` stop before card mutation. Select the intended
@@ -186,9 +200,19 @@ working-tree status, a committed change made after the previous development
 activation is still detected even when the current worktree is clean.
 
 Resolved compiler, linker, readelf, cpio, and compressor executable bytes are
-also fingerprinted. A toolchain identity change is deliberately refused as a
-full-release-only boundary. Supported source inputs must be regular,
-non-symlink files throughout their repository path.
+also fingerprinted. Real development builds require the canonical compiler
+tools used by the production path:
+
+```text
+CLANG=/opt/homebrew/opt/llvm/bin/clang
+LLD=/opt/homebrew/opt/lld/bin/ld.lld
+READELF=/opt/homebrew/opt/llvm/bin/llvm-readelf
+```
+
+Ambient overrides are rejected outside isolated host fixtures. A later
+toolchain identity change is deliberately refused as a full-release-only
+boundary. Supported source inputs must be regular, non-symlink files
+throughout their repository path.
 
 No active product-source change is silently ignored. An unclassified or
 full-release-only path causes the operation to fail before card mutation and
@@ -239,15 +263,57 @@ selector exactly; it does not reconstruct one from assumptions, change the
 fallback or previous selectors, modify fallback kernel/DTB files, or reset
 production boot-attempt state.
 
+If `state.tsv` is malformed while `dev-current` remains selected, use
+`--recover-production`. Recovery fails closed unless the separately saved
+production selector and the complete release it names both verify fully. It
+leaves the malformed metadata and development release in place for diagnosis;
+it is not a cleanup or repair operation.
+
+## Status and software readiness
+
+Status always separates what is installed from what the next command would
+build:
+
+```text
+active-dev-profile          release|profile|-
+requested-target-profile    release|profile
+```
+
+Plain `--status` previews a release target. `--status --profile` previews a
+profile target. A different active and requested profile can therefore make
+launcher or initramfs groups correctly appear changed; status reports both
+values so that result is not mistaken for source drift.
+
+The state-bound readiness lines are:
+
+```text
+all-local-current            yes|no|unknown
+required-host-tests-current  yes|no|unknown
+ready-for-production-build   yes|no|unknown
+```
+
+They are current only when the recorded all-local build and versioned required
+host-test set match the exact present source inventory. Older state schemas are
+read safely but report unknown readiness. `ready-for-production-build` is only
+the software-side result; it never records or implies that the RG34XX-SP
+physical gate passed.
+
 ## Production promotion
 
-After a development candidate passes its tests, reproduce and promote it with
-the canonical full pipeline:
+The complete handoff runs the software gate, then the development-device
+physical gate, then removes all mutable state before invoking the canonical
+pipeline:
 
 ```sh
+./dev-build-and-deploy.sh --all-local
+# Verify ready-for-production-build=yes, then run the RG34XX-SP physical gate.
+./dev-build-and-deploy.sh --clean
 ./build-and-deploy.sh --release
 ```
 
-That command, not `dev-current`, creates the immutable candidate used for
-production acceptance, reproducibility evidence, release archival, and later
-rollback.
+The production builder and updater reject the reserved release ID
+`dev-current`, an active or inactive `dev-current` release, and any remaining
+`bird-dev` metadata. This prevents mutable development bytes from becoming a
+previous selector, rollback release or archive candidate. The full command,
+not `dev-current`, creates the immutable candidate used for production
+acceptance, reproducibility evidence, release archival and later rollback.

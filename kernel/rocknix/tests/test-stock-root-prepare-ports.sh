@@ -5,6 +5,7 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../../.." && pwd)
 SOURCE=$ROOT/kernel/rocknix/stock-root/prepare-ports.sh
+FIXED_STORAGE_SOURCE=$ROOT/kernel/rocknix/stock-root/fixed-storage.sh
 MANIFEST_SOURCE=$ROOT/kernel/rocknix/stock-root/portmaster-provider.manifest.tsv
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/bird-prepare-ports.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT INT TERM HUP
@@ -14,6 +15,30 @@ grep -Fq 'PROVIDER_MANIFEST=/flash/bird/portmaster-provider.manifest.tsv' \
 	"$SOURCE"
 grep -Fq 'PROVIDER_VERIFIER=/flash/bird/verify-portmaster-provider.sh' \
 	"$SOURCE"
+
+# fixed-storage.sh is independently replaceable by the fast workflow. Assert
+# its complete fixed-device bind contract directly; the prepare-ports runtime
+# cases below intentionally substitute a failing helper to test checkpoint
+# ordering and therefore cannot stand in for coverage of these source bytes.
+bash -n "$FIXED_STORAGE_SOURCE"
+grep -Fqx 'ROM_SOURCE=/storage/bird-data/ROMS' "$FIXED_STORAGE_SOURCE"
+grep -Fqx 'MEDIA_SOURCE=/storage/bird-data/MEDIA' "$FIXED_STORAGE_SOURCE"
+grep -Fqx 'ROM_TARGET=/storage/roms' "$FIXED_STORAGE_SOURCE"
+grep -Fqx 'MEDIA_TARGET=/storage/media' "$FIXED_STORAGE_SOURCE"
+grep -Fq 'mount --bind "$ROM_SOURCE" "$ROM_TARGET" || exit 1' \
+	"$FIXED_STORAGE_SOURCE"
+grep -Fq 'mount -o remount,bind,rw,exec "$ROM_TARGET" || exit 1' \
+	"$FIXED_STORAGE_SOURCE"
+grep -Fq 'mount --bind "$MEDIA_SOURCE" "$MEDIA_TARGET" || exit 1' \
+	"$FIXED_STORAGE_SOURCE"
+grep -Fq '[ "$ROM_TARGET" -ef "$ROM_SOURCE" ] || exit 1' \
+	"$FIXED_STORAGE_SOURCE"
+grep -Fq '[ "$MEDIA_TARGET" -ef "$MEDIA_SOURCE" ] || exit 1' \
+	"$FIXED_STORAGE_SOURCE"
+if grep -Eq 'lsblk|blkid|findmnt|/dev/(sd|mmc|nvme)' "$FIXED_STORAGE_SOURCE"; then
+	printf '%s\n' 'fixed storage regained generic block-device discovery' >&2
+	exit 1
+fi
 
 PORT_ROOT=$TMP/ports
 PROVIDER=$PORT_ROOT/PortMaster

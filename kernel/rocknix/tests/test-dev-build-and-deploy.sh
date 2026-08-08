@@ -399,11 +399,67 @@ assert not target.with_name("._state.tsv").exists()
 PY
 pass 'atomic publication removes the matching FAT AppleDouble sidecar'
 
+python3 - "$REPO/kernel/rocknix/dev-release-tool.py" <<'PY'
+import importlib.util
+import os
+import pathlib
+import sys
+
+module_path = pathlib.Path(sys.argv[1])
+spec = importlib.util.spec_from_file_location("bird_dev_release_tool", module_path)
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+for name in module.CANONICAL_BUILD_TOOLS:
+    os.environ.pop(name, None)
+assert module.build_tool_configuration(False) == module.CANONICAL_BUILD_TOOLS
+os.environ["CLANG"] = "/bin/sh"
+try:
+    module.reject_ambient_build_tool_overrides(False)
+except module.DevError as error:
+    assert "ambient compiler override is not permitted" in str(error)
+else:
+    raise AssertionError("real development accepted an ambient compiler override")
+assert module.build_tool_configuration(False) == module.CANONICAL_BUILD_TOOLS
+assert module.build_tool_configuration(True)["CLANG"] == "/bin/sh"
+PY
+pass 'real development pins canonical compiler tools while host fixtures remain overridable'
+
+python3 - "$SOURCE_ROOT/kernel/rocknix/dev-release-tool.py" \
+	"$SOURCE_ROOT/kernel/rocknix/tests/test-canonical-namespace.sh" \
+	"$SOURCE_ROOT/kernel/rocknix/tests/test-application-contract.sh" <<'PY'
+import importlib.util
+import pathlib
+import sys
+
+module_path, bash_test, sh_test = map(pathlib.Path, sys.argv[1:])
+spec = importlib.util.spec_from_file_location("bird_dev_release_tool", module_path)
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+assert spec.loader is not None
+spec.loader.exec_module(module)
+assert module.all_component_groups() == set(module.COMPONENT_HOST_TESTS)
+assert len(module.BROAD_PRODUCT_HOST_TESTS) == 36
+assert "test-dev-build-and-deploy.sh" in module.BROAD_PRODUCT_HOST_TESTS
+assert module.host_test_command(bash_test)[:1] == ["/bin/bash"]
+assert module.host_test_command(sh_test)[:1] == ["/bin/sh"]
+PY
+pass 'every component has a deterministic test map and test shebangs are preserved'
+
 new_case first-changed
 initialize_dev
 [ "$(selector_release)" = dev-current ] || fail 'first invocation did not select dev-current'
 grep -q '^activation[[:space:]]*complete$' "$BIRD/bird-dev/state.tsv"
+grep -q '^schema[[:space:]]*bird-dev-state-v2$' "$BIRD/bird-dev/state.tsv"
+grep -q '^last-build-kind[[:space:]]*changed$' "$BIRD/bird-dev/state.tsv"
+grep -Eq '^all-local-source-inventory-sha256[[:space:]]*[0-9a-f]{64}$' \
+	"$BIRD/bird-dev/state.tsv"
+grep -Eq '^host-test-source-inventory-sha256[[:space:]]*[0-9a-f]{64}$' \
+	"$BIRD/bird-dev/state.tsv"
+grep -q '^host-test-set[[:space:]]*bird-dev-host-gate-v1$' "$BIRD/bird-dev/state.tsv"
 grep -q '^Rebuilt groups: .*launcher' "$CASE_ROOT/initialize.out"
+grep -q 'host fixture mapped test: test-bird-local-binary.sh' "$CASE_ROOT/initialize.out"
+grep -q 'host fixture mapped test: test-stock-root-updater.sh' "$CASE_ROOT/initialize.out"
 grep -q '^release[[:space:]]*dev-current$' "$BIRD/bird-releases/dev-current/deploy-manifest.tsv"
 [ "$(cat "$BIRD/bird-releases/dev-current/.complete")" = \
 	"$(sha256 "$BIRD/bird-releases/dev-current/deploy-manifest.tsv")" ] || fail 'dev completion marker is wrong'
@@ -413,7 +469,23 @@ gzip -dc "$BIRD/bird-releases/dev-current/bird-initramfs.cpio.gz" | \
 [ "$(cat "$DATA/Bird/boot-state/releases/dev-current/attempts")" = 0 ]
 assert_base_and_fallback_unchanged
 [ -z "$(find "$BIRD/bird-releases/dev-current" -name '._*' -print -quit)" ]
+run_dev --status >"$CASE_ROOT/ready.status"
+grep -q '^all-local-current[[:space:]]*yes$' "$CASE_ROOT/ready.status"
+grep -q '^required-host-tests-current[[:space:]]*yes$' "$CASE_ROOT/ready.status"
+grep -q '^ready-for-production-build[[:space:]]*yes$' "$CASE_ROOT/ready.status"
 pass 'first changed invocation is all-local and produces a verified dev-current'
+
+new_case profile-status
+run_dev --changed --profile >"$CASE_ROOT/profile-build.out"
+run_dev --status --profile >"$CASE_ROOT/profile.status"
+grep -q '^active-dev-profile[[:space:]]*profile$' "$CASE_ROOT/profile.status"
+grep -q '^requested-target-profile[[:space:]]*profile$' "$CASE_ROOT/profile.status"
+grep -q '^changed-components[[:space:]]*-$' "$CASE_ROOT/profile.status"
+run_dev --status >"$CASE_ROOT/release-preview.status"
+grep -q '^active-dev-profile[[:space:]]*profile$' "$CASE_ROOT/release-preview.status"
+grep -q '^requested-target-profile[[:space:]]*release$' "$CASE_ROOT/release-preview.status"
+grep -q '^changed-components[[:space:]].*launcher' "$CASE_ROOT/release-preview.status"
+pass 'status distinguishes the active dev profile from the requested target profile'
 
 # 2. A runtime-only edit changes no launcher/initramfs/kernel/DTB bytes.
 new_case runtime-only
@@ -429,6 +501,10 @@ COMPLETE_BEFORE=$(sha256 "$DEV/.complete")
 printf '\n# host runtime delta\n' >>"$REPO/kernel/rocknix/stock-root/bird-network.sh"
 run_dev --changed >"$CASE_ROOT/runtime.out"
 grep -q '^Rebuilt groups: runtime:bird-network.sh$' "$CASE_ROOT/runtime.out"
+grep -q 'host fixture mapped test: test-stock-root-content-scope.sh' "$CASE_ROOT/runtime.out"
+if grep -q 'host fixture mapped test: test-stock-root-updater.sh' "$CASE_ROOT/runtime.out"; then
+	fail 'focused runtime change ran the broad product host gate'
+fi
 [ "$(sha256 "$DEV/bird/bird-network.sh")" != "$RUNTIME_BEFORE" ]
 [ "$(sha256 "$DEV/bird-initramfs.cpio.gz")" = "$INITRAMFS_BEFORE" ]
 [ "$(sha256 "$DEV/bird/bird-launcher")" = "$LAUNCHER_BEFORE" ]
@@ -436,8 +512,22 @@ grep -q '^Rebuilt groups: runtime:bird-network.sh$' "$CASE_ROOT/runtime.out"
 [ "$(sha256 "$DEV/dtb.img")" = "$DTB_BEFORE" ]
 [ "$(sha256 "$DEV/deploy-manifest.tsv")" != "$MANIFEST_BEFORE" ]
 [ "$(sha256 "$DEV/.complete")" != "$COMPLETE_BEFORE" ]
+run_dev --status >"$CASE_ROOT/runtime.status"
+grep -q '^all-local-current[[:space:]]*no$' "$CASE_ROOT/runtime.status"
+grep -q '^required-host-tests-current[[:space:]]*no$' "$CASE_ROOT/runtime.status"
+grep -q '^ready-for-production-build[[:space:]]*no$' "$CASE_ROOT/runtime.status"
 assert_base_and_fallback_unchanged
 pass 'runtime-only change preserves initramfs, launcher, kernel, and DTB'
+
+run_dev --all-local >"$CASE_ROOT/all-local.out"
+grep -q 'host fixture mapped test: test-application-contract.sh' "$CASE_ROOT/all-local.out"
+grep -q 'host fixture mapped test: test-stock-root-updater.sh' "$CASE_ROOT/all-local.out"
+run_dev --status >"$CASE_ROOT/all-local.status"
+grep -q '^last-build-kind[[:space:]]*all-local$' "$CASE_ROOT/all-local.status"
+grep -q '^all-local-current[[:space:]]*yes$' "$CASE_ROOT/all-local.status"
+grep -q '^required-host-tests-current[[:space:]]*yes$' "$CASE_ROOT/all-local.status"
+grep -q '^ready-for-production-build[[:space:]]*yes$' "$CASE_ROOT/all-local.status"
+pass 'all-local runs the broad product gate and binds readiness to exact source'
 
 # 3. Launcher source changes replace final launcher and external initramfs only.
 new_case launcher-change
@@ -476,6 +566,20 @@ grep -q 'fixture bird-powerstate two' "$DEV/bird/bird-powerstate"
 assert_base_and_fallback_unchanged
 pass 'small-helper change has a one-binary payload boundary'
 
+new_case mapped-test-failure
+initialize_dev
+DEV_BEFORE=$(tree_digest "$BIRD/bird-releases/dev-current")
+printf '\n# mapped test failure delta\n' >>"$REPO/kernel/rocknix/stock-root/bird-network.sh"
+if run_dev_failpoint before-product-host-tests --changed \
+	>"$CASE_ROOT/mapped-fail.out" 2>"$CASE_ROOT/mapped-fail.err"; then
+	fail 'mapped host-test failpoint did not fail'
+fi
+grep -q 'host-only injected failure: before-product-host-tests' "$CASE_ROOT/mapped-fail.err"
+[ "$(selector_release)" = prod-a ]
+[ "$(tree_digest "$BIRD/bird-releases/dev-current")" = "$DEV_BEFORE" ]
+assert_base_and_fallback_unchanged
+pass 'behavior-test failure occurs before dev payload mutation and restores production'
+
 # 5. Identical --changed is a true no-op, including the top-level selector.
 new_case identical-noop
 initialize_dev
@@ -504,6 +608,21 @@ grep -q 'host test: test-canonical-namespace.sh' "$CASE_ROOT/host-only.out"
 [ "$(tree_digest "$BIRD")" = "$CARD_BEFORE" ]
 [ "$(stat -f '%i' "$BIRD/extlinux/extlinux.conf")" = "$SELECTOR_INODE_BEFORE" ]
 pass 'test-only source changes run host checks without card writes'
+
+new_case removed-transaction-test
+initialize_dev
+DEV_BEFORE=$(tree_digest "$BIRD/bird-releases/dev-current")
+STATE_BEFORE=$(sha256 "$BIRD/bird-dev/state.tsv")
+rm "$REPO/kernel/rocknix/tests/test-dev-build-and-deploy.sh"
+if run_dev --all-local >"$CASE_ROOT/removed-test.out" 2>"$CASE_ROOT/removed-test.err"; then
+	fail 'all-local accepted a missing transaction suite and stamped readiness'
+fi
+grep -q 'removed test-only source cannot satisfy its host gate' "$CASE_ROOT/removed-test.err"
+[ "$(selector_release)" = prod-a ]
+[ "$(tree_digest "$BIRD/bird-releases/dev-current")" = "$DEV_BEFORE" ]
+[ "$(sha256 "$BIRD/bird-dev/state.tsv")" = "$STATE_BEFORE" ]
+assert_base_and_fallback_unchanged
+pass 'missing transaction suite cannot produce an all-local readiness record'
 
 # 6. Provenance captures unstaged, staged, and untracked bytes.
 new_case source-provenance
@@ -625,6 +744,74 @@ run_dev --rollback >"$CASE_ROOT/rollback.out"
 [ -d "$BIRD/bird-releases/dev-current" ]
 assert_base_and_fallback_unchanged
 pass 'rollback restores the exact saved production selector and retains dev-current'
+
+new_case malformed-state-recovery
+initialize_dev
+SAVED_SELECTOR_SHA=$(sha256 "$BIRD/bird-dev/base-selector.conf")
+DEV_BEFORE=$(tree_digest "$BIRD/bird-releases/dev-current")
+printf 'damaged-state-kept-for-diagnosis\n' >"$BIRD/bird-dev/state.tsv"
+DAMAGED_STATE_SHA=$(sha256 "$BIRD/bird-dev/state.tsv")
+if run_dev --rollback >"$CASE_ROOT/rollback.out" 2>"$CASE_ROOT/rollback.err"; then
+	fail 'normal rollback accepted malformed state metadata'
+fi
+[ "$(selector_release)" = dev-current ]
+run_dev --recover-production >"$CASE_ROOT/recover.out"
+grep -q '^Recovered exact verified production selector: prod-a$' "$CASE_ROOT/recover.out"
+[ "$(selector_release)" = prod-a ]
+[ "$(sha256 "$BIRD/extlinux/extlinux.conf")" = "$SAVED_SELECTOR_SHA" ]
+[ "$(sha256 "$BIRD/bird-dev/state.tsv")" = "$DAMAGED_STATE_SHA" ]
+[ "$(tree_digest "$BIRD/bird-releases/dev-current")" = "$DEV_BEFORE" ]
+assert_base_and_fallback_unchanged
+pass 'emergency production recovery ignores damaged state and preserves it for diagnosis'
+
+new_case unsafe-recovery-selector
+initialize_dev
+cp "$BIRD/bird-releases/dev-current/extlinux/extlinux.conf" \
+	"$BIRD/bird-dev/base-selector.conf"
+SELECTOR_BEFORE=$(sha256 "$BIRD/extlinux/extlinux.conf")
+if run_dev --recover-production >"$CASE_ROOT/recover.out" 2>"$CASE_ROOT/recover.err"; then
+	fail 'recovery accepted a saved mutable development selector'
+fi
+grep -q 'saved recovery selector names mutable dev-current, not production' \
+	"$CASE_ROOT/recover.err"
+[ "$(sha256 "$BIRD/extlinux/extlinux.conf")" = "$SELECTOR_BEFORE" ]
+sed 's/dev-current/DEV-CURRENT/g' \
+	"$BIRD/bird-releases/dev-current/extlinux/extlinux.conf" \
+	>"$BIRD/bird-dev/base-selector.conf"
+if run_dev --recover-production >"$CASE_ROOT/recover-case.out" \
+		2>"$CASE_ROOT/recover-case.err"; then
+	fail 'recovery accepted a FAT case alias of mutable dev-current'
+fi
+grep -q 'saved recovery selector names mutable dev-current, not production' \
+	"$CASE_ROOT/recover-case.err"
+[ "$(sha256 "$BIRD/extlinux/extlinux.conf")" = "$SELECTOR_BEFORE" ]
+assert_base_and_fallback_unchanged
+pass 'emergency recovery rejects development aliases, fallback, and unverified selectors'
+
+new_case legacy-v1-state
+initialize_dev
+awk '
+	$1 == "schema" { print "schema\tbird-dev-state-v1"; next }
+	$1 == "last-build-kind" ||
+	$1 == "all-local-source-inventory-sha256" ||
+	$1 == "host-test-source-inventory-sha256" ||
+	$1 == "host-test-set" { next }
+	{ print }
+' "$BIRD/bird-dev/state.tsv" >"$CASE_ROOT/state-v1.tsv"
+cp "$CASE_ROOT/state-v1.tsv" "$BIRD/bird-dev/state.tsv"
+run_dev --status >"$CASE_ROOT/v1.status"
+grep -q '^dev-state-verifies[[:space:]]*yes$' "$CASE_ROOT/v1.status"
+grep -q '^last-build-kind[[:space:]]*unknown$' "$CASE_ROOT/v1.status"
+grep -q '^all-local-current[[:space:]]*unknown$' "$CASE_ROOT/v1.status"
+grep -q '^required-host-tests-current[[:space:]]*unknown$' "$CASE_ROOT/v1.status"
+grep -q '^ready-for-production-build[[:space:]]*unknown$' "$CASE_ROOT/v1.status"
+run_dev --rollback >"$CASE_ROOT/v1.rollback"
+[ "$(selector_release)" = prod-a ]
+run_dev --all-local >"$CASE_ROOT/v1-upgrade.out"
+grep -q '^schema[[:space:]]*bird-dev-state-v2$' "$BIRD/bird-dev/state.tsv"
+grep -q '^last-build-kind[[:space:]]*all-local$' "$BIRD/bird-dev/state.tsv"
+assert_base_and_fallback_unchanged
+pass 'deployed v1 state remains recoverable and upgrades after a verified local build'
 
 new_case unchanged-reactivation
 initialize_dev

@@ -11,6 +11,8 @@ SUPERVISOR=$ROOT/kernel/rocknix/stock-root/supervisor.sh
 EARLY_BUILDER=$ROOT/kernel/rocknix/build-stock-root-early-initramfs.sh
 INIT_BUSYBOX=$ROOT/kernel/work/rocknix-official-initramfs-20260701/ramdisk/usr/bin/busybox
 SYSTEM_UNITS=$ROOT/kernel/work/rocknix-system-exact-20260701/usr/lib/systemd/system
+JOURNAL_POLICY=$ROOT/kernel/rocknix/stock-root/bird-journald.conf
+SWAP_POLICY=$ROOT/kernel/rocknix/stock-root/bird-swap.conf
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/bird-mount-storage.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT INT TERM HUP
 
@@ -34,6 +36,12 @@ sed \
 grep -q '^STORAGE_IMAGE=/birddata/MUOS/runtime/ROCKNIX-STORAGE$' "$PREFIX"
 grep -q '^mount --move /birddata /run/bird-data || {$' "$PREFIX"
 grep -q '^mount --bind /run/bird-data /storage/bird-data || {$' "$PREFIX"
+grep -Fqx 'Storage=volatile' "$JOURNAL_POLICY"
+grep -Fqx 'Compress=no' "$JOURNAL_POLICY"
+grep -Fqx 'RuntimeMaxUse=2M' "$JOURNAL_POLICY"
+grep -Fqx 'ZRAM_SIZE="0"' "$SWAP_POLICY"
+grep -Fqx 'SWAP_FILE_SIZE="0"' "$SWAP_POLICY"
+grep -Fqx 'KSM_ENABLE="disable"' "$SWAP_POLICY"
 if grep -Eq '^mount --move [^ ]+ /storage(/|[[:space:]])' "$PREFIX"; then
 	printf '%s\n' 'real data mount is still moved beneath /storage' >&2
 	exit 1

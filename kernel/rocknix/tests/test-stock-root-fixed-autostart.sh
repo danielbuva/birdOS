@@ -5,6 +5,8 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../../.." && pwd)
 SCRIPT=$ROOT/kernel/rocknix/stock-root/bird-autostart
+FIXED_SWAY=$ROOT/kernel/rocknix/stock-root/bird-fixed-sway.sh
+FIXED_PLATFORM=$ROOT/kernel/rocknix/stock-root/bird-fixed-platform.sh
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/bird-fixed-autostart.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT INT TERM HUP
 
@@ -18,6 +20,22 @@ mkdir -p "$FLASH" "$AUTOSTART/quirks/platforms/H700" \
 	"$AUTOSTART/common" "$CUSTOM" "$BIN"
 : >"$EVENTS"
 : >"$BOOTLOG"
+
+sh -n "$FIXED_SWAY" "$FIXED_PLATFORM"
+grep -Fq 'output DSI-1 transform 0' "$FIXED_SWAY"
+grep -Fq 'WLR_DRM_DEVICES=/dev/dri/card1' "$FIXED_SWAY"
+grep -Fq 'WLR_BACKENDS=drm,libinput' "$FIXED_SWAY"
+grep -Fq 'DEVICE_TEMP_SENSOR="/sys/devices/virtual/thermal/thermal_zone2/temp"' \
+	"$FIXED_PLATFORM"
+grep -Fq 'CPU_FREQ=("/sys/devices/system/cpu/cpufreq/policy0")' \
+	"$FIXED_PLATFORM"
+grep -Fq 'GPU_FREQ=("/sys/devices/platform/soc/1800000.gpu/devfreq/1800000.gpu")' \
+	"$FIXED_PLATFORM"
+if grep -Eq 'for .*card|/sys/class/drm/.*[*]|lsblk|udevadm' \
+	"$FIXED_SWAY" "$FIXED_PLATFORM"; then
+	printf '%s\n' 'fixed platform helpers regained generic hardware discovery' >&2
+	exit 1
+fi
 
 make_step() {
 	STEP_PATH=$1

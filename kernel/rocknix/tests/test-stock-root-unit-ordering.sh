@@ -14,6 +14,13 @@ SAVE=$ROOT/kernel/rocknix/stock-root/bird-save-config.service
 UI=$ROOT/kernel/rocknix/stock-root/essway.service
 TARGET=$ROOT/kernel/rocknix/stock-root/rocknix.target
 REPORT=$ROOT/kernel/rocknix/stock-root/rocknix-report-stats.service
+AUTOSTART=$ROOT/kernel/rocknix/stock-root/rocknix-autostart.service
+NETWORK_MANAGER=$ROOT/kernel/rocknix/stock-root/NetworkManager.service
+IWD=$ROOT/kernel/rocknix/stock-root/iwd.service
+RESOLVED=$ROOT/kernel/rocknix/stock-root/systemd-resolved.service
+TIMESYNCD=$ROOT/kernel/rocknix/stock-root/systemd-timesyncd.service
+RFKILL=$ROOT/kernel/rocknix/stock-root/systemd-rfkill.service
+FIRST_FRAME=$ROOT/kernel/rocknix/stock-root/first-frame-prep.sh
 DISPATCH=$ROOT/kernel/rocknix/stock-root/capture-requested-diagnostics.sh
 CAPTURE=$ROOT/kernel/rocknix/stock-root/capture-boot-state.sh
 STAGE5_CAPTURE=$ROOT/kernel/rocknix/stock-root/capture-stage5-state.sh
@@ -35,6 +42,40 @@ fi
 grep -Fqx 'ExecStart=/flash/bird/bird-fixed-controls' "$CONTROLS"
 grep -Fqx 'ExecStart=/flash/bird/fixed-storage.sh' "$STORAGE"
 grep -Fqx 'ExecStart=/flash/bird/bird-save-config.sh' "$SAVE"
+
+# These fixed unit bytes are themselves fast-development payloads. Exercise
+# their offline/on-demand policy directly rather than only checking that some
+# caller mentions their filenames.
+grep -Fqx 'ExecStart=/bin/bash -a -c '\''source /etc/profile && exec /flash/bird/bird-autostart'\''' \
+	"$AUTOSTART"
+grep -Fqx 'WantedBy=rocknix.target' "$AUTOSTART"
+grep -Fqx 'ConditionPathExists=/run/bird/network-request' "$NETWORK_MANAGER"
+grep -Fqx 'ExecStart=/usr/sbin/NetworkManager --no-daemon' "$NETWORK_MANAGER"
+grep -Fqx 'ConditionPathExists=/run/bird/network-request' "$IWD"
+grep -Fqx 'ExecStart=/usr/lib/iwd' "$IWD"
+grep -Fqx 'ConditionPathExists=/run/bird/network-request' "$RESOLVED"
+grep -Fqx 'ExecStart=!!/usr/lib/systemd/systemd-resolved' "$RESOLVED"
+grep -Fqx 'ConditionPathExists=/run/bird/network-request' "$TIMESYNCD"
+grep -Fqx 'ExecStart=!!/usr/lib/systemd/systemd-timesyncd' "$TIMESYNCD"
+grep -Fqx 'ConditionPathExists=/run/bird/network-request' "$RFKILL"
+grep -Fqx 'ExecStart=/usr/lib/systemd/systemd-rfkill' "$RFKILL"
+for NETWORK_UNIT in "$NETWORK_MANAGER" "$IWD" "$RESOLVED" "$TIMESYNCD" "$RFKILL"; do
+	[ "$(grep -Fc 'ConditionPathExists=/run/bird/network-request' "$NETWORK_UNIT")" -eq 1 ]
+done
+
+sh -n "$FIRST_FRAME"
+grep -Fq 'MAX=$(cat "$BACKLIGHT/max_brightness")' "$FIRST_FRAME"
+grep -Fq 'RAW=$(cat "$BACKLIGHT/brightness")' "$FIRST_FRAME"
+grep -Fq "printf 'brightness_write=none raw=%s max=%s" "$FIRST_FRAME"
+if grep -Eq '(>|tee[[:space:]]).*(BACKLIGHT|/backlight/).*(brightness|bl_power)' \
+	"$FIRST_FRAME"; then
+	printf '%s\n' 'first-frame preparation regained a panel write' >&2
+	exit 1
+fi
+if grep -Eq '(^|[;&|[:space:]])exit([[:space:]]|$)' "$FIRST_FRAME"; then
+	printf '%s\n' 'first-frame observation gained an unconditional exit path' >&2
+	exit 1
+fi
 
 grep -Eq '^After=.*graphical\.target' "$UI"
 grep -Fqx 'ExecStartPre=/flash/bird/first-frame-prep.sh' "$UI"

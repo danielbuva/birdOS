@@ -41,6 +41,36 @@ Use [`ROADMAP.md`](ROADMAP.md) for planned work and
 Historical measurements and the complete version-by-version narrative live in
 [`docs/history/PROJECT_CHRONOLOGY.md`](docs/history/PROJECT_CHRONOLOGY.md).
 
+## Development loop
+
+For supported birdOS-owned launcher, early-initramfs, helper and runtime-file
+changes, use the mutable development release instead of rebuilding the whole
+product on every iteration:
+
+```sh
+./dev-build-and-deploy.sh --changed
+```
+
+Use `./dev-build-and-deploy.sh --all-local` for the complete local rebuild and
+host-test gate at the end of a development cycle. See
+[`DEV_WORKFLOW.md`](DEV_WORKFLOW.md) for supported groups, recovery and the
+full-release-only boundary.
+
+`dev-current` is never an accepted release, production rollback, previous
+selector or archive candidate. Before starting a canonical production build,
+remove it and its metadata with:
+
+```sh
+./dev-build-and-deploy.sh --clean
+./build-and-deploy.sh --release
+```
+
+The production path fails closed while `dev-current` or its metadata exists.
+If damaged development metadata prevents ordinary rollback while
+`dev-current` is selected, `./dev-build-and-deploy.sh --recover-production`
+verifies and restores the separately saved production selector without
+altering the damaged evidence.
+
 ## Build and deploy from macOS
 
 Insert the RG34XX-SP card and wait for exactly one `BIRD` and one `BIRD-DATA`
@@ -106,6 +136,10 @@ profiling boot, collect
   guarded transactional card deployment.
 - [`build-and-deploy.sh`](build-and-deploy.sh): guarded one-command macOS build,
   manifest validation and deployment entry point.
+- [`dev-build-and-deploy.sh`](dev-build-and-deploy.sh): transactional mutable
+  `dev-current` build and deployment entry point for supported local changes.
+- [`DEV_WORKFLOW.md`](DEV_WORKFLOW.md): development commands, supported
+  component map, recovery and production handoff contract.
 - [`launcher/bird-launcher.c`](launcher/bird-launcher.c): active freestanding
   launcher source.
 - [`DEVICE_PROFILE.md`](DEVICE_PROFILE.md): fixed hardware and experience

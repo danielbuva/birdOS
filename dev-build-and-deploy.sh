@@ -27,11 +27,13 @@ Exactly one MODE is required:
   --all-local   Rebuild every supported birdOS-owned local component
   --status      Show production/dev selection and source differences
   --rollback    Restore the exact saved production selector
+  --recover-production
+                Restore verified production even when dev state is damaged
   --rebase      Recreate dev-current from the selected production release
   --clean       Roll back, then remove only dev-current and its metadata
 
 Modifiers:
-  --profile     Build profiled launcher variants (changed/all-local/rebase)
+  --profile     Build or preview profiled variants (changed/all-local/status/rebase)
   --dry-run     Validate and print the intended operation without writing
   --help        Show this help
 EOF
@@ -48,6 +50,7 @@ while [ "$#" -gt 0 ]; do
 		--all-local) set_mode all-local ;;
 		--status) set_mode status ;;
 		--rollback) set_mode rollback ;;
+		--recover-production) set_mode recover-production ;;
 		--rebase) set_mode rebase ;;
 		--clean) set_mode clean ;;
 		--profile) PROFILE=1 ;;
@@ -60,11 +63,21 @@ done
 
 [ -n "$MODE" ] || fail 'choose exactly one primary mode'
 case "$MODE:$PROFILE" in
-	status:1|rollback:1|clean:1) fail "--profile is not valid with --$MODE" ;;
+	rollback:1|recover-production:1|clean:1) fail "--profile is not valid with --$MODE" ;;
 esac
 
 case "$HOST_TEST_MODE" in
 	0)
+		case "$MODE" in
+			changed|all-local|rebase)
+				[ "${CLANG+x}" != x ] ||
+					fail 'CLANG override is not permitted for the canonical development toolchain'
+				[ "${LLD+x}" != x ] ||
+					fail 'LLD override is not permitted for the canonical development toolchain'
+				[ "${READELF+x}" != x ] ||
+					fail 'READELF override is not permitted for the canonical development toolchain'
+				;;
+		esac
 		[ -z "${BIRD_DEVICE_INFO:-}" ] ||
 			fail 'device metadata override requires host-test mode'
 		[ -z "${BIRD_DEV_TEST_FAILPOINT:-}" ] ||

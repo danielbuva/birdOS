@@ -11,6 +11,23 @@ Active launcher path:
 - kernel/rocknix/tests/launcher-runtime-host.c
 - related active stock-root tests
 
+Active development workflow:
+- Use `./dev-build-and-deploy.sh --changed` for supported birdOS-owned local
+  implementation changes.
+- Use `./dev-build-and-deploy.sh --all-local` as the complete local rebuild and
+  host-test gate at the end of a development cycle.
+- Read `DEV_WORKFLOW.md` before changing the workflow or crossing a
+  full-release-only boundary.
+- `dev-current` is mutable test state. It is never an accepted production
+  release, previous production selector, rollback release or archive target.
+- Never run the canonical production deployment while `dev-current` or
+  `/flash/bird-dev` exists. Run `./dev-build-and-deploy.sh --clean` first.
+- If malformed development metadata blocks rollback while `dev-current` is
+  selected, use `./dev-build-and-deploy.sh --recover-production`; do not
+  reconstruct or guess a production selector.
+- A successful `dev-current` test is not production acceptance. Promotion still
+  requires the canonical immutable build and its separate physical gate.
+
 Historical muOS launchers, S03birdlauncher, old clean-root experiments, committed launcher objects, and old installers are not the active implementation unless an active build script explicitly references them.
 
 Optimization priorities, in strict order:

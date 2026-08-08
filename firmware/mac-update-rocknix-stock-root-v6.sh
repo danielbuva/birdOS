@@ -35,6 +35,8 @@ case "$RELEASE_ID" in
 	''|[![:alnum:]]*|*[![:alnum:]._-]*) fail "unsafe Bird release ID: $RELEASE_ID" ;;
 esac
 [ "${#RELEASE_ID}" -le 64 ] || fail 'Bird release ID is longer than 64 bytes'
+[ "$(printf '%s' "$RELEASE_ID" | LC_ALL=C tr '[:upper:]' '[:lower:]')" != dev-current ] || \
+	fail 'production release ID dev-current is reserved; run ./dev-build-and-deploy.sh --clean before production deployment'
 
 case "$BIRD_HOST_TEST_MODE" in
 	0)
@@ -105,12 +107,51 @@ is_regular_file() {
 	[ -f "$1" ] && [ ! -L "$1" ]
 }
 
+selector_names_dev_current() {
+	awk '
+		$1 == "APPEND" {
+			for (field = 2; field <= NF; field++)
+				if (tolower($field) == "bird_release=dev-current") found++
+		}
+		END {exit found == 0}
+	' "$1"
+}
+
+reject_dev_current_production_state() {
+	DEV_ACTIVE_SELECTOR=$BIRD/extlinux/extlinux.conf
+	if is_regular_file "$DEV_ACTIVE_SELECTOR" && \
+		selector_names_dev_current "$DEV_ACTIVE_SELECTOR"; then
+		fail 'active selector names mutable dev-current; run ./dev-build-and-deploy.sh --clean before production deployment'
+	fi
+	for DEV_ENTRY in "$BIRD"/*; do
+		[ -e "$DEV_ENTRY" ] || [ -L "$DEV_ENTRY" ] || continue
+		DEV_ENTRY_NAME=${DEV_ENTRY##*/}
+		if [ "$(printf '%s' "$DEV_ENTRY_NAME" | LC_ALL=C tr '[:upper:]' '[:lower:]')" = bird-dev ]; then
+			fail 'development metadata exists at BIRD/bird-dev; run ./dev-build-and-deploy.sh --clean before production deployment'
+		fi
+	done
+	for DEV_ENTRY in "$BIRD/bird-releases"/*; do
+		[ -e "$DEV_ENTRY" ] || [ -L "$DEV_ENTRY" ] || continue
+		DEV_ENTRY_NAME=${DEV_ENTRY##*/}
+		if [ "$(printf '%s' "$DEV_ENTRY_NAME" | LC_ALL=C tr '[:upper:]' '[:lower:]')" = dev-current ]; then
+			fail 'mutable release exists at BIRD/bird-releases/dev-current; run ./dev-build-and-deploy.sh --clean before production deployment'
+		fi
+	done
+}
+
 ext4_magic() {
 	od -An -tx1 -j 1080 -N 2 "$1" | tr -d ' \n'
 }
 
 [ -d "$BIRD" ] && [ ! -L "$BIRD" ] || fail "BIRD volume missing or unsafe: $BIRD"
 [ -d "$DATA" ] && [ ! -L "$DATA" ] || fail "data volume missing or unsafe: $DATA"
+
+# The production updater may be invoked directly, so enforce the same mutable
+# development boundary as the top-level production command. This runs before
+# manifest snapshots, the card lock, stale-stage cleanup, provider checkpoints,
+# release publication, or selector writes.
+reject_dev_current_production_state
+
 [ -d "$CANDIDATE" ] && [ ! -L "$CANDIDATE" ] || fail "built candidate missing or unsafe: $CANDIDATE"
 is_regular_file "$MANIFEST" || fail "canonical deploy manifest missing or unsafe: $MANIFEST"
 is_regular_file "$STORAGE_SOURCE" || fail 'reference ROCKNIX storage image missing or unsafe'
@@ -339,6 +380,7 @@ NAMESPACE_MARKER=$DATA/Bird/namespace-v1.tsv
 # Serialize every host-side card mutation with the same inherited advisory
 # transaction lock used by the explicit Ports migration. The owner symlink is
 # diagnostic; PID plus process-start identity prevents PID-reuse confusion.
+BIRD_PRODUCTION_LOCKED_WHOLE=$WHOLE
 bird_card_lock_acquire
 if test_failpoint_active hold-after-lock; then
 	[ -d "$BIRD_TEST_LOCK_GATE" ] || fail 'host-only lock gate directory is missing'
@@ -350,6 +392,13 @@ if test_failpoint_active hold-after-lock; then
 		sleep 0.02
 	done
 fi
+# A development transaction may have completed after the early read-only
+# preflight. Revalidate both card identity and the reserved mutable-release
+# boundary while this updater owns the whole-card mutation lock.
+validate_stock_root_card_identity
+[ "$WHOLE" = "$BIRD_PRODUCTION_LOCKED_WHOLE" ] || \
+	fail 'card identity changed after acquiring its production transaction lock'
+reject_dev_current_production_state
 if test_failpoint_active orphan-child-after-lock; then
 	[ -d "$BIRD_TEST_LOCK_GATE" ] || fail 'host-only orphan gate directory is missing'
 	BIRD_ORPHAN_GATE=$BIRD_TEST_LOCK_GATE \

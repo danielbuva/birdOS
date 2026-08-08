@@ -111,6 +111,8 @@ case "$REQUESTED_RELEASE_ID" in
 	''|[![:alnum:]]*|*[![:alnum:]._-]*) fail "unsafe Bird release ID: $REQUESTED_RELEASE_ID" ;;
 esac
 [ "${#REQUESTED_RELEASE_ID}" -le 64 ] || fail 'Bird release ID is longer than 64 bytes'
+[ "$(printf '%s' "$REQUESTED_RELEASE_ID" | LC_ALL=C tr '[:upper:]' '[:lower:]')" != dev-current ] || \
+	fail 'production release ID dev-current is reserved; run ./dev-build-and-deploy.sh --clean before production deployment'
 BIRD_INITRAMFS_GZIP_LEVEL=${BIRD_INITRAMFS_GZIP_LEVEL:-9}
 case "$BIRD_INITRAMFS_GZIP_LEVEL" in
 	1|9) ;;
@@ -281,6 +283,44 @@ esac
 is_regular_file() {
 	[ -f "$1" ] && [ ! -L "$1" ]
 }
+
+selector_names_dev_current() {
+	awk '
+		$1 == "APPEND" {
+			for (field = 2; field <= NF; field++)
+				if (tolower($field) == "bird_release=dev-current") found++
+		}
+		END {exit found == 0}
+	' "$1"
+}
+
+reject_dev_current_production_state() {
+	DEV_ACTIVE_SELECTOR=$BIRD/extlinux/extlinux.conf
+	if is_regular_file "$DEV_ACTIVE_SELECTOR" && \
+		selector_names_dev_current "$DEV_ACTIVE_SELECTOR"; then
+		fail 'active selector names mutable dev-current; run ./dev-build-and-deploy.sh --clean before production deployment'
+	fi
+	for DEV_ENTRY in "$BIRD"/*; do
+		[ -e "$DEV_ENTRY" ] || [ -L "$DEV_ENTRY" ] || continue
+		DEV_ENTRY_NAME=${DEV_ENTRY##*/}
+		if [ "$(printf '%s' "$DEV_ENTRY_NAME" | LC_ALL=C tr '[:upper:]' '[:lower:]')" = bird-dev ]; then
+			fail 'development metadata exists at BIRD/bird-dev; run ./dev-build-and-deploy.sh --clean before production deployment'
+		fi
+	done
+	for DEV_ENTRY in "$BIRD/bird-releases"/*; do
+		[ -e "$DEV_ENTRY" ] || [ -L "$DEV_ENTRY" ] || continue
+		DEV_ENTRY_NAME=${DEV_ENTRY##*/}
+		if [ "$(printf '%s' "$DEV_ENTRY_NAME" | LC_ALL=C tr '[:upper:]' '[:lower:]')" = dev-current ]; then
+			fail 'mutable release exists at BIRD/bird-releases/dev-current; run ./dev-build-and-deploy.sh --clean before production deployment'
+		fi
+	done
+}
+
+# dev-current is intentionally mutable and must never become a production
+# previous selector or a generic inactive release-retirement candidate. This
+# read-only boundary runs before pinned-input preparation, builder preflight,
+# release retirement, or any card write.
+reject_dev_current_production_state
 
 file_bytes() {
 	stat -f '%z' "$1" 2>/dev/null || stat -c '%s' "$1"
@@ -1358,11 +1398,17 @@ if [ "$DRY_RUN" -eq 1 ]; then
 	exit 0
 fi
 
+# Serialize the write probes and any release retirement with development,
+# updater and migration transactions. Planning remains read-only; card identity
+# and the mutable-release boundary are re-read only after the shared lock is
+# held and before the first card write.
+BIRD_PRODUCTION_LOCKED_WHOLE=$WHOLE
+bird_card_lock_acquire
+validate_stock_root_card_identity
+[ "$WHOLE" = "$BIRD_PRODUCTION_LOCKED_WHOLE" ] || \
+	fail 'card identity changed after acquiring its production transaction lock'
+reject_dev_current_production_state
 if [ "$ARCHIVE_NEEDED" -eq 1 ]; then
-	# Serialize every release retirement with the updater and migration tools.
-	# Planning is read-only; the selector is re-read only after the shared lock
-	# is held, before any card or GitHub mutation can begin.
-	bird_card_lock_acquire
 	verify_archive_selector_unchanged
 	verify_portmaster_provider_unchanged
 	snapshot_legacy_kernel_build_inputs
@@ -1392,9 +1438,12 @@ if [ "$ARCHIVE_NEEDED" -eq 1 ]; then
 		archive_and_remove_retired_release "$PLANNED_ID" "$PLANNED_DIR"
 	done <"$RETIREMENT_SELECTED"
 	retire_legacy_root_kernel
-	# The canonical updater acquires this same transaction lock itself. Release
-	# the retirement transaction before entering that independently guarded path.
-	bird_card_lock_release
+	# The canonical updater later acquires this same transaction lock itself.
+	# This planning/probe/retirement transaction ends before the host build.
+fi
+bird_card_lock_release
+
+if [ "$ARCHIVE_NEEDED" -eq 1 ]; then
 	if [ "$HOST_TEST_MODE" -eq 1 ]; then
 		BIRD_POST_ARCHIVE_BYTES=$((BIRD_EFFECTIVE_BYTES + RETIRED_BYTES + LEGACY_KERNEL_RECLAIM_BYTES))
 	else

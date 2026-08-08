@@ -20,8 +20,15 @@ from collections.abc import Iterable, Sequence
 
 
 DEV_RELEASE = "dev-current"
-STATE_SCHEMA = "bird-dev-state-v1"
+STATE_SCHEMA = "bird-dev-state-v2"
+LEGACY_STATE_SCHEMA = "bird-dev-state-v1"
 MANIFEST_SCHEMA = "bird-deploy-v1"
+REQUIRED_HOST_TEST_SET = "bird-dev-host-gate-v1"
+CANONICAL_BUILD_TOOLS = {
+    "CLANG": "/opt/homebrew/opt/llvm/bin/clang",
+    "LLD": "/opt/homebrew/opt/lld/bin/ld.lld",
+    "READELF": "/opt/homebrew/opt/llvm/bin/llvm-readelf",
+}
 # This exact canonical-builder byte sequence is the reviewed shared-compiler
 # extraction introduced with the dev workflow. It is permitted to bootstrap an
 # uncommitted checkout; any later canonical-builder edit remains full-release
@@ -154,11 +161,184 @@ KNOWN_STANDALONE_HOST_TESTS = {
     "test-stock-root-unit-ordering.sh",
     "test-stock-root-updater.sh",
 }
+BROAD_PRODUCT_HOST_TESTS = frozenset(
+    {
+        *KNOWN_STANDALONE_HOST_TESTS,
+        "test-bird-local-binary.sh",
+        "test-dev-build-and-deploy.sh",
+    }
+)
 HOST_HARNESS_RUNNERS = {
     "fixed-controls-host.c": "test-fixed-controls-c.sh",
     "launcher-runtime-host.c": "test-launcher-runtime-c.sh",
     "mpv-controls-host.c": "test-mpv-controls-c.sh",
 }
+
+COMPONENT_HOST_TESTS: dict[str, tuple[str, ...]] = {
+    "launcher": ("test-bird-local-binary.sh", "test-launcher-runtime-c.sh"),
+    "pidwait": ("test-bird-local-binary.sh", "test-stock-root-supervisor.sh"),
+    "powerstate": ("test-bird-local-binary.sh", "test-stock-root-unit-ordering.sh"),
+    "fixed-controls": (
+        "test-bird-local-binary.sh",
+        "test-fixed-controls-c.sh",
+        "test-stock-root-unit-ordering.sh",
+    ),
+    "mpv-controls": (
+        "test-bird-local-binary.sh",
+        "test-mpv-controls-c.sh",
+        "test-stock-root-mpv-controls.sh",
+    ),
+    "device-contract": ("test-stage-zero-contract.py",),
+    "catalog": ("test-launcher-catalog.py", "test-stock-root-rom-provider-map.sh"),
+    "boot-assets": ("test-launcher-boot-frame.sh", "test-launcher-runtime-c.sh"),
+    "early-initramfs": (
+        "test-bird-local-binary.sh",
+        "test-post-flash-transactions.sh",
+        "test-stock-root-brightness.sh",
+        "test-stock-root-build-reproducibility.sh",
+        "test-stock-root-mount-storage.sh",
+    ),
+    "selector": ("test-stock-root-build-reproducibility.sh",),
+    "post-flash": ("test-post-flash-transactions.sh",),
+    "mount-storage": (
+        "test-stock-root-mount-storage.sh",
+        "test-stock-root-unit-ordering.sh",
+    ),
+}
+
+_UNIT_SERVICE_FILES = {
+    "essway.service",
+    "rocknix.target",
+    "rocknix-automount.service",
+    "rocknix-autostart.service",
+    "rocknix-report-stats.service",
+    "NetworkManager.service",
+    "iwd.service",
+    "systemd-resolved.service",
+    "systemd-timesyncd.service",
+    "systemd-rfkill.service",
+    "bird-fixed-controls.service",
+    "bird-powerstate.service",
+    "bird-save-config.service",
+}
+for _name in _UNIT_SERVICE_FILES:
+    COMPONENT_HOST_TESTS[f"runtime:{_name}"] = ("test-stock-root-unit-ordering.sh",)
+
+COMPONENT_HOST_TESTS.update(
+    {
+        "runtime:090-ui_service": ("test-stock-root-fixed-setup.sh",),
+        "runtime:999-export": (
+            "test-application-contract.sh",
+            "test-stock-root-content-scope.sh",
+        ),
+        "runtime:bird-autostart": ("test-stock-root-fixed-autostart.sh",),
+        "runtime:bird-journald.conf": ("test-stock-root-mount-storage.sh",),
+        "runtime:supervisor.sh": ("test-stock-root-supervisor.sh",),
+        "runtime:run-content.sh": (
+            "test-application-contract.sh",
+            "test-stock-root-content-scope.sh",
+            "test-stock-root-media-audio-policy.sh",
+            "test-stock-root-mpv-controls.sh",
+            "test-stock-root-rom-provider-map.sh",
+        ),
+        "runtime:bird-mpv-player.sh": (
+            "test-stock-root-media-audio-policy.sh",
+            "test-stock-root-mpv-controls.sh",
+        ),
+        "runtime:mpv-input.conf": (
+            "test-stock-root-media-audio-policy.sh",
+            "test-stock-root-mpv-controls.sh",
+        ),
+        "runtime:prepare-ports.sh": ("test-stock-root-prepare-ports.sh",),
+        "runtime:verify-portmaster-provider.sh": (
+            "test-build-and-deploy.sh",
+            "test-stock-root-prepare-ports.sh",
+        ),
+        "runtime:fixed-storage.sh": ("test-stock-root-prepare-ports.sh",),
+        "runtime:first-frame-prep.sh": ("test-stock-root-unit-ordering.sh",),
+        "runtime:capture-boot-state.sh": ("test-stock-root-unit-ordering.sh",),
+        "runtime:capture-requested-diagnostics.sh": (
+            "test-stock-root-stage5-snapshot.sh",
+            "test-stock-root-unit-ordering.sh",
+        ),
+        "runtime:capture-stage5-state.sh": (
+            "test-stock-root-stage5-snapshot.sh",
+            "test-stock-root-unit-ordering.sh",
+        ),
+        "runtime:capture-stage5-window-counters.sh": (
+            "test-stock-root-stage5-snapshot.sh",
+            "test-stock-root-unit-ordering.sh",
+        ),
+        "runtime:capture-stage5-window.sh": (
+            "test-stock-root-stage5-snapshot.sh",
+            "test-stock-root-unit-ordering.sh",
+        ),
+        "runtime:bird-network.sh": ("test-stock-root-content-scope.sh",),
+        "runtime:bird-fixed-control-exit.sh": (
+            "test-fixed-control-exit-publication.sh",
+            "test-stock-root-content-scope.sh",
+        ),
+        "runtime:bird-emergency-recover.sh": ("test-emergency-recovery.sh",),
+        "runtime:bird-save-config.sh": ("test-stock-root-save-config.sh",),
+        "runtime:bird-suspend.sh": (
+            "test-stock-root-brightness.sh",
+            "test-stock-root-unit-ordering.sh",
+        ),
+        "runtime:bird-restore-suspend-policy.sh": (
+            "test-stock-root-fixed-autostart.sh",
+            "test-stock-root-suspend-policy.sh",
+        ),
+        "runtime:bird-volume.sh": ("test-stock-root-media-audio-policy.sh",),
+        "runtime:bird-control-osd.sh": ("test-fixed-controls-c.sh",),
+        "runtime:bird-fixed-sway.sh": ("test-stock-root-fixed-autostart.sh",),
+        "runtime:bird-fixed-platform.sh": ("test-stock-root-fixed-autostart.sh",),
+        "runtime:bird-fixed-logging.sh": (
+            "test-stock-root-fixed-autostart.sh",
+            "test-stock-root-fixed-housekeeping.sh",
+        ),
+        "runtime:bird-fixed-pico8.sh": (
+            "test-stock-root-fixed-autostart.sh",
+            "test-stock-root-fixed-housekeeping.sh",
+        ),
+        "runtime:bird-fixed-controller.sh": (
+            "test-stock-root-fixed-autostart.sh",
+            "test-stock-root-fixed-setup.sh",
+        ),
+        "runtime:bird-fixed-setup.sh": (
+            "test-stock-root-fixed-autostart.sh",
+            "test-stock-root-fixed-setup.sh",
+        ),
+        "runtime:bird-fixed-performance.sh": (
+            "test-stock-root-fixed-autostart.sh",
+            "test-stock-root-fixed-performance.sh",
+        ),
+        "runtime:bird-fixed-gpu-overclock.sh": (
+            "test-stock-root-fixed-autostart.sh",
+            "test-stock-root-fixed-performance.sh",
+        ),
+        "runtime:bird-fixed-rumble.sh": (
+            "test-stock-root-fixed-autostart.sh",
+            "test-stock-root-fixed-performance.sh",
+        ),
+        "runtime:bird-fixed-turbo.sh": (
+            "test-stock-root-fixed-autostart.sh",
+            "test-stock-root-fixed-performance.sh",
+        ),
+        "runtime:bird-controller-profile": (
+            "test-fixed-controller-profile.py",
+            "test-stock-root-fixed-setup.sh",
+        ),
+        "runtime:bird-swap.conf": ("test-stock-root-mount-storage.sh",),
+        "runtime:bird-suspend-policy.generated.sh": (
+            "test-stage-zero-contract.py",
+            "test-stock-root-mount-storage.sh",
+        ),
+        "runtime:bird-sleep.conf": (
+            "test-stage-zero-contract.py",
+            "test-stock-root-mount-storage.sh",
+        ),
+    }
+)
 
 
 class DevError(RuntimeError):
@@ -167,6 +347,11 @@ class DevError(RuntimeError):
 
 def fail(message: str) -> None:
     raise DevError(message)
+
+
+def is_dev_release_id(value: str) -> bool:
+    """Match the reserved release namespace as FAT will match it."""
+    return value.lower() == DEV_RELEASE
 
 
 def sha256_bytes(data: bytes) -> str:
@@ -187,6 +372,7 @@ def run(
     cwd: pathlib.Path | None = None,
     env: dict[str, str] | None = None,
     capture: bool = False,
+    umask: int = -1,
 ) -> subprocess.CompletedProcess[bytes]:
     result = subprocess.run(
         command,
@@ -195,6 +381,7 @@ def run(
         stdout=subprocess.PIPE if capture else None,
         stderr=subprocess.PIPE if capture else None,
         check=False,
+        umask=umask,
     )
     if result.returncode != 0:
         detail = ""
@@ -714,6 +901,10 @@ class DevState:
     profile: str
     manifest_sha: str
     inventory_sha: str
+    last_build_kind: str
+    all_local_inventory_sha: str
+    host_test_inventory_sha: str
+    host_test_set: str
     components: dict[str, str]
 
 
@@ -747,12 +938,26 @@ def load_state(state_path: pathlib.Path) -> DevState | None:
         "manifest-sha256",
         "source-inventory-sha256",
     }
-    if set(singles) != required or singles["schema"] != STATE_SCHEMA:
+    schema = singles.get("schema")
+    if schema == STATE_SCHEMA:
+        required.update(
+            {
+                "last-build-kind",
+                "all-local-source-inventory-sha256",
+                "host-test-source-inventory-sha256",
+                "host-test-set",
+            }
+        )
+    elif schema != LEGACY_STATE_SCHEMA:
+        fail("dev state has an invalid schema")
+    if set(singles) != required:
         fail("dev state has an invalid schema")
     if singles["dev-release"] != DEV_RELEASE or singles["activation"] not in {"complete", "incomplete"}:
         fail("dev state identity is invalid")
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", singles["base-release"]):
         fail("dev state base release is invalid")
+    if is_dev_release_id(singles["base-release"]):
+        fail("dev state base release aliases mutable dev-current")
     if not re.fullmatch(r"[0-9a-f]{40}", singles["repository-commit"]):
         fail("dev state repository commit is invalid")
     if singles["source-state"] != "clean" and not re.fullmatch(
@@ -767,6 +972,33 @@ def load_state(state_path: pathlib.Path) -> DevState | None:
     for field in ("manifest-sha256", "source-inventory-sha256"):
         if singles[field] != "pending" and not re.fullmatch(r"[0-9a-f]{64}", singles[field]):
             fail(f"dev state has an invalid {field}")
+    if schema == STATE_SCHEMA:
+        if singles["last-build-kind"] not in {"changed", "all-local", "rebase"}:
+            fail("dev state has an invalid last build kind")
+        for field in (
+            "all-local-source-inventory-sha256",
+            "host-test-source-inventory-sha256",
+        ):
+            if singles[field] != "none" and not re.fullmatch(r"[0-9a-f]{64}", singles[field]):
+                fail(f"dev state has an invalid {field}")
+        if not re.fullmatch(r"bird-dev-host-gate-v[0-9]+|none", singles["host-test-set"]):
+            fail("dev state has an invalid host test set")
+        if (singles["host-test-source-inventory-sha256"] == "none") != (
+            singles["host-test-set"] == "none"
+        ):
+            fail("dev state host test authority is incomplete")
+        last_build_kind = singles["last-build-kind"]
+        all_local_inventory_sha = singles["all-local-source-inventory-sha256"]
+        host_test_inventory_sha = singles["host-test-source-inventory-sha256"]
+        host_test_set = singles["host-test-set"]
+    else:
+        # v1 remains recoverable and can still be rolled back, cleaned, or
+        # rebased. It deliberately carries no claim that the newer all-local
+        # and host-test readiness gates were completed.
+        last_build_kind = "unknown"
+        all_local_inventory_sha = "none"
+        host_test_inventory_sha = "none"
+        host_test_set = "none"
     if singles["activation"] == "complete":
         expected_components = all_component_groups() | {"authority:toolchain"}
         if set(components) != expected_components:
@@ -784,6 +1016,10 @@ def load_state(state_path: pathlib.Path) -> DevState | None:
         singles["profile"],
         singles["manifest-sha256"],
         singles["source-inventory-sha256"],
+        last_build_kind,
+        all_local_inventory_sha,
+        host_test_inventory_sha,
+        host_test_set,
         components,
     )
 
@@ -800,6 +1036,10 @@ def state_bytes(state: DevState) -> bytes:
         f"profile\t{state.profile}",
         f"manifest-sha256\t{state.manifest_sha}",
         f"source-inventory-sha256\t{state.inventory_sha}",
+        f"last-build-kind\t{state.last_build_kind}",
+        f"all-local-source-inventory-sha256\t{state.all_local_inventory_sha}",
+        f"host-test-source-inventory-sha256\t{state.host_test_inventory_sha}",
+        f"host-test-set\t{state.host_test_set}",
     ]
     for name, digest in sorted(state.components.items()):
         lines.append(f"component\t{name}\t{digest}")
@@ -846,13 +1086,32 @@ def resolved_tool_identity(name: str, configured: str | None = None) -> str:
     return f"{name}\t{resolved}\t{info.st_size}\t{sha256_file(resolved)}"
 
 
-def build_toolchain_fingerprint() -> str:
+def build_tool_configuration(host_test: bool) -> dict[str, str]:
+    if not host_test:
+        return dict(CANONICAL_BUILD_TOOLS)
+    return {
+        name: os.environ.get(name, canonical)
+        for name, canonical in CANONICAL_BUILD_TOOLS.items()
+    }
+
+
+def reject_ambient_build_tool_overrides(host_test: bool) -> None:
+    if host_test:
+        return
+    overridden = sorted(name for name in CANONICAL_BUILD_TOOLS if name in os.environ)
+    if overridden:
+        fail(
+            "ambient compiler override is not permitted for the canonical development "
+            f"toolchain: {','.join(overridden)}"
+        )
+
+
+def build_toolchain_fingerprint(host_test: bool) -> str:
+    tools = build_tool_configuration(host_test)
     identities = (
-        resolved_tool_identity("clang", os.environ.get("CLANG", "/opt/homebrew/opt/llvm/bin/clang")),
-        resolved_tool_identity("ld.lld", os.environ.get("LLD", "/opt/homebrew/opt/lld/bin/ld.lld")),
-        resolved_tool_identity(
-            "llvm-readelf", os.environ.get("READELF", "/opt/homebrew/opt/llvm/bin/llvm-readelf")
-        ),
+        resolved_tool_identity("clang", tools["CLANG"]),
+        resolved_tool_identity("ld.lld", tools["LLD"]),
+        resolved_tool_identity("llvm-readelf", tools["READELF"]),
         resolved_tool_identity("cpio"),
         resolved_tool_identity("gzip"),
     )
@@ -967,7 +1226,12 @@ def validate_component_sources(root: pathlib.Path, groups: set[str]) -> None:
         require_repository_file(root, relative)
 
 
-def component_fingerprints(root: pathlib.Path, data: pathlib.Path, profile: str) -> dict[str, str]:
+def component_fingerprints(
+    root: pathlib.Path,
+    data: pathlib.Path,
+    profile: str,
+    host_test: bool,
+) -> dict[str, str]:
     helper = "kernel/rocknix/build-bird-local-binary.sh"
     launcher_common = [
         helper,
@@ -977,7 +1241,7 @@ def component_fingerprints(root: pathlib.Path, data: pathlib.Path, profile: str)
         "bird-device-contract.tsv",
     ]
     result = {
-        "authority:toolchain": build_toolchain_fingerprint(),
+        "authority:toolchain": build_toolchain_fingerprint(host_test),
         "launcher": source_hash(root, launcher_common, [profile]),
         "pidwait": source_hash(root, [helper, "launcher/bird-pidwait.c"]),
         "powerstate": source_hash(root, [helper, "launcher/bird-powerstate.c"]),
@@ -1319,6 +1583,7 @@ def prepare_outputs(
 
     helper = root / "kernel/rocknix/build-bird-local-binary.sh"
     build_env = os.environ.copy()
+    build_env.update(build_tool_configuration(host_test))
     build_env["BIRD_LAUNCHER_PROFILE"] = "profile" if profile == "profile" else "none"
     build_env["BIRD_LOCAL_LAUNCHER_DIR"] = str(overlay)
 
@@ -1469,48 +1734,119 @@ def verify_generated_device_sources(root: pathlib.Path) -> None:
     )
 
 
-def run_host_only_checks(root: pathlib.Path, paths: Iterable[str]) -> list[str]:
-    """Run non-mutating syntax checks for changed documentation/test/workflow inputs."""
-    checks: list[str] = []
-    executed_tests: set[str] = set()
+def host_test_command(test: pathlib.Path) -> list[str]:
+    first_line = test.read_bytes().splitlines()[:1]
+    shebang = first_line[0] if first_line else b""
+    if test.suffix == ".py" or b"python3" in shebang:
+        return ["python3", str(test)]
+    if shebang == b"#!/bin/bash":
+        return ["/bin/bash", str(test)]
+    if shebang == b"#!/bin/sh":
+        return ["/bin/sh", str(test)]
+    fail(f"mapped host test has an unsupported interpreter: {test}")
 
-    def run_named_test(name: str) -> None:
-        if name in executed_tests:
-            return
-        test = root / "kernel/rocknix/tests" / name
-        require_regular(test, f"mapped host test {name}")
-        command = ["python3", str(test)] if name.endswith(".py") else ["sh", str(test)]
-        run(command, cwd=root)
-        executed_tests.add(name)
+
+def run_named_host_tests(
+    root: pathlib.Path,
+    names: Iterable[str],
+    *,
+    host_test: bool,
+) -> list[str]:
+    ordered = sorted(set(names))
+    allowed = BROAD_PRODUCT_HOST_TESTS
+    unknown = sorted(set(ordered) - allowed)
+    if unknown:
+        fail("host test set contains an unreviewed test: " + ",".join(unknown))
+    if host_test:
+        # Synthetic transaction fixtures deliberately contain only the
+        # workflow tests. Do not recursively launch those tests or pretend the
+        # fixture is the real complete checkout; the outer suite verifies the
+        # exact deterministic names selected here.
+        return [f"host fixture mapped test: {name}" for name in ordered]
+
+    with tempfile.TemporaryDirectory(prefix="bird-dev-host-tests-") as temporary:
+        environment = os.environ.copy()
+        for name in tuple(environment):
+            if (
+                name
+                in {
+                    "DATA",
+                    "OUTPUT",
+                    "CLANG",
+                    "LLD",
+                    "READELF",
+                    "CC",
+                    "CFLAGS",
+                    "CPPFLAGS",
+                    "LDFLAGS",
+                }
+                or name.startswith("BIRD_")
+            ):
+                environment.pop(name, None)
+        environment.update(
+            {
+                "TMPDIR": temporary,
+                "PYTHONDONTWRITEBYTECODE": "1",
+                "LC_ALL": "C",
+                "LANG": "C",
+                "TZ": "UTC",
+                "COPYFILE_DISABLE": "1",
+            }
+        )
+        for name in ordered:
+            test = root / "kernel/rocknix/tests" / name
+            require_regular(test, f"mapped host test {name}")
+            run(host_test_command(test), cwd=root, env=environment, umask=0o022)
+    return [f"host behavior: {name}" for name in ordered]
+
+
+def component_host_tests(groups: set[str]) -> set[str]:
+    missing = sorted(group for group in groups if group not in COMPONENT_HOST_TESTS)
+    if missing:
+        fail("component group lacks a behavioral host-test mapping: " + ",".join(missing))
+    return {test for group in groups for test in COMPONENT_HOST_TESTS[group]}
+
+
+def run_host_only_checks(
+    root: pathlib.Path,
+    paths: Iterable[str],
+    *,
+    host_test: bool,
+) -> list[str]:
+    """Run non-mutating checks for changed documentation/test/workflow inputs."""
+    checks: list[str] = []
+    requested_tests: set[str] = set()
 
     for relative in sorted(set(paths)):
         source = root / relative
         if not source.exists():
+            if relative.startswith("kernel/rocknix/tests/"):
+                fail(f"removed test-only source cannot satisfy its host gate: {relative}")
             checks.append(f"removed host-only source classified: {relative}")
             continue
         require_regular(source, f"host-only source {relative}")
         if relative == "kernel/rocknix/build-stock-root-compat.sh":
             if sha256_file(source) != SAFE_COMPAT_HELPER_EXTRACTION_SHA256:
                 fail("canonical compatibility builder changed beyond the reviewed compiler extraction")
-            run_named_test("test-bird-local-binary.sh")
+            requested_tests.add("test-bird-local-binary.sh")
             checks.append("shared compiler extraction contract and byte identity")
         elif relative == "kernel/rocknix/tests/test-bird-local-binary.sh":
-            run_named_test("test-bird-local-binary.sh")
+            requested_tests.add("test-bird-local-binary.sh")
             checks.append("bird local binary focused test")
         elif relative == "kernel/rocknix/tests/test-dev-build-and-deploy.sh":
-            run_named_test("test-dev-build-and-deploy.sh")
+            requested_tests.add("test-dev-build-and-deploy.sh")
             checks.append("dev-current host transaction suite")
         elif relative in {"dev-build-and-deploy.sh", "kernel/rocknix/dev-release-tool.py"}:
-            run_named_test("test-dev-build-and-deploy.sh")
+            requested_tests.add("test-dev-build-and-deploy.sh")
             checks.append("dev-current host transaction suite")
         elif relative.startswith("kernel/rocknix/tests/"):
             name = pathlib.PurePosixPath(relative).name
             if name in HOST_HARNESS_RUNNERS:
                 runner = HOST_HARNESS_RUNNERS[name]
-                run_named_test(runner)
+                requested_tests.add(runner)
                 checks.append(f"mapped host test: {runner}")
             elif name in KNOWN_STANDALONE_HOST_TESTS:
-                run_named_test(name)
+                requested_tests.add(name)
                 checks.append(f"host test: {name}")
             else:
                 fail(f"test-only source lacks an explicit safe host-check mapping: {relative}")
@@ -1530,6 +1866,7 @@ def run_host_only_checks(root: pathlib.Path, paths: Iterable[str]) -> list[str]:
             checks.append(f"shell syntax: {relative}")
         else:
             checks.append(f"host-only source classified: {relative}")
+    checks.extend(run_named_host_tests(root, requested_tests, host_test=host_test))
     return checks
 
 
@@ -1576,6 +1913,8 @@ class Workflow:
         self.mutation_started = False
         self.changed_release_paths: list[tuple[str, str, str]] = []
         self.tests: list[str] = []
+        self.completed_host_test_inventory_sha = "none"
+        self.completed_host_test_set = "none"
 
     def inject(self, name: str) -> None:
         if self.host_test and self.failure_point == name:
@@ -1588,7 +1927,7 @@ class Workflow:
     def selector_kind(self, data: bytes) -> tuple[str, str | None]:
         selected = parse_selector(data)
         if selected is not None:
-            return ("development" if selected == DEV_RELEASE else "production", selected)
+            return ("development" if is_dev_release_id(selected) else "production", selected)
         fallback = self.bird / "extlinux/extlinux.fallback.conf"
         if fallback.is_file() and not fallback.is_symlink() and data == fallback.read_bytes():
             return ("fallback", None)
@@ -1615,6 +1954,25 @@ class Workflow:
             fail("saved production selector digest changed")
         self.verify_selector_release(data, state.base_release)
         return data
+
+    def recover_production(self) -> None:
+        """Restore the independently saved production selector without state.tsv."""
+        require_directory(self.state_dir, "dev metadata directory")
+        require_regular(self.base_selector_path, "saved production selector")
+        selector = self.base_selector_path.read_bytes()
+        release_id = parse_selector(selector)
+        if release_id is None:
+            fail("saved recovery selector is legacy, fallback, or malformed")
+        if is_dev_release_id(release_id):
+            fail("saved recovery selector names mutable dev-current, not production")
+        self.verify_selector_release(selector, release_id)
+        if self.dry_run:
+            print(f"dry-run: would restore independently verified production selector for {release_id}")
+            return
+        self.restore_selector(selector)
+        self.verify_selector_release(self.read_selector(), release_id)
+        print(f"Recovered exact verified production selector: {release_id}")
+        print("Damaged development metadata was left untouched for diagnosis.")
 
     def verify_complete_state_binding(self, state: DevState) -> Manifest:
         if state.activation != "complete":
@@ -1670,7 +2028,9 @@ class Workflow:
                     state_verified = False
         print(f"dev-current-verifies\t{dev_verified}")
         print(f"dev-state-verifies\t{'yes' if state_verified else 'no'}")
-        print(f"dev-current-selected\t{'yes' if selected == DEV_RELEASE else 'no'}")
+        print(f"dev-current-selected\t{'yes' if kind == 'development' else 'no'}")
+        print(f"active-dev-profile\t{state.profile if state else '-'}")
+        print(f"requested-target-profile\t{self.profile}")
         print(f"repository-head\t{identity.commit}")
         print(f"source-state\t{identity.state}")
         different = sorted(
@@ -1716,6 +2076,44 @@ class Workflow:
             except DevError:
                 rebase = "yes"
         print(f"rebase-required\t{rebase}")
+        current_inventory_sha = sha256_bytes(identity.inventory_bytes)
+        all_local_current = bool(
+            state is not None
+            and state.activation == "complete"
+            and state.all_local_inventory_sha == current_inventory_sha
+        )
+        host_tests_current = bool(
+            state is not None
+            and state.activation == "complete"
+            and state.host_test_inventory_sha == current_inventory_sha
+            and state.host_test_set == REQUIRED_HOST_TEST_SET
+        )
+        ready = bool(
+            all_local_current
+            and host_tests_current
+            and state is not None
+            and state.profile == "release"
+            and state_verified
+            and dev_verified == "yes"
+            and not different
+            and not unsupported
+            and rebase == "no"
+        )
+        legacy_readiness = state is not None and state.last_build_kind == "unknown"
+        print(f"last-build-kind\t{state.last_build_kind if state else '-'}")
+        print(
+            "all-local-current\t"
+            + ("unknown" if legacy_readiness else ("yes" if all_local_current else "no"))
+        )
+        print(
+            "required-host-tests-current\t"
+            + ("unknown" if legacy_readiness else ("yes" if host_tests_current else "no"))
+        )
+        print(f"host-test-set\t{state.host_test_set if state else '-'}")
+        print(
+            "ready-for-production-build\t"
+            + ("unknown" if legacy_readiness else ("yes" if ready else "no"))
+        )
 
     def choose_base(self, state: DevState | None, selector: bytes) -> tuple[str, bytes, Manifest]:
         kind, selected = self.selector_kind(selector)
@@ -1871,6 +2269,10 @@ class Workflow:
             self.profile,
             "pending",
             "pending",
+            self.mode,
+            "none",
+            "none",
+            "none",
             {"authority:toolchain": toolchain_digest},
         )
         atomic_write(self.state_path, state_bytes(incomplete))
@@ -1911,10 +2313,29 @@ class Workflow:
         identity: SourceIdentity,
         fingerprints: dict[str, str],
         manifest_sha: str,
+        previous_state: DevState | None,
+        full_local_build: bool,
     ) -> None:
         atomic_write(self.inventory_path, identity.inventory_bytes)
         if not self.host_test:
             sync_storage()
+        inventory_sha = sha256_bytes(identity.inventory_bytes)
+        if (self.completed_host_test_inventory_sha == "none") != (
+            self.completed_host_test_set == "none"
+        ):
+            fail("completed host test authority is incomplete")
+        if (
+            self.completed_host_test_inventory_sha != "none"
+            and self.completed_host_test_inventory_sha != inventory_sha
+        ):
+            fail("completed host tests do not bind the activated source inventory")
+        previous_all_local = (
+            previous_state.all_local_inventory_sha if previous_state is not None else "none"
+        )
+        previous_host_inventory = (
+            previous_state.host_test_inventory_sha if previous_state is not None else "none"
+        )
+        previous_host_set = previous_state.host_test_set if previous_state is not None else "none"
         complete = DevState(
             "complete",
             base_id,
@@ -1923,10 +2344,33 @@ class Workflow:
             identity.state,
             self.profile,
             manifest_sha,
-            sha256_bytes(identity.inventory_bytes),
+            inventory_sha,
+            self.mode,
+            inventory_sha if full_local_build else previous_all_local,
+            (
+                self.completed_host_test_inventory_sha
+                if self.completed_host_test_inventory_sha != "none"
+                else previous_host_inventory
+            ),
+            (
+                self.completed_host_test_set
+                if self.completed_host_test_set != "none"
+                else previous_host_set
+            ),
             fingerprints,
         )
         atomic_write(self.state_path, state_bytes(complete))
+
+    def mark_required_host_tests_complete(
+        self,
+        identity: SourceIdentity,
+        test_set: str,
+    ) -> None:
+        """Bind an explicitly completed mapped/broad host gate to this source."""
+        if test_set != REQUIRED_HOST_TEST_SET:
+            fail(f"unsupported required host test set: {test_set}")
+        self.completed_host_test_inventory_sha = sha256_bytes(identity.inventory_bytes)
+        self.completed_host_test_set = test_set
 
     def rollback(self, state: DevState | None) -> None:
         if state is None:
@@ -1996,7 +2440,9 @@ class Workflow:
             previous_dev_manifest = self.verify_named_release(DEV_RELEASE)
 
         if not groups and self.mode == "changed":
-            self.tests.extend(run_host_only_checks(self.root, docs_tests))
+            self.tests.extend(
+                run_host_only_checks(self.root, docs_tests, host_test=self.host_test)
+            )
             kind, selected = self.selector_kind(selector_before)
             if not docs_tests and kind == "production" and selected == base_id:
                 dev_selector_path = self.dev_root / "extlinux/extlinux.conf"
@@ -2039,7 +2485,22 @@ class Workflow:
                 self.root, self.bird, self.data, groups, self.profile, work, self.host_test
             )
             self.tests.extend(build_tests)
-            self.tests.extend(run_host_only_checks(self.root, docs_tests))
+            self.tests.extend(
+                run_host_only_checks(self.root, docs_tests, host_test=self.host_test)
+            )
+            full_product_gate = groups == all_component_groups()
+            mapped_tests = (
+                set(BROAD_PRODUCT_HOST_TESTS)
+                if full_product_gate
+                else component_host_tests(groups)
+            )
+            self.inject("before-product-host-tests")
+            self.tests.extend(
+                run_named_host_tests(self.root, mapped_tests, host_test=self.host_test)
+            )
+            self.inject("after-product-host-tests")
+            if full_product_gate:
+                self.mark_required_host_tests_complete(identity, REQUIRED_HOST_TEST_SET)
             identity_after = capture_source_identity(self.root)
             if (identity_after.commit, identity_after.state, identity_after.inventory_bytes) != (
                 identity.commit,
@@ -2047,7 +2508,7 @@ class Workflow:
                 identity.inventory_bytes,
             ):
                 fail("source tree changed while dev bytes were being built")
-            if build_toolchain_fingerprint() != fingerprints["authority:toolchain"]:
+            if build_toolchain_fingerprint(self.host_test) != fingerprints["authority:toolchain"]:
                 fail("build toolchain changed while dev bytes were being built")
 
             self.restore_on_failure = False
@@ -2170,7 +2631,15 @@ class Workflow:
                 sync_storage()
             self.inject("before-selector-activation")
             selector_sha = self.activate_selector(selector_bytes)
-            self.commit_state(base_id, base_selector, identity, fingerprints, manifest_sha)
+            self.commit_state(
+                base_id,
+                base_selector,
+                identity,
+                fingerprints,
+                manifest_sha,
+                state,
+                groups == all_component_groups(),
+            )
             self.inject("after-state-commit")
             if self.host_test:
                 self.tests.append("host fixture reached final sync boundary")
@@ -2205,6 +2674,9 @@ class Workflow:
         require_directory(self.data, "BIRD-DATA volume")
         require_directory(self.bird / "extlinux", "extlinux directory")
         require_directory(self.releases, "release root")
+        if self.mode == "recover-production":
+            self.recover_production()
+            return
         malformed_state_error: str | None = None
         try:
             state = load_state(self.state_path)
@@ -2232,6 +2704,8 @@ class Workflow:
                 self.verify_complete_state_binding(state)
             self.clean(state)
             return
+        if self.mode in {"changed", "all-local", "rebase"}:
+            reject_ambient_build_tool_overrides(self.host_test)
         if (
             state is not None
             and state.activation == "complete"
@@ -2262,7 +2736,12 @@ class Workflow:
                 changed_paths.update(
                     committed_paths_since(self.root, source_base.source_commit, identity.commit)
                 )
-        fingerprints = component_fingerprints(self.root, self.data, self.profile)
+        fingerprints = component_fingerprints(
+            self.root,
+            self.data,
+            self.profile,
+            self.host_test,
+        )
 
         if self.mode == "status":
             self.status(identity, state, changed_paths, fingerprints, state_error)
@@ -2290,6 +2769,10 @@ class Workflow:
                         current_state.profile,
                         "pending",
                         "pending",
+                        self.mode,
+                        "none",
+                        "none",
+                        "none",
                         {"authority:toolchain": current_state.components["authority:toolchain"]},
                     )
                     atomic_write(self.state_path, state_bytes(incomplete))
@@ -2313,7 +2796,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--root", type=pathlib.Path, required=True)
     parser.add_argument("--bird", type=pathlib.Path, required=True)
     parser.add_argument("--data", type=pathlib.Path, required=True)
-    parser.add_argument("--mode", choices=("changed", "all-local", "status", "rollback", "rebase", "clean"), required=True)
+    parser.add_argument(
+        "--mode",
+        choices=(
+            "changed",
+            "all-local",
+            "status",
+            "rollback",
+            "recover-production",
+            "rebase",
+            "clean",
+        ),
+        required=True,
+    )
     parser.add_argument("--profile", type=int, choices=(0, 1), required=True)
     parser.add_argument("--dry-run", type=int, choices=(0, 1), required=True)
     return parser.parse_args()
