@@ -20,6 +20,17 @@ Active development workflow:
   full-release-only boundary.
 - `dev-current` is mutable test state. It is never an accepted production
   release, previous production selector, rollback release or archive target.
+- Keep exactly one immutable canonical base and the mutable `dev-current` on the
+  128 MiB `BIRD` partition. A canonical deployment archives and independently
+  verifies every superseded immutable release in the private GitHub release
+  archive, atomically makes the previous selector self-reference the newly
+  activated canonical release, and only then removes the old card copy. An
+  archive failure leaves the complete old release and previous selector intact.
+- The fixed v5.4 fallback bytes remain temporarily because removing them changes
+  a separate boot contract. They are not normal development rollback or release
+  history. Do not depend on automatic boot recovery: after a failed device boot,
+  return the card to the host and restore or redeploy through the verified host
+  workflow.
 - Never run the canonical production deployment while `dev-current` or
   `/flash/bird-dev` exists. Run `./dev-build-and-deploy.sh --clean` first. A
   pending `/flash/bird-dev-cleanup.tsv` or

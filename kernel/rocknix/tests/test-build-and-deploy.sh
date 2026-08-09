@@ -201,6 +201,8 @@ if [ "${BIRD_BUILD_PREFLIGHT_ONLY:-0}" = 1 ]; then
 	exit 0
 fi
 
+[ "${TEST_BUILDER_BEHAVIOR:-normal}" != fail-build ] || exit 74
+
 [ ! -e "$OUTPUT/stale-marker" ] || {
 	printf '%s\n' 'wrapper did not remove matching stale output' >&2
 	exit 1
@@ -402,7 +404,7 @@ new_case() {
 		'/dev/testdisk' 'Disk Size' '512074186752 Bytes (512074186752 Bytes)' \
 		"$BIRD" 'Device Identifier' testdisks1 \
 		"$BIRD" 'Partition Offset' '16777216 Bytes' \
-		"$BIRD" 'Disk Size' '144703488 Bytes (144703488 Bytes)' \
+		"$BIRD" 'Disk Size' '134217728 Bytes (134217728 Bytes)' \
 		"$BIRD" 'File System Personality' 'MS-DOS FAT32' \
 		"$BIRD" 'Volume Read-Only' No \
 		"$DATA" 'Device Identifier' testdisks6 \
@@ -1068,34 +1070,32 @@ if run_command --release >"$CASE_ROOT/out" 2>"$CASE_ROOT/err"; then
 fi
 grep -q 'BIRD has insufficient staging space' "$CASE_ROOT/err"
 
-# Production staging alone fits exactly, but that would strand the ordinary
-# first dev-current copy after activation.  The production wrapper must use the
-# larger candidate bound, plan one verified inactive release retirement, and
-# preserve every byte because this is a dry run.
-new_case development-reserve-archive-dry-run
+# Production preflight reserves only the candidate staging bound.  Mutable
+# dev-current space comes from rotating the superseded production release
+# after activation, not from retaining an extra future-development reserve.
+new_case production-staging-only-dry-run
 create_completed_release active
 create_completed_release retired 9437184
 select_fixture_release active
 rm -f "$BIRD/KERNEL"
-ACTIVE_FILE_BYTES=$(awk -F '\t' '$1 == "file" {bytes += $4} END {print bytes + 0}' \
-	"$BIRD/bird-releases/active/deploy-manifest.tsv")
 PRODUCTION_STAGING_BYTES=$(( \
 	$(bytes "$BIRD/bird-releases/active/KERNEL") + \
 	$(bytes "$BIRD/dtb.img") + 4194304 ))
-[ "$PRODUCTION_STAGING_BYTES" -gt "$ACTIVE_FILE_BYTES" ] || \
-	fail 'development-reserve fixture does not exercise the candidate-bound branch'
-EXPECTED_DEV_RESERVE=$((PRODUCTION_STAGING_BYTES + 4194304))
 BIRD_TEST_BIRD_FREE_BYTES=$PRODUCTION_STAGING_BYTES
 ACTIVE_RELEASE_SHA=$(sha256 "$BIRD/bird-releases/active/.complete")
 RETIRED_RELEASE_SHA=$(sha256 "$BIRD/bird-releases/retired/.complete")
 SELECTOR_SHA=$(sha256 "$BIRD/extlinux/extlinux.conf")
 run_command --release --dry-run >"$CASE_ROOT/out"
-grep -Fq "BIRD post-deploy development reserve: $EXPECTED_DEV_RESERVE bytes" \
+grep -Fq "BIRD production staging requirement: $PRODUCTION_STAGING_BYTES bytes" \
 	"$CASE_ROOT/out" || {
 	cat "$CASE_ROOT/out" >&2
-	fail 'production development-reserve report used the wrong bound'
+	fail 'production staging-only report used the wrong bound'
 }
-grep -q 'would archive and verify inactive release retired' "$CASE_ROOT/out"
+if grep -q 'would archive and verify inactive release retired' "$CASE_ROOT/out"; then
+	fail 'production preflight retained a future dev-current reserve'
+fi
+grep -q 'after activation would archive, verify and remove superseded release active' \
+	"$CASE_ROOT/out"
 [ "$(sha256 "$BIRD/bird-releases/active/.complete")" = "$ACTIVE_RELEASE_SHA" ]
 [ "$(sha256 "$BIRD/bird-releases/retired/.complete")" = "$RETIRED_RELEASE_SHA" ]
 [ "$(sha256 "$BIRD/extlinux/extlinux.conf")" = "$SELECTOR_SHA" ]
@@ -1150,20 +1150,115 @@ grep -q 'another Bird card transaction is active' "$CASE_ROOT/err"
 [ ! -e "$TEST_STATE/builder-release-id" ]
 [ ! -e "$TEST_STATE/updater-ran" ]
 
+# If staging reclamation removes the release named by previous and the later
+# host build fails, the active release must remain selected and previous must
+# already be an exact self-reference rather than a dangling path.
+new_case prestage-rotation-build-failure
+create_completed_release active
+create_completed_release previous 5242880
+select_fixture_release active
+cp "$BIRD/bird-releases/previous/extlinux/extlinux.conf" \
+	"$BIRD/extlinux/extlinux.previous.conf"
+ACTIVE_SELECTOR_SHA=$(sha256 "$BIRD/extlinux/extlinux.conf")
+FALLBACK_SELECTOR_SHA=$(sha256 "$BIRD/extlinux/extlinux.fallback.conf")
+FALLBACK_KERNEL_SHA=$(sha256 "$BIRD/KERNEL.fallback")
+ROOT_DTB_SHA=$(sha256 "$BIRD/dtb.img")
+BIRD_TEST_BIRD_FREE_BYTES=1
+TEST_BUILDER_BEHAVIOR=fail-build
+if run_command --release >"$CASE_ROOT/out" 2>"$CASE_ROOT/err"; then
+	fail 'host build failure after pre-stage rotation unexpectedly succeeded'
+fi
+grep -q 'canonical build failed' "$CASE_ROOT/err"
+[ -d "$BIRD/bird-releases/active" ]
+[ ! -e "$BIRD/bird-releases/previous" ]
+[ ! -e "$BIRD/bird-releases/v6.23" ]
+[ "$(sha256 "$BIRD/extlinux/extlinux.conf")" = "$ACTIVE_SELECTOR_SHA" ]
+cmp "$BIRD/extlinux/extlinux.conf" \
+	"$BIRD/extlinux/extlinux.previous.conf" >/dev/null
+[ -f "$TEST_STATE/gh-release-card-previous-state" ]
+[ "$(cat "$TEST_STATE/gh-release-card-previous-state")" = false ]
+[ "$(sha256 "$BIRD/extlinux/extlinux.fallback.conf")" = \
+	"$FALLBACK_SELECTOR_SHA" ]
+[ "$(sha256 "$BIRD/KERNEL.fallback")" = "$FALLBACK_KERNEL_SHA" ]
+[ "$(sha256 "$BIRD/dtb.img")" = "$ROOT_DTB_SHA" ]
+[ ! -e "$TEST_STATE/updater-ran" ]
+
 new_case archive-reclaim
 create_completed_release active
 create_completed_release retired 5242880
 select_fixture_release active
+FALLBACK_SELECTOR_SHA=$(sha256 "$BIRD/extlinux/extlinux.fallback.conf")
+FALLBACK_KERNEL_SHA=$(sha256 "$BIRD/KERNEL.fallback")
+ROOT_DTB_SHA=$(sha256 "$BIRD/dtb.img")
 BIRD_TEST_BIRD_FREE_BYTES=1
 run_command --release >"$CASE_ROOT/out"
-[ -d "$BIRD/bird-releases/active" ]
+[ ! -e "$BIRD/bird-releases/active" ]
 [ ! -e "$BIRD/bird-releases/retired" ]
-[ -f "$TEST_STATE/gh-release-card-retired-state" ]
-[ "$(cat "$TEST_STATE/gh-release-card-retired-state")" = false ]
-[ -f "$TEST_STATE/gh-release-card-retired-assets/birdOS-RG34XX-SP-retired.tar" ]
-[ -f "$TEST_STATE/gh-release-card-retired-assets/retired.deploy-manifest.tsv" ]
+for ROTATED_ID in active retired; do
+	[ -f "$TEST_STATE/gh-release-card-$ROTATED_ID-state" ]
+	[ "$(cat "$TEST_STATE/gh-release-card-$ROTATED_ID-state")" = false ]
+	[ -f "$TEST_STATE/gh-release-card-$ROTATED_ID-assets/birdOS-RG34XX-SP-$ROTATED_ID.tar" ]
+	[ -f "$TEST_STATE/gh-release-card-$ROTATED_ID-assets/$ROTATED_ID.deploy-manifest.tsv" ]
+done
+[ -d "$BIRD/bird-releases/v6.23" ]
 grep -q 'Archived inactive release retired' "$CASE_ROOT/out"
+grep -q 'Archived inactive release active' "$CASE_ROOT/out"
 grep -Fq 'bird_release=v6.23' "$BIRD/extlinux/extlinux.conf"
+cmp "$BIRD/extlinux/extlinux.conf" \
+	"$BIRD/extlinux/extlinux.previous.conf" >/dev/null
+[ "$(sha256 "$BIRD/extlinux/extlinux.fallback.conf")" = \
+	"$FALLBACK_SELECTOR_SHA" ]
+[ "$(sha256 "$BIRD/KERNEL.fallback")" = "$FALLBACK_KERNEL_SHA" ]
+[ "$(sha256 "$BIRD/dtb.img")" = "$ROOT_DTB_SHA" ]
+
+new_case post-activation-release-rotation
+create_completed_release active
+select_fixture_release active
+OLD_SELECTOR_SHA=$(sha256 "$BIRD/extlinux/extlinux.conf")
+FALLBACK_SELECTOR_SHA=$(sha256 "$BIRD/extlinux/extlinux.fallback.conf")
+FALLBACK_KERNEL_SHA=$(sha256 "$BIRD/KERNEL.fallback")
+ROOT_DTB_SHA=$(sha256 "$BIRD/dtb.img")
+run_command --release >"$CASE_ROOT/out"
+[ ! -e "$BIRD/bird-releases/active" ]
+[ -d "$BIRD/bird-releases/v6.23" ]
+[ -f "$TEST_STATE/gh-release-card-active-state" ]
+[ "$(cat "$TEST_STATE/gh-release-card-active-state")" = false ]
+[ -f "$TEST_STATE/gh-release-card-active-assets/birdOS-RG34XX-SP-active.tar" ]
+grep -q 'Archived inactive release active' "$CASE_ROOT/out"
+grep -q 'Reclaimed inactive card release: active' "$CASE_ROOT/out"
+cmp "$BIRD/extlinux/extlinux.conf" \
+	"$BIRD/extlinux/extlinux.previous.conf" >/dev/null
+[ "$(sha256 "$BIRD/extlinux/extlinux.conf")" != "$OLD_SELECTOR_SHA" ]
+[ "$(sha256 "$BIRD/extlinux/extlinux.fallback.conf")" = \
+	"$FALLBACK_SELECTOR_SHA" ]
+[ "$(sha256 "$BIRD/KERNEL.fallback")" = "$FALLBACK_KERNEL_SHA" ]
+[ "$(sha256 "$BIRD/dtb.img")" = "$ROOT_DTB_SHA" ]
+
+# If post-activation archival cannot be published, the new complete release may
+# remain selected, but the superseded release and exact previous selector must
+# remain intact. No on-card rollback bytes may be removed before verification.
+new_case post-activation-archive-failure
+create_completed_release active
+select_fixture_release active
+OLD_SELECTOR_SHA=$(sha256 "$BIRD/extlinux/extlinux.conf")
+FALLBACK_SELECTOR_SHA=$(sha256 "$BIRD/extlinux/extlinux.fallback.conf")
+FALLBACK_KERNEL_SHA=$(sha256 "$BIRD/KERNEL.fallback")
+ROOT_DTB_SHA=$(sha256 "$BIRD/dtb.img")
+TEST_GH_BEHAVIOR=upload-failure
+if run_command --release >"$CASE_ROOT/out" 2>"$CASE_ROOT/err"; then
+	fail 'post-activation archive upload failure unexpectedly completed'
+fi
+grep -q 'could not upload inactive release archive: card-active' \
+	"$CASE_ROOT/err"
+[ -d "$BIRD/bird-releases/active" ]
+[ -d "$BIRD/bird-releases/v6.23" ]
+grep -Fq 'bird_release=v6.23' "$BIRD/extlinux/extlinux.conf"
+[ "$(sha256 "$BIRD/extlinux/extlinux.previous.conf")" = \
+	"$OLD_SELECTOR_SHA" ]
+[ "$(sha256 "$BIRD/extlinux/extlinux.fallback.conf")" = \
+	"$FALLBACK_SELECTOR_SHA" ]
+[ "$(sha256 "$BIRD/KERNEL.fallback")" = "$FALLBACK_KERNEL_SHA" ]
+[ "$(sha256 "$BIRD/dtb.img")" = "$ROOT_DTB_SHA" ]
 
 new_case legacy-kernel-retirement
 dd if=/dev/zero bs=1048576 count=2 of="$BIRD/KERNEL" 2>/dev/null
@@ -1181,9 +1276,9 @@ grep -q 'would remove the verified redundant top-level KERNEL' "$CASE_ROOT/dry-r
 [ -d "$BIRD/bird-releases/retired" ]
 run_command --release >"$CASE_ROOT/out"
 [ ! -e "$BIRD/KERNEL" ] && [ ! -L "$BIRD/KERNEL" ]
-[ -d "$BIRD/bird-releases/active" ]
+[ ! -e "$BIRD/bird-releases/active" ]
 [ ! -e "$BIRD/bird-releases/retired" ]
-[ "$(sha256 "$BIRD/bird-releases/active/KERNEL")" = "$LEGACY_KERNEL_SHA" ]
+[ "$(sha256 "$BIRD/bird-releases/v6.23/KERNEL")" = "$LEGACY_KERNEL_SHA" ]
 [ "$(sha256 "$BIRD/KERNEL.fallback")" = "$LEGACY_FALLBACK_SHA" ]
 [ "$(sha256 "$BIRD/dtb.img")" = "$LEGACY_DTB_SHA" ]
 [ "$(cat "$TEST_STATE/builder-source-kernel-sha")" = "$LEGACY_KERNEL_SHA" ]
@@ -1201,6 +1296,10 @@ run_command --release --release-id after-retirement >"$CASE_ROOT/retry.out"
 [ "$(cat "$TEST_STATE/builder-source-dtb-sha")" = "$LEGACY_DTB_SHA" ]
 [ "$(cat "$TEST_STATE/builder-fallback-kernel-sha")" = "$LEGACY_FALLBACK_SHA" ]
 [ ! -e "$BIRD/KERNEL" ] && [ ! -L "$BIRD/KERNEL" ]
+[ ! -e "$BIRD/bird-releases/v6.23" ]
+[ -d "$BIRD/bird-releases/after-retirement" ]
+cmp "$BIRD/extlinux/extlinux.conf" \
+	"$BIRD/extlinux/extlinux.previous.conf" >/dev/null
 grep -Fq 'bird_release=after-retirement' "$BIRD/extlinux/extlinux.conf"
 
 # A card on the exact fallback selector can no longer rely on the retired
@@ -1221,9 +1320,13 @@ run_command --release --release-id fallback-recovered >"$CASE_ROOT/out"
 [ "$(cat "$TEST_STATE/builder-source-dtb-sha")" = "$PREVIOUS_DTB_SHA" ]
 [ "$(cat "$TEST_STATE/builder-fallback-kernel-sha")" = "$PREVIOUS_FALLBACK_SHA" ]
 [ ! -e "$BIRD/KERNEL" ] && [ ! -L "$BIRD/KERNEL" ]
-[ -d "$BIRD/bird-releases/previous" ]
+[ ! -e "$BIRD/bird-releases/previous" ]
 [ ! -e "$BIRD/bird-releases/retired" ]
 [ -f "$TEST_STATE/gh-release-card-retired-assets/birdOS-RG34XX-SP-retired.tar" ]
+[ -f "$TEST_STATE/gh-release-card-previous-assets/birdOS-RG34XX-SP-previous.tar" ]
+[ -d "$BIRD/bird-releases/fallback-recovered" ]
+cmp "$BIRD/extlinux/extlinux.conf" \
+	"$BIRD/extlinux/extlinux.previous.conf" >/dev/null
 grep -Fq 'bird_release=fallback-recovered' "$BIRD/extlinux/extlinux.conf"
 
 # The canonical updater records the active fallback selector as previous when
@@ -1238,7 +1341,8 @@ SECOND_CYCLE_KERNEL_SHA=$(sha256 "$BIRD/bird-releases/previous/KERNEL")
 rm -f "$BIRD/KERNEL"
 run_command --release --release-id z-current >"$CASE_ROOT/first.out"
 [ "$(sha256 "$BIRD/extlinux/extlinux.previous.conf")" = \
-	"$(sha256 "$BIRD/extlinux/extlinux.fallback.conf")" ]
+	"$(sha256 "$BIRD/extlinux/extlinux.conf")" ]
+[ ! -e "$BIRD/bird-releases/previous" ]
 [ -d "$BIRD/bird-releases/z-current" ]
 select_fixture_fallback
 BIRD_TEST_BIRD_FREE_BYTES=1
@@ -1246,9 +1350,12 @@ run_command --release --release-id zz-next >"$CASE_ROOT/second.out"
 [ "$(cat "$TEST_STATE/builder-release-id")" = zz-next ]
 [ "$(cat "$TEST_STATE/builder-source-kernel-sha")" = \
 	"$SECOND_CYCLE_KERNEL_SHA" ]
-[ -d "$BIRD/bird-releases/z-current" ]
+[ ! -e "$BIRD/bird-releases/z-current" ]
 [ ! -e "$BIRD/bird-releases/previous" ]
 [ ! -e "$BIRD/bird-releases/retired" ]
+[ -d "$BIRD/bird-releases/zz-next" ]
+cmp "$BIRD/extlinux/extlinux.conf" \
+	"$BIRD/extlinux/extlinux.previous.conf" >/dev/null
 grep -Fq 'bird_release=zz-next' "$BIRD/extlinux/extlinux.conf"
 
 new_case fallback-versioned-source-deterministic-corruption
@@ -1375,12 +1482,14 @@ create_completed_release retired-c 2097152
 select_fixture_release active
 BIRD_TEST_BIRD_FREE_BYTES=1
 run_command --release >"$CASE_ROOT/out"
-[ -d "$BIRD/bird-releases/active" ]
+[ ! -e "$BIRD/bird-releases/active" ]
 [ ! -e "$BIRD/bird-releases/retired-a" ]
 [ ! -e "$BIRD/bird-releases/retired-b" ]
 [ -d "$BIRD/bird-releases/retired-c" ]
+[ -d "$BIRD/bird-releases/v6.23" ]
 grep -q 'Archived inactive release retired-a' "$CASE_ROOT/out"
 grep -q 'Archived inactive release retired-b' "$CASE_ROOT/out"
+grep -q 'Archived inactive release active' "$CASE_ROOT/out"
 [ ! -e "$TEST_STATE/gh-release-card-retired-c-state" ]
 grep -Fq 'bird_release=v6.23' "$BIRD/extlinux/extlinux.conf"
 
@@ -1414,7 +1523,8 @@ for FALLBACK_OLD_ID in fallback-old-a fallback-old-b; do
 	[ "$(cat "$TEST_STATE/gh-release-card-$FALLBACK_OLD_ID-state")" = false ]
 	[ -f "$TEST_STATE/gh-release-card-$FALLBACK_OLD_ID-assets/birdOS-RG34XX-SP-$FALLBACK_OLD_ID.tar" ]
 done
-[ "$(sha256 "$BIRD/extlinux/extlinux.previous.conf")" = "$FALLBACK_SELECTOR_SHA" ]
+cmp "$BIRD/extlinux/extlinux.conf" \
+	"$BIRD/extlinux/extlinux.previous.conf" >/dev/null
 [ "$(sha256 "$BIRD/extlinux/extlinux.fallback.conf")" = "$FALLBACK_CONFIG_SHA" ]
 [ "$(sha256 "$BIRD/KERNEL.fallback")" = "$FALLBACK_KERNEL_SHA" ]
 [ "$(sha256 "$BIRD/dtb.img")" = "$FALLBACK_DTB_SHA" ]

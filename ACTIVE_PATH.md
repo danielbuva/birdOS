@@ -12,29 +12,36 @@ and generated-catalog digest
 `6ecb9512dfdcb4c62483cc13fb315e5e39fd7556b29f54e7a9f82ac1b730283d`.
 The complete host gate and broad RG34XX-SP behavior gate passed on 2026-08-08.
 That broad functional result does not establish a new boot-time or power
-distribution. The separately preserved immutable recovery fallback is release
+distribution. The previously accepted immutable binary reference is release
 `v6.23-20260731-054816`, published as `stable-v6.23-20260731-054816`; its
 canonical manifest digest is
 `5f95153bf46239a5e178fde28924f01c7fe586be182562f9bd9f33cf13da02ba`.
 That older release manifest honestly records its own source as commit
 `19ca0bbac47c037a868dac5500aa49c96feeb2f2` plus dirty-state digest
 `d0c3a1d805205cb2bb94b95e4c3d4fb89145ca9c1f693ed12079aa70860792b0`;
-it is not falsely relabelled as a clean build of the current source. A successor
-becomes the optimization baseline only when its exact clean source, release,
-manifest, contract and catalogue tuple passes the host and physical gates.
+it is not falsely relabelled as a clean build of the current source. It remains
+verified external history, not an on-card production rollback requirement. A
+successor becomes the optimization baseline only when its exact clean source,
+release, manifest, contract and catalogue tuple passes the host and physical
+gates.
 
 birdOS targets one device: the Anbernic RG34XX-SP. Fixed paths, device names,
 display geometry and hardware policy are deliberate. Older muOS stages,
 source-kernel challengers and clean-root experiments remain useful evidence,
 but they are not alternate active implementations.
 
-The card currently selects `v6.23-20260808-214626`; its previous selector is
-`v6.23-20260808-124816`. Stage 6 namespace v1 is active: the runtime uses
+The accepted pre-rotation card snapshot selected `v6.23-20260808-214626`; its
+previous selector named `v6.23-20260808-124816`. The current 128 MiB residency
+policy keeps one immutable canonical base plus mutable `dev-current`, archives
+and verifies superseded immutable releases privately, self-references the
+canonical selector, and only then deletes their card copies rather than keeping
+an on-card release history. Stage 6 namespace v1 is active: the runtime uses
 `/run/bird`, `/storage/roms`, `/storage/media` and
 `/storage/bird-data/Bird`. The corrected canonical provider map and broad
 RetroArch, Flycast, PPSSPP, DraStic, OpenBOR, Ports, media, networking,
 persistence and hardware gate passed. Legacy namespace bytes remain only for
-the separately bootable fallback, not as active-path compatibility rewrites.
+the temporarily retained fixed v5.4 fallback, not as active-path compatibility
+rewrites or ordinary production history.
 The immutable-dispatcher, immutable-supervisor, first-frame-preparation and
 boot-snapshot, complete-toolset, content-shell, fixed-autostart, fixed-session,
 fixed-housekeeping, fixed-application-profile, fixed-performance and warm-
@@ -160,13 +167,22 @@ The first real `--all-local` exercise reached its actual-output capacity gate
 after 716.01 seconds of host build and required tests. It needed 37,617,684
 bytes with 30,601,728 available and stopped before card mutation; production
 selection, release bytes and recovery assets remained unchanged, with no
-development release or metadata published. No release-sized deletion is safe:
-the two installed immutable releases are the active and exact previous-selector
-targets, while the top-level fallback remains required. The planned correction
-grows only p1 `BIRD` from 128 MiB to 138 MiB in the existing pre-p5 gap. p5 and
-p6 retain their exact sector positions, identities, filesystems and contents.
-This is development-capacity maintenance, not a boot, interaction, energy or
-Stage 6 performance result.
+development release or metadata published. The attempted 128-to-138 MiB remedy
+then failed before unmount or raw write because the privileged raw-read
+temporary was unreadable by the following unprivileged comparison. The card
+remained on its original 128 MiB p1, and the migration path is retired.
+
+The adopted correction treats the card as execution media, not release-history
+storage. Canonical deployment retains one immutable base, archives and
+independently verifies every superseded immutable release in the private GitHub
+archive, makes `extlinux.previous.conf` self-reference the activated base, and
+only then removes the verified old card directory. The freed rotating slot
+belongs to `dev-current`. The fixed top-level v5.4 fallback stays
+temporarily because deleting it requires a separate boot-contract rewrite; it
+is not normal production history or development rollback. A failed boot returns
+the card to the host for verified selector restoration or redeployment. This
+storage-policy correction makes no boot, interaction, energy, memory or Stage 6
+performance claim.
 
 The normal macOS entry point is `./build-and-deploy.sh --release`, or
 `./build-and-deploy.sh --profile` for lightweight launcher counters. It chooses
@@ -188,19 +204,20 @@ different preferred ID and `--dry-run` performs the read-only preflight only.
    `/flash/bird-releases/` without modifying the active runtime.
 5. It verifies the staged tree against the release manifest, atomically
    renames it to `/flash/bird-releases/<release-id>`, and records the manifest
-   digest in that release's `.complete` marker. With a versioned Bird selector,
-   the previously selected complete release remains intact throughout staging
-   and verification. With the exact fallback selector, the selected complete
-   runtime is instead the pinned top-level fallback selector, kernel and DTB;
-   those assets remain byte-identical until activation. If the legacy root
-   `KERNEL` has already been retired, the build wrapper also pins and preserves
-   one fully verified immutable release as its kernel source: the canonical
-   versioned previous selector when present, otherwise the lexically greatest
-   installed release when the previous selector is the exact fallback.
+   digest in that release's `.complete` marker. The previously selected complete
+   release remains intact throughout staging, verification and activation. Only
+   afterward may the canonical workflow archive and independently verify its
+   exact card copy. If the legacy root `KERNEL` has already been
+   retired, the build wrapper pins a fully verified installed release as its
+   kernel source throughout that transition.
 6. The active extlinux entry refers only to its versioned kernel,
    initramfs and DTB paths and passes the matching `bird_release` ID. One verified
    temporary-file rename of `/flash/extlinux/extlinux.conf` is the activation
-   point; the separate fallback entry names its preserved top-level assets.
+   point. After old-release archival, `extlinux.previous.conf` self-references
+   that same canonical release rather than naming a removed directory. The
+   superseded directory is removed only after that selector commit succeeds. The
+   separate fixed fallback entry continues to name its preserved top-level
+   assets until its own boot-contract rewrite.
 7. Legacy same-volume Port layout conversion is an explicit card-data migration
    performed by
    [`firmware/mac-migrate-rocknix-ports.sh`](firmware/mac-migrate-rocknix-ports.sh),
@@ -223,30 +240,40 @@ transactional provider bootstrap. Normal device boots and content launches
 validate the exact persistent installation checkpoint, perform bounded
 once-per-boot setup, and never rescan or hash the 445 MB provider tree.
 
-When the small `BIRD` partition lacks room for another staged release, the
-top-level command uses a guarded lifecycle. It never retires the release named
-by the active extlinux selector. It validates the minimum lexically ordered set
-of inactive releases needed, including each `.complete` marker, canonical
-manifest, file set, modes, sizes and hashes; packages those exact installed
-bytes; and publishes every one as an attested release in the private GitHub
-archive repository. Only after each release's published assets, attestation and
-downloaded canonical manifest verify does it safely inventory and extract the
-published archive, then validate every archived path and byte against that same
-manifest before removing the exact inactive directory. Archive tar-header
-identity is deliberately not an authority: directory timestamps can change tar
-bytes without changing the canonical release payload. If the byte-identical
-pinned fallback selector is active, no
-versioned Bird release is boot-selected, but the selected fallback runtime
-remains on-card and its selector hash is rechecked before every archive and
-removal. When that build needs an immutable release kernel, the fully verified
-source release is pinned and excluded from retirement until the replacement
-release is staged, verified and activated. A malformed previous selector, a
-near-match to the fallback selector, or an unavailable or corrupt deterministic
-source fails closed. A draft or failed upload is resumable and does not change
-the selector. GitHub release
-immutability must be enabled or reclamation is refused. The new card release is
-then built and installed through the same canonical builder and transactional
-updater described above.
+The 128 MiB `BIRD` partition intentionally holds only one canonical release
+plus `dev-current`. The top-level command never retires the release named by the
+active extlinux selector. Before any card write it identifies and completely
+verifies the immutable source that the candidate will supersede, confirms the
+private immutable GitHub archive is available, and rechecks the temporarily
+retained fixed-fallback bytes. It reserves only the measured candidate staging
+bytes, including the fixed kernel/DTB margin; it does not reserve a future
+development copy.
+
+If a pre-existing inactive immutable release prevents candidate staging, the
+guarded space planner first archives, downloads and independently verifies that
+inactive release. It then atomically makes the previous selector byte-identical
+to the current selected release before removing only the inactive directory. It
+never removes the active/build-source release, so a later host-build failure
+leaves current and previous self-referencing the complete canonical base. This
+is the one-time bootstrap from the old active-plus-previous layout; ordinary
+later rotations normally need only the post-activation step below.
+
+The canonical builder and updater then stage, verify and activate the new
+release while the old source remains intact. After activation, the wrapper
+reacquires the shared card lock, revalidates the card, current release and fixed
+fallback, packages the exact superseded bytes, and publishes them as an attested
+private GitHub release. It downloads the canonical manifest and archive again,
+then verifies every archived path, byte and manifest identity. Archive tar-
+header identity is deliberately not authority: directory timestamps can change
+tar bytes without changing the canonical release payload.
+
+Only after that independent verification does one atomic selector replacement
+make `extlinux.previous.conf` byte-identical to the current canonical selector;
+only after that does the wrapper remove the superseded release directory. It
+then rechecks current, previous and fixed-fallback identities. A draft or failed
+upload leaves the new release active but preserves the complete old release and
+its previous selector. GitHub release immutability is required; otherwise card
+reclamation is refused.
 
 The builder fixes locale, timezone, umask and generated filesystem metadata,
 and it rejects a persistent source-tree change during the build. Repeatability
@@ -261,7 +288,8 @@ rename, the previous complete runtime remains selected; after a verified
 rename, only the complete new release is selected. A partially copied tree is
 never a valid activation target. The selector lives on FAT, so this is not a
 claim that arbitrary power loss during a FAT metadata update is boot-atomic.
-True power-loss recovery requires the later U-Boot A/B design in the roadmap.
+The selected policy handles an unbootable result by returning the card to the
+host; it does not add a U-Boot A/B state machine.
 
 ### Development-workflow scope record
 
@@ -1564,7 +1592,15 @@ benchmark outputs rather than brittle equality contracts.
 
 ## Recovery semantics
 
-Automatic boot recovery and the launcher's B button are unrelated:
+The current source still contains the historical fixed-fallback mechanism, but
+the operational workflow no longer treats it as normal release history or a
+promised recovery path. The fixed v5.4 kernel, DTB and selector are temporarily
+retained only until a separate boot-contract rewrite can remove or replace them
+without conflating storage policy with boot behavior. If a candidate fails to
+boot, return the card to the host and restore the verified canonical selector
+or redeploy. Do not keep another immutable release on p1 for that case.
+
+The retained mechanism and the launcher's B button remain unrelated:
 
 - The boot-attempt guard records attempts in state scoped to the selected
   release, so staging or failed activation cannot reset the prior release's
@@ -1579,10 +1615,11 @@ Automatic boot recovery and the launcher's B button are unrelated:
   fallback path immediately, before the full-stack attempt threshold applies.
 - The current fallback cannot execute before the selected release loader. A
   kernel, external-initramfs or earlier hang still requires manual selector
-  recovery; automatic recovery across that boundary requires the later
-  U-Boot-owned A/B design.
-- `KERNEL.fallback` and the fallback extlinux configuration are offline boot
-  recovery assets. They are preserved and verified by deployment.
+  recovery. Automatic U-Boot-owned A/B across that boundary is no longer the
+  selected product policy; return the card to the host instead.
+- `KERNEL.fallback` and the fallback extlinux configuration are temporarily
+  preserved legacy boot-contract assets. Their presence does not make them the
+  accepted development rollback or superseded production history.
 - B navigates back inside nested launcher views. On the main page it returns
   the selection to `PLAY` with an ordinary dirty-row update and is intentionally
   absent from the footer legend. It does **not** retire the early owner, open a

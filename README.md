@@ -57,8 +57,11 @@ host-test gate at the end of a development cycle. See
 full-release-only boundary.
 
 `dev-current` is never an accepted release, production rollback, previous
-selector or archive candidate. Before starting a canonical production build,
-remove it and its metadata with:
+selector or archive candidate. The 128 MiB `BIRD` partition deliberately keeps
+only one immutable canonical base plus that mutable development slot. Older
+canonical releases live in the private, verified GitHub archive rather than as
+an on-card rollback chain. Before starting a canonical production build, remove
+the mutable slot and its metadata with:
 
 ```sh
 ./dev-build-and-deploy.sh --clean
@@ -123,14 +126,26 @@ disabled. A legitimate later network update must be imported into a new exact
 manifest before the next birdOS deployment.
 
 The card keeps the selected complete release until its replacement is fully
-staged and verified. If `BIRD` needs staging space, the command may select one
-inactive complete release, verify its installed manifest and every file, and
-archive its exact bytes in the private, immutable GitHub release repository
-`danielbuva/birdOS-release-archive`. It removes that inactive directory only
-after GitHub release attestation, asset verification, and a downloaded-manifest
-comparison all succeed. Upload interruption leaves the inactive card release
-and boot selector unchanged; rerunning the same command resumes a draft archive.
+staged, verified and activated. If the old active-plus-previous layout cannot
+fit candidate staging, the guarded planner first archives, independently
+verifies and atomically points the previous selector at the selected release,
+then removes only the inactive older release; the selected release stays
+intact. The command then builds and activates the candidate and archives
+the now-superseded active release in the private GitHub repository
+`danielbuva/birdOS-release-archive`, independently verifies the published
+assets and downloaded manifest, and removes the corresponding card directory
+only after those checks pass and the previous selector atomically
+self-references the newly activated canonical release. Upload interruption
+retains the superseded release and its previous selector and can be resumed
+safely.
 ROMs, BIOS, media, saves, and `BIRD-DATA` content are outside this lifecycle.
+
+The fixed v5.4 `KERNEL.fallback` and selector remain temporarily because their
+removal is a separate boot-contract change. They are not the ordinary release
+history, development rollback, or accepted recovery workflow. If a candidate
+does not boot, return the card to the Mac and repair or redeploy it from the
+verified canonical base; birdOS does not keep additional immutable releases on
+the card for that case.
 
 Run `./build-and-deploy.sh --help` for the complete contract and, after a
 profiling boot, collect
@@ -159,9 +174,8 @@ profiling boot, collect
 - [`docs/history/README.md`](docs/history/README.md): index of superseded paths
   and retained engineering evidence.
 
-An untouched recovery image or card remains valuable external insurance. The
-active card can select its verified clean-root fallback automatically once the
-release loader is running, as described in [`ACTIVE_PATH.md`](ACTIVE_PATH.md).
-A kernel or initramfs failure
-before that loader still requires manual selector recovery; bootloader-owned
-A/B recovery remains roadmap work.
+An untouched image or spare card can remain external insurance. The fixed v5.4
+fallback still exists on the current card as a temporary legacy boot contract,
+but the operator workflow does not rely on it. A failed boot returns the card
+to the host for verified repair or redeployment. Any future removal or
+replacement of the fallback is a separate boot-contract change.

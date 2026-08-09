@@ -13,6 +13,14 @@ work when only local Bird files changed.
 `dev-current` is mutable test state. It is never an accepted or archival
 production release, production rollback, previous selector or archive target.
 
+The fixed 128 MiB `BIRD` partition uses one rotating pair: one immutable
+canonical base plus `dev-current`. Superseded immutable releases are published
+and independently verified in the private GitHub release archive, then removed
+from the card by the canonical production workflow. The card is not a release-
+history store. The fixed v5.4 fallback remains temporarily as a separate legacy
+boot-contract asset; it is not the base, the development rollback, or another
+slot in the release history.
+
 ## Typical use
 
 With the supported birdOS card mounted at `/Volumes/BIRD` and
@@ -281,7 +289,7 @@ space. It builds into a private host directory first, calculates space from the
 actual outputs, reports required and available byte counts, and stops without
 card writes when there is not enough room.
 
-### First real all-local capacity result — 2026-08-08
+### First real all-local capacity result and decision — 2026-08-08
 
 The first complete real-card `--all-local` attempt spent 716.01 seconds in its
 host build and required-test gate, then correctly stopped at the actual-output
@@ -291,22 +299,40 @@ boundary: the accepted production selector and both immutable releases stayed
 unchanged, and no `dev-current`, development metadata, attempt state or hidden
 copy stage was published.
 
-There is no safe release-sized deletion on the current card. Release
-`v6.23-20260808-214626` is active, release `v6.23-20260808-124816` is its exact
-previous-selector rollback, and the top-level fallback assets remain required
-recovery bytes. Removing incidental macOS metadata would not materially close
-the deficit. The development command must continue to refuse production
-archive or deletion as a space workaround.
+At that point the card contained two immutable production releases plus the
+fixed fallback. A 128-to-138 MiB p1 migration was built as a possible remedy,
+but its installer stopped while comparing the pre-write boot bytes: a root-
+owned temporary created by the privileged raw read was not readable by the
+following unprivileged comparison. The failure occurred before unmount or raw
+write, so the card and its 128 MiB partition remained unchanged. That migration
+path is retired rather than repaired.
 
-The planned remediation is to grow only the FAT32 `BIRD` partition from 128
-MiB to 138 MiB using the existing gap before p5. The p1 start remains sector
-32,768; its length becomes 282,624 sectors, leaving a 2 MiB gap before the
-unchanged p5 start at sector 319,488. p5 and p6 retain their exact starts,
-lengths, filesystems, identities and contents. This resize is planned, not yet
-performed. After it verifies, rerun the same `--all-local` gate; do not treat
-the failed capacity screen as a successful development activation.
+The adopted policy removes the unnecessary second production release instead.
+The canonical workflow first archives and independently verifies a superseded
+immutable release in `danielbuva/birdOS-release-archive`. After a successful
+canonical activation it makes `extlinux.previous.conf` self-reference the same
+base and only then removes the verified old card copy, leaving exactly that one
+immutable base and reserving the other release-sized slot for `dev-current`.
+The fast command itself still never archives or deletes production to make
+room.
 
-## Safety and recovery
+The first transition from the old two-production layout has two explicit
+reclamations. If staging is short, production preflight archives, re-downloads,
+verifies and atomically self-references the selected canonical release before
+removing only the already-inactive older release. The selected build source
+remains complete even if the later host build fails. After the new canonical
+release activates, it applies the same selector-before-removal sequence to the
+formerly active source. A later ordinary production cycle normally needs only
+that post-activation rotation.
+
+The fixed v5.4 fallback remains temporarily because deleting it changes the
+boot selector, updater, manifest and failure contracts together. It is not a
+normal rollback target or reason to retain additional production history. If a
+development build does not boot, return the card to the host and use the saved,
+verified canonical selector or redeploy; do not expect another immutable
+release to be resident on the card.
+
+## Host transaction safety and recovery
 
 All card operations reuse the existing card identity and lock checks. Before
 changing `dev-current`, the workflow verifies and selects the saved production
@@ -322,6 +348,10 @@ not retry automatically and never falls through to the full builder.
 selector exactly; it does not reconstruct one from assumptions, change the
 fallback or previous selectors, modify fallback kernel/DTB files, or reset
 production boot-attempt state.
+
+These are host-side development-transaction controls, not an automatic device-
+boot recovery promise. If `dev-current` cannot boot, return the card to the host
+and restore the saved canonical selector or redeploy it.
 
 If `state.tsv` is malformed while `dev-current` remains selected, use
 `--recover-production`. Recovery fails closed unless the separately saved
@@ -399,8 +429,9 @@ schema merely for theoretical completeness.
 
 The first real `--all-local` run supplied that evidence: its 716.01-second host
 gate completed, its exact capacity refusal was truthful, and it performed no
-card mutation. The next workflow exercise is the same command after the
-planned p1 expansion, not another speculative transaction state.
+card mutation. The aborted resize likewise performed no raw write. The next
+workflow exercise uses the rotating canonical-base plus `dev-current` layout
+on the unchanged 128 MiB partition, not another speculative transaction state.
 
 ## Production promotion
 
@@ -422,5 +453,9 @@ The production builder and updater reject the reserved release ID
 stages. This prevents
 mutable development bytes from becoming a previous selector, rollback release
 or archive candidate—or from silently consuming production staging space. The
-full command, not `dev-current`, creates the immutable candidate used for production
-acceptance, reproducibility evidence, release archival and later rollback.
+full command, not `dev-current`, creates the immutable candidate used for
+production acceptance and reproducibility evidence. After activation it
+archives and verifies every superseded canonical release, makes the previous
+selector self-reference the accepted canonical release, and only then removes
+the old card copy. A failed boot is handled by returning the card to the host,
+not by retaining another production release on p1.

@@ -183,7 +183,7 @@ write_device_info() {
 		"/dev/$WHOLE" 'Disk Size' '512074186752 Bytes (512074186752 Bytes)' \
 		"$BIRD" 'Device Identifier' "${WHOLE}s1" \
 		"$BIRD" 'Partition Offset' '16777216 Bytes' \
-		"$BIRD" 'Disk Size' '144703488 Bytes (144703488 Bytes)' \
+		"$BIRD" 'Disk Size' '134217728 Bytes (134217728 Bytes)' \
 		"$BIRD" 'Volume Read-Only' No \
 		"$DATA" 'Device Identifier' "${WHOLE}s6" \
 		"$DATA" 'Partition Offset' '8753512448 Bytes' \
@@ -539,7 +539,7 @@ sys.modules[spec.name] = module
 assert spec.loader is not None
 spec.loader.exec_module(module)
 assert module.all_component_groups() == set(module.COMPONENT_HOST_TESTS)
-assert len(module.BROAD_PRODUCT_HOST_TESTS) == 36
+assert len(module.BROAD_PRODUCT_HOST_TESTS) == 37
 assert "test-dev-build-and-deploy.sh" in module.BROAD_PRODUCT_HOST_TESTS
 assert module.host_test_command(bash_test)[:1] == ["/bin/bash"]
 assert module.host_test_command(sh_test)[:1] == ["/bin/sh"]

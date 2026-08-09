@@ -160,6 +160,7 @@ KNOWN_STANDALONE_HOST_TESTS = {
     "test-stock-root-content-scope.sh",
     "test-stock-root-fixed-autostart.sh",
     "test-stock-root-fixed-housekeeping.sh",
+    "test-stock-root-fixed-storage.sh",
     "test-stock-root-fixed-performance.sh",
     "test-stock-root-fixed-setup.sh",
     "test-stock-root-media-audio-policy.sh",
@@ -268,7 +269,10 @@ COMPONENT_HOST_TESTS.update(
             "test-build-and-deploy.sh",
             "test-stock-root-prepare-ports.sh",
         ),
-        "runtime:fixed-storage.sh": ("test-stock-root-prepare-ports.sh",),
+        "runtime:fixed-storage.sh": (
+            "test-stock-root-fixed-storage.sh",
+            "test-stock-root-prepare-ports.sh",
+        ),
         "runtime:first-frame-prep.sh": ("test-stock-root-unit-ordering.sh",),
         "runtime:capture-boot-state.sh": ("test-stock-root-unit-ordering.sh",),
         "runtime:capture-requested-diagnostics.sh": (

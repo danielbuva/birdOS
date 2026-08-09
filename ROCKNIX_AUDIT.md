@@ -1072,13 +1072,19 @@ The v6.15 audit found the following generic work and defects. Only items marked
    `--all-local` use. Record duration, rebuild scope, output clarity and actual
    cleanup/rollback failures; add safety states only from observed evidence or
    a direct production/data-loss risk.
-2. Preserve the accepted warm seatd/udevd choice, HDMI and Bluetooth until a
+2. Keep p1 at 128 MiB with one immutable canonical base plus mutable
+   `dev-current`. Archive and independently verify superseded immutable releases
+   in the private GitHub repository before removing their card copies. A failed
+   boot returns the card to the host; the temporarily retained fixed v5.4
+   fallback is not normal release history or a promised recovery path.
+3. Preserve the accepted warm seatd/udevd choice, HDMI and Bluetooth until a
    measured or explicit product decision changes them.
-3. Continue Stage 6 with the hermetic deterministic-image boundary while the
-   transactional release system remains the development and recovery path.
-4. Complete calibrated retained-service, content, idle and suspend power
+4. Continue Stage 6 with the hermetic deterministic-image boundary while the
+   transactional release system remains the development path and host recovery
+   remains the failed-boot policy.
+5. Complete calibrated retained-service, content, idle and suspend power
    measurements before another lifetime change.
-5. Re-measure menu, storage and application-contract boundaries before kernel
+6. Re-measure menu, storage and application-contract boundaries before kernel
    or U-Boot subtraction.
 
 ## Deliberately deferred

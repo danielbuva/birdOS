@@ -2,7 +2,7 @@
 # Shared, read-only identity contract for the one supported RG34XX-SP card.
 # Callers set BIRD, DATA and optionally BIRD_DEVICE_INFO, and provide fail().
 
-BIRD_BYTES=144703488
+BIRD_BYTES=134217728
 BIRD_OFFSET=16777216
 DISK_BYTES=512074186752
 ROOT_BYTES=8589934592

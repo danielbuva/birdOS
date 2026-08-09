@@ -1173,6 +1173,17 @@ boot; the guarded ROCKNIX target also requests a forced reboot if its startup
 job has not completed in 45 seconds. A successful Bird first frame resets the
 counter.
 
+That paragraph records the historical v6.10 mechanism, not the current
+operator recovery promise. The fixed v5.4 fallback bytes remain temporarily
+while their updater, manifest and selector contract is removed or replaced as a
+separate candidate. Current development keeps one immutable canonical release
+plus mutable `dev-current` on the unchanged 128 MiB p1. Superseded immutable
+releases are archived and independently verified in the private GitHub archive
+before their card copies are removed; `extlinux.previous.conf` first
+self-references the canonical release, and only then are the old bytes removed.
+If a candidate does not boot, return the card to the host and restore or
+redeploy verified canonical bytes.
+
 After the seed image is installed, updates validate its fixed size and ext4
 superblock rather than recopying it. This preserves the writable ROCKNIX and
 PortMaster state and reduces subsequent Bird-only deployments to the small

@@ -27,6 +27,7 @@ KOREADER_EXTRACTION_RESERVE=0
 KOREADER_EXTRACTION_STATE=not-required
 PORTMASTER_PROVIDER_MARKER_VALUE=
 PORTMASTER_PROVIDER_MARKER_STATE=
+ROTATION_SELECTOR_TEMP=
 
 usage() {
 	cat <<'EOF'
@@ -50,10 +51,13 @@ The command requires the exact BIRD and BIRD-DATA volumes on the supported
 RG34XX-SP card. It never scans or modifies ROMs, BIOS, media, saves, or other
 card data. When BIRD lacks staging space, it may retire the minimum ordered set
 of inactive completed releases needed only after archiving and verifying each
-one in the configured private, immutable GitHub release repository. When the
-active selector already uses a verified immutable release, the command may also
-retire the byte-identical, unreferenced pre-versioned top-level KERNEL while
-preserving both the selected release and KERNEL.fallback.
+one in the configured private, immutable GitHub release repository. After a
+successful activation it archives and verifies the superseded immutable
+release, makes the exact current selector authoritative as previous, and only
+then removes the old card copy. The fixed fallback remains on-card. When the
+active selector already uses a verified
+immutable release, the command may also retire the byte-identical, unreferenced
+pre-versioned top-level KERNEL.
 EOF
 }
 
@@ -63,6 +67,13 @@ fail() {
 }
 
 cleanup() {
+	if [ -n "$ROTATION_SELECTOR_TEMP" ]; then
+		case "$ROTATION_SELECTOR_TEMP" in
+			/Volumes/BIRD/extlinux/.extlinux.previous.conf.rotate-new.*|/private/tmp/*/Volumes/BIRD/extlinux/.extlinux.previous.conf.rotate-new.*|/var/folders/*/Volumes/BIRD/extlinux/.extlinux.previous.conf.rotate-new.*|/tmp/*/Volumes/BIRD/extlinux/.extlinux.previous.conf.rotate-new.*)
+				rm -f "$ROTATION_SELECTOR_TEMP"
+				;;
+		esac
+	fi
 	if [ "$BIRD_CARD_LOCK_SCRIPT_LOADED" -eq 1 ]; then
 		bird_card_lock_release
 	fi
@@ -1101,38 +1112,11 @@ require_free_space() {
 
 HOST_REQUIRED_BYTES=134217728
 BIRD_STAGING_REQUIRED_BYTES=$(( $(file_bytes "$SOURCE/KERNEL") + $(file_bytes "$SOURCE/dtb.img") + 4194304 ))
-BIRD_DEV_RESERVE_BYTES=0
-if [ -n "${PINNED_IMMUTABLE_SOURCE_ID:-}" ]; then
-	# The 128 MiB layout could stage a production release or hold dev-current,
-	# but not both while retaining the active, previous and fixed fallback
-	# contracts. The expanded fixed layout archives the otherwise inactive
-	# release before deployment and deliberately leaves one complete mutable
-	# release worth of space afterward.
-	BIRD_DEV_BASE_BYTES=$(awk -F '\t' '
-		$1 == "file" {bytes += $4; files++}
-		END {
-			if (files < 1) exit 1
-			printf "%.0f\n", bytes
-		}
-	' "$ACTIVE_SOURCE/deploy-manifest.tsv") || \
-		fail 'active immutable build source has no dev-reserve file inventory'
-	case "$BIRD_DEV_BASE_BYTES" in
-		''|*[!0-9]*) fail 'active immutable build source has an invalid dev-reserve size' ;;
-	esac
-	# dev-current is derived from the release this command is about to install,
-	# not from the older immutable source used to build it.  The candidate does
-	# not exist yet at this read-only retirement boundary, so use the larger of
-	# the verified source inventory and the canonical production staging bound.
-	# The extra 4 MiB covers the first dev build's atomic replacement and
-	# metadata allowance without weakening the production/fallback retention
-	# rules.
-	BIRD_DEV_RELEASE_BOUND_BYTES=$BIRD_DEV_BASE_BYTES
-	if [ "$BIRD_STAGING_REQUIRED_BYTES" -gt "$BIRD_DEV_RELEASE_BOUND_BYTES" ]; then
-		BIRD_DEV_RELEASE_BOUND_BYTES=$BIRD_STAGING_REQUIRED_BYTES
-	fi
-	BIRD_DEV_RESERVE_BYTES=$((BIRD_DEV_RELEASE_BOUND_BYTES + 4194304))
-fi
-BIRD_REQUIRED_BYTES=$((BIRD_STAGING_REQUIRED_BYTES + BIRD_DEV_RESERVE_BYTES))
+# Production preflight needs only enough space to stage the candidate.  After
+# activation the superseded immutable release is archived, verified and
+# removed, which makes room for the mutable development copy without retaining
+# two production releases on the card.
+BIRD_REQUIRED_BYTES=$BIRD_STAGING_REQUIRED_BYTES
 DATA_REQUIRED_BYTES=$((16777216 + KOREADER_EXTRACTION_RESERVE))
 if ! is_regular_file "$DATA/MUOS/runtime/ROCKNIX-STORAGE"; then
 	DATA_REQUIRED_BYTES=$(( $(file_bytes "$STORAGE_SOURCE") + DATA_REQUIRED_BYTES ))
@@ -1153,6 +1137,109 @@ check_archive_repository() {
 		fail "GitHub release immutability is not enabled: $ARCHIVE_REPOSITORY"
 	[ "$ARCHIVE_IMMUTABLE" = true ] || \
 		fail "GitHub release immutability is not enabled: $ARCHIVE_REPOSITORY"
+}
+
+plan_post_activation_rotation() {
+	ROTATION_PREVIOUS_SELECTOR=$BIRD/extlinux/extlinux.conf
+	is_regular_file "$ROTATION_PREVIOUS_SELECTOR" || \
+		fail 'active selector is missing or unsafe before release rotation'
+	ROTATION_PREVIOUS_SELECTOR_SHA=$(sha256 "$ROTATION_PREVIOUS_SELECTOR")
+	ROTATION_SUPERSEDED_ID=
+	ROTATION_SUPERSEDED_DIR=
+
+	# A versioned build source is the immutable runtime superseded by the new
+	# canonical release, including when the device currently boots through the
+	# fixed fallback selector.  Legacy top-level layouts have no immutable
+	# release to rotate.
+	if [ -n "$PINNED_IMMUTABLE_SOURCE_ID" ]; then
+		ROTATION_SUPERSEDED_ID=$PINNED_IMMUTABLE_SOURCE_ID
+	elif ROTATION_PARSED_ID=$(selector_release_id \
+		"$ROTATION_PREVIOUS_SELECTOR" 2>/dev/null); then
+		ROTATION_SUPERSEDED_ID=$ROTATION_PARSED_ID
+	elif grep -Eq '(^|[[:space:]])bird_release=' \
+		"$ROTATION_PREVIOUS_SELECTOR"; then
+		fail 'active selector has a malformed release identity before rotation'
+	fi
+
+	if [ -n "$ROTATION_SUPERSEDED_ID" ]; then
+		case "$ROTATION_SUPERSEDED_ID" in
+			''|[![:alnum:]]*|*[![:alnum:]._-]*) \
+				fail 'superseded release has an unsafe release ID' ;;
+		esac
+		[ "$ROTATION_SUPERSEDED_ID" != "$RELEASE_ID" ] || \
+			fail 'new release ID unexpectedly matches the superseded release'
+		ROTATION_SUPERSEDED_DIR=$BIRD/bird-releases/$ROTATION_SUPERSEDED_ID
+		validate_completed_release "$ROTATION_SUPERSEDED_DIR" \
+			"$ROTATION_SUPERSEDED_ID" 'superseded release'
+		is_regular_file "$ROTATION_SUPERSEDED_DIR/extlinux/extlinux.conf" || \
+			fail 'superseded release selector is missing or unsafe'
+		[ "$(selector_release_id \
+			"$ROTATION_SUPERSEDED_DIR/extlinux/extlinux.conf")" = \
+			"$ROTATION_SUPERSEDED_ID" ] || \
+			fail 'superseded release selector identity changed'
+		check_archive_repository
+	fi
+
+	is_regular_file "$BIRD/extlinux/extlinux.fallback.conf" && \
+		[ "$(sha256 "$BIRD/extlinux/extlinux.fallback.conf")" = \
+		"$VERIFIED_FALLBACK_SELECTOR_SHA" ] || \
+		fail 'fixed fallback selector changed before release rotation'
+	is_regular_file "$BIRD/KERNEL.fallback" && \
+		[ "$(sha256 "$BIRD/KERNEL.fallback")" = \
+		"$PINNED_FALLBACK_KERNEL_SHA" ] || \
+		fail 'fixed fallback KERNEL changed before release rotation'
+	is_regular_file "$BIRD/dtb.img" && \
+		[ "$(sha256 "$BIRD/dtb.img")" = "$PINNED_SOURCE_DTB_SHA" ] || \
+		fail 'fixed root DTB changed before release rotation'
+	ROTATION_FALLBACK_KERNEL_SHA=$PINNED_FALLBACK_KERNEL_SHA
+	ROTATION_ROOT_DTB_SHA=$PINNED_SOURCE_DTB_SHA
+}
+
+verify_fixed_recovery_unchanged() {
+	is_regular_file "$BIRD/extlinux/extlinux.fallback.conf" && \
+		[ "$(sha256 "$BIRD/extlinux/extlinux.fallback.conf")" = \
+		"$VERIFIED_FALLBACK_SELECTOR_SHA" ] || \
+		fail 'fixed fallback selector changed during release rotation'
+	is_regular_file "$BIRD/KERNEL.fallback" && \
+		[ "$(sha256 "$BIRD/KERNEL.fallback")" = \
+		"$ROTATION_FALLBACK_KERNEL_SHA" ] || \
+		fail 'fixed fallback KERNEL changed during release rotation'
+	is_regular_file "$BIRD/dtb.img" && \
+		[ "$(sha256 "$BIRD/dtb.img")" = "$ROTATION_ROOT_DTB_SHA" ] || \
+		fail 'fixed root DTB changed during release rotation'
+}
+
+publish_current_selector_as_previous() {
+	EXPECTED_PREVIOUS_SELECTOR_SHA=${1:-}
+	CURRENT_SELECTOR=$BIRD/extlinux/extlinux.conf
+	PREVIOUS_SELECTOR=$BIRD/extlinux/extlinux.previous.conf
+	is_regular_file "$CURRENT_SELECTOR" || \
+		fail 'current selector is missing before previous-selector rotation'
+	CURRENT_SELECTOR_SHA=$(sha256 "$CURRENT_SELECTOR")
+	[ "$CURRENT_SELECTOR_SHA" = "$ARCHIVE_ACTIVE_SELECTOR_SHA" ] || \
+		fail 'current selector changed before previous-selector rotation'
+	if [ -n "$EXPECTED_PREVIOUS_SELECTOR_SHA" ]; then
+		is_regular_file "$PREVIOUS_SELECTOR" && \
+			[ "$(sha256 "$PREVIOUS_SELECTOR")" = \
+			"$EXPECTED_PREVIOUS_SELECTOR_SHA" ] || \
+			fail 'previous selector changed before release rotation'
+	fi
+
+	ROTATION_SELECTOR_TEMP=$BIRD/extlinux/.extlinux.previous.conf.rotate-new.$$
+	[ ! -e "$ROTATION_SELECTOR_TEMP" ] && \
+		[ ! -L "$ROTATION_SELECTOR_TEMP" ] || \
+		fail 'previous-selector rotation stage is already occupied'
+	COPYFILE_DISABLE=1 cp -f "$CURRENT_SELECTOR" "$ROTATION_SELECTOR_TEMP"
+	chmod 0644 "$ROTATION_SELECTOR_TEMP"
+	[ "$(sha256 "$ROTATION_SELECTOR_TEMP")" = "$CURRENT_SELECTOR_SHA" ] || \
+		fail 'previous-selector rotation copy failed'
+	sync
+	mv -f "$ROTATION_SELECTOR_TEMP" "$PREVIOUS_SELECTOR"
+	ROTATION_SELECTOR_TEMP=
+	sync
+	is_regular_file "$PREVIOUS_SELECTOR" && \
+		[ "$(sha256 "$PREVIOUS_SELECTOR")" = "$CURRENT_SELECTOR_SHA" ] || \
+		fail 'previous-selector rotation commit failed'
 }
 
 select_retirement_candidates() {
@@ -1282,6 +1369,11 @@ verify_published_archive() {
 archive_and_remove_retired_release() {
 	RETIRED_ID=$1
 	RETIRED_DIR=$2
+	ROTATE_PREVIOUS_AFTER_ARCHIVE=${3:-0}
+	case "$ROTATE_PREVIOUS_AFTER_ARCHIVE" in
+		0|1) ;;
+		*) fail 'internal previous-selector rotation mode is invalid' ;;
+	esac
 	verify_archive_selector_unchanged
 	validate_retired_release "$RETIRED_DIR" "$RETIRED_ID"
 	ARCHIVE_TAG=card-$RETIRED_ID
@@ -1364,12 +1456,35 @@ archive_and_remove_retired_release() {
 	esac
 	printf 'Archived inactive release %s to private GitHub release %s/%s.\n' \
 		"$RETIRED_ID" "$ARCHIVE_REPOSITORY" "$ARCHIVE_TAG"
+	# Once the archive is proven, stop pointing the manual previous selector at
+	# bytes that are about to leave the card.  Publication happens before
+	# removal, so a selector-write failure retains the complete old release.
+	if [ "$ROTATE_PREVIOUS_AFTER_ARCHIVE" -eq 1 ]; then
+		publish_current_selector_as_previous \
+			"$ROTATION_PREVIOUS_SELECTOR_SHA"
+	else
+		# Space reclamation can retire an older release still named by the
+		# manual previous selector.  Close that reference before deletion, so
+		# a later host-build failure leaves previous self-referencing the exact
+		# still-active release instead of pointing at absent bytes.
+		PRESTAGE_PREVIOUS=$BIRD/extlinux/extlinux.previous.conf
+		if is_regular_file "$PRESTAGE_PREVIOUS" && \
+			PRESTAGE_PREVIOUS_ID=$(selector_release_id \
+				"$PRESTAGE_PREVIOUS" 2>/dev/null) && \
+			[ "$PRESTAGE_PREVIOUS_ID" = "$RETIRED_ID" ]; then
+			PRESTAGE_PREVIOUS_SHA=$(sha256 "$PRESTAGE_PREVIOUS")
+			publish_current_selector_as_previous \
+				"$PRESTAGE_PREVIOUS_SHA"
+		fi
+	fi
 	rm -rf "$RETIRED_DIR"
 	[ ! -e "$RETIRED_DIR" ] && [ ! -L "$RETIRED_DIR" ] || \
 		fail "verified archive was published but inactive card release could not be removed: $RETIRED_ID"
 	sync
 	printf 'Reclaimed inactive card release: %s\n' "$RETIRED_ID"
 }
+
+plan_post_activation_rotation
 
 # The canonical updater removes only hidden stages for this exact release ID.
 # Count that reclaimable space so an interrupted prior attempt cannot prevent
@@ -1395,12 +1510,19 @@ require_free_space "$DATA" "$DATA_REQUIRED_BYTES" 'BIRD-DATA'
 printf 'Selected release ID: %s\n' "$RELEASE_ID"
 printf 'Build mode: %s\n' "$MODE"
 printf 'Initramfs compression: gzip -n -%s\n' "$BIRD_INITRAMFS_GZIP_LEVEL"
-printf 'BIRD post-deploy development reserve: %s bytes\n' "$BIRD_DEV_RESERVE_BYTES"
+printf 'BIRD production staging requirement: %s bytes\n' "$BIRD_REQUIRED_BYTES"
 printf 'Output directory: %s\n' "$OUTPUT"
 printf 'Card identity: /dev/%s (p1 BIRD, p6 BIRD-DATA)\n' "$WHOLE"
 printf 'PortMaster preflight: pinned installed provider %s; checkpoint state %s.\n' \
 	"$PORTMASTER_PROVIDER_MARKER_VALUE" \
 	"${PORTMASTER_PROVIDER_MARKER_STATE%%:*}"
+if [ -n "$ROTATION_SUPERSEDED_ID" ]; then
+	printf 'Post-activation rotation: archive verified release %s to %s, remove it from BIRD, and point previous at %s.\n' \
+		"$ROTATION_SUPERSEDED_ID" "$ARCHIVE_REPOSITORY" "$RELEASE_ID"
+else
+	printf 'Post-activation rotation: no superseded immutable release; point previous at %s.\n' \
+		"$RELEASE_ID"
+fi
 if [ "$KOREADER_CATEGORY_COUNT" -gt 0 ]; then
 	printf 'KOReader preflight: %s catalog category, archive %s (%s bytes), extraction %s (%s-byte reserve).\n' \
 		"$KOREADER_CATEGORY_COUNT" "$KOREADER_ARCHIVE_SHA" \
@@ -1459,6 +1581,12 @@ if [ "$DRY_RUN" -eq 1 ]; then
 	fi
 	printf 'Dry run: would run canonical builder: %s\n' "$BUILDER"
 	printf 'Dry run: would validate deploy-manifest.tsv, then run updater: %s\n' "$UPDATER"
+	if [ -n "$ROTATION_SUPERSEDED_ID" ]; then
+		printf 'Dry run: after activation would archive, verify and remove superseded release %s, then retain only %s on-card.\n' \
+			"$ROTATION_SUPERSEDED_ID" "$RELEASE_ID"
+	else
+		printf 'Dry run: after activation would make the exact current selector authoritative as previous.\n'
+	fi
 	printf 'Launcher SHA-256: not built (dry run)\n'
 	printf 'Manifest SHA-256: not built (dry run)\n'
 	printf 'Deployment result: not run (dry run)\n'
@@ -1710,6 +1838,48 @@ is_regular_file "$INSTALLED_RELEASE/deploy-manifest.tsv" || fail 'deployed canon
 [ "$(sha256 "$INSTALLED_RELEASE/deploy-manifest.tsv")" = "$MANIFEST_SHA" ] || fail 'deployed canonical manifest hash changed'
 grep -Fq "bird_release=$RELEASE_ID" "$BIRD/extlinux/extlinux.conf" || \
 	fail 'active selector does not name the deployed release'
+
+# A successful canonical activation rotates the superseded immutable release
+# off-card.  The GitHub copy is published and fully re-read before the exact
+# current selector replaces the previous selector and the old bytes are
+# removed.  Fixed fallback assets remain independent and byte-identical.
+ROTATION_LOCKED_WHOLE=$WHOLE
+bird_card_lock_acquire
+validate_stock_root_card_identity
+[ "$WHOLE" = "$ROTATION_LOCKED_WHOLE" ] || \
+	fail 'card identity changed before post-activation release rotation'
+reject_dev_current_production_state
+read_active_selector
+[ "$ACTIVE_SELECTOR_KIND" = release ] && \
+	[ "$ACTIVE_RELEASE_ID" = "$RELEASE_ID" ] || \
+	fail 'active selector changed before post-activation release rotation'
+ARCHIVE_ACTIVE_SELECTOR_KIND=$ACTIVE_SELECTOR_KIND
+ARCHIVE_ACTIVE_SELECTOR_SHA=$ACTIVE_SELECTOR_SHA
+validate_completed_release "$INSTALLED_RELEASE" "$RELEASE_ID" \
+	'newly activated release'
+is_regular_file "$INSTALLED_RELEASE/extlinux/extlinux.conf" && \
+	[ "$(sha256 "$INSTALLED_RELEASE/extlinux/extlinux.conf")" = \
+	"$ARCHIVE_ACTIVE_SELECTOR_SHA" ] || \
+	fail 'active selector differs from the newly activated release selector'
+verify_fixed_recovery_unchanged
+if [ -n "$ROTATION_SUPERSEDED_ID" ]; then
+	archive_and_remove_retired_release "$ROTATION_SUPERSEDED_ID" \
+		"$ROTATION_SUPERSEDED_DIR" 1
+else
+	publish_current_selector_as_previous
+fi
+verify_archive_selector_unchanged
+is_regular_file "$BIRD/extlinux/extlinux.previous.conf" && \
+	[ "$(sha256 "$BIRD/extlinux/extlinux.previous.conf")" = \
+	"$ARCHIVE_ACTIVE_SELECTOR_SHA" ] || \
+	fail 'previous selector does not match the retained current release'
+if [ -n "$ROTATION_SUPERSEDED_ID" ]; then
+	[ ! -e "$ROTATION_SUPERSEDED_DIR" ] && \
+		[ ! -L "$ROTATION_SUPERSEDED_DIR" ] || \
+		fail 'superseded release remains after verified rotation'
+fi
+verify_fixed_recovery_unchanged
+bird_card_lock_release
 
 printf 'Deployment result: %s\n' "$DEPLOY_RESULT"
 printf '\nNext steps:\n'

@@ -9,8 +9,8 @@ device contract
 `1664a3778abcd3687865a82fd28bba5b468f6c3c7e9a46bf90f7c3acb1e08162`
 and catalogue
 `6ecb9512dfdcb4c62483cc13fb315e5e39fd7556b29f54e7a9f82ac1b730283d`.
-Immutable release `v6.23-20260731-054816` remains the separately bootable
-binary fallback. Its canonical manifest digest is
+Immutable release `v6.23-20260731-054816` remains the previously accepted,
+privately archived binary reference. Its canonical manifest digest is
 `5f95153bf46239a5e178fde28924f01c7fe586be182562f9bd9f33cf13da02ba`.
 That manifest retains its actual older dirty source identity; it is not
 represented as a clean build of the current source.
@@ -142,13 +142,15 @@ For every successor to the current accepted binding:
 2. Build all pinned inputs under a fresh immutable release ID.
 3. Build release/profile final-root and early-initramfs launchers.
 4. Run the complete host suite and transactional fault-injection tests.
-5. Deploy without replacing the accepted fallback.
+5. Deploy while the accepted canonical base remains intact through candidate
+   staging, verification and activation.
 6. Complete the RG34XX-SP behavior and measurement gate.
 7. Seal the evidence and create the exact promotion record.
 8. Only then update authority documents to name the successor as accepted.
 
 If any physical gate fails, retain the preceding accepted source/release tuple
-as the behavior reference and `v6.23-20260731-054816` as the binary fallback.
+as the externally archived behavior reference and return the card to the host
+for verified selector restoration or redeployment.
 
 ### Fast-workflow stabilization policy — 2026-08-08
 
@@ -165,12 +167,18 @@ expansion during stabilization.
 
 The first real `--all-local` gate took 716.01 seconds and then rejected its
 actual output before card mutation: 37,617,684 bytes were required and
-30,601,728 were available. The active and exact previous-selector releases plus
-the required fallback leave no safe release-sized deletion. Grow only p1
-`BIRD` from 128 MiB to 138 MiB in its existing gap, preserving p5 and p6
-exactly, then rerun the same gate. This observed capacity limit justifies the
-card-layout maintenance; it does not justify another workflow state or imply
-that `dev-current` was activated.
+30,601,728 were available. A proposed 128-to-138 MiB migration stopped before
+unmount or raw write when its privileged pre-write temporary could not be read
+by the following unprivileged comparison. The card remained unchanged and that
+migration path is retired.
+
+The replacement policy keeps p1 at 128 MiB and uses one immutable canonical
+base plus one mutable `dev-current` slot. Canonical deployment archives and
+independently verifies superseded immutable releases privately, self-references
+the activated canonical selector, and only then removes their card copies. The
+selector therefore never points at removed bytes. The fixed v5.4 fallback remains
+temporarily pending a separate boot-contract rewrite, but is not normal release
+history or development rollback. Failed boots return the card to the host.
 
 ## Stage 1 — Low-risk release-path cleanup
 
@@ -586,7 +594,8 @@ bootable. It mounts `/dev`, `/proc`, `/sys` and `/run`, reproduces 3B transition
 validates the release, owns the launcher protocol, handles PID 1 signals and
 reaping, moves special filesystems and execs one fixed continuation. A fatal
 failure preserves pixels but disables interaction. It cannot become default
-until Stage 7 passes.
+until its own host-recoverable extlinux candidate and card-return procedure pass
+without relying on an on-card superseded production release.
 
 ## Stage 4 — Retained userspace and content interaction
 
@@ -1412,28 +1421,33 @@ hardware matrix in immutable release `v6.23-20260808-214626`, source
 functional gate makes no new boot-time or energy claim.
 
 Stage 6 is therefore split cleanly: the canonical namespace and its provider
-repair are accepted, while the hermetic complete image remains pending. The
-planned p1-only growth to a 138 MiB `BIRD` volume is a bounded development-space
-prerequisite and preserves p5/p6; it is not the deterministic-image build and
-does not advance Stage 6 acceptance by itself.
+repair are accepted, while the hermetic complete image remains pending. p1 stays
+at 128 MiB. Its one canonical-base plus mutable-development-slot policy is a
+deployment lifecycle decision, not the deterministic-image build and not a
+Stage 6 performance result.
 
 Build the complete image with a digest-pinned container or immutable toolchain,
 fixed partition/filesystem identities, deterministic mkfs seeds/options,
 timestamps, owners, modes, ordering and sparse handling. Require two clean
 builds in separate output roots and a separate-host reproduction where
 feasible, yielding byte-identical output or a formally defined excluded-region
-list. Content reproducibility may pass before Stage 7; selector power-loss
-acceptance may not.
+list. Include a verified host restore/reimage procedure; an on-card A/B selector
+is not an acceptance requirement.
 
-## Stage 7 — U-Boot A/B safety lane
+## Stage 7 — Fixed-fallback boot-contract subtraction (deferred)
 
-Begin after Stage 0 in parallel without altering the accepted card. Implement
-only redundant selector state, durable bounded attempts, externally forced
-fallback, pre-userspace recovery, verified fallback assets and power-loss tests
-at every transition. No display, artwork, frame or speed work.
+The earlier U-Boot A/B and on-card recovery lane is retired by operator choice.
+This one-device development workflow returns an unbootable card to the host and
+restores or redeploys from verified canonical bytes. It does not spend p1 space
+on superseded immutable releases or block userspace, standalone-bootstrap, or
+source-kernel experiments on a new bootloader recovery state machine.
 
-Stage 7 gates 3C default promotion, deterministic-image selector acceptance
-and routine experimental-kernel deployment.
+The fixed v5.4 `KERNEL.fallback`, DTB and selector stay temporarily because they
+are part of the current updater, manifest and failed-boot contracts. Remove or
+replace them only as one separately tested boot-contract subtraction after the
+host-return procedure and canonical restore artifact are proven. Their presence
+is not a normal recovery promise, production history, or prerequisite for later
+performance work.
 
 ## Stage 8 — Source-kernel parity lane
 
@@ -1479,11 +1493,12 @@ Before editing, inspect and state the active critical path. Acquire and seal a
 baseline, add focused tests, compile release/profile final-root and early
 launchers where applicable, and run affected launcher, catalog, boot-frame,
 storage, supervisor, application, content, persistence, controls, brightness,
-PortMaster, deployment, fallback and reproducibility tests.
+PortMaster, deployment and reproducibility tests. Run the retained fixed-
+fallback tests when a candidate actually touches that deferred boot contract.
 
 Report syscalls, framebuffer bytes, host dynamic instructions, ELF sections,
 binary size, PSS/USS, tasks, wakeups and IRQs separately from RG34XX-SP timing
 and calibrated energy. Preserve menu/navigation/paging/actions, Favorites,
 asynchronous storage, exactly one pending selection, exact return state,
-reconnect, recovery, all providers, networking isolation, charging, battery,
-brightness, suspend/resume, shutdown, fallback and power-loss recovery.
+reconnect, foreground recovery, all providers, networking isolation, charging,
+battery, brightness, suspend/resume, shutdown and verified host card recovery.

@@ -11,10 +11,11 @@ device-contract digest
 `1664a3778abcd3687865a82fd28bba5b468f6c3c7e9a46bf90f7c3acb1e08162`
 and catalog digest
 `6ecb9512dfdcb4c62483cc13fb315e5e39fd7556b29f54e7a9f82ac1b730283d`.
-The separately preserved immutable recovery fallback remains
+The previously accepted immutable binary reference remains archived as
 `v6.23-20260731-054816` with manifest digest
 `5f95153bf46239a5e178fde28924f01c7fe586be182562f9bd9f33cf13da02ba`.
-Its manifest retains its actual older dirty source identity. `ROADMAP.md` owns
+Its manifest retains its actual older dirty source identity. It is external
+verified history, not required on-card rollback state. `ROADMAP.md` owns
 successor promotion status. This document owns human policy;
 `bird-device-contract.tsv` owns the machine-readable hardware subset without
 replacing this experience contract.
@@ -33,6 +34,11 @@ replacing this experience contract.
   launcher at `/storage/bird-data`. The active catalog and providers use
   `/storage/roms` and `/storage/media` directly; mutable Bird state lives under
   `/storage/bird-data/Bird`. No active launcher-time path translation remains.
+- Boot storage: the fixed 128 MiB `BIRD` partition keeps one immutable
+  canonical base and one mutable `dev-current` slot. Superseded canonical
+  releases are archived and verified privately before their card copies are
+  removed. The fixed v5.4 fallback bytes remain temporarily outside that
+  rotating pair pending a separate boot-contract decision.
 - Offline boot targets the internal panel and built-in controls. Alternate
   boards, touchscreens and external-controller setup remain outside this
   product.
@@ -84,15 +90,14 @@ frequency, idle energy and memory rather than a universal warm/cold rule.
   captures.
 - Compatibility provider: the pinned ROCKNIX 20260701 application and hardware
   closure, with birdOS replacing its frontend and selected generic policy.
-- Boot recovery: loader or post-flash verification failure selects the
-  preserved clean-root fallback immediately; repeated full-stack startup
-  failure before an honest interactive frame selects it at the fixed attempt
-  threshold. The verified runtime plus input-open framebuffer marker commits
-  boot health before the graphical supervisor, so a usable-menu refresh or
-  reboot cannot consume the threshold. Both fallback paths verify the recovery
-  assets before changing the selector. B on the main menu refreshes birdOS
-  in-process; it neither opens a stock frontend nor chooses or modifies the
-  boot fallback.
+- Boot failure policy: do not retain superseded canonical releases as an
+  on-card recovery chain and do not promise automatic recovery. Return a card
+  that fails to boot to the host, then restore the verified canonical selector
+  or redeploy. The existing fixed v5.4 fallback mechanism remains temporarily
+  present but is not the normal development rollback, production history, or
+  acceptance authority; changing or removing it is a separate boot-contract
+  candidate. B on the main menu refreshes birdOS in-process and never chooses
+  or modifies any boot selector.
 
 ## Launcher menu
 
