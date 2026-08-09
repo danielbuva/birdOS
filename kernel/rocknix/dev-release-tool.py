@@ -160,7 +160,9 @@ KNOWN_STANDALONE_HOST_TESTS = {
     "test-stock-root-content-scope.sh",
     "test-stock-root-fixed-autostart.sh",
     "test-stock-root-fixed-housekeeping.sh",
+    "test-stock-root-fixed-platform.sh",
     "test-stock-root-fixed-storage.sh",
+    "test-stock-root-fixed-sway.sh",
     "test-stock-root-fixed-performance.sh",
     "test-stock-root-fixed-setup.sh",
     "test-stock-root-media-audio-policy.sh",
@@ -308,8 +310,14 @@ COMPONENT_HOST_TESTS.update(
         ),
         "runtime:bird-volume.sh": ("test-stock-root-media-audio-policy.sh",),
         "runtime:bird-control-osd.sh": ("test-fixed-controls-c.sh",),
-        "runtime:bird-fixed-sway.sh": ("test-stock-root-fixed-autostart.sh",),
-        "runtime:bird-fixed-platform.sh": ("test-stock-root-fixed-autostart.sh",),
+        "runtime:bird-fixed-sway.sh": (
+            "test-stock-root-fixed-autostart.sh",
+            "test-stock-root-fixed-sway.sh",
+        ),
+        "runtime:bird-fixed-platform.sh": (
+            "test-stock-root-fixed-autostart.sh",
+            "test-stock-root-fixed-platform.sh",
+        ),
         "runtime:bird-fixed-logging.sh": (
             "test-stock-root-fixed-autostart.sh",
             "test-stock-root-fixed-housekeeping.sh",

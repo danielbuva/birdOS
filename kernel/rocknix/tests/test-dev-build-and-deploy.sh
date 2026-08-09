@@ -539,7 +539,7 @@ sys.modules[spec.name] = module
 assert spec.loader is not None
 spec.loader.exec_module(module)
 assert module.all_component_groups() == set(module.COMPONENT_HOST_TESTS)
-assert len(module.BROAD_PRODUCT_HOST_TESTS) == 37
+assert len(module.BROAD_PRODUCT_HOST_TESTS) == 39
 assert "test-dev-build-and-deploy.sh" in module.BROAD_PRODUCT_HOST_TESTS
 assert module.host_test_command(bash_test)[:1] == ["/bin/bash"]
 assert module.host_test_command(sh_test)[:1] == ["/bin/sh"]

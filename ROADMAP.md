@@ -1431,10 +1431,15 @@ RG34XX-SP behavior gate. It removes the accepted-state ROM remount and three
 diagnostic children while retaining the complete wrong-layer and noexec repair
 path. One observed boot recorded input at 1217 ms, usable frame at 1229 ms and
 storage readiness at 3703 ms; treat those as descriptive, not a promoted
-latency distribution. The next independent refinement removes the remaining
-accepted-state directory-creation process and second mount-table scan. Its
-target is application/content readiness after the usable menu. Real workflow
-use also showed Port software writing nested save/config files; development
+latency distribution. The next independent storage refinement removed the
+remaining accepted-state directory-creation process and second mount-table
+scan, then passed the broad behavior gate. Its returned boot logged input at
+1219 ms, usable frame at 1239 ms and storage at 3744 ms, with a sub-three-second
+stopwatch result; those remain descriptive samples. The next candidate removes
+nine unchanged fixed-platform comparison/timing children and four fixed-Sway
+children using shell reads, while retaining all volatile contract publication
+and mismatch repair. Its target is application/content readiness after the
+usable menu. Real workflow use also showed Port software writing nested save/config files; development
 catalog fingerprints now ignore those generator-invisible runtime files so
 they do not rebuild the launcher or early initramfs.
 

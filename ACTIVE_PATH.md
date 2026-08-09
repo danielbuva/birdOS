@@ -1659,11 +1659,16 @@ absence is not evidence that the active stock-root path is incomplete.
 The first `dev-current` Stage 6 storage subtraction passed the broad physical
 hardware gate. Its boot log recorded input ready at 1217 ms, usable frame at
 1229 ms and storage ready at 3703 ms; those single samples are descriptive and
-do not establish a timing promotion. The accepted fixed mount state now avoids
-an unconditional remount plus three diagnostic children. The next bounded
-candidate also avoids the remaining success-path directory-creation child and
-repair-only mount inventory. This work runs after the honest usable menu and
-targets application/content readiness. Port payload saves and configuration
+do not establish a timing promotion. The accepted fixed mount state first
+avoided an unconditional remount plus three diagnostic children, then a second
+physical gate accepted removal of the remaining success-path directory-creation
+child and repair-only mount inventory. That returned boot logged input at
+1219 ms, usable frame at 1239 ms and storage at 3744 ms while the stopwatch
+remained below three seconds. The next bounded candidate replaces nine
+unchanged-profile comparison/timing children and four fixed-Sway children with
+shell reads while preserving volatile contract files and mismatch repair. This
+work runs after the honest usable menu and targets application/content
+readiness. Port payload saves and configuration
 below `ROMS/Ports/<game>/` are excluded from development catalog fingerprints,
 matching the embedded catalog's top-level Port-launcher authority.
 
