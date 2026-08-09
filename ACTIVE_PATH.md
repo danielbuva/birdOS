@@ -1656,6 +1656,17 @@ PortMaster performance, remaining provider cold-load work, final boot effects
 and the hermetic-image/fallback-only legacy boundary remain roadmap work. Their
 absence is not evidence that the active stock-root path is incomplete.
 
+The first `dev-current` Stage 6 storage subtraction passed the broad physical
+hardware gate. Its boot log recorded input ready at 1217 ms, usable frame at
+1229 ms and storage ready at 3703 ms; those single samples are descriptive and
+do not establish a timing promotion. The accepted fixed mount state now avoids
+an unconditional remount plus three diagnostic children. The next bounded
+candidate also avoids the remaining success-path directory-creation child and
+repair-only mount inventory. This work runs after the honest usable menu and
+targets application/content readiness. Port payload saves and configuration
+below `ROMS/Ports/<game>/` are excluded from development catalog fingerprints,
+matching the embedded catalog's top-level Port-launcher authority.
+
 ## Accepted v6.23 evidence
 
 The accepted human promotion binding is clean source

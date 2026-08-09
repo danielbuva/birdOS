@@ -1360,6 +1360,19 @@ def catalog_card_inventory(data: pathlib.Path) -> str:
             relative_to_catalog_root = path.relative_to(root)
             if catalog_path_is_hidden_or_artwork(relative_to_catalog_root):
                 continue
+            # PortMaster keeps mutable saves, configuration, libraries and
+            # game data beneath ROMS/Ports/<game>/.  The canonical catalog
+            # generator deliberately inspects only direct children of Ports,
+            # so those nested runtime bytes cannot change the menu catalog.
+            if name == "ROMS" and relative_to_catalog_root.parts[0].casefold() == "ports":
+                # Only regular, top-level .sh launchers are PortMaster menu
+                # candidates. The Ports directory itself, game directories,
+                # non-launcher metadata and all nested runtime state are not.
+                if (
+                    len(relative_to_catalog_root.parts) != 2
+                    or path.suffix.casefold() != ".sh"
+                ):
+                    continue
             relative = path.relative_to(data).as_posix()
             info = path.lstat()
             if stat.S_ISREG(info.st_mode):

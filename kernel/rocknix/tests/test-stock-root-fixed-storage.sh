@@ -81,8 +81,13 @@ EOF
 printf '%s\n' grep >>"$FIXED_COMMANDS"
 exit 98
 EOF
+	cat >"$CASE_DIR/bin/mkdir" <<'EOF'
+#!/bin/sh
+printf '%s\n' mkdir >>"$FIXED_COMMANDS"
+exit 96
+EOF
 	chmod 0755 "$CASE_DIR/bin/mount" "$CASE_DIR/bin/umount" \
-		"$CASE_DIR/bin/cut" "$CASE_DIR/bin/grep"
+		"$CASE_DIR/bin/cut" "$CASE_DIR/bin/grep" "$CASE_DIR/bin/mkdir"
 }
 
 setup_case() {
@@ -98,7 +103,7 @@ setup_case() {
 	COMMANDS=$CASE_DIR/commands
 	UNDER_TEST=$CASE_DIR/fixed-storage.sh
 	mkdir -p "$ROM_SOURCE/ports/PortMaster" "$MEDIA_SOURCE" \
-		"$CASE_DIR/run"
+		"$BIRD_DATA/Bird/log" "$CASE_DIR/run/bird"
 	ln -s "$MEDIA_SOURCE" "$MEDIA_TARGET"
 	case "$TARGET_KIND" in
 		correct) ln -s "$ROM_SOURCE" "$ROM_TARGET" ;;
@@ -136,7 +141,8 @@ run_case() {
 	PATH="$CASE_DIR/bin:/usr/bin:/bin" "$UNDER_TEST"
 }
 
-# The accepted boot state performs no mount, unmount, cut or grep command.
+# The accepted boot state performs no mount, unmount, mkdir, cut or grep
+# command and avoids the repair-only mount inventory.
 setup_case accepted 'rw,noatime' correct
 printf '#!/bin/sh\nexit 0\n' >"$ROM_SOURCE/ports/PortMaster/provider-test.sh"
 chmod 0755 "$ROM_SOURCE/ports/PortMaster/provider-test.sh"
@@ -145,7 +151,11 @@ run_case
 "$ROM_TARGET/ports/PortMaster/provider-test.sh"
 LOG=$BIRD_DATA/Bird/log/fixed-storage-latest.log
 grep -Fq 'Bird fixed storage start uptime=12.340000' "$LOG"
-grep -Fq " $ROM_TARGET " "$LOG"
+grep -Fq 'Bird fixed storage state=accepted' "$LOG"
+if grep -Fq " $ROM_TARGET " "$LOG"; then
+	printf '%s\n' 'accepted fixed storage emitted repair-only mount inventory' >&2
+	exit 1
+fi
 grep -Fq 'Bird fixed storage ready uptime=12.340000' "$LOG"
 
 # A correct source carrying noexec is repaired exactly once, then revalidated.
@@ -154,6 +164,9 @@ run_case
 printf 'mount|-o|remount,bind,rw,exec|%s\n' "$ROM_TARGET" >"$CASE_DIR/expected"
 cmp "$CASE_DIR/expected" "$COMMANDS"
 grep -Fq " $ROM_TARGET exfat rw,noatime " "$MOUNTS"
+grep -Fq 'Bird fixed storage state=repaired' \
+	"$BIRD_DATA/Bird/log/fixed-storage-latest.log"
+grep -Fq " $ROM_TARGET " "$BIRD_DATA/Bird/log/fixed-storage-latest.log"
 
 # A read-only bind receives the same one-shot rw+exec repair.
 setup_case readonly 'ro,noatime' correct

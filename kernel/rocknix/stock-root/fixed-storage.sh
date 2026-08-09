@@ -57,10 +57,13 @@ log_fixed_mounts() {
 	done </proc/mounts
 }
 
-mkdir -p "$LOG_DIR" /run/bird "$ROM_TARGET" "$MEDIA_TARGET" || exit 1
+for REQUIRED_DIR in "$LOG_DIR" /run/bird; do
+	[ -d "$REQUIRED_DIR" ] || mkdir -p "$REQUIRED_DIR" || exit 1
+done
 exec >"$LOG" 2>&1
 
 log_uptime 'Bird fixed storage start uptime='
+STORAGE_REPAIRED=0
 
 [ -d "$ROM_SOURCE" ] || {
 	printf 'Missing fixed ROM source: %s\n' "$ROM_SOURCE"
@@ -71,10 +74,15 @@ log_uptime 'Bird fixed storage start uptime='
 	exit 1
 }
 
+for REQUIRED_DIR in "$ROM_TARGET" "$MEDIA_TARGET"; do
+	[ -d "$REQUIRED_DIR" ] || mkdir -p "$REQUIRED_DIR" || exit 1
+done
+
 # The initramfs normally installed this view already. If any compatibility
 # service stacked another mount over it, peel every wrong layer and restore the
 # one fixed source.
 while [ ! "$ROM_TARGET" -ef "$ROM_SOURCE" ]; do
+	STORAGE_REPAIRED=1
 	if umount "$ROM_TARGET" 2>/dev/null; then
 		continue
 	fi
@@ -86,11 +94,13 @@ done
 # state without another mount syscall or namespace change. Repair only an
 # incorrect view so native PortMaster scripts remain executable.
 if ! rom_mount_is_rw_exec; then
+	STORAGE_REPAIRED=1
 	mount -o remount,bind,rw,exec "$ROM_TARGET" || exit 1
 	rom_mount_is_rw_exec || exit 1
 fi
 
 while [ ! "$MEDIA_TARGET" -ef "$MEDIA_SOURCE" ]; do
+	STORAGE_REPAIRED=1
 	if umount "$MEDIA_TARGET" 2>/dev/null; then
 		continue
 	fi
@@ -100,6 +110,10 @@ done
 [ "$ROM_TARGET" -ef "$ROM_SOURCE" ] || exit 1
 [ "$MEDIA_TARGET" -ef "$MEDIA_SOURCE" ] || exit 1
 
-printf '%s\n' 'Bird fixed storage mount state:'
-log_fixed_mounts
+if [ "$STORAGE_REPAIRED" -eq 1 ]; then
+	printf '%s\n' 'Bird fixed storage state=repaired'
+	log_fixed_mounts
+else
+	printf '%s\n' 'Bird fixed storage state=accepted'
+fi
 log_uptime 'Bird fixed storage ready uptime='

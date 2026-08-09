@@ -590,6 +590,9 @@ printf 'finder metadata\n' >"$DATA/ROMS/.DS_Store"
 printf 'hidden game\n' >"$DATA/ROMS/GBA/.hidden/Secret.gba"
 printf 'artwork bytes\n' >"$DATA/ROMS/GBA/ImGs/Cover.gba"
 printf 'media artwork bytes\n' >"$DATA/MEDIA/WATCH/IMAGES/Poster.mp4"
+mkdir -p "$DATA/ROMS/Ports/Test Game/conf/saves"
+printf 'runtime save bytes\n' \
+	>"$DATA/ROMS/Ports/Test Game/conf/saves/slot1.sav"
 run_dev --status >"$CASE_ROOT/ignored.status"
 grep -q '^changed-components[[:space:]]*-$' "$CASE_ROOT/ignored.status"
 run_dev --changed >"$CASE_ROOT/ignored.out"
@@ -605,7 +608,7 @@ grep -q '^changed-components[[:space:]]*catalog$' "$CASE_ROOT/visible.status"
 run_dev --changed >"$CASE_ROOT/visible.out"
 grep -q '^Rebuilt groups: catalog, early-initramfs, launcher$' "$CASE_ROOT/visible.out"
 assert_base_and_fallback_unchanged
-pass 'catalog fingerprint ignores generator-excluded metadata and artwork only'
+pass 'catalog fingerprint ignores generator-excluded metadata, artwork and nested Port data only'
 
 new_case cleanup-pending-readiness
 initialize_dev

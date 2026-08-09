@@ -1426,6 +1426,18 @@ at 128 MiB. Its one canonical-base plus mutable-development-slot policy is a
 deployment lifecycle decision, not the deterministic-image build and not a
 Stage 6 performance result.
 
+The first post-namespace `dev-current` storage fast path passed the broad
+RG34XX-SP behavior gate. It removes the accepted-state ROM remount and three
+diagnostic children while retaining the complete wrong-layer and noexec repair
+path. One observed boot recorded input at 1217 ms, usable frame at 1229 ms and
+storage readiness at 3703 ms; treat those as descriptive, not a promoted
+latency distribution. The next independent refinement removes the remaining
+accepted-state directory-creation process and second mount-table scan. Its
+target is application/content readiness after the usable menu. Real workflow
+use also showed Port software writing nested save/config files; development
+catalog fingerprints now ignore those generator-invisible runtime files so
+they do not rebuild the launcher or early initramfs.
+
 Build the complete image with a digest-pinned container or immutable toolchain,
 fixed partition/filesystem identities, deterministic mkfs seeds/options,
 timestamps, owners, modes, ordering and sparse handling. Require two clean
