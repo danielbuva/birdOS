@@ -402,7 +402,7 @@ new_case() {
 		'/dev/testdisk' 'Disk Size' '512074186752 Bytes (512074186752 Bytes)' \
 		"$BIRD" 'Device Identifier' testdisks1 \
 		"$BIRD" 'Partition Offset' '16777216 Bytes' \
-		"$BIRD" 'Disk Size' '134217728 Bytes (134217728 Bytes)' \
+		"$BIRD" 'Disk Size' '144703488 Bytes (144703488 Bytes)' \
 		"$BIRD" 'File System Personality' 'MS-DOS FAT32' \
 		"$BIRD" 'Volume Read-Only' No \
 		"$DATA" 'Device Identifier' testdisks6 \
@@ -1068,6 +1068,41 @@ if run_command --release >"$CASE_ROOT/out" 2>"$CASE_ROOT/err"; then
 fi
 grep -q 'BIRD has insufficient staging space' "$CASE_ROOT/err"
 
+# Production staging alone fits exactly, but that would strand the ordinary
+# first dev-current copy after activation.  The production wrapper must use the
+# larger candidate bound, plan one verified inactive release retirement, and
+# preserve every byte because this is a dry run.
+new_case development-reserve-archive-dry-run
+create_completed_release active
+create_completed_release retired 9437184
+select_fixture_release active
+rm -f "$BIRD/KERNEL"
+ACTIVE_FILE_BYTES=$(awk -F '\t' '$1 == "file" {bytes += $4} END {print bytes + 0}' \
+	"$BIRD/bird-releases/active/deploy-manifest.tsv")
+PRODUCTION_STAGING_BYTES=$(( \
+	$(bytes "$BIRD/bird-releases/active/KERNEL") + \
+	$(bytes "$BIRD/dtb.img") + 4194304 ))
+[ "$PRODUCTION_STAGING_BYTES" -gt "$ACTIVE_FILE_BYTES" ] || \
+	fail 'development-reserve fixture does not exercise the candidate-bound branch'
+EXPECTED_DEV_RESERVE=$((PRODUCTION_STAGING_BYTES + 4194304))
+BIRD_TEST_BIRD_FREE_BYTES=$PRODUCTION_STAGING_BYTES
+ACTIVE_RELEASE_SHA=$(sha256 "$BIRD/bird-releases/active/.complete")
+RETIRED_RELEASE_SHA=$(sha256 "$BIRD/bird-releases/retired/.complete")
+SELECTOR_SHA=$(sha256 "$BIRD/extlinux/extlinux.conf")
+run_command --release --dry-run >"$CASE_ROOT/out"
+grep -Fq "BIRD post-deploy development reserve: $EXPECTED_DEV_RESERVE bytes" \
+	"$CASE_ROOT/out" || {
+	cat "$CASE_ROOT/out" >&2
+	fail 'production development-reserve report used the wrong bound'
+}
+grep -q 'would archive and verify inactive release retired' "$CASE_ROOT/out"
+[ "$(sha256 "$BIRD/bird-releases/active/.complete")" = "$ACTIVE_RELEASE_SHA" ]
+[ "$(sha256 "$BIRD/bird-releases/retired/.complete")" = "$RETIRED_RELEASE_SHA" ]
+[ "$(sha256 "$BIRD/extlinux/extlinux.conf")" = "$SELECTOR_SHA" ]
+[ ! -e "$TEST_STATE/gh-events" ]
+[ ! -e "$TEST_STATE/builder-release-id" ]
+[ ! -e "$TEST_STATE/updater-ran" ]
+
 new_case archive-dry-run
 create_completed_release active
 create_completed_release retired 5242880
@@ -1173,7 +1208,7 @@ grep -Fq 'bird_release=after-retirement' "$BIRD/extlinux/extlinux.conf"
 # when the named immutable release and every manifest-recorded byte verify.
 new_case fallback-versioned-build-source
 create_completed_release previous
-create_completed_release retired 5242880
+create_completed_release retired 13631488
 select_fixture_fallback_with_previous previous
 PREVIOUS_KERNEL_SHA=$(sha256 "$BIRD/bird-releases/previous/KERNEL")
 PREVIOUS_DTB_SHA=$(sha256 "$BIRD/dtb.img")
@@ -1197,7 +1232,7 @@ grep -Fq 'bird_release=fallback-recovered' "$BIRD/extlinux/extlinux.conf"
 # one-shot operation.
 new_case fallback-versioned-source-second-cycle
 create_completed_release previous
-create_completed_release retired 5242880
+create_completed_release retired 13631488
 select_fixture_fallback_with_previous previous
 SECOND_CYCLE_KERNEL_SHA=$(sha256 "$BIRD/bird-releases/previous/KERNEL")
 rm -f "$BIRD/KERNEL"

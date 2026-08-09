@@ -218,7 +218,7 @@ printf '%s\t%s\t%s\n' \
 	'/dev/testdisk' 'Disk Size' '512074186752 Bytes (512074186752 Bytes)' \
 	"$BIRD" 'Device Identifier' testdisks1 \
 	"$BIRD" 'Partition Offset' '16777216 Bytes' \
-	"$BIRD" 'Disk Size' '134217728 Bytes (134217728 Bytes)' \
+	"$BIRD" 'Disk Size' '144703488 Bytes (144703488 Bytes)' \
 	"$BIRD" 'Volume Read-Only' No \
 	"$BIRD" 'File System Personality' 'MS-DOS FAT32' \
 	'/dev/testdisks5' 'Partition Offset' '163577856 Bytes' \

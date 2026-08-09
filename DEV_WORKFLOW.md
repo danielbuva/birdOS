@@ -281,6 +281,31 @@ space. It builds into a private host directory first, calculates space from the
 actual outputs, reports required and available byte counts, and stops without
 card writes when there is not enough room.
 
+### First real all-local capacity result — 2026-08-08
+
+The first complete real-card `--all-local` attempt spent 716.01 seconds in its
+host build and required-test gate, then correctly stopped at the actual-output
+space check. It required 37,617,684 bytes on `BIRD`; 30,601,728 bytes were
+available, a 7,015,956-byte shortfall. The check ran before the card mutation
+boundary: the accepted production selector and both immutable releases stayed
+unchanged, and no `dev-current`, development metadata, attempt state or hidden
+copy stage was published.
+
+There is no safe release-sized deletion on the current card. Release
+`v6.23-20260808-214626` is active, release `v6.23-20260808-124816` is its exact
+previous-selector rollback, and the top-level fallback assets remain required
+recovery bytes. Removing incidental macOS metadata would not materially close
+the deficit. The development command must continue to refuse production
+archive or deletion as a space workaround.
+
+The planned remediation is to grow only the FAT32 `BIRD` partition from 128
+MiB to 138 MiB using the existing gap before p5. The p1 start remains sector
+32,768; its length becomes 282,624 sectors, leaving a 2 MiB gap before the
+unchanged p5 start at sector 319,488. p5 and p6 retain their exact starts,
+lengths, filesystems, identities and contents. This resize is planned, not yet
+performed. After it verifies, rerun the same `--all-local` gate; do not treat
+the failed capacity screen as a successful development activation.
+
 ## Safety and recovery
 
 All card operations reuse the existing card identity and lock checks. Before
@@ -355,9 +380,11 @@ ready-for-production-build   yes|no|unknown
 They are current only when the recorded all-local build and versioned required
 host-test set match the exact present source inventory. Older state schemas are
 read safely but report unknown readiness. A durable cleanup authority or an
-in-progress cleanup-authority publication always forces
-`ready-for-production-build=no`. The readiness value is only the software-side
-result; it never records or implies that the RG34XX-SP physical gate passed.
+in-progress cleanup-authority publication prevents
+`ready-for-production-build=yes`; depending on the readable development state,
+status may report `no` or `unknown`. The readiness value is only the
+software-side result; it never records or implies that the RG34XX-SP physical
+gate passed.
 
 ## Stabilization policy
 
@@ -369,6 +396,11 @@ production/data-loss risk. Rare recoverable residue remains documented unless
 real use shows that another state transition is justified. Do not add mandatory
 promotion-record enforcement, duplicate cleanup authorities or another state
 schema merely for theoretical completeness.
+
+The first real `--all-local` run supplied that evidence: its 716.01-second host
+gate completed, its exact capacity refusal was truthful, and it performed no
+card mutation. The next workflow exercise is the same command after the
+planned p1 expansion, not another speculative transaction state.
 
 ## Production promotion
 

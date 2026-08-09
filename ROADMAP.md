@@ -163,6 +163,15 @@ it occurs. The human promotion binding remains authoritative, but the fast
 workflow gains no mandatory promotion-record enforcement or state-schema
 expansion during stabilization.
 
+The first real `--all-local` gate took 716.01 seconds and then rejected its
+actual output before card mutation: 37,617,684 bytes were required and
+30,601,728 were available. The active and exact previous-selector releases plus
+the required fallback leave no safe release-sized deletion. Grow only p1
+`BIRD` from 128 MiB to 138 MiB in its existing gap, preserving p5 and p6
+exactly, then rerun the same gate. This observed capacity limit justifies the
+card-layout maintenance; it does not justify another workflow state or imply
+that `dev-current` was activated.
+
 ## Stage 1 — Low-risk release-path cleanup
 
 Promote independently: zero pre-usable release logging; trace/recovery-only
@@ -1401,6 +1410,12 @@ OpenBOR, Ports, media, books, PortMaster, networking, persistence and the broad
 hardware matrix in immutable release `v6.23-20260808-214626`, source
 `af83ca945815676d6dabc030ad568c1e5fbb62d2`. Namespace v1 is accepted. This
 functional gate makes no new boot-time or energy claim.
+
+Stage 6 is therefore split cleanly: the canonical namespace and its provider
+repair are accepted, while the hermetic complete image remains pending. The
+planned p1-only growth to a 138 MiB `BIRD` volume is a bounded development-space
+prerequisite and preserves p5/p6; it is not the deterministic-image build and
+does not advance Stage 6 acceptance by itself.
 
 Build the complete image with a digest-pinned container or immutable toolchain,
 fixed partition/filesystem identities, deterministic mkfs seeds/options,

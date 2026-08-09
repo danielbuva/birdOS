@@ -156,6 +156,18 @@ eligible `dev-current` base. A later committed full-release-only change creates
 a new transition; the workflow does not add mandatory promotion-record
 machinery during stabilization.
 
+The first real `--all-local` exercise reached its actual-output capacity gate
+after 716.01 seconds of host build and required tests. It needed 37,617,684
+bytes with 30,601,728 available and stopped before card mutation; production
+selection, release bytes and recovery assets remained unchanged, with no
+development release or metadata published. No release-sized deletion is safe:
+the two installed immutable releases are the active and exact previous-selector
+targets, while the top-level fallback remains required. The planned correction
+grows only p1 `BIRD` from 128 MiB to 138 MiB in the existing pre-p5 gap. p5 and
+p6 retain their exact sector positions, identities, filesystems and contents.
+This is development-capacity maintenance, not a boot, interaction, energy or
+Stage 6 performance result.
+
 The normal macOS entry point is `./build-and-deploy.sh --release`, or
 `./build-and-deploy.sh --profile` for lightweight launcher counters. It chooses
 one release ID before the build, passes that ID to both canonical scripts and

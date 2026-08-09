@@ -5,7 +5,7 @@ power-key and clean-root investigation. Its measurements remain hardware
 evidence, but its old deployment paths are not the active stock-root build.
 See [`ACTIVE_PATH.md`](../ACTIVE_PATH.md) for the current system.
 
-Three tools in this directory do participate in the active path:
+Four tools in this directory do participate in the active path:
 
 - [`mac-update-rocknix-stock-root-v6.sh`](mac-update-rocknix-stock-root-v6.sh)
   transactionally stages and activates the complete manifest-verified release;
@@ -17,7 +17,14 @@ Three tools in this directory do participate in the active path:
 - [`migrate-bird-namespace.py`](migrate-bird-namespace.py) owns the Stage 6
   canonical-namespace prepare, commit, status and rollback transaction. It
   creates fresh active Bird state, copies only live persistence and verified
-  BIOS data, and leaves the complete legacy tree available to the fallback.
+  BIOS data, and leaves the complete legacy tree available to the fallback;
+  and
+- [`mac-expand-bird-prefix.sh`](mac-expand-bird-prefix.sh) performs the
+  one-time, prefix-bounded 128 MiB to 138 MiB BIRD capacity migration. It uses
+  two payload-equivalent artifacts from
+  [`build-bird-capacity-prefix.sh`](../kernel/rocknix/build-bird-capacity-prefix.sh),
+  retains the legacy artifact as the explicit rollback oracle, and never
+  writes the p5 root or p6 data byte ranges.
 
 Card-writing operations validate the same removable p1/p6 card identity and serialize
 through one host-side atomic card lock. This protects concurrent Mac processes;
@@ -27,6 +34,28 @@ For ordinary builds and deployments, invoke the guarded repository-level
 `./build-and-deploy.sh --release` or `./build-and-deploy.sh --profile` command
 instead of calling the updater directly. The lower-level updater remains the
 transaction authority and is still useful to the host fault-injection suite.
+
+The observed first `dev-current` build needs more p1 space than incidental
+macOS metadata can safely recover. Build and inspect both migration oracles
+before the raw write:
+
+```sh
+./kernel/rocknix/build-bird-capacity-prefix.sh --build
+./firmware/mac-expand-bird-prefix.sh \
+  /dev/diskN --install-expanded kernel/work/bird-capacity-prefix
+```
+
+The installer verifies the currently mounted payload, old card geometry,
+shared card lock, boot/SPL/U-Boot bytes, complete artifacts and exact source
+inventory before writing. It writes and rereads only bytes 0 through
+163,577,855, then verifies the 138 MiB FAT, unchanged p5/p6 geometry and the
+complete non-metadata payload. Until the RG34XX-SP gate passes, the explicit
+rollback is:
+
+```sh
+./firmware/mac-expand-bird-prefix.sh \
+  /dev/diskN --restore-legacy kernel/work/bird-capacity-prefix
+```
 
 Their contracts are defined by [`ACTIVE_PATH.md`](../ACTIVE_PATH.md); the
 firmware experiments documented below are historical evidence.

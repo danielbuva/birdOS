@@ -1100,7 +1100,39 @@ require_free_space() {
 }
 
 HOST_REQUIRED_BYTES=134217728
-BIRD_REQUIRED_BYTES=$(( $(file_bytes "$SOURCE/KERNEL") + $(file_bytes "$SOURCE/dtb.img") + 4194304 ))
+BIRD_STAGING_REQUIRED_BYTES=$(( $(file_bytes "$SOURCE/KERNEL") + $(file_bytes "$SOURCE/dtb.img") + 4194304 ))
+BIRD_DEV_RESERVE_BYTES=0
+if [ -n "${PINNED_IMMUTABLE_SOURCE_ID:-}" ]; then
+	# The 128 MiB layout could stage a production release or hold dev-current,
+	# but not both while retaining the active, previous and fixed fallback
+	# contracts. The expanded fixed layout archives the otherwise inactive
+	# release before deployment and deliberately leaves one complete mutable
+	# release worth of space afterward.
+	BIRD_DEV_BASE_BYTES=$(awk -F '\t' '
+		$1 == "file" {bytes += $4; files++}
+		END {
+			if (files < 1) exit 1
+			printf "%.0f\n", bytes
+		}
+	' "$ACTIVE_SOURCE/deploy-manifest.tsv") || \
+		fail 'active immutable build source has no dev-reserve file inventory'
+	case "$BIRD_DEV_BASE_BYTES" in
+		''|*[!0-9]*) fail 'active immutable build source has an invalid dev-reserve size' ;;
+	esac
+	# dev-current is derived from the release this command is about to install,
+	# not from the older immutable source used to build it.  The candidate does
+	# not exist yet at this read-only retirement boundary, so use the larger of
+	# the verified source inventory and the canonical production staging bound.
+	# The extra 4 MiB covers the first dev build's atomic replacement and
+	# metadata allowance without weakening the production/fallback retention
+	# rules.
+	BIRD_DEV_RELEASE_BOUND_BYTES=$BIRD_DEV_BASE_BYTES
+	if [ "$BIRD_STAGING_REQUIRED_BYTES" -gt "$BIRD_DEV_RELEASE_BOUND_BYTES" ]; then
+		BIRD_DEV_RELEASE_BOUND_BYTES=$BIRD_STAGING_REQUIRED_BYTES
+	fi
+	BIRD_DEV_RESERVE_BYTES=$((BIRD_DEV_RELEASE_BOUND_BYTES + 4194304))
+fi
+BIRD_REQUIRED_BYTES=$((BIRD_STAGING_REQUIRED_BYTES + BIRD_DEV_RESERVE_BYTES))
 DATA_REQUIRED_BYTES=$((16777216 + KOREADER_EXTRACTION_RESERVE))
 if ! is_regular_file "$DATA/MUOS/runtime/ROCKNIX-STORAGE"; then
 	DATA_REQUIRED_BYTES=$(( $(file_bytes "$STORAGE_SOURCE") + DATA_REQUIRED_BYTES ))
@@ -1363,6 +1395,7 @@ require_free_space "$DATA" "$DATA_REQUIRED_BYTES" 'BIRD-DATA'
 printf 'Selected release ID: %s\n' "$RELEASE_ID"
 printf 'Build mode: %s\n' "$MODE"
 printf 'Initramfs compression: gzip -n -%s\n' "$BIRD_INITRAMFS_GZIP_LEVEL"
+printf 'BIRD post-deploy development reserve: %s bytes\n' "$BIRD_DEV_RESERVE_BYTES"
 printf 'Output directory: %s\n' "$OUTPUT"
 printf 'Card identity: /dev/%s (p1 BIRD, p6 BIRD-DATA)\n' "$WHOLE"
 printf 'PortMaster preflight: pinned installed provider %s; checkpoint state %s.\n' \
