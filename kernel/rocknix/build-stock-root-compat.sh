@@ -1038,9 +1038,17 @@ if grep -q 'common/008-perfmode\|common/020-rumble\|common/095-turbo-mode\|400-s
 fi
 grep -q '^Storage=volatile$' "$OUTPUT/card/bird/bird-journald.conf" || \
 	fail 'explicit volatile journal policy missing'
-if grep -Fq 'mount --bind /dev/null' "$OUTPUT/card/mount-storage.sh"; then
-	fail 'runtime systemd mask mounts remain'
-fi
+[ "$(grep -Fc 'mount --bind /dev/null' "$OUTPUT/card/mount-storage.sh")" -eq 1 ] || \
+	fail 'runtime systemd mask mount boundary changed'
+for DEFERRED_UNIT in hdmi-hotplug.path video.service sixaxis@.service \
+	systemd-rfkill.socket; do
+	grep -Fq "$DEFERRED_UNIT" "$OUTPUT/card/mount-storage.sh" || \
+		fail "deferred hardware mask missing: $DEFERRED_UNIT"
+	if grep -Fqx "$(printf 'mask\tusr/lib/systemd/system/%s' "$DEFERRED_UNIT")" \
+		"$SYSTEM_MASK_POLICY"; then
+		fail "deferred hardware mask was baked: $DEFERRED_UNIT"
+	fi
+done
 for MASKED_UNIT in systemd-journal-flush.service \
 	systemd-journal-catalog-update.service systemd-logind.service \
 	systemd-tmpfiles-clean.timer systemd-update-utmp.service \
