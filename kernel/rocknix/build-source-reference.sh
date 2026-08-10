@@ -10,7 +10,7 @@ ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 ROCKNIX_SOURCE=${ROCKNIX_SOURCE:-$HOME/rocknix-distribution-20260701}
 JOYPAD_SOURCE=${JOYPAD_SOURCE:-$HOME/muos-kernel-source/rocknix-joypad}
 FIRMWARE_SOURCE=${FIRMWARE_SOURCE:-$HOME/muos-kernel-source/linux-firmware-20260309}
-IMAGE=${BIRD_MAINLINE_BUILD_IMAGE:-bird-rg34xxsp-kernel-build:7.0.11}
+IMAGE=${BIRD_MAINLINE_BUILD_IMAGE:-dani-rg34xxsp-kernel-build:7.0.11@sha256:aac053f343e057c6bb412cf4d6bab3090b6d050b94c80d60e86a6d794185f460}
 OUTPUT=${OUTPUT:-$ROOT/kernel/work/rocknix-source-reference}
 BUILD_OUTPUT="$OUTPUT/build"
 SHIPPING_KERNEL=${SHIPPING_KERNEL:-$OUTPUT/shipping-KERNEL}
@@ -31,6 +31,8 @@ fail() {
 	exit 1
 }
 
+sha256() { shasum -a 256 "$1" | awk '{print $1}'; }
+
 command -v docker >/dev/null 2>&1 || fail 'docker is required'
 command -v python3 >/dev/null 2>&1 || fail 'python3 is required'
 case "$DEFER_PANFROST" in
@@ -40,6 +42,8 @@ esac
 [ -d "$ROCKNIX_SOURCE/.git" ] || fail "ROCKNIX source missing: $ROCKNIX_SOURCE"
 [ "$(git -C "$ROCKNIX_SOURCE" rev-parse HEAD)" = "$ROCKNIX_COMMIT" ] || \
 	fail 'ROCKNIX source commit mismatch'
+[ -z "$(git -C "$ROCKNIX_SOURCE" status --short)" ] || \
+	fail 'ROCKNIX source is not clean'
 [ -d "$JOYPAD_SOURCE/.git" ] || fail "ROCKNIX joypad source missing: $JOYPAD_SOURCE"
 [ "$(git -C "$JOYPAD_SOURCE" rev-parse HEAD)" = "$JOYPAD_COMMIT" ] || \
 	fail 'ROCKNIX joypad source commit mismatch'
@@ -49,13 +53,23 @@ esac
 [ "$(shasum -a 256 "$SHIPPING_KERNEL" | awk '{print $1}')" = \
 	"$SHIPPING_KERNEL_SHA" ] || fail 'shipping KERNEL checksum mismatch'
 
-for firmware in \
-	rtl_bt/rtl8821cs_config.bin \
-	rtl_bt/rtl8821cs_fw.bin \
-	rtw88/rtw8821c_fw.bin; do
-	[ -f "$FIRMWARE_SOURCE/$firmware" ] || \
-		fail "required shipping firmware missing: $FIRMWARE_SOURCE/$firmware"
-done
+while IFS="$(printf '\t')" read -r firmware expected; do
+	[ -f "$FIRMWARE_SOURCE/$firmware" ] &&
+		[ ! -L "$FIRMWARE_SOURCE/$firmware" ] ||
+		fail "required shipping firmware missing or unsafe: $FIRMWARE_SOURCE/$firmware"
+	[ "$(sha256 "$FIRMWARE_SOURCE/$firmware")" = "$expected" ] ||
+		fail "required shipping firmware changed: $firmware"
+done <<'EOF'
+rtl_bt/rtl8821cs_config.bin	6ddeb15f23588053e00cb08d25588bd7cf98d60fa93d9478efcef4ae8064a7ac
+rtl_bt/rtl8821cs_fw.bin	3baa2eeaa43c959054687a67771e7435e73b2ff3e79dfb765121d8b7dc719391
+rtw88/rtw8821c_fw.bin	2ef409bc418549fcf294061dd0cae1fc22fd9da79b60524950b25de18732f3f0
+EOF
+
+CONTAINER_IMAGE_ID=$(docker image inspect --format '{{.Id}}' "$IMAGE") ||
+	fail 'pinned source-kernel build image is unavailable'
+[ "$CONTAINER_IMAGE_ID" = \
+	sha256:aac053f343e057c6bb412cf4d6bab3090b6d050b94c80d60e86a6d794185f460 ] ||
+	fail 'source-kernel build image identity changed'
 
 mkdir -p "$BUILD_OUTPUT"
 find "$BUILD_OUTPUT" -mindepth 1 -depth -delete
@@ -351,6 +365,20 @@ fi
 		input-initramfs.sha256 \
 		sizes.txt > sha256sums.txt
 )
+
+{
+	printf 'schema\tbird-source-kernel-parity-v1\n'
+	printf 'container-image-id\t%s\n' "$CONTAINER_IMAGE_ID"
+	printf 'rocknix-commit\t%s\n' "$ROCKNIX_COMMIT"
+	printf 'linux-commit\t%s\n' "$LINUX_COMMIT"
+	printf 'joypad-commit\t%s\n' "$JOYPAD_COMMIT"
+	printf 'shipping-kernel-sha256\t%s\n' "$SHIPPING_KERNEL_SHA"
+	printf 'shipping-dtb-sha256\t%s\n' "$SHIPPING_DTB_SHA"
+	printf 'source-kernel-sha256\t%s\n' "$(sha256 "$BUILD_OUTPUT/Image")"
+	printf 'source-dtb-sha256\t%s\n' "$(sha256 "$DTB")"
+	printf 'source-joypad-sha256\t%s\n' "$(sha256 "$JOYPAD_MODULE")"
+	printf 'source-modules-sha256\t%s\n' "$(sha256 "$BUILD_OUTPUT/modules.tar.xz")"
+} >"$BUILD_OUTPUT/parity.tsv"
 
 printf 'Exact untrimmed ROCKNIX source gate passed under:\n  %s\n' "$BUILD_OUTPUT"
 printf 'Shipping-identical DTB:\n'

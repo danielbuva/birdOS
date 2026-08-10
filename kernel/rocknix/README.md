@@ -171,7 +171,8 @@ trees and the exact panel, RTL8821CS and RTW8821C firmware payloads.
 
 `build-source-reference.sh` extracts the shipping configuration from the
 release `KERNEL`, permits only compiler-capability and initramfs-source drift,
-and fails on every other option difference. The available container uses GCC
+and fails on every other option difference. The container is now selected by
+immutable image digest and the exact firmware inputs are hashed. It uses GCC
 14.2 rather than ROCKNIX's GCC 15.2, so this gate is source/configuration and
 hardware-closure reproduction, not a claim that the complete Linux `Image` is
 byte-identical to the release. The most important board artifact is exact:
@@ -183,8 +184,21 @@ driver or kernel option has been removed yet.
 
 The build identity is fixed as `bird@rg34xxsp`, build number 1 and
 `2026-07-01 04:53:00 UTC`. This removes Kbuild's host container and wall-clock
-inputs. Two clean Bird-enabled builds now produce byte-identical kernel Images
-and module archives.
+inputs. Two isolated clean builds now produce byte-identical kernel Images,
+module archives, joypad modules, configurations, symbol versions and patch
+inventories. The no-initramfs source Image is
+`2b71f1405c222c4416f7a42613a190789c976f63755df0b299f1dcaee0b65990`;
+the module archive is
+`7267770aecb39069bbd5275b4538a9bb666e906cdabc844b275652603e1ad52e`.
+
+`build-source-kernel-system.sh` substitutes that complete source module tree
+into the accepted current Bird SYSTEM. It inventories the entire effective
+tree before substitution and after reopening the repack, accepts changes only
+beneath `usr/lib/kernel-overlays/base/lib/modules/7.0.11`, and performs the
+full build twice. Exactly 99 module-tree nodes change; the resulting
+1,211,060,224-byte SYSTEM has SHA-256
+`bf8cb00a57f749483a986183e5aca396bf1f3f196996b20e703b43f26214ad11`.
+The committed candidate binding is `source-kernel-parity.tsv`.
 
 ## First Bird substitution candidate
 

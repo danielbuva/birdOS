@@ -312,7 +312,7 @@ awk -F '\t' -v expected_release="$RELEASE_ID" '
 	{ exit 1 }
 	END {
 		if (schema != 1 || release != 1 || policy != 1 || source != 1 ||
-		    inputs != 14 || files < 1 ||
+		    (inputs != 14 && inputs != 15) || files < 1 ||
 		    (artifacts != 0 && artifacts != 2) ||
 		    (artifacts == 2 && (device_contract != 1 || catalog != 1))) exit 1
 	}
@@ -343,6 +343,11 @@ printf '%s\n' KERNEL PortMaster.zip \
 	ROCKNIX-SYSTEM dtb.img initramfs/busybox initramfs/init \
 	rocknix-singleadc-joypad.ko usr/bin/autostart | \
 	LC_ALL=C sort >"$VERIFY_WORK/expected-inputs"
+if grep -Fqx source-kernel-parity.tsv "$MANIFEST_INPUTS"; then
+	printf '%s\n' source-kernel-parity.tsv >>"$VERIFY_WORK/expected-inputs"
+	LC_ALL=C sort -o "$VERIFY_WORK/expected-inputs" \
+		"$VERIFY_WORK/expected-inputs"
+fi
 cmp "$VERIFY_WORK/expected-inputs" "$MANIFEST_INPUTS" >/dev/null || \
 	fail 'canonical deploy manifest input set is incomplete or duplicated'
 awk -F '\t' '$1 == "file" || $1 == "dir" {print $2}' \

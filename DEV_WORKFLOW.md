@@ -291,6 +291,15 @@ Changes to `build-and-deploy.sh` or
 and complete release validation. Copying those scripts through `dev-current`
 would not test the production path they control.
 
+A canonical Stage 8 source-kernel parity release may still serve as the base
+for later birdOS-owned fast changes. Its manifest carries the additional
+`source-kernel-parity.tsv` authority record. When rebuilding the external Bird
+initramfs, the development workflow extracts the already verified joypad
+module from that immutable base and requires its digest and kernel authority to
+agree; it never substitutes the stock module or trusts an unsealed work output.
+Creating or changing the source kernel, module tree, parity record, or SYSTEM
+image remains full-release-only.
+
 The fast workflow never archives or deletes a production release to make
 space. It builds into a private host directory first, calculates space from the
 actual outputs, reports required and available byte counts, and stops without

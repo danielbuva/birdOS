@@ -61,10 +61,17 @@ EXPECTED_INPUTS = {
     "rocknix-singleadc-joypad.ko",
     "usr/bin/autostart",
 }
+OPTIONAL_SOURCE_KERNEL_INPUT = "source-kernel-parity.tsv"
+STOCK_JOYPAD_SHA256 = "a8ac6cacfa89672fa08dec7fa02179bb108a4a2303fd5c1eb5834f916089b79b"
+SOURCE_PARITY_JOYPAD_SHA256 = "fd2ceb95f0b3bdc1d68e7182a8ac5239b5286cc277a04980e53f65e0f73d3a05"
+SOURCE_PARITY_AUTHORITY_SHA256 = "c47082ef8189a86c14f212240670b65fce19e0362d4434d68e19036caadd1c4e"
 EARLY_INPUT_DIGESTS = {
     "initramfs/init": "3473415af0cf5df44e70259c3392817b1df421a12a617ec083ec018ff51dbc48",
     "initramfs/busybox": "5ee3d20d8ea5fd9b3ba5109da80599eaf46a5a337d9e40d4c67d28eef44d5dc8",
-    "rocknix-singleadc-joypad.ko": "a8ac6cacfa89672fa08dec7fa02179bb108a4a2303fd5c1eb5834f916089b79b",
+    "rocknix-singleadc-joypad.ko": {
+        STOCK_JOYPAD_SHA256,
+        SOURCE_PARITY_JOYPAD_SHA256,
+    },
 }
 
 RUNTIME_FILES = (
@@ -173,6 +180,7 @@ KNOWN_STANDALONE_HOST_TESTS = {
     "test-stock-root-suspend-policy.sh",
     "test-stock-root-unit-ordering.sh",
     "test-stock-root-updater.sh",
+    "test-source-kernel-system.sh",
 }
 BROAD_PRODUCT_HOST_TESTS = frozenset(
     {
@@ -843,7 +851,8 @@ def parse_manifest(path: pathlib.Path, expected_release: str | None = None) -> M
         fail("deploy manifest source state is invalid")
     if expected_release is not None and release_id != expected_release:
         fail(f"deploy manifest release mismatch: expected {expected_release}, got {release_id}")
-    if input_names != EXPECTED_INPUTS or len(inputs) != 14:
+    valid_input_sets = (EXPECTED_INPUTS, EXPECTED_INPUTS | {OPTIONAL_SOURCE_KERNEL_INPUT})
+    if input_names not in valid_input_sets or len(inputs) != len(input_names):
         fail("deploy manifest external-input set changed")
     if set(artifacts) != {"device-contract", "catalog"}:
         fail("deploy manifest artifact set changed")
@@ -854,14 +863,30 @@ def parse_manifest(path: pathlib.Path, expected_release: str | None = None) -> M
     return Manifest(release_id, source_commit, source_state, inputs, dirs, files, artifacts)
 
 
+def early_kernel_authority(manifest: Manifest) -> str:
+    joypad_digest = manifest.input_digests.get("rocknix-singleadc-joypad.ko")
+    source_authority = manifest.input_digests.get(OPTIONAL_SOURCE_KERNEL_INPUT)
+    has_source_authority = source_authority is not None
+    if joypad_digest == STOCK_JOYPAD_SHA256 and not has_source_authority:
+        return "stock"
+    if (
+        joypad_digest == SOURCE_PARITY_JOYPAD_SHA256
+        and source_authority == SOURCE_PARITY_AUTHORITY_SHA256
+    ):
+        return "source-parity"
+    fail("base release kernel authority and early joypad input do not agree")
+
+
 def verify_early_input_compatibility(manifest: Manifest) -> None:
     for name, expected in EARLY_INPUT_DIGESTS.items():
         actual = manifest.input_digests.get(name)
-        if actual != expected:
+        accepted = expected if isinstance(expected, set) else {expected}
+        if actual not in accepted:
             fail(
                 f"base release input {name} does not match the pinned external-initramfs builder; "
                 "use the full release workflow"
             )
+    early_kernel_authority(manifest)
 
 
 def effective_mode_ok(path: pathlib.Path, intended: str, synthetic: bool) -> bool:
@@ -1752,6 +1777,7 @@ def prepare_outputs(
     bird: pathlib.Path,
     data: pathlib.Path,
     base_release: str,
+    base_manifest: Manifest,
     groups: set[str],
     profile: str,
     work: pathlib.Path,
@@ -1884,6 +1910,16 @@ def prepare_outputs(
                 fail("host-test initramfs build fixture is required")
             copy_test_output(fixture, "bird-initramfs.cpio.gz", updates / "bird-initramfs.cpio.gz")
         else:
+            kernel_authority = early_kernel_authority(base_manifest)
+            base_initramfs = bird / "bird-releases" / base_release / "bird-initramfs.cpio.gz"
+            require_regular(base_initramfs, "base release external initramfs")
+            joypad = generated / "rocknix-singleadc-joypad.ko"
+            joypad.write_bytes(
+                extract_newc_member(base_initramfs, "opt/bird/rocknix-singleadc-joypad.ko")
+            )
+            expected_joypad = base_manifest.input_digests["rocknix-singleadc-joypad.ko"]
+            if sha256_file(joypad) != expected_joypad:
+                fail("base release early joypad does not match its deployment manifest")
             early_env = build_env.copy()
             early_env.update(
                 {
@@ -1893,6 +1929,8 @@ def prepare_outputs(
                     "BIRD_DEV_LOCAL_BUILD": "1",
                     "BIRD_REUSE_UBOOT_FRAME": "0",
                     "BIRD_BOOT_FRAME_VERIFIED_CONTRACT": "",
+                    "BIRD_KERNEL_AUTHORITY": kernel_authority,
+                    "JOYPAD": str(joypad),
                 }
             )
             run(["sh", str(root / "kernel/rocknix/build-stock-root-early-initramfs.sh")], cwd=root, env=early_env)
@@ -3195,6 +3233,7 @@ class Workflow:
                 self.bird,
                 self.data,
                 base_id,
+                base_manifest,
                 groups,
                 self.profile,
                 work,

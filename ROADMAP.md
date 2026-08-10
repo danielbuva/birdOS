@@ -1599,6 +1599,16 @@ config/tool/patch provenance, pass the full hardware/application matrix and
 compare boot, interaction, power, size and memory. Promote that source-built
 baseline before optimizing the kernel.
 
+The first current-userspace candidate is now host-qualified. Two isolated
+digest-pinned builds produced identical 28,239,880-byte Images, complete module
+archives, joypad modules, configurations, symbol versions and patch records.
+The 49,010-byte RG34XX-SP DTB is byte-identical to shipping. Two further
+isolated SYSTEM repacks replaced exactly 99 nodes beneath the Linux 7.0.11
+module tree while preserving every other accepted userspace node; both SYSTEM
+images are byte-identical and retain the accepted 1,211,060,224-byte size.
+This closes the host gate only. The source kernel is not the source-built
+baseline until the complete physical matrix and metric comparison pass.
+
 ## Stage 9 — Fixed-device kernel optimization
 
 The kernel owns panel initialization and cold brightness. Test standard DRM,

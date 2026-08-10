@@ -537,6 +537,11 @@ if "$COMMAND" --release --profile >"$TMP/args.out" 2>"$TMP/args.err"; then
 	fail 'mutually exclusive modes were accepted'
 fi
 grep -q 'choose exactly one' "$TMP/args.err"
+if "$COMMAND" --profile --source-kernel-parity \
+	>"$TMP/source-profile.out" 2>"$TMP/source-profile.err"; then
+	fail 'source-kernel parity was accepted in profile mode'
+fi
+grep -q -- '--source-kernel-parity requires --release' "$TMP/source-profile.err"
 if "$COMMAND" --release --release-id '../unsafe' >"$TMP/id.out" 2>"$TMP/id.err"; then
 	fail 'unsafe release ID was accepted'
 fi

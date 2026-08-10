@@ -29,13 +29,18 @@ case "$OUTPUT" in
 esac
 
 OFFICIAL_INIT_SHA=3473415af0cf5df44e70259c3392817b1df421a12a617ec083ec018ff51dbc48
-JOYPAD_SHA=a8ac6cacfa89672fa08dec7fa02179bb108a4a2303fd5c1eb5834f916089b79b
 INIT_BUSYBOX_SHA=5ee3d20d8ea5fd9b3ba5109da80599eaf46a5a337d9e40d4c67d28eef44d5dc8
 
 fail() {
 	printf 'error: %s\n' "$*" >&2
 	exit 1
 }
+
+case "${BIRD_KERNEL_AUTHORITY:-stock}" in
+	stock) JOYPAD_SHA=a8ac6cacfa89672fa08dec7fa02179bb108a4a2303fd5c1eb5834f916089b79b ;;
+	source-parity) JOYPAD_SHA=fd2ceb95f0b3bdc1d68e7182a8ac5239b5286cc277a04980e53f65e0f73d3a05 ;;
+	*) fail "unknown kernel authority: ${BIRD_KERNEL_AUTHORITY}" ;;
+esac
 
 validate_early_launcher_static_assets() {
 	EARLY_BASE=$PAYLOAD/opt/bird/launcher-base.xrgb

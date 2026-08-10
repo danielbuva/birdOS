@@ -116,6 +116,14 @@ birdOS currently changes the external initramfs overlay, launcher, fixed
 services, integration scripts and activation metadata. It does not claim to
 rebuild or trim the release kernel yet.
 
+Stage 8 now has one explicit production-only parity candidate. Its authority is
+[`kernel/rocknix/source-kernel-parity.tsv`](kernel/rocknix/source-kernel-parity.tsv):
+unmodified ROCKNIX 7.0.11 source and all modules, a shipping-identical DTB, the
+source-built H700 joypad module and the accepted current SYSTEM with only its
+module subtree replaced. The ordinary canonical path remains `stock`; the
+candidate requires `--source-kernel-parity` and cannot become the source-built
+baseline before the separate RG34XX-SP gate.
+
 ## Build and deployment
 
 Supported birdOS-owned local changes use

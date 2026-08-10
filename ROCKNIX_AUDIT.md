@@ -1068,23 +1068,27 @@ The v6.15 audit found the following generic work and defects. Only items marked
 
 ## Next active order
 
-1. Stabilize the mutable fast-development path through real `--changed` and
+1. Complete the Stage 8 physical parity gate for the reproducible unmodified
+   source kernel, complete source module tree, shipping-identical DTB and
+   accepted current userspace. Do not begin kernel subtraction until this exact
+   tuple is promoted as the source-built baseline.
+2. Stabilize the mutable fast-development path through real `--changed` and
    `--all-local` use. Record duration, rebuild scope, output clarity and actual
    cleanup/rollback failures; add safety states only from observed evidence or
    a direct production/data-loss risk.
-2. Keep p1 at 128 MiB with one immutable canonical base plus mutable
+3. Keep p1 at 128 MiB with one immutable canonical base plus mutable
    `dev-current`. Archive and independently verify superseded immutable releases
    in the private GitHub repository before removing their card copies. A failed
    boot persists its failure record and returns the card to the host; no fixed
    v5.4 fallback or old UI is retained.
-3. Preserve the accepted warm seatd/udevd choice, HDMI and Bluetooth until a
+4. Preserve the accepted warm seatd/udevd choice, HDMI and Bluetooth until a
    measured or explicit product decision changes them.
-4. Continue Stage 6 with the hermetic deterministic-image boundary while the
+5. Continue Stage 6 with the hermetic deterministic-image boundary while the
    transactional release system remains the development path and host recovery
    remains the failed-boot policy.
-5. Complete calibrated retained-service, content, idle and suspend power
+6. Complete calibrated retained-service, content, idle and suspend power
    measurements before another lifetime change.
-6. Re-measure menu, storage and application-contract boundaries before kernel
+7. Re-measure menu, storage and application-contract boundaries before kernel
    or U-Boot subtraction.
 
 ## Deliberately deferred

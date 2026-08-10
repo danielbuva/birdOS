@@ -234,6 +234,23 @@ write_manifest() {
 	sha256 "$MANIFEST" >"$RELEASE_ROOT/.complete"
 }
 
+convert_manifest_to_source_parity() {
+	MANIFEST=$BIRD/bird-releases/prod-a/deploy-manifest.tsv
+	SOURCE_JOYPAD=fd2ceb95f0b3bdc1d68e7182a8ac5239b5286cc277a04980e53f65e0f73d3a05
+	SOURCE_AUTHORITY=c47082ef8189a86c14f212240670b65fce19e0362d4434d68e19036caadd1c4e
+	awk -F '\t' -v OFS='\t' -v joypad="$SOURCE_JOYPAD" -v authority="$SOURCE_AUTHORITY" '
+		$1 == "input" && $2 == "rocknix-singleadc-joypad.ko" {
+			$5 = joypad
+			print
+			print "input", "source-kernel-parity.tsv", "644", "1", authority, "test:source-parity"
+			next
+		}
+		{ print }
+	' "$MANIFEST" >"$MANIFEST.new"
+	mv "$MANIFEST.new" "$MANIFEST"
+	sha256 "$MANIFEST" >"$BIRD/bird-releases/prod-a/.complete"
+}
+
 create_release() {
 	RELEASE_ID=$1
 	RELEASE_ROOT=$BIRD/bird-releases/$RELEASE_ID
@@ -530,7 +547,7 @@ sys.modules[spec.name] = module
 assert spec.loader is not None
 spec.loader.exec_module(module)
 assert module.all_component_groups() == set(module.COMPONENT_HOST_TESTS)
-assert len(module.BROAD_PRODUCT_HOST_TESTS) == 39
+assert len(module.BROAD_PRODUCT_HOST_TESTS) == 40
 assert "test-dev-build-and-deploy.sh" in module.BROAD_PRODUCT_HOST_TESTS
 assert module.host_test_command(bash_test)[:1] == ["/bin/bash"]
 assert module.host_test_command(sh_test)[:1] == ["/bin/sh"]
@@ -1729,5 +1746,31 @@ grep -q '^selector-kind[[:space:]]*development$' "$CASE_ROOT/status.out"
 grep -q '^dev-current-verifies[[:space:]]*yes$' "$CASE_ROOT/status.out"
 assert_base_and_fallback_unchanged
 pass 'dev process authorities and immutable SYSTEM base are specialized independently'
+
+new_case source-parity-authority-mismatch
+MANIFEST=$BIRD/bird-releases/prod-a/deploy-manifest.tsv
+sed -i '' \
+	's/a8ac6cacfa89672fa08dec7fa02179bb108a4a2303fd5c1eb5834f916089b79b/fd2ceb95f0b3bdc1d68e7182a8ac5239b5286cc277a04980e53f65e0f73d3a05/' \
+	"$MANIFEST"
+sha256 "$MANIFEST" >"$BIRD/bird-releases/prod-a/.complete"
+BEFORE=$(tree_digest "$BIRD")
+if run_dev --changed >"$CASE_ROOT/source-mismatch.out" 2>"$CASE_ROOT/source-mismatch.err"; then
+	fail 'source joypad without its source-kernel authority was accepted'
+fi
+grep -q 'kernel authority and early joypad input do not agree' \
+	"$CASE_ROOT/source-mismatch.err"
+[ "$(tree_digest "$BIRD")" = "$BEFORE" ]
+pass 'source joypad and source-kernel authority must be bound together'
+
+new_case source-parity-base
+convert_manifest_to_source_parity
+BASE_BEFORE=$(tree_digest "$BIRD/bird-releases/prod-a")
+run_dev --changed >"$CASE_ROOT/source-parity.out"
+awk -F '\t' '$1 == "input" && $2 == "source-kernel-parity.tsv" && \
+	$5 == "c47082ef8189a86c14f212240670b65fce19e0362d4434d68e19036caadd1c4e" { found = 1 } \
+	END { exit !found }' "$BIRD/bird-releases/dev-current/deploy-manifest.tsv"
+[ "$(selector_release)" = dev-current ]
+assert_base_and_fallback_unchanged
+pass 'a verified source-kernel production base initializes dev-current'
 
 printf 'PASS: %s dev-current host transaction cases\n' "$PASS_COUNT"

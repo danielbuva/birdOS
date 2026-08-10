@@ -29,13 +29,33 @@ CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
 LLD=${LLD:-/opt/homebrew/opt/lld/bin/ld.lld}
 READELF=${READELF:-/opt/homebrew/opt/llvm/bin/llvm-readelf}
 
-KERNEL_SHA=af4e75cb30b097ee5764764eb056d686bc00c6bd03fefece26b0ebbaa7fbb673
-DTB_SHA=f3a4273986d6e4f431b110cead8aa19e8da52ff08c64c4b204ef9664d28b5c31
-SYSTEM_SHA=214ae075864fbe848f0fc6c31d4bec68778a111efb2ed1de78366446348d2af4
+KERNEL_AUTHORITY=${BIRD_KERNEL_AUTHORITY:-stock}
+case "$KERNEL_AUTHORITY" in
+	stock)
+		KERNEL_SHA=af4e75cb30b097ee5764764eb056d686bc00c6bd03fefece26b0ebbaa7fbb673
+		DTB_SHA=f3a4273986d6e4f431b110cead8aa19e8da52ff08c64c4b204ef9664d28b5c31
+		SYSTEM_SHA=214ae075864fbe848f0fc6c31d4bec68778a111efb2ed1de78366446348d2af4
+		JOYPAD_SHA=a8ac6cacfa89672fa08dec7fa02179bb108a4a2303fd5c1eb5834f916089b79b
+		KERNEL_PROVIDER='ROCKNIX-H700-20260701:KERNEL'
+		DTB_PROVIDER='ROCKNIX-H700-20260701:dtb.img'
+		SYSTEM_PROVIDER='ROCKNIX-H700-20260701:SYSTEM'
+		JOYPAD_PROVIDER='ROCKNIX-SYSTEM:kernel-overlay/rocknix-singleadc-joypad.ko'
+		;;
+	source-parity)
+		KERNEL_SHA=2b71f1405c222c4416f7a42613a190789c976f63755df0b299f1dcaee0b65990
+		DTB_SHA=f3a4273986d6e4f431b110cead8aa19e8da52ff08c64c4b204ef9664d28b5c31
+		SYSTEM_SHA=bf8cb00a57f749483a986183e5aca396bf1f3f196996b20e703b43f26214ad11
+		JOYPAD_SHA=fd2ceb95f0b3bdc1d68e7182a8ac5239b5286cc277a04980e53f65e0f73d3a05
+		KERNEL_PROVIDER='bird-source-parity:linux-7.0.11:Image'
+		DTB_PROVIDER='bird-source-parity:ROCKNIX-H700:dtb.img'
+		SYSTEM_PROVIDER='bird-source-parity:accepted-SYSTEM+source-modules'
+		JOYPAD_PROVIDER='bird-source-parity:rocknix-singleadc-joypad.ko'
+		;;
+	*) printf 'error: unknown kernel authority: %s\n' "$KERNEL_AUTHORITY" >&2; exit 1 ;;
+esac
 STORAGE_SHA=12affdad7bc2042cb590fea60fc015a7ee8d4374ebcc3b1c11098a64b9ffa3be
 AUTOSTART_SHA=7f8671aa1bb9239a193f84e667d55e169f983bcb015d98c345b60d0b80a77639
 OFFICIAL_INIT_SHA=3473415af0cf5df44e70259c3392817b1df421a12a617ec083ec018ff51dbc48
-JOYPAD_SHA=a8ac6cacfa89672fa08dec7fa02179bb108a4a2303fd5c1eb5834f916089b79b
 INIT_BUSYBOX_SHA=5ee3d20d8ea5fd9b3ba5109da80599eaf46a5a337d9e40d4c67d28eef44d5dc8
 SYSTEM_BUSYBOX_SHA=b90f5f58dd5c39348f7be9bbef79b349f51e6ac0117b217691e2701d73714b38
 PORTMASTER_ARCHIVE_SHA=9d6f25d461afced95569923a57c6a9c42df225190c043d74fe2ec0edcf40a477
@@ -49,6 +69,8 @@ JOYPAD=${JOYPAD:-$ROOT/kernel/work/rocknix-system-exact-20260701/usr/lib/kernel-
 INIT_BUSYBOX=${INIT_BUSYBOX:-$ROOT/kernel/work/rocknix-official-initramfs-20260701/ramdisk/usr/bin/busybox}
 SYSTEM_BUSYBOX=${SYSTEM_BUSYBOX:-$SYSTEM_TREE/usr/bin/busybox}
 PORTMASTER_ARCHIVE=${PORTMASTER_ARCHIVE:-$SYSTEM_TREE/usr/config/PortMaster/release/PortMaster.zip}
+SOURCE_KERNEL_AUTHORITY_RECORD=${SOURCE_KERNEL_AUTHORITY_RECORD:-$ROOT/kernel/rocknix/source-kernel-parity.tsv}
+SOURCE_KERNEL_AUTHORITY_SHA=c47082ef8189a86c14f212240670b65fce19e0362d4434d68e19036caadd1c4e
 
 case "$OUTPUT" in
 	/*) ;;
@@ -203,6 +225,13 @@ is_regular_file "$SYSTEM_BUSYBOX" || fail 'extracted exact SYSTEM BusyBox missin
 is_regular_file "$SYSTEM_MASK_POLICY" || fail 'hermetic SYSTEM mask policy missing or not regular'
 is_regular_file "$SYSTEM_OVERRIDE_POLICY" || fail 'hermetic SYSTEM fixed-file policy missing or not regular'
 is_regular_file "$PORTMASTER_ARCHIVE" || fail 'exact PortMaster archive missing or not regular'
+if [ "$KERNEL_AUTHORITY" = source-parity ]; then
+	is_regular_file "$SOURCE_KERNEL_AUTHORITY_RECORD" || \
+		fail 'source-kernel parity authority missing or unsafe'
+	[ "$(sha256 "$SOURCE_KERNEL_AUTHORITY_RECORD")" = \
+		"$SOURCE_KERNEL_AUTHORITY_SHA" ] || \
+		fail 'source-kernel parity authority changed'
+fi
 [ "$(sha256 "$SOURCE/KERNEL")" = "$KERNEL_SHA" ] || fail 'release KERNEL changed'
 [ "$(sha256 "$SOURCE/dtb.img")" = "$DTB_SHA" ] || fail 'release DTB changed'
 [ "$(sha256 "$SYSTEM_SOURCE")" = "$SYSTEM_SHA" ] || fail 'release SYSTEM changed'
@@ -307,6 +336,7 @@ build_bird_local_binary bird-mpv-controls bird-mpv-controls
 build_bird_local_binary bird-powerstate bird-powerstate
 
 OUTPUT="$OUTPUT" OFFICIAL_INIT="$OFFICIAL_INIT" JOYPAD="$JOYPAD" \
+	BIRD_KERNEL_AUTHORITY="$KERNEL_AUTHORITY" \
 	INIT_BUSYBOX="$INIT_BUSYBOX" \
 	"$ROOT/kernel/rocknix/build-stock-root-early-initramfs.sh"
 
@@ -730,11 +760,11 @@ grep -q '^PLATFORM_STAGE=/run/bird/fixed-platform$' \
 	"$OUTPUT/card/bird/999-export" || fail 'fixed platform readiness input missing'
 grep -q '^SWAY_STAGE=/run/bird/fixed-sway$' \
 	"$OUTPUT/card/bird/999-export" || fail 'fixed Sway readiness input missing'
-grep -Fq 'cmp -s "$PLATFORM_STAGE/$PROFILE_NAME" "$PROFILE_DIR/$PROFILE_NAME"' \
+grep -Fq 'text_files_match "$PLATFORM_STAGE/$PROFILE_NAME" "$PROFILE_DIR/$PROFILE_NAME"' \
 	"$OUTPUT/card/bird/999-export" || fail 'fixed platform readiness validation missing'
-grep -Fq 'cmp -s "$SWAY_STAGE/config" "$SWAY_CONFIG"' \
+grep -Fq 'text_files_match "$SWAY_STAGE/config" "$SWAY_CONFIG"' \
 	"$OUTPUT/card/bird/999-export" || fail 'fixed Sway config validation missing'
-grep -Fq 'cmp -s "$SWAY_STAGE/095-sway" "$SWAY_PROFILE"' \
+grep -Fq 'text_files_match "$SWAY_STAGE/095-sway" "$SWAY_PROFILE"' \
 	"$OUTPUT/card/bird/999-export" || fail 'fixed Sway profile validation missing'
 grep -Fq 'mv -f "$READY_TMP" "$READY"' \
 	"$OUTPUT/card/bird/999-export" || fail 'atomic application marker publication missing'
@@ -1224,13 +1254,13 @@ fi
 		'launcher/catalog.generated.h' "$CATALOG_SHA"
 	printf 'input\tKERNEL\t%s\t%s\t%s\t%s\n' \
 		"$(file_mode "$SOURCE/KERNEL")" "$(file_bytes "$SOURCE/KERNEL")" \
-		"$KERNEL_SHA" 'ROCKNIX-H700-20260701:KERNEL'
+		"$KERNEL_SHA" "$KERNEL_PROVIDER"
 	printf 'input\tdtb.img\t%s\t%s\t%s\t%s\n' \
 		"$(file_mode "$SOURCE/dtb.img")" "$(file_bytes "$SOURCE/dtb.img")" \
-		"$DTB_SHA" 'ROCKNIX-H700-20260701:dtb.img'
+		"$DTB_SHA" "$DTB_PROVIDER"
 	printf 'input\tROCKNIX-SYSTEM\t%s\t%s\t%s\t%s\n' \
 		"$(file_mode "$SYSTEM_SOURCE")" "$(file_bytes "$SYSTEM_SOURCE")" \
-		"$SYSTEM_SHA" 'ROCKNIX-H700-20260701:SYSTEM'
+		"$SYSTEM_SHA" "$SYSTEM_PROVIDER"
 	printf 'input\tROCKNIX-STORAGE\t%s\t%s\t%s\t%s\n' \
 		"$(file_mode "$STORAGE")" "$(file_bytes "$STORAGE")" \
 		"$STORAGE_SHA" 'ROCKNIX-H700-20260701:STORAGE'
@@ -1243,7 +1273,14 @@ fi
 		"$OFFICIAL_INIT_SHA" 'ROCKNIX-initramfs:/init'
 	printf 'input\trocknix-singleadc-joypad.ko\t%s\t%s\t%s\t%s\n' \
 		"$(file_mode "$JOYPAD")" "$(file_bytes "$JOYPAD")" "$JOYPAD_SHA" \
-		'ROCKNIX-SYSTEM:kernel-overlay/rocknix-singleadc-joypad.ko'
+		"$JOYPAD_PROVIDER"
+	if [ "$KERNEL_AUTHORITY" = source-parity ]; then
+		printf 'input\tsource-kernel-parity.tsv\t%s\t%s\t%s\t%s\n' \
+			"$(file_mode "$SOURCE_KERNEL_AUTHORITY_RECORD")" \
+			"$(file_bytes "$SOURCE_KERNEL_AUTHORITY_RECORD")" \
+			"$SOURCE_KERNEL_AUTHORITY_SHA" \
+			'birdOS:kernel/rocknix/source-kernel-parity.tsv'
+	fi
 	printf 'input\tinitramfs/busybox\t%s\t%s\t%s\t%s\n' \
 		"$(file_mode "$INIT_BUSYBOX")" "$(file_bytes "$INIT_BUSYBOX")" \
 		"$INIT_BUSYBOX_SHA" 'ROCKNIX-initramfs:/usr/bin/busybox'
@@ -1283,7 +1320,7 @@ fi
 mv -f "$MANIFEST_TEMP" "$MANIFEST"
 
 printf 'Built exact ROCKNIX compatibility baseline: %s\n' "$OUTPUT"
-printf 'KERNEL remains byte-identical to release 20260701: %s\n' "$KERNEL_SHA"
+printf 'Kernel authority: %s (%s)\n' "$KERNEL_AUTHORITY" "$KERNEL_SHA"
 printf 'Bird launcher: %s\n' "$(sha256 "$OUTPUT/card/bird/bird-launcher")"
 printf 'Early overlay: %s\n' "$(sha256 "$OUTPUT/card/bird-initramfs.cpio.gz")"
 printf 'Canonical deploy manifest: %s (%s)\n' "$MANIFEST" "$(sha256 "$MANIFEST")"

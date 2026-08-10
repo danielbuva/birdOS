@@ -6,6 +6,7 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
 BASE_RELEASE_ID=v6.23
 MODE=
+KERNEL_AUTHORITY=stock
 REQUESTED_RELEASE_ID=
 DRY_RUN=0
 HOST_TEST_MODE=${BIRD_BUILD_DEPLOY_HOST_TEST_MODE:-0}
@@ -30,7 +31,7 @@ ROTATION_SELECTOR_TEMP=
 usage() {
 	cat <<'EOF'
 Usage:
-  ./build-and-deploy.sh --release [--release-id ID] [--dry-run]
+  ./build-and-deploy.sh --release [--source-kernel-parity] [--release-id ID] [--dry-run]
   ./build-and-deploy.sh --profile [--release-id ID] [--dry-run]
   ./build-and-deploy.sh --help
 
@@ -42,6 +43,10 @@ Options:
   --release-id ID Use ID as the preferred immutable release ID. If that ID is
                   already present on the card or in the GitHub archive, a
                   timestamped unused ID is selected.
+  --source-kernel-parity
+                  Build the pinned Stage 8 source kernel, source modules,
+                  shipping-identical DTB and accepted current userspace.
+                  Valid only with --release.
   --dry-run       Perform read-only preflight and print the selected commands.
   --help          Show this help text.
 
@@ -95,6 +100,11 @@ while [ "$#" -gt 0 ]; do
 	case "$1" in
 		--profile) set_mode profile ;;
 		--release) set_mode release ;;
+		--source-kernel-parity)
+			[ "$KERNEL_AUTHORITY" = stock ] || \
+				fail '--source-kernel-parity was supplied more than once'
+			KERNEL_AUTHORITY=source-parity
+			;;
 		--release-id)
 			[ "$#" -ge 2 ] || fail '--release-id requires a value'
 			[ -z "$REQUESTED_RELEASE_ID" ] || fail '--release-id was supplied more than once'
@@ -115,6 +125,8 @@ while [ "$#" -gt 0 ]; do
 done
 
 [ -n "$MODE" ] || fail 'choose exactly one of --profile or --release'
+[ "$KERNEL_AUTHORITY" = stock ] || [ "$MODE" = release ] || \
+	fail '--source-kernel-parity requires --release'
 [ -n "$REQUESTED_RELEASE_ID" ] || REQUESTED_RELEASE_ID=$BASE_RELEASE_ID
 case "$REQUESTED_RELEASE_ID" in
 	''|[![:alnum:]]*|*[![:alnum:]._-]*) fail "unsafe Bird release ID: $REQUESTED_RELEASE_ID" ;;
@@ -216,6 +228,9 @@ STORAGE_SOURCE=${STORAGE_SOURCE:-$HOME/rocknix-reference-result/storage.ext4}
 SYSTEM_TREE=${SYSTEM_TREE:-$ROOT/kernel/work/rocknix-system-exact-20260701}
 OFFICIAL_INIT=${OFFICIAL_INIT:-$ROOT/kernel/work/rocknix-official-initramfs-20260701/ramdisk/init}
 JOYPAD=${JOYPAD:-$ROOT/kernel/work/rocknix-system-exact-20260701/usr/lib/kernel-overlays/base/lib/modules/7.0.11/rocknix-joypad/rocknix-singleadc-joypad.ko}
+SOURCE_KERNEL_BUILD=$ROOT/kernel/work/rocknix-source-reference/build
+SOURCE_KERNEL_SYSTEM=$ROOT/kernel/work/rocknix-source-kernel-system/SYSTEM
+SOURCE_KERNEL_AUTHORITY_RECORD=$ROOT/kernel/rocknix/source-kernel-parity.tsv
 INIT_BUSYBOX=${INIT_BUSYBOX:-$ROOT/kernel/work/rocknix-official-initramfs-20260701/ramdisk/usr/bin/busybox}
 PORTMASTER_ARCHIVE=${PORTMASTER_ARCHIVE:-$SYSTEM_TREE/usr/config/PortMaster/release/PortMaster.zip}
 KOREADER_CATALOG_HEADER=$ROOT/launcher/catalog.generated.h
@@ -601,6 +616,43 @@ prepare_versioned_build_source() {
 }
 
 prepare_versioned_build_source
+
+if [ "$KERNEL_AUTHORITY" = source-parity ]; then
+	for SOURCE_PARITY_INPUT in \
+		"$SOURCE_KERNEL_BUILD/Image" \
+		"$SOURCE_KERNEL_BUILD/sun50i-h700-anbernic-rg34xx-sp.dtb" \
+		"$SOURCE_KERNEL_BUILD/modules.tar.xz" \
+		"$SOURCE_KERNEL_BUILD/rocknix-singleadc-joypad.ko" \
+		"$SOURCE_KERNEL_BUILD/parity.tsv" \
+		"$SOURCE_KERNEL_SYSTEM" "$SOURCE_KERNEL_AUTHORITY_RECORD"; do
+		is_regular_file "$SOURCE_PARITY_INPUT" || \
+			fail "source-kernel parity input missing or unsafe: $SOURCE_PARITY_INPUT"
+	done
+	[ "$(sha256 "$SOURCE_KERNEL_BUILD/Image")" = \
+		2b71f1405c222c4416f7a42613a190789c976f63755df0b299f1dcaee0b65990 ] && \
+	[ "$(sha256 "$SOURCE_KERNEL_BUILD/sun50i-h700-anbernic-rg34xx-sp.dtb")" = \
+		f3a4273986d6e4f431b110cead8aa19e8da52ff08c64c4b204ef9664d28b5c31 ] && \
+	[ "$(sha256 "$SOURCE_KERNEL_BUILD/modules.tar.xz")" = \
+		7267770aecb39069bbd5275b4538a9bb666e906cdabc844b275652603e1ad52e ] && \
+	[ "$(sha256 "$SOURCE_KERNEL_BUILD/rocknix-singleadc-joypad.ko")" = \
+		fd2ceb95f0b3bdc1d68e7182a8ac5239b5286cc277a04980e53f65e0f73d3a05 ] && \
+	[ "$(sha256 "$SOURCE_KERNEL_BUILD/parity.tsv")" = \
+		614efb04b02f21c0f329085ffa9d2d59a6a99cd1f5a9f983cdb1880fe1c88a30 ] && \
+	[ "$(sha256 "$SOURCE_KERNEL_SYSTEM")" = \
+		bf8cb00a57f749483a986183e5aca396bf1f3f196996b20e703b43f26214ad11 ] && \
+	[ "$(sha256 "$SOURCE_KERNEL_AUTHORITY_RECORD")" = \
+		c47082ef8189a86c14f212240670b65fce19e0362d4434d68e19036caadd1c4e ] || \
+		fail 'source-kernel parity input digest changed'
+	SOURCE=$RUN_TEMP/source-kernel-input
+	mkdir "$SOURCE"
+	COPYFILE_DISABLE=1 cp -p "$SOURCE_KERNEL_BUILD/Image" "$SOURCE/KERNEL"
+	COPYFILE_DISABLE=1 cp -p \
+		"$SOURCE_KERNEL_BUILD/sun50i-h700-anbernic-rg34xx-sp.dtb" \
+		"$SOURCE/dtb.img"
+	JOYPAD=$SOURCE_KERNEL_BUILD/rocknix-singleadc-joypad.ko
+	SYSTEM_SOURCE=$SOURCE_KERNEL_SYSTEM
+	BUILD_SOURCE=$SOURCE
+fi
 
 # A caller may supply a newly generated hermetic SYSTEM. Ordinary later builds
 # reuse the selected release's version-scoped canonical SYSTEM. The legacy muOS
@@ -1499,6 +1551,8 @@ run_builder_preflight() {
 		CLANG="$CLANG" LLD="$LLD" READELF="$READELF" \
 		OFFICIAL_INIT="$OFFICIAL_INIT" \
 		JOYPAD="$JOYPAD" INIT_BUSYBOX="$INIT_BUSYBOX" \
+		BIRD_KERNEL_AUTHORITY="$KERNEL_AUTHORITY" \
+		SOURCE_KERNEL_AUTHORITY_RECORD="$SOURCE_KERNEL_AUTHORITY_RECORD" \
 		PORTMASTER_ARCHIVE="$PORTMASTER_ARCHIVE" "$BUILDER"
 		return
 	fi
@@ -1509,6 +1563,8 @@ run_builder_preflight() {
 		SYSTEM_TREE="$SYSTEM_TREE" OUTPUT="$OUTPUT" CLANG="$CLANG" LLD="$LLD" \
 		READELF="$READELF" \
 		OFFICIAL_INIT="$OFFICIAL_INIT" JOYPAD="$JOYPAD" INIT_BUSYBOX="$INIT_BUSYBOX" \
+		BIRD_KERNEL_AUTHORITY="$KERNEL_AUTHORITY" \
+		SOURCE_KERNEL_AUTHORITY_RECORD="$SOURCE_KERNEL_AUTHORITY_RECORD" \
 		PORTMASTER_ARCHIVE="$PORTMASTER_ARCHIVE" "$BUILDER"
 	)
 }
@@ -1616,6 +1672,8 @@ run_builder() {
 		SYSTEM_TREE="$SYSTEM_TREE" OUTPUT="$OUTPUT" CLANG="$CLANG" LLD="$LLD" \
 		READELF="$READELF" \
 		OFFICIAL_INIT="$OFFICIAL_INIT" JOYPAD="$JOYPAD" INIT_BUSYBOX="$INIT_BUSYBOX" \
+		BIRD_KERNEL_AUTHORITY="$KERNEL_AUTHORITY" \
+		SOURCE_KERNEL_AUTHORITY_RECORD="$SOURCE_KERNEL_AUTHORITY_RECORD" \
 		PORTMASTER_ARCHIVE="$PORTMASTER_ARCHIVE" "$BUILDER"
 		return
 	fi
@@ -1626,6 +1684,8 @@ run_builder() {
 		CLANG="$CLANG" LLD="$LLD" READELF="$READELF" \
 		OFFICIAL_INIT="$OFFICIAL_INIT" \
 		JOYPAD="$JOYPAD" INIT_BUSYBOX="$INIT_BUSYBOX" \
+		BIRD_KERNEL_AUTHORITY="$KERNEL_AUTHORITY" \
+		SOURCE_KERNEL_AUTHORITY_RECORD="$SOURCE_KERNEL_AUTHORITY_RECORD" \
 		PORTMASTER_ARCHIVE="$PORTMASTER_ARCHIVE" "$BUILDER"
 	)
 }
@@ -1645,7 +1705,10 @@ validate_manifest() {
 	CANDIDATE_DIRS=$RUN_TEMP/candidate-dirs
 	DUPLICATES=$RUN_TEMP/manifest-duplicates
 	TAB=$(printf '\t')
-	awk -F '\t' -v expected_release="$RELEASE_ID" '
+	EXPECTED_MANIFEST_INPUT_COUNT=14
+	[ "$KERNEL_AUTHORITY" = stock ] || EXPECTED_MANIFEST_INPUT_COUNT=15
+	awk -F '\t' -v expected_release="$RELEASE_ID" \
+		-v expected_inputs="$EXPECTED_MANIFEST_INPUT_COUNT" '
 		function safe_path(path) {
 			return path ~ /^[A-Za-z0-9._\/-]+$/ && path !~ /(^|\/)\.\.?($|\/)/
 		}
@@ -1678,7 +1741,7 @@ validate_manifest() {
 		{exit 1}
 		END {
 			if (schema != 1 || release != 1 || policy != 1 || source != 1 ||
-			    inputs != 14 || files < 1 || artifacts != 2 ||
+			    inputs != expected_inputs || files < 1 || artifacts != 2 ||
 			    device_contract != 1 || catalog != 1) exit 1
 		}
 	' "$MANIFEST" >"$RECORDS" || fail 'canonical deploy manifest is malformed or has the wrong release ID'
@@ -1710,6 +1773,10 @@ validate_manifest() {
 		ROCKNIX-SYSTEM dtb.img initramfs/busybox initramfs/init \
 		rocknix-singleadc-joypad.ko usr/bin/autostart | LC_ALL=C sort \
 		>"$RUN_TEMP/expected-inputs"
+	if [ "$KERNEL_AUTHORITY" = source-parity ]; then
+		printf '%s\n' source-kernel-parity.tsv >>"$RUN_TEMP/expected-inputs"
+		LC_ALL=C sort -o "$RUN_TEMP/expected-inputs" "$RUN_TEMP/expected-inputs"
+	fi
 	cmp "$RUN_TEMP/expected-inputs" "$RUN_TEMP/manifest-inputs" >/dev/null || \
 		fail 'canonical deploy manifest input set is incomplete or duplicated'
 	awk -F '\t' '$1 == "file" {print $2}' "$RECORDS" | LC_ALL=C sort >"$MANIFEST_PATHS"
