@@ -467,11 +467,7 @@ if load_early_launcher; then
 else
 	archive_early_launcher
 fi
-if ! service_handoff_action; then
-	printf 'bird completed early action not accepted; supervisor retry required uptime='
-	uptime_now
-	exit 1
-fi
+service_handoff_action
 
 while :; do
 	rm -f "$FIRST_FRAME"

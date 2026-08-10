@@ -1155,10 +1155,8 @@ if grep -Eq 'systemctl reboot --force|startup_backoff|runtime_backoff' \
 fi
 grep -Fq 'read_completed_handoff_action || return 0' \
 	"$OUTPUT/card/bird/supervisor.sh" || fail 'completed early action validation missing'
-grep -Fq 'accept_completed_early_action || return 1' \
-	"$OUTPUT/card/bird/supervisor.sh" || fail 'pre-dispatch boot-health transaction missing'
-grep -Fq 'if ! service_handoff_action; then' \
-	"$OUTPUT/card/bird/supervisor.sh" || fail 'failed early health retry gate missing'
+grep -Fqx 'service_handoff_action' \
+	"$OUTPUT/card/bird/supervisor.sh" || fail 'early handoff dispatch missing'
 
 # Recovery keeps one complete native XRGB base outside the launcher binary.
 # Validate the exact budgeted file after every copy and generated file so the
