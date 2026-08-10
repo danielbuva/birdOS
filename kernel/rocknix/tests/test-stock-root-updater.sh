@@ -99,6 +99,9 @@ LEGACY_RUNTIME=$DATA/MUOS/runtime/ROCKNIX-SYSTEM
 mkdir -p "$CARD/bird" "$CARD/extlinux" "$BIRD/bird" "$BIRD/extlinux" \
 	"$DATA/MUOS/runtime" "$DATA/Bird/boot-state/releases/v6.22" \
 	"$DATA/ROMS/Ports/PortMaster" "$CARD/bird/empty-runtime"
+mkdir -p "$DATA/Bird/runtime/$UPDATER_RELEASE_ID"
+printf 'AppleDouble fixture\n' \
+	>"$DATA/Bird/runtime/$UPDATER_RELEASE_ID/._ROCKNIX-SYSTEM"
 printf 'revision\tbird-canonical-namespace-v1\nstate\tcommitted\n' \
 	>"$DATA/Bird/namespace-v1.tsv"
 
@@ -763,6 +766,8 @@ grep -Fq 'Production omits the serial console and has no alternate boot target.'
 [ ! -e "$BIRD/extlinux/extlinux.fallback.conf" ]
 [ ! -e "$DATA/Bird/boot-state/releases" ]
 [ -f "$RUNTIME" ] && cmp "$SYSTEM_INSTALL_SOURCE" "$RUNTIME"
+[ ! -e "${RUNTIME%/*}/._ROCKNIX-SYSTEM" ] && \
+	[ ! -L "${RUNTIME%/*}/._ROCKNIX-SYSTEM" ]
 [ ! -e "$LEGACY_RUNTIME" ] && [ ! -L "$LEGACY_RUNTIME" ]
 [ ! -e "$CARD_LOCK" ] && [ ! -L "$CARD_LOCK" ]
 

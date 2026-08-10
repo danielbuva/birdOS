@@ -632,6 +632,15 @@ else
 	[ "$(sha256 "$RUNTIME")" = "$RUNTIME_SHA" ] || \
 		fail 'release SYSTEM commit verification failed'
 fi
+RUNTIME_SIDECAR=$RUNTIME_RELEASE_ROOT/._ROCKNIX-SYSTEM
+if is_regular_file "$RUNTIME_SIDECAR"; then
+	rm -f "$RUNTIME_SIDECAR"
+elif [ -e "$RUNTIME_SIDECAR" ] || [ -L "$RUNTIME_SIDECAR" ]; then
+	fail 'release SYSTEM AppleDouble is unsafe'
+fi
+sync
+[ ! -e "$RUNTIME_SIDECAR" ] && [ ! -L "$RUNTIME_SIDECAR" ] || \
+	fail 'release SYSTEM AppleDouble remains after publication'
 [ "$(sha256 "$STORAGE_SOURCE")" = "$STORAGE_SHA" ] || fail 'reference STORAGE changed'
 # PortMaster may update itself over the network, but an offline birdOS
 # deployment accepts only a revision whose complete managed inventory has been

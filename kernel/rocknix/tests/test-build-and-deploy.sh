@@ -472,6 +472,7 @@ add_release_system_runtime() {
 	RUNTIME_FILE=$RUNTIME_ROOT/ROCKNIX-SYSTEM
 	mkdir -p "$RUNTIME_ROOT"
 	printf 'release SYSTEM %s\n' "$RUNTIME_RELEASE_ID" >"$RUNTIME_FILE"
+	printf 'AppleDouble fixture\n' >"$RUNTIME_ROOT/._ROCKNIX-SYSTEM"
 	RUNTIME_MANIFEST=$RUNTIME_RELEASE/deploy-manifest.tsv
 	RUNTIME_MANIFEST_NEW=$RUNTIME_RELEASE/.deploy-manifest.tsv.new
 	awk -F '\t' -v mode="$(mode "$RUNTIME_FILE")" \
@@ -1266,6 +1267,7 @@ grep -Fq 'bird_release=v6.23' "$BIRD/extlinux/extlinux.conf"
 [ ! -e "$BIRD/KERNEL.fallback" ]
 [ ! -e "$BIRD/dtb.img" ]
 [ -f "$DATA/Bird/runtime/active/ROCKNIX-SYSTEM" ]
+[ -f "$DATA/Bird/runtime/active/._ROCKNIX-SYSTEM" ]
 
 # Historical fixed-fallback and pre-versioned-root cases below no longer apply
 # after the single-selector boot-contract subtraction.

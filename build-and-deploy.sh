@@ -1288,13 +1288,22 @@ archive_and_remove_retired_release() {
 	validate_retired_release "$RETIRED_DIR" "$RETIRED_ID"
 	RETIRED_SYSTEM_ROOT=$DATA/Bird/runtime/$RETIRED_ID
 	RETIRED_SYSTEM=$RETIRED_SYSTEM_ROOT/ROCKNIX-SYSTEM
+	RETIRED_SYSTEM_SIDECAR=$RETIRED_SYSTEM_ROOT/._ROCKNIX-SYSTEM
 	RETIRED_SYSTEM_PRESENT=0
 	if [ -e "$RETIRED_SYSTEM_ROOT" ] || [ -L "$RETIRED_SYSTEM_ROOT" ]; then
 		[ -d "$RETIRED_SYSTEM_ROOT" ] && [ ! -L "$RETIRED_SYSTEM_ROOT" ] || \
 			fail "retired release SYSTEM directory is unsafe: $RETIRED_ID"
-		[ "$(find "$RETIRED_SYSTEM_ROOT" -mindepth 1 -maxdepth 1 -print | wc -l | tr -d ' ')" = 1 ] && \
-			is_regular_file "$RETIRED_SYSTEM" || \
+		if find "$RETIRED_SYSTEM_ROOT" -mindepth 1 -maxdepth 1 \
+			! -path "$RETIRED_SYSTEM" ! -path "$RETIRED_SYSTEM_SIDECAR" \
+			-print -quit | grep -q .; then
 			fail "retired release SYSTEM directory has an unexpected inventory: $RETIRED_ID"
+		fi
+		is_regular_file "$RETIRED_SYSTEM" || \
+			fail "retired release SYSTEM is missing or unsafe: $RETIRED_ID"
+		if [ -e "$RETIRED_SYSTEM_SIDECAR" ] || [ -L "$RETIRED_SYSTEM_SIDECAR" ]; then
+			is_regular_file "$RETIRED_SYSTEM_SIDECAR" || \
+				fail "retired release SYSTEM AppleDouble is unsafe: $RETIRED_ID"
+		fi
 		RETIRED_SYSTEM_BYTES=$(awk -F '\t' '
 			$1 == "input" && $2 == "ROCKNIX-SYSTEM" {print $4; found++}
 			END {if (found != 1) exit 1}
@@ -1415,7 +1424,7 @@ archive_and_remove_retired_release() {
 	[ ! -e "$RETIRED_DIR" ] && [ ! -L "$RETIRED_DIR" ] || \
 		fail "verified archive was published but inactive card release could not be removed: $RETIRED_ID"
 	if [ "$RETIRED_SYSTEM_PRESENT" -eq 1 ]; then
-		rm -f "$RETIRED_SYSTEM"
+		rm -f "$RETIRED_SYSTEM" "$RETIRED_SYSTEM_SIDECAR"
 		rmdir "$RETIRED_SYSTEM_ROOT" || \
 			fail "retired release SYSTEM directory could not be removed: $RETIRED_ID"
 	fi
