@@ -1661,6 +1661,61 @@ prepare_portmaster_python_cache() {
 	export PYTHONDONTWRITEBYTECODE=1
 }
 
+# PortMaster's fixed upstream frontend reads /tmp/battery.percent before it
+# falls back to the AXP717 sysfs attribute.  The kernel attribute can
+# transiently return ETIMEDOUT; publish the last value already acquired by
+# Bird's long-lived power owner so a provider launch never performs that read.
+prepare_portmaster_battery_cache() {
+	PORTMASTER_POWER_LOG=${BIRD_PORTMASTER_POWER_LOG:-/storage/bird-data/Bird/log/powerstate-latest.log}
+	PORTMASTER_BATTERY_CACHE=${BIRD_PORTMASTER_BATTERY_CACHE:-/tmp/battery.percent}
+	PORTMASTER_BATTERY_PERCENT=
+	PORTMASTER_BATTERY_LINE=
+
+	if [ -r "$PORTMASTER_POWER_LOG" ]; then
+		while IFS= read -r PORTMASTER_BATTERY_LINE ||
+			[ -n "$PORTMASTER_BATTERY_LINE" ]; do
+			if [[ $PORTMASTER_BATTERY_LINE =~ (^|[[:space:]])capacity=([0-9]{1,3})([[:space:]]|$) ]] &&
+				[ "${BASH_REMATCH[2]}" -le 100 ]; then
+				PORTMASTER_BATTERY_PERCENT=${BASH_REMATCH[2]}
+			fi
+		done <"$PORTMASTER_POWER_LOG"
+	fi
+
+	# A prior verified tmpfs value remains better than touching wedged sysfs.
+	if [ -z "$PORTMASTER_BATTERY_PERCENT" ] &&
+		[ -f "$PORTMASTER_BATTERY_CACHE" ] &&
+		[ ! -L "$PORTMASTER_BATTERY_CACHE" ]; then
+		IFS= read -r PORTMASTER_BATTERY_PERCENT <"$PORTMASTER_BATTERY_CACHE" || :
+		case "$PORTMASTER_BATTERY_PERCENT" in
+			''|*[!0-9]*) PORTMASTER_BATTERY_PERCENT= ;;
+			*) [ "$PORTMASTER_BATTERY_PERCENT" -le 100 ] ||
+				PORTMASTER_BATTERY_PERCENT= ;;
+		esac
+	fi
+	[ -n "$PORTMASTER_BATTERY_PERCENT" ] || return 1
+
+	if [ -e "$PORTMASTER_BATTERY_CACHE" ] ||
+		[ -L "$PORTMASTER_BATTERY_CACHE" ]; then
+		[ -f "$PORTMASTER_BATTERY_CACHE" ] &&
+			[ ! -L "$PORTMASTER_BATTERY_CACHE" ] || return 1
+	fi
+	PORTMASTER_BATTERY_TEMP=${PORTMASTER_BATTERY_CACHE}.bird-new.$$
+	[ ! -e "$PORTMASTER_BATTERY_TEMP" ] &&
+		[ ! -L "$PORTMASTER_BATTERY_TEMP" ] || return 1
+	(umask 077; printf '%s\n' "$PORTMASTER_BATTERY_PERCENT" \
+		>"$PORTMASTER_BATTERY_TEMP") || return 1
+	chmod 0644 "$PORTMASTER_BATTERY_TEMP" || {
+		rm -f "$PORTMASTER_BATTERY_TEMP"
+		return 1
+	}
+	mv -f "$PORTMASTER_BATTERY_TEMP" "$PORTMASTER_BATTERY_CACHE" || {
+		rm -f "$PORTMASTER_BATTERY_TEMP"
+		return 1
+	}
+	printf 'Bird portmaster battery-cache percent=%s\n' \
+		"$PORTMASTER_BATTERY_PERCENT"
+}
+
 run_selected() {
 	if [ "$SESSION_MODE" = portmaster ]; then
 		prepare_portmaster_python_cache || return 1
@@ -1670,6 +1725,10 @@ run_selected() {
 		printf 'Bird portmaster prepare status=%s uptime=' "$PORT_PREP_STATUS"
 		uptime_now
 		[ "$PORT_PREP_STATUS" -eq 0 ] || return "$PORT_PREP_STATUS"
+		prepare_portmaster_battery_cache || {
+			printf '%s\n' 'Bird portmaster battery-cache unavailable'
+			return 1
+		}
 		# The start helper can partially configure an interface before returning
 		# failure, so cleanup owns a stop attempt from this point onward.
 		PORTMASTER_NETWORK_STATUS=0

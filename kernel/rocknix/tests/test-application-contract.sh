@@ -59,9 +59,18 @@ chmod 0755 "$UNDER_TEST"
 printf '%s\n' '#!/bin/sh' 'exit 0' >"$HOST_BIN/systemctl"
 printf '%s\n' '#!/bin/sh' 'exit 0' >"$HOST_BIN/usleep"
 printf '%s\n' '#!/bin/sh' "printf '1\\n'" >"$HOST_BIN/seq"
-chmod 0755 "$HOST_BIN/systemctl" "$HOST_BIN/usleep" "$HOST_BIN/seq"
+for FORBIDDEN in cmp wc grep cut; do
+	printf '#!/bin/sh\nprintf "forbidden-child=%s\\n" >>"$BIRD_CONTRACT_COMMANDS"\nexit 97\n' \
+		"$FORBIDDEN" >"$HOST_BIN/$FORBIDDEN"
+done
+chmod 0755 "$HOST_BIN/systemctl" "$HOST_BIN/usleep" "$HOST_BIN/seq" \
+	"$HOST_BIN/cmp" "$HOST_BIN/wc" "$HOST_BIN/grep" "$HOST_BIN/cut"
+BIRD_CONTRACT_COMMANDS=$TMP/contract-commands
+export BIRD_CONTRACT_COMMANDS
+: >"$BIRD_CONTRACT_COMMANDS"
 
-"$UNDER_TEST"
+PATH="$HOST_BIN:$PATH" "$UNDER_TEST"
+[ ! -s "$BIRD_CONTRACT_COMMANDS" ]
 [ "$(sed -n '1p' "$READY")" = \
 	'contract_revision=bird-application-v1' ]
 PANEL_MTIME=$(stat -f '%m' "$PROFILE_DIR/080-dual_screen_mode" 2>/dev/null || \
@@ -69,14 +78,15 @@ PANEL_MTIME=$(stat -f '%m' "$PROFILE_DIR/080-dual_screen_mode" 2>/dev/null || \
 LINK_MTIME=$(stat -f '%m' "$PROFILE_DIR/999-export" 2>/dev/null || \
 	stat -c '%Y' "$PROFILE_DIR/999-export")
 sleep 1
-"$UNDER_TEST"
+PATH="$HOST_BIN:$PATH" "$UNDER_TEST"
+[ ! -s "$BIRD_CONTRACT_COMMANDS" ]
 [ "$PANEL_MTIME" = "$(stat -f '%m' "$PROFILE_DIR/080-dual_screen_mode" 2>/dev/null || stat -c '%Y' "$PROFILE_DIR/080-dual_screen_mode")" ]
 [ "$LINK_MTIME" = "$(stat -f '%m' "$PROFILE_DIR/999-export" 2>/dev/null || stat -c '%Y' "$PROFILE_DIR/999-export")" ]
 
 # ROCKNIX's coordinator ignores an earlier script failure. A mismatched fixed
 # output must therefore invalidate an already-published marker on the rerun.
 printf '%s\n' broken >"$SWAY_DIR/config"
-if "$UNDER_TEST"; then
+if PATH="$HOST_BIN:$PATH" "$UNDER_TEST"; then
 	printf '%s\n' 'false-ready marker accepted a broken Sway contract' >&2
 	exit 1
 fi
@@ -84,15 +94,27 @@ fi
 cp "$SWAY_STAGE/config" "$SWAY_DIR/config"
 
 printf '%s\n' broken >"$PROFILE_DIR/010-governors"
-if "$UNDER_TEST"; then
+if PATH="$HOST_BIN:$PATH" "$UNDER_TEST"; then
 	printf '%s\n' 'false-ready marker accepted a broken platform contract' >&2
 	exit 1
 fi
 [ ! -e "$READY" ]
 cp "$PLATFORM_STAGE/010-governors" "$PROFILE_DIR/010-governors"
 
-"$UNDER_TEST"
+PATH="$HOST_BIN:$PATH" "$UNDER_TEST"
 [ -s "$READY" ]
+
+# Even identical partial final lines are not complete text contracts.
+printf '%s' 'partial' >"$SWAY_STAGE/config"
+printf '%s' 'partial' >"$SWAY_DIR/config"
+if PATH="$HOST_BIN:$PATH" "$UNDER_TEST"; then
+	printf '%s\n' 'false-ready marker accepted truncated matching files' >&2
+	exit 1
+fi
+[ ! -e "$READY" ]
+printf '%s\n' 'sway fixed config' >"$SWAY_STAGE/config"
+cp "$SWAY_STAGE/config" "$SWAY_DIR/config"
+PATH="$HOST_BIN:$PATH" "$UNDER_TEST"
 
 # The consumer must reject any bytes beyond the exact two-line contract, even
 # when the trailing line reaches EOF without a newline (read assigns data but

@@ -1434,11 +1434,43 @@ latency distribution. The next independent storage refinement removed the
 remaining accepted-state directory-creation process and second mount-table
 scan, then passed the broad behavior gate. Its returned boot logged input at
 1219 ms, usable frame at 1239 ms and storage at 3744 ms, with a sub-three-second
-stopwatch result; those remain descriptive samples. The next candidate removes
-nine unchanged fixed-platform comparison/timing children and four fixed-Sway
-children using shell reads, while retaining all volatile contract publication
-and mismatch repair. Its target is application/content readiness after the
-usable menu. Real workflow use also showed Port software writing nested save/config files; development
+stopwatch result; those remain descriptive samples. The following candidate
+removed nine unchanged fixed-platform comparison/timing children and four
+fixed-Sway children using shell reads, while retaining all volatile contract
+publication and mismatch repair. It is included in the later accepted
+`v6.23-20260810-080340` broad hardware gate; current logs show fixed-platform
+9.10--9.11 seconds and fixed-Sway at 10.99 seconds.
+
+The accepted bounded application-readiness candidate changed only `999-export`.
+That final validator previously launched twenty-one avoidable accepted-boot helper
+processes: fixed-profile `cmp` calls, repeated `wc`/`grep` checks, one extra
+`readlink`, `cut`, and unconditional ready-file/directory setup. Strict shell
+utilities were originally used because they made the last trust boundary
+simple to audit and diagnose while its independent producer contracts were
+still evolving; that correctness-first choice preceded the now-fixed contract.
+Strict shell
+reads now compare the same newline-terminated producer and persistent files,
+reject truncated or trailing data, and preserve all repair, symlink, atomic
+marker and fail-closed behavior. The normal fresh-boot path retains only the
+necessary `readlink`, marker `chmod`, and atomic `mv`. This runs after the
+honest usable menu and targets queued-launch/application readiness only. Its
+combined broad gate passed games, media, PortMaster and shutdown. Boot
+`25e66c8c` recorded the visible input-ready menu at 1222 ms and storage at
+3405 ms, with the stopwatch still below three seconds.
+
+Its first device gate found a separate PortMaster failure: the provider's
+generic frontend assumes `/tmp/battery.percent` or the power-supply capacity
+attribute is synchronously readable, while the Bird-native power replacement
+had not retained the former cache contract. Two AXP717 capacity reads returned
+`ETIMEDOUT`, producing an uncaught provider exception and then a launcher
+`--` display. The focused repair publishes Bird's already acquired last-valid
+capacity before PortMaster starts and makes content return prefer that cache;
+direct cold-boot and power-event reads remain authoritative when available.
+Provider bytes remain immutable. Two device launches logged the published 51%
+cache, no timeout traceback, successful Bird return and the retained 51%
+display.
+
+Real workflow use also showed Port software writing nested save/config files; development
 catalog fingerprints now ignore those generator-invisible runtime files so
 they do not rebuild the launcher or early initramfs.
 

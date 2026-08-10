@@ -952,7 +952,7 @@ parts = []
 for start_marker, end_marker in (
     ("owner_relation() {", "\nclaim_owner() {"),
     ("stop_sway() {", "\ninstall_mpv_input_policy() {"),
-    ("stop_portmaster_network() {", "\nrun_selected() {"),
+    ("stop_portmaster_network() {", "\nprepare_portmaster_python_cache() {"),
 ):
     start = source.index(start_marker)
     end = source.index(end_marker, start)
@@ -1010,7 +1010,7 @@ parts = []
 for start_marker, end_marker in (
     ("owner_matches() {", "\nclaim_owner() {"),
     ("remove_owned_token() {", "\nrollback_sway_start() {"),
-	    ("stop_portmaster_network() {", "\nrun_selected() {"),
+	    ("stop_portmaster_network() {", "\nprepare_portmaster_python_cache() {"),
 ):
     start = source.index(start_marker)
     end = source.index(end_marker, start)
@@ -1738,6 +1738,7 @@ start_portmaster_network() {
 	[ "$MODE" != direct-fail ] || return 7
 }
 prepare_portmaster_python_cache() { :; }
+prepare_portmaster_battery_cache() { :; }
 run_managed() {
 	printf '%s\n' frontend >>"$CASE_DIR/events"
 	return 0
@@ -2035,6 +2036,7 @@ start_portmaster_network() {
 	return 99
 }
 prepare_portmaster_python_cache() { :; }
+prepare_portmaster_battery_cache() { :; }
 
 : >"$CASE_DIR/events"
 BIRD_TEST_EVENTS=$CASE_DIR/events run_selected
@@ -2175,22 +2177,77 @@ import sys
 
 source = Path(sys.argv[1]).read_text()
 cache_start = source.index('prepare_portmaster_python_cache() {')
-cache_end = source.index('\n}\n\nrun_selected() {', cache_start)
+cache_end = source.index('\n}\n', cache_start) + 2
 cache_helper = source[cache_start:cache_end]
 assert 'PORTMASTER_PYCACHE=/run/bird/portmaster-pycache' in cache_helper
 assert 'export PYTHONPYCACHEPREFIX="$PORTMASTER_PYCACHE"' in cache_helper
 assert 'export PYTHONDONTWRITEBYTECODE=1' in cache_helper
 assert source.count('prepare_portmaster_python_cache || return 1') == 3
+battery_start = source.index('prepare_portmaster_battery_cache() {')
+battery_end = source.index('\n}\n', battery_start) + 2
+battery_helper = source[battery_start:battery_end]
+assert 'BIRD_PORTMASTER_POWER_LOG' in battery_helper
+assert 'BIRD_PORTMASTER_BATTERY_CACHE' in battery_helper
+assert 'capacity=([0-9]{1,3})' in battery_helper
+assert 'PORTMASTER_BATTERY_CACHE}.bird-new.$$' in battery_helper
 port_start = source.index('if [ "$SESSION_MODE" = portmaster ]; then')
 port_end = source.index('\n\tcase "$KIND" in', port_start)
 port_branch = source[port_start:port_end]
 prepare = port_branch.index('"$PORT_PREP"')
 cache_call = port_branch.index('prepare_portmaster_python_cache || return 1')
+battery_call = port_branch.index('prepare_portmaster_battery_cache || {')
 direct_network = port_branch.index('start_portmaster_network start')
 readiness_gate = port_branch.index('[ "$PORTMASTER_NETWORK_STATUS" -eq 0 ]')
 portmaster = port_branch.index('/usr/bin/start_portmaster.sh')
-assert cache_call < prepare < direct_network < readiness_gate < portmaster
+assert cache_call < prepare < battery_call < direct_network < readiness_gate < portmaster
 PY
+
+# The provider handoff chooses the newest valid power-owner sample, publishes
+# one exact regular tmpfs file, and fails closed on path substitution.
+PORTMASTER_BATTERY_FUNCTION=$TMP/portmaster-battery-function.sh
+python3 - "$RUNNER" "$PORTMASTER_BATTERY_FUNCTION" <<'PY'
+from pathlib import Path
+import sys
+
+source = Path(sys.argv[1]).read_text()
+start = source.index('prepare_portmaster_battery_cache() {')
+end = source.index('\n}\n', start) + 2
+Path(sys.argv[2]).write_text(source[start:end] + '\n')
+PY
+bash -n "$PORTMASTER_BATTERY_FUNCTION"
+PORTMASTER_BATTERY_CASE=$TMP/portmaster-battery
+mkdir -p "$PORTMASTER_BATTERY_CASE"
+cat >"$PORTMASTER_BATTERY_CASE/power.log" <<'EOF'
+initial status=discharging capacity=51 low=no
+event status=external-power capacity=unavailable low=no
+event status=discharging capacity=49 low=no
+EOF
+(
+	set -eu
+	. "$PORTMASTER_BATTERY_FUNCTION"
+	BIRD_PORTMASTER_POWER_LOG=$PORTMASTER_BATTERY_CASE/power.log
+	BIRD_PORTMASTER_BATTERY_CACHE=$PORTMASTER_BATTERY_CASE/battery.percent
+	export BIRD_PORTMASTER_POWER_LOG BIRD_PORTMASTER_BATTERY_CACHE
+	prepare_portmaster_battery_cache
+)
+[ "$(cat "$PORTMASTER_BATTERY_CASE/battery.percent")" = 49 ]
+[ "$(stat -f '%Lp' "$PORTMASTER_BATTERY_CASE/battery.percent")" = 644 ]
+ln -s "$PORTMASTER_BATTERY_CASE/elsewhere" \
+	"$PORTMASTER_BATTERY_CASE/battery-link"
+if BIRD_PORTMASTER_POWER_LOG=$PORTMASTER_BATTERY_CASE/power.log \
+	BIRD_PORTMASTER_BATTERY_CACHE=$PORTMASTER_BATTERY_CASE/battery-link \
+	bash -c '. "$1"; prepare_portmaster_battery_cache' _ \
+	"$PORTMASTER_BATTERY_FUNCTION"; then
+	printf '%s\n' 'PortMaster battery cache accepted a symlink target' >&2
+	exit 1
+fi
+printf '%s\n' 'capacity=unavailable' >"$PORTMASTER_BATTERY_CASE/power.log"
+printf '%s\n' 47 >"$PORTMASTER_BATTERY_CASE/existing.percent"
+BIRD_PORTMASTER_POWER_LOG=$PORTMASTER_BATTERY_CASE/power.log \
+	BIRD_PORTMASTER_BATTERY_CACHE=$PORTMASTER_BATTERY_CASE/existing.percent \
+	bash -c '. "$1"; prepare_portmaster_battery_cache' _ \
+	"$PORTMASTER_BATTERY_FUNCTION" >/dev/null
+[ "$(cat "$PORTMASTER_BATTERY_CASE/existing.percent")" = 47 ]
 
 REQUEST_CASE=$TMP/request-record
 printf '1\nsnes9x\nGame\n/storage/roms/SNES/game.sfc\n' >"$REQUEST_CASE"

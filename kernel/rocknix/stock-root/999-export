@@ -30,11 +30,67 @@ cleanup() {
 trap cleanup 0
 trap 'exit 1' HUP INT TERM
 
-rm -f "$READY"
-mkdir -p "$PROFILE_DIR" "$READY_DIR"
+[ ! -e "$READY" ] && [ ! -L "$READY" ] || rm -f "$READY"
+[ -d "$PROFILE_DIR" ] || mkdir -p "$PROFILE_DIR"
+[ -d "$READY_DIR" ] || mkdir -p "$READY_DIR"
 [ -r "$SYSTEM_EXPORT" ]
 [ ! -d "$PANEL_PROFILE" ]
 [ ! -d "$EXPORT_LINK" ]
+
+file_matches_lines() {
+	CURRENT=$1
+	shift
+	[ -f "$CURRENT" ] || return 1
+	MATCH=1
+	exec 3<"$CURRENT"
+	for EXPECTED in "$@"; do
+		ACTUAL=
+		if ! IFS= read -r ACTUAL <&3 || [ "$ACTUAL" != "$EXPECTED" ]; then
+			MATCH=0
+			break
+		fi
+	done
+	if [ "$MATCH" -eq 1 ]; then
+		ACTUAL=
+		if IFS= read -r ACTUAL <&3 || [ -n "$ACTUAL" ]; then
+			MATCH=0
+		fi
+	fi
+	exec 3<&-
+	[ "$MATCH" -eq 1 ]
+}
+
+# The producer stage and persistent copy are small newline-terminated text
+# contracts. Compare them in this shell so application readiness does not fork
+# one cmp process for every fixed profile. A final partial line is invalid even
+# when both files contain the same truncated bytes.
+text_files_match() {
+	LEFT_PATH=$1
+	RIGHT_PATH=$2
+	[ -f "$LEFT_PATH" ] && [ -f "$RIGHT_PATH" ] || return 1
+	MATCH=1
+	exec 3<"$LEFT_PATH"
+	exec 4<"$RIGHT_PATH"
+	while :; do
+		LEFT=
+		RIGHT=
+		LEFT_READ=0
+		RIGHT_READ=0
+		IFS= read -r LEFT <&3 && LEFT_READ=1
+		IFS= read -r RIGHT <&4 && RIGHT_READ=1
+		if [ "$LEFT_READ" -ne "$RIGHT_READ" ] || [ "$LEFT" != "$RIGHT" ]; then
+			MATCH=0
+			break
+		fi
+		if [ "$LEFT_READ" -eq 0 ]; then
+			[ -z "$LEFT" ] && [ -z "$RIGHT" ] || MATCH=0
+			break
+		fi
+	done
+	exec 3<&-
+	exec 4<&-
+	[ "$MATCH" -eq 1 ]
+}
 
 PANEL_FIRST=
 PANEL_SECOND=
@@ -53,17 +109,19 @@ if [ "$PANEL_READY" -ne 1 ]; then
 	chmod 0644 "$PROFILE_TMP"
 	mv -f "$PROFILE_TMP" "$PANEL_PROFILE"
 fi
-[ "$(wc -l <"$PANEL_PROFILE")" -eq 1 ]
-grep -qx 'DEVICE_HAS_DUAL_SCREEN=false' "$PANEL_PROFILE"
+file_matches_lines "$PANEL_PROFILE" 'DEVICE_HAS_DUAL_SCREEN=false'
 
-if [ -L "$EXPORT_LINK" ] && [ "$(readlink "$EXPORT_LINK")" = "$SYSTEM_EXPORT" ]; then
+EXPORT_TARGET=
+if [ -L "$EXPORT_LINK" ]; then
+	EXPORT_TARGET=$(readlink "$EXPORT_LINK") || EXPORT_TARGET=
+fi
+if [ "$EXPORT_TARGET" = "$SYSTEM_EXPORT" ]; then
 	:
 else
 	ln -s "$SYSTEM_EXPORT" "$LINK_TMP"
 	mv -f "$LINK_TMP" "$EXPORT_LINK"
 fi
 [ -L "$EXPORT_LINK" ]
-[ "$(readlink "$EXPORT_LINK")" = "$SYSTEM_EXPORT" ]
 [ -r "$EXPORT_LINK" ]
 
 # ROCKNIX's generic autostart coordinator deliberately continues after an
@@ -74,20 +132,21 @@ for PROFILE_NAME in 001-device_config 002-turbo-mode_config 010-governors \
 	010-led_control 020-fan_control 050-modifiers 091-ui_shader; do
 	[ -r "$PLATFORM_STAGE/$PROFILE_NAME" ]
 	[ -r "$PROFILE_DIR/$PROFILE_NAME" ]
-	cmp -s "$PLATFORM_STAGE/$PROFILE_NAME" "$PROFILE_DIR/$PROFILE_NAME"
+	text_files_match "$PLATFORM_STAGE/$PROFILE_NAME" "$PROFILE_DIR/$PROFILE_NAME"
 done
 [ -r "$PROFILE_DIR/098-controller" ]
-cmp -s "$CONTROLLER_PROFILE_SOURCE" "$PROFILE_DIR/098-controller"
+text_files_match "$CONTROLLER_PROFILE_SOURCE" "$PROFILE_DIR/098-controller"
 [ -r "$SWAY_STAGE/config" ]
 [ -r "$SWAY_CONFIG" ]
-cmp -s "$SWAY_STAGE/config" "$SWAY_CONFIG"
+text_files_match "$SWAY_STAGE/config" "$SWAY_CONFIG"
 [ -r "$SWAY_STAGE/095-sway" ]
 [ -r "$SWAY_PROFILE" ]
-cmp -s "$SWAY_STAGE/095-sway" "$SWAY_PROFILE"
-[ "$(wc -l <"$UI_PROFILE")" -eq 1 ]
-grep -qx 'UI_SERVICE="essway.service"' "$UI_PROFILE"
+text_files_match "$SWAY_STAGE/095-sway" "$SWAY_PROFILE"
+file_matches_lines "$UI_PROFILE" 'UI_SERVICE="essway.service"'
 
-UPTIME=$(cut -d ' ' -f 1 /proc/uptime)
+UPTIME=
+UNUSED=
+IFS=' ' read -r UPTIME UNUSED </proc/uptime || exit 1
 case "$UPTIME" in
 	''|*[!0-9.]*) exit 1 ;;
 esac
@@ -96,9 +155,9 @@ esac
 	printf 'published_uptime=%s\n' "$UPTIME"
 } >"$READY_TMP"
 chmod 0644 "$READY_TMP"
-[ "$(wc -l <"$READY_TMP")" -eq 2 ]
-grep -qx "contract_revision=$CONTRACT_REVISION" "$READY_TMP"
-grep -qx "published_uptime=$UPTIME" "$READY_TMP"
+file_matches_lines "$READY_TMP" \
+	"contract_revision=$CONTRACT_REVISION" \
+	"published_uptime=$UPTIME"
 mv -f "$READY_TMP" "$READY"
 
 trap - 0

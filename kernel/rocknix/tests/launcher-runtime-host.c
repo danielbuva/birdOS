@@ -4656,6 +4656,48 @@ static int run_profile_tests(void) {
 }
 #endif
 
+static int run_battery_cache_tests(void) {
+    static const long direct_fallback_opens[] = {
+        -ENOENT, -ENOENT, FAKE_FD,
+    };
+    static const long malformed_cache_opens[] = {FAKE_FD, FAKE_FD};
+    static const struct fake_read_step malformed_cache_reads[] = {
+        {3, "bad"}, {3, "64\n"},
+    };
+    int ok = 1;
+
+    power_dir_fd = -1;
+    reset_fake_file(FAKE_FD, "57\n", 0);
+    ok &= check(read_battery_percent_cached_first() == 57 &&
+                    fake_open_calls == 1U &&
+                    strcmp(fake_open_path[0], "/tmp/battery.percent") == 0 &&
+                    !fake_opened_path(
+                        "/sys/class/power_supply/battery/capacity"),
+                "resume battery path did not prefer the provider-safe cache");
+
+    reset_fake_file(-ENOENT, "63\n", 0);
+    set_fake_open_script(direct_fallback_opens, 3U);
+    ok &= check(read_battery_percent() == 63 && fake_open_calls == 3U &&
+                    strcmp(fake_open_path[0],
+                           "/sys/class/power_supply/battery/capacity") == 0 &&
+                    strcmp(fake_open_path[1],
+                           "/sys/class/power_supply/axp20x-battery/capacity") == 0 &&
+                    strcmp(fake_open_path[2], "/tmp/battery.percent") == 0,
+                "failed kernel capacity reads did not retain cached percent");
+
+    reset_fake_file(FAKE_FD, 0, 0);
+    set_fake_open_script(malformed_cache_opens, 2U);
+    set_fake_read_script(malformed_cache_reads, 2U);
+    ok &= check(read_battery_percent_cached_first() == 64 &&
+                    fake_open_calls == 2U &&
+                    strcmp(fake_open_path[0], "/tmp/battery.percent") == 0 &&
+                    strcmp(fake_open_path[1],
+                           "/sys/class/power_supply/battery/capacity") == 0,
+                "malformed battery cache blocked the fixed sysfs fallback");
+
+    return ok;
+}
+
 int main(void) {
     char partial[CATALOG_PATH_MAX_BYTES + 8U];
     char complete[CATALOG_PATH_MAX_BYTES * 2U + 8U];
@@ -4678,6 +4720,7 @@ int main(void) {
     ok &= run_storage_handoff_tests();
     ok &= run_event_driven_input_discovery_tests();
     ok &= run_event_driven_framebuffer_discovery_tests();
+    ok &= run_battery_cache_tests();
 
     /* ENOENT alone establishes a new, successfully loaded empty collection. */
     reset_favorites();

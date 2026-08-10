@@ -2021,33 +2021,51 @@ static int read_charging_state(void) {
     return -1;
 }
 
-static int read_battery_percent(void) {
+static int read_battery_percent_path(const char *path) {
+    char value[16];
+    long fd = fixed_open(path, O_RDONLY | O_NONBLOCK);
+    long count;
+    long offset = 0;
+    int result = 0;
+    int digits = 0;
+
+    if (fd < 0) return -1;
+    count = sys_read((int)fd, value, sizeof(value));
+    sys_close((int)fd);
+    if (count <= 0) return -1;
+    while (offset < count && (value[offset] == ' ' || value[offset] == '\t'))
+        offset++;
+    while (offset < count && value[offset] >= '0' && value[offset] <= '9') {
+        result = result * 10 + (value[offset++] - '0');
+        digits++;
+    }
+    return digits && result <= 100 ? result : -1;
+}
+
+static int read_battery_percent_direct(void) {
     static const char *paths[] = {
         "/sys/class/power_supply/battery/capacity",
         "/sys/class/power_supply/axp20x-battery/capacity",
     };
-    char value[16];
     u32 index;
 
     for (index = 0; index < sizeof(paths) / sizeof(paths[0]); index++) {
-        long fd = fixed_open(paths[index], O_RDONLY | O_NONBLOCK);
-        long count;
-        long offset = 0;
-        int result = 0;
-        int digits = 0;
-        if (fd < 0) continue;
-        count = sys_read((int)fd, value, sizeof(value));
-        sys_close((int)fd);
-        if (count <= 0) continue;
-        while (offset < count && (value[offset] == ' ' || value[offset] == '\t'))
-            offset++;
-        while (offset < count && value[offset] >= '0' && value[offset] <= '9') {
-            result = result * 10 + (value[offset++] - '0');
-            digits++;
-        }
-        if (digits && result <= 100) return result;
+        int result = read_battery_percent_path(paths[index]);
+        if (result >= 0) return result;
     }
     return -1;
+}
+
+static int read_battery_percent(void) {
+    int result = read_battery_percent_direct();
+    if (result >= 0) return result;
+    return read_battery_percent_path("/tmp/battery.percent");
+}
+
+static int read_battery_percent_cached_first(void) {
+    int result = read_battery_percent_path("/tmp/battery.percent");
+    if (result >= 0) return result;
+    return read_battery_percent_direct();
 }
 
 static int open_power_events(void) {
@@ -5534,7 +5552,8 @@ static void service_startup_work_step(struct startup_work_state *work) {
         charging_state = read_charging_state();
         break;
     case STARTUP_TASK_POWER_PERCENT:
-        battery_percent = read_battery_percent();
+        battery_percent = work->resume_loaded ?
+            read_battery_percent_cached_first() : read_battery_percent();
         break;
     case STARTUP_TASK_POWER_RENDER:
         if (charging_state != work->previous_charging ||

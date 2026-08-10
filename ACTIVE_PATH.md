@@ -1647,11 +1647,46 @@ avoided an unconditional remount plus three diagnostic children, then a second
 physical gate accepted removal of the remaining success-path directory-creation
 child and repair-only mount inventory. That returned boot logged input at
 1219 ms, usable frame at 1239 ms and storage at 3744 ms while the stopwatch
-remained below three seconds. The next bounded candidate replaces nine
+remained below three seconds. The following bounded candidate replaced nine
 unchanged-profile comparison/timing children and four fixed-Sway children with
-shell reads while preserving volatile contract files and mismatch repair. This
-work runs after the honest usable menu and targets application/content
-readiness. Port payload saves and configuration
+shell reads while preserving volatile contract files and mismatch repair. That
+code is included in the later physically accepted
+`v6.23-20260810-080340` release. Its latest fixed-platform log spans
+9.10--9.11 seconds and fixed-Sway reports 10.99 seconds.
+
+The accepted application-readiness candidate changed only `999-export`. Its old
+accepted-state validator launched twenty-one avoidable external helpers for fixed
+profile comparisons, line checks, uptime extraction and unconditional setup.
+That implementation was intentionally straightforward: `cmp`, `wc`, `grep`
+and `cut` made the final trust gate obvious and easy to diagnose while the
+independent producer contracts were still changing. It favored correctness and
+debuggability over one-shot process cost. Once those tiny contracts became
+fixed, retaining the same external parsing no longer bought useful safety.
+The candidate performs those exact newline-terminated text validations with
+shell reads, rejects partial/trailing records, and leaves repair, symlink,
+atomic marker publication and failure semantics intact. On a fresh accepted
+boot only one `readlink`, the marker `chmod` and atomic `mv` remain as external
+children. It runs after the honest usable menu and targets queued-launch and
+application readiness. The combined physical gate passed games, media,
+PortMaster, shutdown and the broad behavior matrix. Boot `25e66c8c` logged the
+visible input-ready menu at 1222 ms and storage at 3405 ms; the stopwatch stayed
+below three seconds.
+
+The first physical gate on that candidate exposed an independent PortMaster
+battery failure. Upstream `pugwash` prefers `/tmp/battery.percent`, then reads
+the generic power-supply sysfs capacity file directly and assumes either source
+is immediately readable. birdOS's native power owner replaced the older stack
+without publishing that compatibility cache. On boot `a546e57e`, the AXP717
+capacity read twice returned `ETIMEDOUT`; the uncaught Python exception exited
+PortMaster and a second launcher read replaced the displayed percentage with
+unavailable. The bounded repair leaves provider bytes untouched: the PortMaster
+handoff atomically publishes the last valid value already acquired by Bird's
+power owner, while launcher return/resume prefers that cache and ordinary power
+events retain it only when direct kernel reads fail. Two physical PortMaster
+launches then logged `battery-cache percent=51`, exited without the prior
+exception and returned to Bird with 51% still displayed.
+
+Port payload saves and configuration
 below `ROMS/Ports/<game>/` are excluded from development catalog fingerprints,
 matching the embedded catalog's top-level Port-launcher authority.
 
