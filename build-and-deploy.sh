@@ -1816,6 +1816,30 @@ if [ -n "$ROTATION_SUPERSEDED_ID" ]; then
 else
 	publish_current_selector_as_previous
 fi
+# A prior post-activation interruption can leave an older verified immutable
+# release that is neither current nor previous. Archive and remove every such
+# release now so the card returns to its one-canonical-release contract even
+# when staging space did not force an earlier reclamation pass.
+for LEFTOVER_RELEASE_DIR in "$BIRD"/bird-releases/*; do
+	[ -e "$LEFTOVER_RELEASE_DIR" ] || [ -L "$LEFTOVER_RELEASE_DIR" ] || break
+	LEFTOVER_RELEASE_ID=${LEFTOVER_RELEASE_DIR##*/}
+	[ "$LEFTOVER_RELEASE_ID" != "$RELEASE_ID" ] || continue
+	[ -d "$LEFTOVER_RELEASE_DIR" ] && [ ! -L "$LEFTOVER_RELEASE_DIR" ] || \
+		fail "inactive release path is unsafe after activation: $LEFTOVER_RELEASE_ID"
+	# A bare directory or one-sided marker can reserve a release name during
+	# collision handling, but it is not an immutable release to archive.  Only
+	# the canonical manifest + completion-marker pair enters retirement.
+	if [ ! -e "$LEFTOVER_RELEASE_DIR/deploy-manifest.tsv" ] || \
+	   [ ! -e "$LEFTOVER_RELEASE_DIR/.complete" ]; then
+		continue
+	fi
+	is_regular_file "$LEFTOVER_RELEASE_DIR/deploy-manifest.tsv" && \
+		is_regular_file "$LEFTOVER_RELEASE_DIR/.complete" || \
+		fail "inactive release authority is unsafe after activation: $LEFTOVER_RELEASE_ID"
+	check_archive_repository
+	archive_and_remove_retired_release "$LEFTOVER_RELEASE_ID" \
+		"$LEFTOVER_RELEASE_DIR" 0
+done
 verify_archive_selector_unchanged
 is_regular_file "$BIRD/extlinux/extlinux.previous.conf" && \
 	[ "$(sha256 "$BIRD/extlinux/extlinux.previous.conf")" = \

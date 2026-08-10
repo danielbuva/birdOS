@@ -1244,6 +1244,23 @@ cmp "$BIRD/extlinux/extlinux.conf" \
 [ ! -e "$BIRD/dtb.img" ]
 [ ! -e "$DATA/Bird/runtime/active" ]
 
+new_case post-activation-sweeps-interrupted-leftover
+create_completed_release active
+create_completed_release leftover
+add_release_system_runtime active
+add_release_system_runtime leftover
+select_fixture_release active
+run_command --release >"$CASE_ROOT/out"
+[ -d "$BIRD/bird-releases/v6.23" ]
+[ ! -e "$BIRD/bird-releases/active" ]
+[ ! -e "$BIRD/bird-releases/leftover" ]
+[ ! -e "$DATA/Bird/runtime/active" ]
+[ ! -e "$DATA/Bird/runtime/leftover" ]
+[ -f "$TEST_STATE/gh-release-card-active-state" ]
+[ -f "$TEST_STATE/gh-release-card-leftover-state" ]
+cmp "$BIRD/extlinux/extlinux.conf" \
+	"$BIRD/extlinux/extlinux.previous.conf" >/dev/null
+
 # If post-activation archival cannot be published, the new complete release may
 # remain selected, but the superseded release and exact previous selector must
 # remain intact. No on-card rollback bytes may be removed before verification.
