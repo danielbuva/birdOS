@@ -1464,8 +1464,14 @@ deterministic repack digest
 and inventory digest
 `0714f306f480e40849efa722505d8ae9ddc2921ebf2629130be579629725f86f`.
 The repack is 4,583,424 bytes larger, so it is not silently substituted yet.
-The next bounded Stage 6 candidate is a physical behavior/boot parity gate for
-that no-content-change repack before any Bird override is baked into SYSTEM.
+The bounded physical candidate uses that exact no-content-change repack before
+any Bird override is baked into SYSTEM. Deployment stages it under the new
+release ID on BIRD-DATA and verifies the manifest-bound size and digest before
+selector activation. The active SYSTEM is never overwritten in place. After a
+successful activation and verified release rotation, the superseded
+release-scoped SYSTEM is removed; the legacy shared muOS SYSTEM is retired only
+after the one-time transition commits. Its complete RG34XX-SP behavior and
+boot-parity gate remains pending.
 
 ## Stage 7 — Fixed-fallback boot-contract subtraction (complete)
 

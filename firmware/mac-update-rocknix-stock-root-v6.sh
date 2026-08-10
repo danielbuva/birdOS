@@ -21,10 +21,14 @@ BIRD_TEST_LOCK_GATE=${BIRD_TEST_LOCK_GATE:-}
 BIRD_TEST_MANIFEST_GATE=${BIRD_TEST_MANIFEST_GATE:-}
 PORTMASTER_PROVIDER_MANIFEST=${BIRD_TEST_PORTMASTER_PROVIDER_MANIFEST:-$ROOT/kernel/rocknix/stock-root/portmaster-provider.manifest.tsv}
 PORTMASTER_PROVIDER_VERIFIER=$ROOT/kernel/rocknix/stock-root/verify-portmaster-provider.sh
-RUNTIME=$DATA/MUOS/runtime/ROCKNIX-SYSTEM
-STORAGE_TARGET=$DATA/MUOS/runtime/ROCKNIX-STORAGE
-
 RELEASE_ID=${BIRD_RELEASE_ID:-v6.23}
+RUNTIME_ROOT=$DATA/Bird/runtime
+RUNTIME=$RUNTIME_ROOT/$RELEASE_ID/ROCKNIX-SYSTEM
+LEGACY_RUNTIME=$DATA/MUOS/runtime/ROCKNIX-SYSTEM
+SYSTEM_INSTALL_SOURCE=${SYSTEM_INSTALL_SOURCE:-$RUNTIME}
+STORAGE_TARGET=$DATA/MUOS/runtime/ROCKNIX-STORAGE
+LEGACY_RUNTIME_BYTES=${BIRD_TEST_LEGACY_RUNTIME_BYTES:-1206476800}
+LEGACY_RUNTIME_SHA=${BIRD_TEST_LEGACY_RUNTIME_SHA:-6e2112fc9dc81d5fee944f2534346a8f20674f40e23a0a85bb795218d31eadac}
 
 fail() {
 	printf 'error: %s\n' "$*" >&2
@@ -46,6 +50,8 @@ case "$BIRD_HOST_TEST_MODE" in
 		[ -z "$BIRD_TEST_MANIFEST_GATE" ] || fail 'manifest gate requires host-test mode'
 		[ -z "${BIRD_TEST_PORTMASTER_PROVIDER_MANIFEST:-}" ] || \
 			fail 'PortMaster provider manifest override requires host-test mode'
+		[ -z "${BIRD_TEST_LEGACY_RUNTIME_BYTES:-}${BIRD_TEST_LEGACY_RUNTIME_SHA:-}" ] || \
+			fail 'legacy SYSTEM identity override requires host-test mode'
 		;;
 	1)
 		[ -n "$BIRD_DEVICE_INFO" ] || fail 'host-test device metadata is required'
@@ -189,12 +195,14 @@ reject_dev_current_production_state
 [ -d "$CANDIDATE" ] && [ ! -L "$CANDIDATE" ] || fail "built candidate missing or unsafe: $CANDIDATE"
 is_regular_file "$MANIFEST" || fail "canonical deploy manifest missing or unsafe: $MANIFEST"
 is_regular_file "$STORAGE_SOURCE" || fail 'reference ROCKNIX storage image missing or unsafe'
-is_regular_file "$RUNTIME" || fail 'exact ROCKNIX runtime missing or unsafe on card'
+is_regular_file "$SYSTEM_INSTALL_SOURCE" || \
+	fail 'canonical SYSTEM install source is missing or unsafe'
 
 VERIFY_WORK=$(mktemp -d "${TMPDIR:-/tmp}/bird-deploy.XXXXXX") || \
 	fail 'could not create manifest verification directory'
 RELEASE_STAGE=
 PORTMASTER_MARKER_TEMP=
+RUNTIME_TEMP=
 BIRD_CARD_LOCK_OWNED=0
 # shellcheck source=mac-bird-card-lock.sh
 . "$ROOT/firmware/mac-bird-card-lock.sh"
@@ -209,6 +217,13 @@ cleanup() {
 		case "$PORTMASTER_MARKER_TEMP" in
 			"$DATA"/ROMS/Ports/.bird-portmaster-marker.new.*)
 				rm -f "$PORTMASTER_MARKER_TEMP" 2>/dev/null || :
+				;;
+		esac
+	fi
+	if [ -n "$RUNTIME_TEMP" ]; then
+		case "$RUNTIME_TEMP" in
+			"$RUNTIME_ROOT"/*/.ROCKNIX-SYSTEM.new.*)
+				rm -f "$RUNTIME_TEMP" 2>/dev/null || :
 				;;
 		esac
 	fi
@@ -377,6 +392,7 @@ manifest_input_field() {
 ROCKNIX_KERNEL_SHA=$(manifest_input_field KERNEL 5)
 DTB_SHA=$(manifest_input_field dtb.img 5)
 RUNTIME_SHA=$(manifest_input_field ROCKNIX-SYSTEM 5)
+RUNTIME_BYTES=$(manifest_input_field ROCKNIX-SYSTEM 4)
 STORAGE_BYTES=$(manifest_input_field ROCKNIX-STORAGE 4)
 STORAGE_SHA=$(manifest_input_field ROCKNIX-STORAGE 5)
 PORTMASTER_PUGWASH_BYTES=$(manifest_input_field PortMaster/pugwash 4)
@@ -562,7 +578,60 @@ apply_target_metadata() {
 
 [ "$(sha256 "$CANDIDATE/KERNEL")" = "$ROCKNIX_KERNEL_SHA" ] || fail 'candidate KERNEL changed'
 [ "$(sha256 "$CANDIDATE/dtb.img")" = "$DTB_SHA" ] || fail 'candidate DTB changed'
-[ "$(sha256 "$RUNTIME")" = "$RUNTIME_SHA" ] || fail 'card SYSTEM changed'
+[ "$(file_bytes "$SYSTEM_INSTALL_SOURCE")" = "$RUNTIME_BYTES" ] || \
+	fail 'canonical SYSTEM install source size changed'
+[ "$(sha256 "$SYSTEM_INSTALL_SOURCE")" = "$RUNTIME_SHA" ] || \
+	fail 'canonical SYSTEM install source changed'
+
+# Publish the selected release's SYSTEM beside any currently bootable source.
+# The selector is unchanged until this same-volume copy, rename and reread are
+# complete. A future SYSTEM can therefore be staged without changing the bytes
+# used by the currently selected release.
+[ -d "$DATA/Bird" ] && [ ! -L "$DATA/Bird" ] || \
+	fail 'canonical Bird data root is missing or unsafe'
+mkdir -p "$RUNTIME_ROOT"
+[ -d "$RUNTIME_ROOT" ] && [ ! -L "$RUNTIME_ROOT" ] || \
+	fail 'canonical SYSTEM runtime root is unsafe'
+RUNTIME_RELEASE_ROOT=$RUNTIME_ROOT/$RELEASE_ID
+if [ -e "$RUNTIME_RELEASE_ROOT" ] || [ -L "$RUNTIME_RELEASE_ROOT" ]; then
+	[ -d "$RUNTIME_RELEASE_ROOT" ] && [ ! -L "$RUNTIME_RELEASE_ROOT" ] || \
+		fail 'release SYSTEM directory is unsafe'
+else
+	mkdir "$RUNTIME_RELEASE_ROOT"
+fi
+if is_regular_file "$RUNTIME"; then
+	[ "$(file_bytes "$RUNTIME")" = "$RUNTIME_BYTES" ] && \
+	[ "$(sha256 "$RUNTIME")" = "$RUNTIME_SHA" ] || \
+		fail 'installed release SYSTEM differs from its manifest'
+elif [ -e "$RUNTIME" ] || [ -L "$RUNTIME" ]; then
+	fail 'release SYSTEM destination is unsafe'
+else
+	for STALE_RUNTIME in "$RUNTIME_RELEASE_ROOT"/.ROCKNIX-SYSTEM.new.*; do
+		[ -e "$STALE_RUNTIME" ] || [ -L "$STALE_RUNTIME" ] || break
+		case "$STALE_RUNTIME" in
+			"$RUNTIME_RELEASE_ROOT"/.ROCKNIX-SYSTEM.new.*) ;;
+			*) fail 'unsafe stale release SYSTEM stage path' ;;
+		esac
+		is_regular_file "$STALE_RUNTIME" || \
+			fail 'stale release SYSTEM stage is unsafe'
+		rm -f "$STALE_RUNTIME"
+	done
+	RUNTIME_TEMP=$RUNTIME_RELEASE_ROOT/.ROCKNIX-SYSTEM.new.$$
+	[ ! -e "$RUNTIME_TEMP" ] && [ ! -L "$RUNTIME_TEMP" ] || \
+		fail 'release SYSTEM staging path is occupied'
+	COPYFILE_DISABLE=1 cp -f "$SYSTEM_INSTALL_SOURCE" "$RUNTIME_TEMP" || \
+		fail 'could not stage release SYSTEM'
+	[ "$(file_bytes "$RUNTIME_TEMP")" = "$RUNTIME_BYTES" ] && \
+	[ "$(sha256 "$RUNTIME_TEMP")" = "$RUNTIME_SHA" ] || \
+		fail 'staged release SYSTEM verification failed'
+	sync
+	mv "$RUNTIME_TEMP" "$RUNTIME"
+	RUNTIME_TEMP=
+	sync
+	[ "$(file_bytes "$RUNTIME")" = "$RUNTIME_BYTES" ] && \
+	[ "$(sha256 "$RUNTIME")" = "$RUNTIME_SHA" ] || \
+		fail 'release SYSTEM commit verification failed'
+fi
 [ "$(sha256 "$STORAGE_SOURCE")" = "$STORAGE_SHA" ] || fail 'reference STORAGE changed'
 # PortMaster may update itself over the network, but an offline birdOS
 # deployment accepts only a revision whose complete managed inventory has been
@@ -863,6 +932,22 @@ sync
 # the newly armed release.
 rm -f "$BIRD/bird-loader-failure.txt" 2>/dev/null || :
 
+# The selected release now owns the canonical deterministic SYSTEM. The old
+# shared muOS image is neither a boot fallback nor a build input. Remove it only
+# after selector activation and only when it is the exact shipping image that
+# the hermetic parity gate replaced.
+if is_regular_file "$LEGACY_RUNTIME"; then
+	[ "$(file_bytes "$LEGACY_RUNTIME")" = "$LEGACY_RUNTIME_BYTES" ] && \
+	[ "$(sha256 "$LEGACY_RUNTIME")" = "$LEGACY_RUNTIME_SHA" ] || \
+		fail 'legacy SYSTEM changed; refusing automatic retirement'
+	rm -f "$LEGACY_RUNTIME"
+elif [ -e "$LEGACY_RUNTIME" ] || [ -L "$LEGACY_RUNTIME" ]; then
+	fail 'legacy SYSTEM path is unsafe'
+fi
+sync
+[ ! -e "$LEGACY_RUNTIME" ] && [ ! -L "$LEGACY_RUNTIME" ] || \
+	fail 'legacy SYSTEM remains after canonical activation'
+
 printf 'Bird stock-root %s activated on /dev/%s.\n' "$RELEASE_ID" "$WHOLE"
 printf 'Complete immutable release: %s\n' "$RELEASE"
 printf 'Canonical manifest: %s\n' "$MANIFEST_SHA"
@@ -902,6 +987,7 @@ printf 'Per-boot supervisor, early-launcher and boot-state evidence is retained.
 printf 'Select+Start exits the managed foreground tree without grabbing app input.\n'
 printf 'MSX uses the pinned fMSX core and its existing shared BIOS ROMs.\n'
 printf 'p5 was not modified; this runtime transaction moved no p6 user content.\n'
+printf 'The deterministic SYSTEM is release-scoped under Bird/runtime; the legacy shared SYSTEM is removed.\n'
 printf 'Exact ROCKNIX KERNEL: %s\n' "$ROCKNIX_KERNEL_SHA"
 printf 'Release verification failures persist a diagnostic and stop for host repair.\n'
 printf 'Test early interaction timing, then repeat the broad compatibility gate.\n'

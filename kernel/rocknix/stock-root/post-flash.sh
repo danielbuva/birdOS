@@ -1,7 +1,7 @@
 #!/bin/sh
-# Keep ROCKNIX's initramfs and SYSTEM unchanged. The small BIRD partition only
-# supplies this hook so the exact release SYSTEM and writable storage image can
-# live on the existing large data partition.
+# Keep ROCKNIX's initramfs contract. The small BIRD partition supplies this
+# hook so the selected release's deterministic SYSTEM and writable storage
+# image can live on the existing large data partition.
 
 BIRD_HOST_TEST_MODE=${BIRD_HOST_TEST_MODE:-0}
 case "$BIRD_HOST_TEST_MODE" in
@@ -9,14 +9,12 @@ case "$BIRD_HOST_TEST_MODE" in
 		BIRD_FLASH_ROOT=/flash
 		BIRD_DATA_DEVICE=/dev/mmcblk0p6
 		BIRD_DATA_MOUNT=/birddata
-		BIRD_SYSTEM_REL=MUOS/runtime/ROCKNIX-SYSTEM
 		BIRD_STORAGE_REL=MUOS/runtime/ROCKNIX-STORAGE
 		;;
 	1)
 		BIRD_FLASH_ROOT=${BIRD_FLASH_ROOT:-/flash}
 		BIRD_DATA_DEVICE=${BIRD_DATA_DEVICE:-/dev/mmcblk0p6}
 		BIRD_DATA_MOUNT=${BIRD_DATA_MOUNT:-/birddata}
-		BIRD_SYSTEM_REL=${BIRD_SYSTEM_REL:-MUOS/runtime/ROCKNIX-SYSTEM}
 		BIRD_STORAGE_REL=${BIRD_STORAGE_REL:-MUOS/runtime/ROCKNIX-STORAGE}
 		case "$BIRD_FLASH_ROOT:$BIRD_DATA_MOUNT" in
 			/var/folders/*:/var/folders/*|/private/tmp/*:/private/tmp/*|/tmp/*:/tmp/*) ;;
@@ -31,6 +29,11 @@ case "$BIRD_HOST_TEST_MODE" in
 esac
 [ -n "${BIRD_LOADER_SELECTED:-}" ] || return 1
 BIRD_RELEASE=$BIRD_LOADER_SELECTED
+if [ "$BIRD_HOST_TEST_MODE" = 1 ]; then
+	BIRD_SYSTEM_REL=${BIRD_SYSTEM_REL:-Bird/runtime/$BIRD_RELEASE/ROCKNIX-SYSTEM}
+else
+	BIRD_SYSTEM_REL=Bird/runtime/$BIRD_RELEASE/ROCKNIX-SYSTEM
+fi
 BIRD_RELEASES_ROOT=$BIRD_FLASH_ROOT/bird-releases
 BIRD_DATA_MOUNTED=0
 BIRD_RUNTIME_BIND_MOUNTED=0

@@ -1666,6 +1666,16 @@ the sealed inventory digest is
 This is reproducibility evidence only. It has not yet replaced the active
 SYSTEM and makes no device timing, energy or behavior claim.
 
+The bounded physical-parity candidate now consumes that exact repack without
+baking Bird policy into it. The canonical updater stages the image under
+`/storage/bird-data/Bird/runtime/<release-id>/ROCKNIX-SYSTEM`, verifies its
+manifest size and digest, and only then activates the matching selector. The
+previously selected SYSTEM remains untouched until activation; verified release
+rotation removes its release-scoped image, while the one-time legacy
+`MUOS/runtime/ROCKNIX-SYSTEM` input is retired only after the new selector is
+committed. This is a no-content-change Stage 6 gate. It still requires the full
+RG34XX-SP behavior and boot-parity test before acceptance.
+
 ## Accepted v6.23 evidence
 
 The accepted human promotion binding is clean source

@@ -90,9 +90,11 @@ CARD=$TMP/build/card
 MANIFEST=$TMP/build/deploy-manifest.tsv
 DATA=$TMP/BIRD-DATA
 STORAGE_SOURCE=$TMP/storage.ext4
-RUNTIME=$DATA/MUOS/runtime/ROCKNIX-SYSTEM
 INFO=$TMP/device-info.tsv
 UPDATER_RELEASE_ID=v6.23
+SYSTEM_INSTALL_SOURCE=$TMP/hermetic-SYSTEM
+RUNTIME=$DATA/Bird/runtime/$UPDATER_RELEASE_ID/ROCKNIX-SYSTEM
+LEGACY_RUNTIME=$DATA/MUOS/runtime/ROCKNIX-SYSTEM
 
 mkdir -p "$CARD/bird" "$CARD/extlinux" "$BIRD/bird" "$BIRD/extlinux" \
 	"$DATA/MUOS/runtime" "$DATA/Bird/boot-state/releases/v6.22" \
@@ -119,13 +121,16 @@ chmod 0755 "$CARD/post-flash.sh" "$CARD/mount-storage.sh" \
 chmod 0644 "$CARD/SYSTEM" "$CARD/bird-initramfs.cpio.gz" \
 	"$CARD/extlinux/extlinux.conf"
 
-printf 'exact-runtime\n' >"$RUNTIME"
+printf 'exact-runtime\n' >"$SYSTEM_INSTALL_SOURCE"
+printf 'legacy-runtime\n' >"$LEGACY_RUNTIME"
 dd if=/dev/zero of="$STORAGE_SOURCE" bs=2048 count=1 2>/dev/null
 printf '\123\357' | dd of="$STORAGE_SOURCE" bs=1 seek=1080 conv=notrunc 2>/dev/null
 
 ROCKNIX_KERNEL_SHA=$(sha256 "$CARD/KERNEL")
 DTB_SHA=$(sha256 "$CARD/dtb.img")
-RUNTIME_SHA=$(sha256 "$RUNTIME")
+RUNTIME_SHA=$(sha256 "$SYSTEM_INSTALL_SOURCE")
+LEGACY_RUNTIME_SHA=$(sha256 "$LEGACY_RUNTIME")
+LEGACY_RUNTIME_BYTES=$(bytes "$LEGACY_RUNTIME")
 STORAGE_SHA=$(sha256 "$STORAGE_SOURCE")
 AUTOSTART_SHA=1111111111111111111111111111111111111111111111111111111111111111
 OFFICIAL_INIT_SHA=2222222222222222222222222222222222222222222222222222222222222222
@@ -164,7 +169,7 @@ find "$CARD" -mindepth 1 -type d -empty -print | LC_ALL=C sort >"$DIR_LIST"
 	printf 'input\tdtb.img\t700\t%s\t%s\ttest:dtb.img\n' \
 		"$(bytes "$CARD/dtb.img")" "$DTB_SHA"
 	printf 'input\tROCKNIX-SYSTEM\t644\t%s\t%s\ttest:SYSTEM\n' \
-		"$(bytes "$RUNTIME")" "$RUNTIME_SHA"
+		"$(bytes "$SYSTEM_INSTALL_SOURCE")" "$RUNTIME_SHA"
 	printf 'input\tROCKNIX-STORAGE\t644\t%s\t%s\ttest:STORAGE\n' \
 		"$(bytes "$STORAGE_SOURCE")" "$STORAGE_SHA"
 	printf 'input\tusr/bin/autostart\t755\t1\t%s\ttest:autostart\n' "$AUTOSTART_SHA"
@@ -222,12 +227,17 @@ run_updater() {
 	BIRD_HOST_TEST_MODE=1 BIRD=$BIRD DATA=$DATA \
 	BIRD_RELEASE_ID=$UPDATER_RELEASE_ID \
 	CANDIDATE=$CARD MANIFEST=$MANIFEST \
-	STORAGE_SOURCE=$STORAGE_SOURCE BIRD_DEVICE_INFO=$INFO \
+	STORAGE_SOURCE=$STORAGE_SOURCE SYSTEM_INSTALL_SOURCE=$SYSTEM_INSTALL_SOURCE \
+	BIRD_TEST_LEGACY_RUNTIME_BYTES=$LEGACY_RUNTIME_BYTES \
+	BIRD_TEST_LEGACY_RUNTIME_SHA=$LEGACY_RUNTIME_SHA BIRD_DEVICE_INFO=$INFO \
 	BIRD_TEST_FAILPOINT=$FAILPOINT \
 	BIRD_TEST_LOCK_GATE=${LOCK_GATE:-} \
 	BIRD_TEST_MANIFEST_GATE=${MANIFEST_GATE:-} \
 	BIRD_TEST_PORTMASTER_PROVIDER_MANIFEST="$PORTMASTER_PROVIDER_MANIFEST" \
 	"$UPDATER"
+	UPDATER_STATUS=$?
+	:
+	return "$UPDATER_STATUS"
 }
 
 run_migration() {
@@ -449,7 +459,11 @@ set -e
 	exit 1
 }
 grep -q 'development metadata exists at BIRD/bird-dev' \
-	"$TMP/dev-post-lock.err"
+	"$TMP/dev-post-lock.err" || {
+	cat "$TMP/dev-post-lock.err" >&2
+	printf '%s\n' 'post-lock development rejection reason changed' >&2
+	exit 1
+}
 [ "$(sha256 "$BIRD/bird-dev/state.tsv")" = "$DEV_POST_LOCK_STATE_SHA" ]
 assert_production_dev_rejection_unchanged \
 	"$DEV_GUARD_ORIGINAL_SELECTOR_SHA"
@@ -748,6 +762,8 @@ grep -Fq 'Production omits the serial console and has no alternate boot target.'
 [ ! -e "$BIRD/dtb.img" ]
 [ ! -e "$BIRD/extlinux/extlinux.fallback.conf" ]
 [ ! -e "$DATA/Bird/boot-state/releases" ]
+[ -f "$RUNTIME" ] && cmp "$SYSTEM_INSTALL_SOURCE" "$RUNTIME"
+[ ! -e "$LEGACY_RUNTIME" ] && [ ! -L "$LEGACY_RUNTIME" ]
 [ ! -e "$CARD_LOCK" ] && [ ! -L "$CARD_LOCK" ]
 
 # The namespace is deliberately fixed across effective UIDs. Simulate a

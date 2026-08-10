@@ -18,10 +18,10 @@ configure_reproducible_build_environment
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 SOURCE=${SOURCE:-/Volumes/BIRD}
-SYSTEM_SOURCE=${SYSTEM_SOURCE:-/Volumes/BIRD-DATA/MUOS/runtime/ROCKNIX-SYSTEM}
+RELEASE_ID=${BIRD_RELEASE_ID:-v6.23}
+SYSTEM_SOURCE=${SYSTEM_SOURCE:-/Volumes/BIRD-DATA/Bird/runtime/$RELEASE_ID/ROCKNIX-SYSTEM}
 STORAGE=${STORAGE:-$HOME/rocknix-reference-result/storage.ext4}
 SYSTEM_TREE=${SYSTEM_TREE:-$ROOT/kernel/work/rocknix-system-exact-20260701}
-RELEASE_ID=${BIRD_RELEASE_ID:-v6.23}
 OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-$RELEASE_ID}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
 LLD=${LLD:-/opt/homebrew/opt/lld/bin/ld.lld}
@@ -29,7 +29,7 @@ READELF=${READELF:-/opt/homebrew/opt/llvm/bin/llvm-readelf}
 
 KERNEL_SHA=af4e75cb30b097ee5764764eb056d686bc00c6bd03fefece26b0ebbaa7fbb673
 DTB_SHA=f3a4273986d6e4f431b110cead8aa19e8da52ff08c64c4b204ef9664d28b5c31
-SYSTEM_SHA=6e2112fc9dc81d5fee944f2534346a8f20674f40e23a0a85bb795218d31eadac
+SYSTEM_SHA=769edbb4522ae031129e5a07712b5529a7ec238735762c2d3d7ddb288e7e37ab
 STORAGE_SHA=12affdad7bc2042cb590fea60fc015a7ee8d4374ebcc3b1c11098a64b9ffa3be
 AUTOSTART_SHA=7f8671aa1bb9239a193f84e667d55e169f983bcb015d98c345b60d0b80a77639
 OFFICIAL_INIT_SHA=3473415af0cf5df44e70259c3392817b1df421a12a617ec083ec018ff51dbc48

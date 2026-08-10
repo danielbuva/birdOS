@@ -283,6 +283,7 @@ sha256() { shasum -a 256 "$1" | awk '{print $1}'; }
 printf '%s\n' "$BIRD_RELEASE_ID" >"$TEST_STATE/updater-release-id"
 printf '%s\n' "$CANDIDATE" >"$TEST_STATE/updater-candidate"
 printf '%s\n' "$MANIFEST" >"$TEST_STATE/updater-manifest"
+printf '%s\n' "$SYSTEM_INSTALL_SOURCE" >"$TEST_STATE/updater-system-source"
 grep -Fqx "release${TAB:-	}$BIRD_RELEASE_ID" "$MANIFEST" 2>/dev/null || \
 	awk -F '\t' -v release="$BIRD_RELEASE_ID" \
 		'$1 == "release" && $2 == release {found++} END {exit found != 1}' "$MANIFEST"
@@ -462,6 +463,28 @@ create_completed_release() {
 		done
 	} >"$FIXTURE_MANIFEST"
 	sha256 "$FIXTURE_MANIFEST" >"$FIXTURE_RELEASE/.complete"
+}
+
+add_release_system_runtime() {
+	RUNTIME_RELEASE_ID=$1
+	RUNTIME_RELEASE=$BIRD/bird-releases/$RUNTIME_RELEASE_ID
+	RUNTIME_ROOT=$DATA/Bird/runtime/$RUNTIME_RELEASE_ID
+	RUNTIME_FILE=$RUNTIME_ROOT/ROCKNIX-SYSTEM
+	mkdir -p "$RUNTIME_ROOT"
+	printf 'release SYSTEM %s\n' "$RUNTIME_RELEASE_ID" >"$RUNTIME_FILE"
+	RUNTIME_MANIFEST=$RUNTIME_RELEASE/deploy-manifest.tsv
+	RUNTIME_MANIFEST_NEW=$RUNTIME_RELEASE/.deploy-manifest.tsv.new
+	awk -F '\t' -v mode="$(mode "$RUNTIME_FILE")" \
+		-v bytes="$(bytes "$RUNTIME_FILE")" -v digest="$(sha256 "$RUNTIME_FILE")" '
+		BEGIN {OFS="\t"}
+		$1 == "input" && $2 == "ROCKNIX-SYSTEM" {
+			$3=mode; $4=bytes; $5=digest; found++
+		}
+		{print}
+		END {if (found != 1) exit 1}
+	' "$RUNTIME_MANIFEST" >"$RUNTIME_MANIFEST_NEW"
+	mv "$RUNTIME_MANIFEST_NEW" "$RUNTIME_MANIFEST"
+	sha256 "$RUNTIME_MANIFEST" >"$RUNTIME_RELEASE/.complete"
 }
 
 select_fixture_release() {
@@ -753,7 +776,8 @@ grep -q 'KOReader archive failed integrity verification' "$CASE_ROOT/err"
 
 new_case koreader-first-extraction-space
 rm -f "$DATA/.config/bird/koreader-extraction/$KOREADER_ARCHIVE_SHA.complete"
-KOREADER_PENDING_REQUIRED=$((16777216 + KOREADER_EXPANDED_BYTES + $(bytes "$STORAGE_SOURCE")))
+KOREADER_PENDING_REQUIRED=$((16777216 + KOREADER_EXPANDED_BYTES + \
+	$(bytes "$STORAGE_SOURCE") + $(bytes "$SYSTEM_SOURCE")))
 BIRD_TEST_DATA_FREE_BYTES=$((KOREADER_PENDING_REQUIRED - 1))
 if run_command --release --dry-run >"$CASE_ROOT/low.out" 2>"$CASE_ROOT/low.err"; then
 	fail 'KOReader first extraction without sufficient reserve was accepted'
@@ -1200,6 +1224,7 @@ cmp "$BIRD/extlinux/extlinux.conf" \
 
 new_case post-activation-release-rotation
 create_completed_release active
+add_release_system_runtime active
 select_fixture_release active
 OLD_SELECTOR_SHA=$(sha256 "$BIRD/extlinux/extlinux.conf")
 run_command --release >"$CASE_ROOT/out"
@@ -1216,12 +1241,14 @@ cmp "$BIRD/extlinux/extlinux.conf" \
 [ ! -e "$BIRD/extlinux/extlinux.fallback.conf" ]
 [ ! -e "$BIRD/KERNEL.fallback" ]
 [ ! -e "$BIRD/dtb.img" ]
+[ ! -e "$DATA/Bird/runtime/active" ]
 
 # If post-activation archival cannot be published, the new complete release may
 # remain selected, but the superseded release and exact previous selector must
 # remain intact. No on-card rollback bytes may be removed before verification.
 new_case post-activation-archive-failure
 create_completed_release active
+add_release_system_runtime active
 select_fixture_release active
 OLD_SELECTOR_SHA=$(sha256 "$BIRD/extlinux/extlinux.conf")
 TEST_GH_BEHAVIOR=upload-failure
@@ -1238,6 +1265,7 @@ grep -Fq 'bird_release=v6.23' "$BIRD/extlinux/extlinux.conf"
 [ ! -e "$BIRD/extlinux/extlinux.fallback.conf" ]
 [ ! -e "$BIRD/KERNEL.fallback" ]
 [ ! -e "$BIRD/dtb.img" ]
+[ -f "$DATA/Bird/runtime/active/ROCKNIX-SYSTEM" ]
 
 # Historical fixed-fallback and pre-versioned-root cases below no longer apply
 # after the single-selector boot-contract subtraction.
@@ -1684,6 +1712,7 @@ run_command --release >"$CASE_ROOT/out"
 [ "$(cat "$TEST_STATE/builder-profile")" = unset ]
 [ "$(cat "$TEST_STATE/builder-release-id")" = v6.23 ]
 [ "$(cat "$TEST_STATE/updater-release-id")" = v6.23 ]
+[ "$(cat "$TEST_STATE/updater-system-source")" = "$SYSTEM_SOURCE" ]
 [ ! -e "$WORK_ROOT/bird-rocknix-stock-root-v6.23/stale-marker" ]
 grep -q 'Deployment result: activated new immutable release' "$CASE_ROOT/out"
 

@@ -211,7 +211,7 @@ case "$HOST_TEST_MODE" in
 esac
 
 SOURCE=$BIRD
-SYSTEM_SOURCE=${SYSTEM_SOURCE:-$DATA/MUOS/runtime/ROCKNIX-SYSTEM}
+SYSTEM_SOURCE=${SYSTEM_SOURCE:-}
 STORAGE_SOURCE=${STORAGE_SOURCE:-$HOME/rocknix-reference-result/storage.ext4}
 SYSTEM_TREE=${SYSTEM_TREE:-$ROOT/kernel/work/rocknix-system-exact-20260701}
 OFFICIAL_INIT=${OFFICIAL_INIT:-$ROOT/kernel/work/rocknix-official-initramfs-20260701/ramdisk/init}
@@ -601,6 +601,22 @@ prepare_versioned_build_source() {
 }
 
 prepare_versioned_build_source
+
+# A caller may supply a newly generated hermetic SYSTEM. Ordinary later builds
+# reuse the selected release's version-scoped canonical SYSTEM. The legacy muOS
+# path exists only for the one-time Stage 6 transition.
+if [ -z "$SYSTEM_SOURCE" ]; then
+	read_active_selector
+	ACTIVE_SYSTEM_SOURCE=$DATA/Bird/runtime/$ACTIVE_RELEASE_ID/ROCKNIX-SYSTEM
+	LEGACY_SYSTEM_SOURCE=$DATA/MUOS/runtime/ROCKNIX-SYSTEM
+	if is_regular_file "$ACTIVE_SYSTEM_SOURCE"; then
+		SYSTEM_SOURCE=$ACTIVE_SYSTEM_SOURCE
+	elif is_regular_file "$LEGACY_SYSTEM_SOURCE"; then
+		SYSTEM_SOURCE=$LEGACY_SYSTEM_SOURCE
+	else
+		fail 'selected release has no canonical or legacy SYSTEM build input'
+	fi
+fi
 
 for PINNED_FILE in "$SOURCE/KERNEL" "$SOURCE/dtb.img" "$SYSTEM_SOURCE" \
 	"$STORAGE_SOURCE" "$SYSTEM_TREE/usr/bin/autostart" "$OFFICIAL_INIT" \
@@ -1039,7 +1055,7 @@ BIRD_STAGING_REQUIRED_BYTES=$(( $(file_bytes "$SOURCE/KERNEL") + $(file_bytes "$
 # removed, which makes room for the mutable development copy without retaining
 # two production releases on the card.
 BIRD_REQUIRED_BYTES=$BIRD_STAGING_REQUIRED_BYTES
-DATA_REQUIRED_BYTES=$((16777216 + KOREADER_EXTRACTION_RESERVE))
+DATA_REQUIRED_BYTES=$((16777216 + KOREADER_EXTRACTION_RESERVE + $(file_bytes "$SYSTEM_SOURCE") ))
 if ! is_regular_file "$DATA/MUOS/runtime/ROCKNIX-STORAGE"; then
 	DATA_REQUIRED_BYTES=$(( $(file_bytes "$STORAGE_SOURCE") + DATA_REQUIRED_BYTES ))
 fi
@@ -1270,6 +1286,30 @@ archive_and_remove_retired_release() {
 	esac
 	verify_archive_selector_unchanged
 	validate_retired_release "$RETIRED_DIR" "$RETIRED_ID"
+	RETIRED_SYSTEM_ROOT=$DATA/Bird/runtime/$RETIRED_ID
+	RETIRED_SYSTEM=$RETIRED_SYSTEM_ROOT/ROCKNIX-SYSTEM
+	RETIRED_SYSTEM_PRESENT=0
+	if [ -e "$RETIRED_SYSTEM_ROOT" ] || [ -L "$RETIRED_SYSTEM_ROOT" ]; then
+		[ -d "$RETIRED_SYSTEM_ROOT" ] && [ ! -L "$RETIRED_SYSTEM_ROOT" ] || \
+			fail "retired release SYSTEM directory is unsafe: $RETIRED_ID"
+		[ "$(find "$RETIRED_SYSTEM_ROOT" -mindepth 1 -maxdepth 1 -print | wc -l | tr -d ' ')" = 1 ] && \
+			is_regular_file "$RETIRED_SYSTEM" || \
+			fail "retired release SYSTEM directory has an unexpected inventory: $RETIRED_ID"
+		RETIRED_SYSTEM_BYTES=$(awk -F '\t' '
+			$1 == "input" && $2 == "ROCKNIX-SYSTEM" {print $4; found++}
+			END {if (found != 1) exit 1}
+		' "$RETIRED_DIR/deploy-manifest.tsv") || \
+			fail "retired release SYSTEM size authority is missing: $RETIRED_ID"
+		RETIRED_SYSTEM_SHA=$(awk -F '\t' '
+			$1 == "input" && $2 == "ROCKNIX-SYSTEM" {print $5; found++}
+			END {if (found != 1) exit 1}
+		' "$RETIRED_DIR/deploy-manifest.tsv") || \
+			fail "retired release SYSTEM digest authority is missing: $RETIRED_ID"
+		[ "$(file_bytes "$RETIRED_SYSTEM")" = "$RETIRED_SYSTEM_BYTES" ] && \
+		[ "$(sha256 "$RETIRED_SYSTEM")" = "$RETIRED_SYSTEM_SHA" ] || \
+			fail "retired release SYSTEM differs from its manifest: $RETIRED_ID"
+		RETIRED_SYSTEM_PRESENT=1
+	fi
 	ARCHIVE_TAG=card-$RETIRED_ID
 	ARCHIVE_ASSET=birdOS-RG34XX-SP-$RETIRED_ID.tar
 	ARCHIVE_MANIFEST_ASSET=$RETIRED_ID.deploy-manifest.tsv
@@ -1374,6 +1414,11 @@ archive_and_remove_retired_release() {
 	rm -rf "$RETIRED_DIR"
 	[ ! -e "$RETIRED_DIR" ] && [ ! -L "$RETIRED_DIR" ] || \
 		fail "verified archive was published but inactive card release could not be removed: $RETIRED_ID"
+	if [ "$RETIRED_SYSTEM_PRESENT" -eq 1 ]; then
+		rm -f "$RETIRED_SYSTEM"
+		rmdir "$RETIRED_SYSTEM_ROOT" || \
+			fail "retired release SYSTEM directory could not be removed: $RETIRED_ID"
+	fi
 	sync
 	printf 'Reclaimed inactive card release: %s\n' "$RETIRED_ID"
 }
@@ -1722,6 +1767,7 @@ fi
 if ! BIRD_HOST_TEST_MODE="$HOST_TEST_MODE" BIRD_DEVICE_INFO="$BIRD_DEVICE_INFO" \
 	BIRD_RELEASE_ID="$RELEASE_ID" BIRD="$BIRD" DATA="$DATA" \
 	CANDIDATE="$CANDIDATE" MANIFEST="$MANIFEST" STORAGE_SOURCE="$STORAGE_SOURCE" \
+	SYSTEM_INSTALL_SOURCE="$SYSTEM_SOURCE" \
 	"$UPDATER"; then
 	fail "deployment failed; the previous selector remains authoritative unless the updater reported a verified post-selector commit. Build output retained at: $OUTPUT"
 fi

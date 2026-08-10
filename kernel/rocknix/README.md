@@ -22,6 +22,11 @@ produced repack SHA-256
 `769edbb4522ae031129e5a07712b5529a7ec238735762c2d3d7ddb288e7e37ab`
 and inventory SHA-256
 `0714f306f480e40849efa722505d8ae9ddc2921ebf2629130be579629725f86f`.
+The physical-parity candidate installs that image at
+`Bird/runtime/<release-id>/ROCKNIX-SYSTEM`; the updater verifies and publishes
+the new release-scoped input before changing the selector. Canonical release
+rotation removes the superseded release-scoped image so repeated releases do
+not accumulate 1.2 GB SYSTEM copies.
 
 The chronological source-kernel, clean-root and stock-root investigation below
 is preserved as evidence. It is not a menu of supported deployment paths. In
