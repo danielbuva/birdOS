@@ -4,7 +4,7 @@
 [`build-stock-root-compat.sh`](build-stock-root-compat.sh), deployed by
 [`firmware/mac-update-rocknix-stock-root-v6.sh`](../../firmware/mac-update-rocknix-stock-root-v6.sh),
 and defined end to end in [`ACTIVE_PATH.md`](../../ACTIVE_PATH.md). Immutable
-release `v6.23-20260810-032646` is the current broad physical acceptance result.
+release `v6.23-20260810-051204` is the current broad physical acceptance result.
 The active path retains the exact ROCKNIX 20260701 release kernel, DTB,
 effective system tree and configured writable provider;
 birdOS supplies the external early overlay and fixed integration layer.
@@ -28,11 +28,13 @@ the new release-scoped input before changing the selector. Canonical release
 rotation removes the superseded release-scoped image so repeated releases do
 not accumulate 1.2 GB SYSTEM copies.
 Release `v6.23-20260810-032646` physically accepted that no-content-change
-repack with input ready at 1216 ms and usable frame at 1232 ms. The next
-`--mask-policy` build replaces sixteen declared systemd definitions with
-`/dev/null` symlinks; HDMI and Bluetooth-adjacent masks remain runtime policy.
+repack. Release `v6.23-20260810-051204` then accepted the sixteen-mask SYSTEM,
+with recent input-ready samples at 1218--1226 ms, usable-frame samples at
+1221--1236 ms and a sub-three-second stopwatch result. The next
+`--fixed-policy` build retains those masks and adds fourteen exact fixed
+service/config files. HDMI and Bluetooth-adjacent masks remain runtime policy.
 Its independently reproduced digest is
-`fad2df8d2a293e03e2b0a180eaf9fdb14d5cc79a6ef663b80c4f0dbcd6c6dc76`.
+`214ae075864fbe848f0fc6c31d4bec68778a111efb2ed1de78366446348d2af4`.
 
 The chronological source-kernel, clean-root and stock-root investigation below
 is preserved as evidence. It is not a menu of supported deployment paths. In

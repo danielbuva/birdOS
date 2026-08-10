@@ -1676,30 +1676,37 @@ rotation removes its release-scoped image, while the one-time legacy
 committed. This is a no-content-change Stage 6 gate. It still requires the full
 RG34XX-SP behavior and boot-parity test before acceptance.
 
-That gate passed in immutable release `v6.23-20260810-032646`, clean source
+That no-content-change gate passed in immutable release
+`v6.23-20260810-032646`, clean source
 `faca047b626c7cb13bb2414663742514d257c538`, manifest
 `a9bfc96764b3e621ef52ec57989ce29ee52715ff8a5bf78525fb333458f7a85d`.
-The broad hardware matrix was fully functional. Its accepted boot log records
-input ready at 1216 ms and usable frame at 1232 ms, while the stopwatch remained
-below three seconds. These are descriptive parity samples, not a promoted
-timing distribution.
 
-The next bounded SYSTEM candidate bakes sixteen fixed-device
-systemd masks into the hermetic image as standard `/dev/null` symlinks. Two
-isolated full builds are byte-identical, and an inventory delta proves that only
-the sixteen declared paths changed. HDMI and Bluetooth-adjacent masks remain
-runtime policy pending their separate product decision. The candidate SYSTEM digest is
-`fad2df8d2a293e03e2b0a180eaf9fdb14d5cc79a6ef663b80c4f0dbcd6c6dc76`;
-its size remains 1,211,060,224 bytes. `mount-storage.sh` therefore removes the
-same sixteen pre-systemd mask mounts. Physical behavior and storage-readiness
+The following mask subtraction passed in immutable release
+`v6.23-20260810-051204`, clean source
+`bee2f26f6c53798c1e6455d6f2d66c2cd083e58b`, manifest
+`b14b7a2552ede731712b0b9dbd1a25ebdc0d46c820a75bedab48cc8a36081a22`.
+The broad hardware matrix was fully functional and the stopwatch remained below
+three seconds. Five recent boot logs recorded input ready from 1218--1226 ms
+and usable frame from 1221--1236 ms. These are descriptive parity samples, not
+a promoted timing distribution. The accepted SYSTEM bakes sixteen fixed-device
+systemd masks as standard `/dev/null` symlinks while HDMI and
+Bluetooth-adjacent masks remain reversible runtime policy.
+
+The next bounded SYSTEM candidate also bakes fourteen already accepted fixed
+service/config files byte-for-byte. Two isolated full builds are identical and
+the combined inventory delta proves exactly sixteen masks plus fourteen files.
+Its SYSTEM digest is
+`214ae075864fbe848f0fc6c31d4bec68778a111efb2ed1de78366446348d2af4`;
+its size remains 1,211,060,224 bytes. `mount-storage.sh` removes the fourteen
+matching pre-systemd bind mounts. Physical behavior and application-readiness
 parity remain required.
 
 ## Accepted v6.23 evidence
 
 The accepted human promotion binding is clean source
-`faca047b626c7cb13bb2414663742514d257c538`, release
-`v6.23-20260810-032646`, manifest
-`a9bfc96764b3e621ef52ec57989ce29ee52715ff8a5bf78525fb333458f7a85d`,
+`bee2f26f6c53798c1e6455d6f2d66c2cd083e58b`, release
+`v6.23-20260810-051204`, manifest
+`b14b7a2552ede731712b0b9dbd1a25ebdc0d46c820a75bedab48cc8a36081a22`,
 device contract
 `1664a3778abcd3687865a82fd28bba5b468f6c3c7e9a46bf90f7c3acb1e08162`
 and catalogue

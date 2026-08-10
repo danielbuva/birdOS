@@ -7,6 +7,8 @@ DOCKERFILE=$ROOT/kernel/rocknix/Dockerfile.hermetic-system
 INVENTORY=$ROOT/kernel/rocknix/inventory-rootfs.py
 MASK_POLICY=$ROOT/kernel/rocknix/hermetic-system-masks.tsv
 MASK_VERIFY=$ROOT/kernel/rocknix/verify-system-mask-delta.py
+OVERRIDE_POLICY=$ROOT/kernel/rocknix/hermetic-system-overrides.tsv
+FIXED_VERIFY=$ROOT/kernel/rocknix/verify-system-fixed-delta.py
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/bird-hermetic-test.XXXXXX")
 trap 'rm -rf -- "$TMP"' EXIT HUP INT TERM
 
@@ -33,6 +35,7 @@ docker build --platform linux/arm64 --pull=false --quiet \
 mkdir "$TMP/fixture"
 docker run --rm --platform linux/arm64 \
 	-v "$TMP/fixture:/output" -v "$MASK_POLICY:/input/masks.tsv:ro" \
+	-v "$OVERRIDE_POLICY:/input/overrides.tsv:ro" \
 	--entrypoint /bin/sh "$IMAGE" -ec '
 mkdir -p /work/root/etc /work/root/usr/bin /work/root/empty
 printf "bird\n" >/work/root/etc/hostname
@@ -47,6 +50,12 @@ while IFS="$(printf "\t")" read -r kind target; do
   printf "unmasked %s\n" "$target" > "/work/root/$target"
   chmod 0644 "/work/root/$target"
 done < /input/masks.tsv
+while IFS="$(printf "\t")" read -r kind source target mode digest; do
+  [ "$kind" = file ] || exit 1
+  mkdir -p "/work/root/${target%/*}"
+  printf "shipping %s\n" "$target" > "/work/root/$target"
+  chmod 0644 "/work/root/$target"
+done < /input/overrides.tsv
 find /work/root -exec touch -h -d @1782889443 {} +
 mksquashfs /work/root /output/SYSTEM -noappend -no-progress -processors 1 \
   -no-xattrs -comp zstd -Xcompression-level 19 -b 1048576 \
@@ -84,6 +93,21 @@ cmp "$MASK_OUTPUT/policy-inventory.tsv" "$MASK_OUTPUT/repacked-inventory.tsv" ||
 python3 "$MASK_VERIFY" "$MASK_OUTPUT/shipping-inventory.tsv" \
 	"$MASK_OUTPUT/policy-inventory.tsv" "$MASK_POLICY" >/dev/null ||
 	fail 'published mask delta failed independent verification'
+
+FIXED_OUTPUT=$TMP/fixed-policy
+SYSTEM_SOURCE=$FIXTURE SYSTEM_SHA=$FIXTURE_SHA SYSTEM_BYTES=$FIXTURE_BYTES \
+	"$BUILDER" --fixed-policy "$FIXED_OUTPUT" >"$TMP/fixed-policy.log"
+grep -Fq "$(printf 'schema\tbird-hermetic-system-fixed-policy-v1')" \
+	"$FIXED_OUTPUT/parity.tsv" || fail 'fixed-policy schema missing'
+grep -Fq "$(printf 'verified-mask-targets\t16')" \
+	"$FIXED_OUTPUT/policy-verification.tsv" || fail 'fixed mask proof missing'
+grep -Fq "$(printf 'verified-fixed-file-targets\t14')" \
+	"$FIXED_OUTPUT/policy-verification.tsv" || fail 'fixed-file proof missing'
+cmp "$FIXED_OUTPUT/policy-inventory.tsv" "$FIXED_OUTPUT/repacked-inventory.tsv" ||
+	fail 'fixed effective tree changed during repack'
+python3 "$FIXED_VERIFY" "$FIXED_OUTPUT/shipping-inventory.tsv" \
+	"$FIXED_OUTPUT/policy-inventory.tsv" "$MASK_POLICY" "$OVERRIDE_POLICY" \
+	>/dev/null || fail 'published fixed delta failed independent verification'
 
 if SYSTEM_SOURCE=$FIXTURE SYSTEM_SHA=$(printf '0%.0s' $(jot 64)) \
 	SYSTEM_BYTES=$FIXTURE_BYTES "$BUILDER" --parity "$TMP/bad" \

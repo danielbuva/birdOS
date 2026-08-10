@@ -219,99 +219,12 @@ cp -f /flash/bird/bird-swap.conf /storage/.config/swap.conf || return 1
 [ -f /storage/.config/swap.conf ] && \
 	[ -r /storage/.config/swap.conf ] || return 1
 
-# Replace the generic partition scanner with this device's fixed storage view.
-# Its original service name preserves ROCKNIX's ordering contract while doing
-# no probing and no launcher work.
-mount --bind /flash/bird/rocknix-automount.service \
-	/sysroot/usr/lib/systemd/system/rocknix-automount.service || {
-	error bird-fixed-storage-service "Could not install fixed storage service"
-	return 1
-}
-
-# Start the exact compatibility setup in parallel with Bird, but give it a
-# private null console so late status text and `clear` cannot repaint the menu.
-mount --bind /flash/bird/rocknix-autostart.service \
-	/sysroot/usr/lib/systemd/system/rocknix-autostart.service || {
-	error bird-background-autostart "Could not isolate compatibility autostart"
-	return 1
-}
-
-# Replace the generic Bash/grep/evtest input graph with one fixed event
-# process. The H700 gamepad remains ungrabbed; Bird and applications continue
-# to read it directly while this process owns only system-global actions.
-mount --bind /flash/bird/bird-fixed-controls.service \
-	/sysroot/usr/lib/systemd/system/input.service || {
-	error bird-fixed-controls "Could not replace generic input service"
-	return 1
-}
-
-# Replace two-second battery polling with the fixed H700 policy plus kernel
-# power-supply events. It never rewrites application performance policy after
-# startup; one 40-second capacity safety timer exists only while discharging.
-mount --bind /flash/bird/bird-powerstate.service \
-	/sysroot/usr/lib/systemd/system/powerstate.service || {
-	error bird-fixed-powerstate "Could not replace polling power service"
-	return 1
-}
-
-# ROCKNIX's shutdown hook sources the full interactive profile and copies the
-# same small config unconditionally. Keep the safety checkpoint with one exact
-# compare/copy process instead.
-mount --bind /flash/bird/bird-save-config.service \
-	/sysroot/usr/lib/systemd/system/save-sysconfig.service || {
-	error bird-fixed-shutdown "Could not replace generic config checkpoint"
-	return 1
-}
-
-# The fixed post-frame coordinator calls the proven H700/common responsibilities
-# directly from immutable paths. No generic directory scan, no no-op script
-# launch, and no per-script autostart bind replacement is needed here.
-
-# The four network providers keep their exact implementations but their boot
-# jobs are condition-gated. Bird raises the request only around PortMaster.
-for UNIT in NetworkManager.service iwd.service systemd-resolved.service \
-	systemd-timesyncd.service; do
-	mount --bind "/flash/bird/$UNIT" \
-		"/sysroot/usr/lib/systemd/system/$UNIT" || {
-		error bird-network-gate "Could not gate $UNIT"
-		return 1
-	}
-done
-mount --bind /flash/bird/systemd-rfkill.service \
-	/sysroot/usr/lib/systemd/system/systemd-rfkill.service || {
-	error bird-network-gate "Could not gate systemd-rfkill.service"
-	return 1
-}
-
-# Reuse the release's dormant statistics-service slot for a requested,
-# event-ordered diagnostic snapshot. Ordinary boots do not run the probe set;
-# its periodic timer is masked below.
-mount --bind /flash/bird/rocknix-report-stats.service \
-	/sysroot/usr/lib/systemd/system/rocknix-report-stats.service || {
-	error bird-boot-snapshot "Could not install post-frame snapshot service"
-	return 1
-}
-# The accepted image already journals to /run. Make that bounded volatile
-# contract explicit, then remove the empty persistent flush/catalog jobs.
-# Journald itself remains active for recovery evidence.
-mount --bind /flash/bird/bird-journald.conf \
-	/sysroot/etc/systemd/journald.conf || {
-	error bird-journal-policy "Could not install volatile journal policy"
-	return 1
-}
-
-# Replace only the UI implementation after storage. All other ROCKNIX targets,
-# platform quirks and application launch machinery remain.
-mount --bind /flash/bird/essway.service \
-	/sysroot/usr/lib/systemd/system/essway.service || {
-	error bird-ui-service "Could not install Bird UI service"
-	return 1
-}
-mount --bind /flash/bird/rocknix.target \
-	/sysroot/usr/lib/systemd/system/rocknix.target || {
-	error bird-target-timeout "Could not install guarded ROCKNIX target"
-	return 1
-}
+# The manifest-bound hermetic SYSTEM now contains the fourteen accepted fixed
+# service/config replacements byte-for-byte. They preserve the existing
+# storage, autostart, controls, power, shutdown, network, diagnostics, journal,
+# UI and target contracts without creating fourteen pre-systemd bind mounts.
+# Their release payload copies remain temporarily for manifest/source parity,
+# but this early path no longer consumes them.
 
 # Sixteen fixed-device masks are now immutable `/dev/null` symlinks in the
 # manifest-bound hermetic SYSTEM. HDMI and Bluetooth-adjacent policy remains a

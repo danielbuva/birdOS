@@ -13,6 +13,7 @@ INIT_BUSYBOX=$ROOT/kernel/work/rocknix-official-initramfs-20260701/ramdisk/usr/b
 SYSTEM_UNITS=$ROOT/kernel/work/rocknix-system-exact-20260701/usr/lib/systemd/system
 JOURNAL_POLICY=$ROOT/kernel/rocknix/stock-root/bird-journald.conf
 SYSTEM_MASK_POLICY=$ROOT/kernel/rocknix/hermetic-system-masks.tsv
+SYSTEM_OVERRIDE_POLICY=$ROOT/kernel/rocknix/hermetic-system-overrides.tsv
 SWAP_POLICY=$ROOT/kernel/rocknix/stock-root/bird-swap.conf
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/bird-mount-storage.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT INT TERM HUP
@@ -79,7 +80,11 @@ if grep -Fq '/usr/lib/autostart' "$MOUNT_STORAGE"; then
 	printf '%s\n' 'per-script autostart bind replacement remained' >&2
 	exit 1
 fi
-grep -Fq '/flash/bird/bird-journald.conf \' "$MOUNT_STORAGE"
+if grep -Eq 'mount --bind .*/flash/bird/(rocknix-automount|rocknix-autostart|bird-fixed-controls|bird-powerstate|bird-save-config|NetworkManager|iwd|systemd-resolved|systemd-timesyncd|systemd-rfkill|rocknix-report-stats|bird-journald|essway|rocknix[.]target)' \
+	"$MOUNT_STORAGE"; then
+	printf '%s\n' 'fixed SYSTEM file replacement bind remained' >&2
+	exit 1
+fi
 [ "$(grep -Fc 'mount --bind /dev/null' "$MOUNT_STORAGE")" -eq 1 ]
 for DEFERRED_UNIT in hdmi-hotplug.path video.service sixaxis@.service \
 	systemd-rfkill.socket; do
@@ -89,6 +94,27 @@ for DEFERRED_UNIT in hdmi-hotplug.path video.service sixaxis@.service \
 		printf 'deferred hardware policy was baked: %s\n' "$DEFERRED_UNIT" >&2
 		exit 1
 	fi
+done
+[ "$(wc -l <"$SYSTEM_OVERRIDE_POLICY" | tr -d ' ')" -eq 14 ]
+for OVERRIDE in \
+	'rocknix-automount.service usr/lib/systemd/system/rocknix-automount.service' \
+	'rocknix-autostart.service usr/lib/systemd/system/rocknix-autostart.service' \
+	'bird-fixed-controls.service usr/lib/systemd/system/input.service' \
+	'bird-powerstate.service usr/lib/systemd/system/powerstate.service' \
+	'bird-save-config.service usr/lib/systemd/system/save-sysconfig.service' \
+	'NetworkManager.service usr/lib/systemd/system/NetworkManager.service' \
+	'iwd.service usr/lib/systemd/system/iwd.service' \
+	'systemd-resolved.service usr/lib/systemd/system/systemd-resolved.service' \
+	'systemd-timesyncd.service usr/lib/systemd/system/systemd-timesyncd.service' \
+	'systemd-rfkill.service usr/lib/systemd/system/systemd-rfkill.service' \
+	'rocknix-report-stats.service usr/lib/systemd/system/rocknix-report-stats.service' \
+	'bird-journald.conf etc/systemd/journald.conf' \
+	'essway.service usr/lib/systemd/system/essway.service' \
+	'rocknix.target usr/lib/systemd/system/rocknix.target'; do
+	set -- $OVERRIDE
+	SOURCE_SHA=$(shasum -a 256 "$ROOT/kernel/rocknix/stock-root/$1" | awk '{print $1}')
+	grep -Fqx "$(printf 'file\t%s\t%s\t0644\t%s' "$1" "$2" "$SOURCE_SHA")" \
+		"$SYSTEM_OVERRIDE_POLICY"
 done
 for MASKED_UNIT in systemd-journal-flush.service \
 	systemd-journal-catalog-update.service systemd-logind.service \

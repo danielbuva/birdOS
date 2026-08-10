@@ -23,6 +23,7 @@ SYSTEM_SOURCE=${SYSTEM_SOURCE:-/Volumes/BIRD-DATA/Bird/runtime/$RELEASE_ID/ROCKN
 STORAGE=${STORAGE:-$HOME/rocknix-reference-result/storage.ext4}
 SYSTEM_TREE=${SYSTEM_TREE:-$ROOT/kernel/work/rocknix-system-exact-20260701}
 SYSTEM_MASK_POLICY=$ROOT/kernel/rocknix/hermetic-system-masks.tsv
+SYSTEM_OVERRIDE_POLICY=$ROOT/kernel/rocknix/hermetic-system-overrides.tsv
 OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-$RELEASE_ID}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
 LLD=${LLD:-/opt/homebrew/opt/lld/bin/ld.lld}
@@ -30,7 +31,7 @@ READELF=${READELF:-/opt/homebrew/opt/llvm/bin/llvm-readelf}
 
 KERNEL_SHA=af4e75cb30b097ee5764764eb056d686bc00c6bd03fefece26b0ebbaa7fbb673
 DTB_SHA=f3a4273986d6e4f431b110cead8aa19e8da52ff08c64c4b204ef9664d28b5c31
-SYSTEM_SHA=fad2df8d2a293e03e2b0a180eaf9fdb14d5cc79a6ef663b80c4f0dbcd6c6dc76
+SYSTEM_SHA=214ae075864fbe848f0fc6c31d4bec68778a111efb2ed1de78366446348d2af4
 STORAGE_SHA=12affdad7bc2042cb590fea60fc015a7ee8d4374ebcc3b1c11098a64b9ffa3be
 AUTOSTART_SHA=7f8671aa1bb9239a193f84e667d55e169f983bcb015d98c345b60d0b80a77639
 OFFICIAL_INIT_SHA=3473415af0cf5df44e70259c3392817b1df421a12a617ec083ec018ff51dbc48
@@ -200,6 +201,7 @@ is_regular_file "$JOYPAD" || fail 'exact H700 input module missing or not regula
 is_regular_file "$INIT_BUSYBOX" || fail 'exact initramfs BusyBox missing or not regular'
 is_regular_file "$SYSTEM_BUSYBOX" || fail 'extracted exact SYSTEM BusyBox missing or not regular'
 is_regular_file "$SYSTEM_MASK_POLICY" || fail 'hermetic SYSTEM mask policy missing or not regular'
+is_regular_file "$SYSTEM_OVERRIDE_POLICY" || fail 'hermetic SYSTEM fixed-file policy missing or not regular'
 is_regular_file "$PORTMASTER_ARCHIVE" || fail 'exact PortMaster archive missing or not regular'
 [ "$(sha256 "$SOURCE/KERNEL")" = "$KERNEL_SHA" ] || fail 'release KERNEL changed'
 [ "$(sha256 "$SOURCE/dtb.img")" = "$DTB_SHA" ] || fail 'release DTB changed'
@@ -774,10 +776,6 @@ if grep -Eq '^(After|Before|Wants|Requires)=.*essway\.service' \
 	"$OUTPUT/card/bird/bird-powerstate.service"; then
 	fail 'fixed powerstate recreates the graphical target ordering cycle'
 fi
-grep -q '/flash/bird/bird-fixed-controls.service' \
-	"$OUTPUT/card/mount-storage.sh" || fail 'stock input replacement missing'
-grep -q '/flash/bird/bird-powerstate.service' \
-	"$OUTPUT/card/mount-storage.sh" || fail 'stock powerstate replacement missing'
 grep -Fq '!state->select_held || !state->start_held' \
 	"$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c" || fail 'Bird exit chord missing'
 grep -Fq '#define EMERGENCY_HELPER "/flash/bird/bird-emergency-recover.sh"' \
@@ -1058,6 +1056,32 @@ for MASKED_UNIT in systemd-journal-flush.service \
 done
 [ "$(wc -l <"$SYSTEM_MASK_POLICY" | tr -d ' ')" = 16 ] || \
 	fail 'hermetic SYSTEM mask count changed'
+if grep -Eq 'mount --bind .*/flash/bird/(rocknix-automount|rocknix-autostart|bird-fixed-controls|bird-powerstate|bird-save-config|NetworkManager|iwd|systemd-resolved|systemd-timesyncd|systemd-rfkill|rocknix-report-stats|bird-journald|essway|rocknix[.]target)' \
+	"$OUTPUT/card/mount-storage.sh"; then
+	fail 'fixed SYSTEM file replacement bind remained'
+fi
+for OVERRIDE in \
+	'rocknix-automount.service usr/lib/systemd/system/rocknix-automount.service' \
+	'rocknix-autostart.service usr/lib/systemd/system/rocknix-autostart.service' \
+	'bird-fixed-controls.service usr/lib/systemd/system/input.service' \
+	'bird-powerstate.service usr/lib/systemd/system/powerstate.service' \
+	'bird-save-config.service usr/lib/systemd/system/save-sysconfig.service' \
+	'NetworkManager.service usr/lib/systemd/system/NetworkManager.service' \
+	'iwd.service usr/lib/systemd/system/iwd.service' \
+	'systemd-resolved.service usr/lib/systemd/system/systemd-resolved.service' \
+	'systemd-timesyncd.service usr/lib/systemd/system/systemd-timesyncd.service' \
+	'systemd-rfkill.service usr/lib/systemd/system/systemd-rfkill.service' \
+	'rocknix-report-stats.service usr/lib/systemd/system/rocknix-report-stats.service' \
+	'bird-journald.conf etc/systemd/journald.conf' \
+	'essway.service usr/lib/systemd/system/essway.service' \
+	'rocknix.target usr/lib/systemd/system/rocknix.target'; do
+	set -- $OVERRIDE
+	OVERRIDE_SHA=$(sha256 "$ROOT/kernel/rocknix/stock-root/$1")
+	grep -Fqx "$(printf 'file\t%s\t%s\t0644\t%s' "$1" "$2" "$OVERRIDE_SHA")" \
+		"$SYSTEM_OVERRIDE_POLICY" || fail "hermetic SYSTEM fixed file missing: $1"
+done
+[ "$(wc -l <"$SYSTEM_OVERRIDE_POLICY" | tr -d ' ')" = 14 ] || \
+	fail 'hermetic SYSTEM fixed-file count changed'
 grep -Fq 'systemctl start seatd.service' \
 	"$OUTPUT/card/bird/run-content.sh" || fail 'explicit seat provider join missing'
 grep -Fq 'print "system.suspendmode=" mode' \
@@ -1100,8 +1124,6 @@ if grep -q 'output_monitor\|DP-1\|HDMI' \
 	"$OUTPUT/card/bird/bird-fixed-sway.sh"; then
 	fail 'unused external-display path remained in fixed Sway profile'
 fi
-grep -q '/flash/bird/bird-save-config.service' \
-	"$OUTPUT/card/mount-storage.sh" || fail 'fixed shutdown checkpoint missing'
 if grep -q '/flash/bird/bird-poweroff.target' \
 	"$OUTPUT/card/mount-storage.sh"; then
 	fail 'shutdown timeout target returned'
