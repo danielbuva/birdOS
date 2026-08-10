@@ -1,0 +1,16 @@
+mask	usr/lib/systemd/system/debug-shell.service
+mask	usr/lib/systemd/system/show-version.service
+mask	usr/lib/systemd/system/rpcbind.service
+mask	usr/lib/systemd/system/rpcbind.socket
+mask	usr/lib/systemd/system/sshd.service
+mask	usr/lib/systemd/system/wsdd2.service
+mask	usr/lib/systemd/system/entware.service
+mask	usr/lib/systemd/system/touchkeyboard.service
+mask	usr/lib/systemd/system/sway-touch.service
+mask	usr/lib/systemd/system/systemd-journal-flush.service
+mask	usr/lib/systemd/system/systemd-journal-catalog-update.service
+mask	usr/lib/systemd/system/systemd-logind.service
+mask	usr/lib/systemd/system/systemd-tmpfiles-clean.timer
+mask	usr/lib/systemd/system/systemd-update-utmp.service
+mask	usr/lib/systemd/system/systemd-update-utmp-runlevel.service
+mask	usr/lib/systemd/system/rocknix-report-stats.timer

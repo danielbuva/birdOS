@@ -12,6 +12,7 @@ EARLY_BUILDER=$ROOT/kernel/rocknix/build-stock-root-early-initramfs.sh
 INIT_BUSYBOX=$ROOT/kernel/work/rocknix-official-initramfs-20260701/ramdisk/usr/bin/busybox
 SYSTEM_UNITS=$ROOT/kernel/work/rocknix-system-exact-20260701/usr/lib/systemd/system
 JOURNAL_POLICY=$ROOT/kernel/rocknix/stock-root/bird-journald.conf
+SYSTEM_MASK_POLICY=$ROOT/kernel/rocknix/hermetic-system-masks.tsv
 SWAP_POLICY=$ROOT/kernel/rocknix/stock-root/bird-swap.conf
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/bird-mount-storage.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT INT TERM HUP
@@ -79,12 +80,23 @@ if grep -Fq '/usr/lib/autostart' "$MOUNT_STORAGE"; then
 	exit 1
 fi
 grep -Fq '/flash/bird/bird-journald.conf \' "$MOUNT_STORAGE"
-grep -Fq 'systemd-journal-flush.service' "$MOUNT_STORAGE"
-grep -Fq 'systemd-journal-catalog-update.service' "$MOUNT_STORAGE"
-grep -Fq 'systemd-logind.service' "$MOUNT_STORAGE"
-grep -Fq 'systemd-tmpfiles-clean.timer' "$MOUNT_STORAGE"
-grep -Fq 'systemd-update-utmp.service' "$MOUNT_STORAGE"
-grep -Fq 'systemd-update-utmp-runlevel.service' "$MOUNT_STORAGE"
+[ "$(grep -Fc 'mount --bind /dev/null' "$MOUNT_STORAGE")" -eq 1 ]
+for DEFERRED_UNIT in hdmi-hotplug.path video.service sixaxis@.service \
+	systemd-rfkill.socket; do
+	grep -Fq "$DEFERRED_UNIT" "$MOUNT_STORAGE"
+	if grep -Fq "$(printf 'mask\tusr/lib/systemd/system/%s' "$DEFERRED_UNIT")" \
+		"$SYSTEM_MASK_POLICY"; then
+		printf 'deferred hardware policy was baked: %s\n' "$DEFERRED_UNIT" >&2
+		exit 1
+	fi
+done
+for MASKED_UNIT in systemd-journal-flush.service \
+	systemd-journal-catalog-update.service systemd-logind.service \
+	systemd-tmpfiles-clean.timer systemd-update-utmp.service \
+	systemd-update-utmp-runlevel.service; do
+	grep -Fqx "$(printf 'mask\tusr/lib/systemd/system/%s' "$MASKED_UNIT")" \
+		"$SYSTEM_MASK_POLICY"
+done
 
 # Every unit bind target must already exist in the immutable stock root. A bind
 # mount cannot create a new pathname; missing this check strands Bird in the

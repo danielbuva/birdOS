@@ -3,10 +3,10 @@
 **Active path:** stock-root v6.23 is built by
 [`build-stock-root-compat.sh`](build-stock-root-compat.sh), deployed by
 [`firmware/mac-update-rocknix-stock-root-v6.sh`](../../firmware/mac-update-rocknix-stock-root-v6.sh),
-and defined end to end in [`ACTIVE_PATH.md`](../../ACTIVE_PATH.md). Stock-root
-v6.22 remains the last broad physical acceptance result until the v6.23
-hardening candidate is tested. The active path retains the exact ROCKNIX
-20260701 release kernel, DTB, immutable system and configured writable provider;
+and defined end to end in [`ACTIVE_PATH.md`](../../ACTIVE_PATH.md). Immutable
+release `v6.23-20260810-032646` is the current broad physical acceptance result.
+The active path retains the exact ROCKNIX 20260701 release kernel, DTB,
+effective system tree and configured writable provider;
 birdOS supplies the external early overlay and fixed integration layer.
 
 The Stage 6 no-change SYSTEM parity command is:
@@ -27,6 +27,12 @@ The physical-parity candidate installs that image at
 the new release-scoped input before changing the selector. Canonical release
 rotation removes the superseded release-scoped image so repeated releases do
 not accumulate 1.2 GB SYSTEM copies.
+Release `v6.23-20260810-032646` physically accepted that no-content-change
+repack with input ready at 1216 ms and usable frame at 1232 ms. The next
+`--mask-policy` build replaces sixteen declared systemd definitions with
+`/dev/null` symlinks; HDMI and Bluetooth-adjacent masks remain runtime policy.
+Its independently reproduced digest is
+`fad2df8d2a293e03e2b0a180eaf9fdb14d5cc79a6ef663b80c4f0dbcd6c6dc76`.
 
 The chronological source-kernel, clean-root and stock-root investigation below
 is preserved as evidence. It is not a menu of supported deployment paths. In

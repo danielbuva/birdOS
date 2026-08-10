@@ -1473,6 +1473,23 @@ release-scoped SYSTEM is removed; the legacy shared muOS SYSTEM is retired only
 after the one-time transition commits. Its complete RG34XX-SP behavior and
 boot-parity gate remains pending.
 
+The no-content-change physical gate passed in release
+`v6.23-20260810-032646`, source
+`faca047b626c7cb13bb2414663742514d257c538`, manifest
+`a9bfc96764b3e621ef52ec57989ce29ee52715ff8a5bf78525fb333458f7a85d`.
+The broad behavior matrix passed; input-ready 1216 ms, usable-frame 1232 ms and
+the sub-three-second stopwatch result are descriptive parity samples.
+
+The next independently measurable image subtraction bakes sixteen already
+accepted systemd masks into SYSTEM. HDMI and Bluetooth-adjacent definitions
+remain reversible runtime policy. A full two-build gate proves byte identity,
+an exact sixteen-path inventory delta, output digest
+`fad2df8d2a293e03e2b0a180eaf9fdb14d5cc79a6ef663b80c4f0dbcd6c6dc76`,
+and unchanged 1,211,060,224-byte image size. The matching runtime candidate
+removes sixteen pre-systemd mask mount processes and mount-table entries. No
+service policy changes; physical behavior and storage-readiness parity are the
+promotion gate.
+
 ## Stage 7 — Fixed-fallback boot-contract subtraction (complete)
 
 The earlier U-Boot A/B and on-card recovery lane is retired by operator choice.

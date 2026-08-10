@@ -27,6 +27,7 @@ STAGE5_CAPTURE=$ROOT/kernel/rocknix/stock-root/capture-stage5-state.sh
 STAGE5_WINDOW=$ROOT/kernel/rocknix/stock-root/capture-stage5-window-counters.sh
 STAGE5_ACQUIRE=$ROOT/kernel/rocknix/stock-root/capture-stage5-window.sh
 MOUNT_STORAGE=$ROOT/kernel/rocknix/stock-root/mount-storage.sh
+SYSTEM_MASK_POLICY=$ROOT/kernel/rocknix/hermetic-system-masks.tsv
 RUNNER=$ROOT/kernel/rocknix/stock-root/run-content.sh
 SUSPEND=$ROOT/kernel/rocknix/stock-root/bird-suspend.sh
 CONTROLS_SOURCE=$ROOT/kernel/rocknix/stock-root/bird-fixed-controls.c
@@ -111,10 +112,11 @@ grep -Fq "trap 'exit 1' HUP INT TERM" "$CAPTURE"
 # Bird owns the one-user power/session policy without a login manager. The
 # direct control process consumes both switch sources, the retained provider
 # has no login1 client, and content explicitly joins seatd before Sway.
-grep -Fq 'systemd-logind.service' "$MOUNT_STORAGE"
-grep -Fq 'systemd-tmpfiles-clean.timer' "$MOUNT_STORAGE"
-grep -Fq 'systemd-update-utmp.service' "$MOUNT_STORAGE"
-grep -Fq 'systemd-update-utmp-runlevel.service' "$MOUNT_STORAGE"
+for MASKED_UNIT in systemd-logind.service systemd-tmpfiles-clean.timer \
+	systemd-update-utmp.service systemd-update-utmp-runlevel.service; do
+	grep -Fqx "$(printf 'mask\tusr/lib/systemd/system/%s' "$MASKED_UNIT")" \
+		"$SYSTEM_MASK_POLICY"
+done
 grep -Fq 'systemctl start seatd.service' "$RUNNER"
 grep -Fq 'SOURCE_POWER' "$CONTROLS_SOURCE"
 grep -Fq 'SOURCE_LID' "$CONTROLS_SOURCE"

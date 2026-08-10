@@ -22,6 +22,7 @@ RELEASE_ID=${BIRD_RELEASE_ID:-v6.23}
 SYSTEM_SOURCE=${SYSTEM_SOURCE:-/Volumes/BIRD-DATA/Bird/runtime/$RELEASE_ID/ROCKNIX-SYSTEM}
 STORAGE=${STORAGE:-$HOME/rocknix-reference-result/storage.ext4}
 SYSTEM_TREE=${SYSTEM_TREE:-$ROOT/kernel/work/rocknix-system-exact-20260701}
+SYSTEM_MASK_POLICY=$ROOT/kernel/rocknix/hermetic-system-masks.tsv
 OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-rocknix-stock-root-$RELEASE_ID}
 CLANG=${CLANG:-/opt/homebrew/opt/llvm/bin/clang}
 LLD=${LLD:-/opt/homebrew/opt/lld/bin/ld.lld}
@@ -29,7 +30,7 @@ READELF=${READELF:-/opt/homebrew/opt/llvm/bin/llvm-readelf}
 
 KERNEL_SHA=af4e75cb30b097ee5764764eb056d686bc00c6bd03fefece26b0ebbaa7fbb673
 DTB_SHA=f3a4273986d6e4f431b110cead8aa19e8da52ff08c64c4b204ef9664d28b5c31
-SYSTEM_SHA=769edbb4522ae031129e5a07712b5529a7ec238735762c2d3d7ddb288e7e37ab
+SYSTEM_SHA=fad2df8d2a293e03e2b0a180eaf9fdb14d5cc79a6ef663b80c4f0dbcd6c6dc76
 STORAGE_SHA=12affdad7bc2042cb590fea60fc015a7ee8d4374ebcc3b1c11098a64b9ffa3be
 AUTOSTART_SHA=7f8671aa1bb9239a193f84e667d55e169f983bcb015d98c345b60d0b80a77639
 OFFICIAL_INIT_SHA=3473415af0cf5df44e70259c3392817b1df421a12a617ec083ec018ff51dbc48
@@ -198,6 +199,7 @@ is_regular_file "$OFFICIAL_INIT" || fail 'exact initramfs init missing or not re
 is_regular_file "$JOYPAD" || fail 'exact H700 input module missing or not regular'
 is_regular_file "$INIT_BUSYBOX" || fail 'exact initramfs BusyBox missing or not regular'
 is_regular_file "$SYSTEM_BUSYBOX" || fail 'extracted exact SYSTEM BusyBox missing or not regular'
+is_regular_file "$SYSTEM_MASK_POLICY" || fail 'hermetic SYSTEM mask policy missing or not regular'
 is_regular_file "$PORTMASTER_ARCHIVE" || fail 'exact PortMaster archive missing or not regular'
 [ "$(sha256 "$SOURCE/KERNEL")" = "$KERNEL_SHA" ] || fail 'release KERNEL changed'
 [ "$(sha256 "$SOURCE/dtb.img")" = "$DTB_SHA" ] || fail 'release DTB changed'
@@ -1036,18 +1038,18 @@ if grep -q 'common/008-perfmode\|common/020-rumble\|common/095-turbo-mode\|400-s
 fi
 grep -q '^Storage=volatile$' "$OUTPUT/card/bird/bird-journald.conf" || \
 	fail 'explicit volatile journal policy missing'
-grep -q 'systemd-journal-flush.service' \
-	"$OUTPUT/card/mount-storage.sh" || fail 'journal flush mask missing'
-grep -q 'systemd-journal-catalog-update.service' \
-	"$OUTPUT/card/mount-storage.sh" || fail 'journal catalog mask missing'
-grep -q 'systemd-logind.service' \
-	"$OUTPUT/card/mount-storage.sh" || fail 'unused logind mask missing'
-grep -q 'systemd-tmpfiles-clean.timer' \
-	"$OUTPUT/card/mount-storage.sh" || fail 'tmpfiles wakeup mask missing'
-grep -q 'systemd-update-utmp.service' \
-	"$OUTPUT/card/mount-storage.sh" || fail 'volatile UTMP boot mask missing'
-grep -q 'systemd-update-utmp-runlevel.service' \
-	"$OUTPUT/card/mount-storage.sh" || fail 'volatile UTMP runlevel mask missing'
+if grep -Fq 'mount --bind /dev/null' "$OUTPUT/card/mount-storage.sh"; then
+	fail 'runtime systemd mask mounts remain'
+fi
+for MASKED_UNIT in systemd-journal-flush.service \
+	systemd-journal-catalog-update.service systemd-logind.service \
+	systemd-tmpfiles-clean.timer systemd-update-utmp.service \
+	systemd-update-utmp-runlevel.service; do
+	grep -Fqx "$(printf 'mask\tusr/lib/systemd/system/%s' "$MASKED_UNIT")" \
+		"$SYSTEM_MASK_POLICY" || fail "hermetic SYSTEM mask missing: $MASKED_UNIT"
+done
+[ "$(wc -l <"$SYSTEM_MASK_POLICY" | tr -d ' ')" = 16 ] || \
+	fail 'hermetic SYSTEM mask count changed'
 grep -Fq 'systemctl start seatd.service' \
 	"$OUTPUT/card/bird/run-content.sh" || fail 'explicit seat provider join missing'
 grep -Fq 'print "system.suspendmode=" mode' \

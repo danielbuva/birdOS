@@ -1676,16 +1676,34 @@ rotation removes its release-scoped image, while the one-time legacy
 committed. This is a no-content-change Stage 6 gate. It still requires the full
 RG34XX-SP behavior and boot-parity test before acceptance.
 
+That gate passed in immutable release `v6.23-20260810-032646`, clean source
+`faca047b626c7cb13bb2414663742514d257c538`, manifest
+`a9bfc96764b3e621ef52ec57989ce29ee52715ff8a5bf78525fb333458f7a85d`.
+The broad hardware matrix was fully functional. Its accepted boot log records
+input ready at 1216 ms and usable frame at 1232 ms, while the stopwatch remained
+below three seconds. These are descriptive parity samples, not a promoted
+timing distribution.
+
+The next bounded SYSTEM candidate bakes sixteen fixed-device
+systemd masks into the hermetic image as standard `/dev/null` symlinks. Two
+isolated full builds are byte-identical, and an inventory delta proves that only
+the sixteen declared paths changed. HDMI and Bluetooth-adjacent masks remain
+runtime policy pending their separate product decision. The candidate SYSTEM digest is
+`fad2df8d2a293e03e2b0a180eaf9fdb14d5cc79a6ef663b80c4f0dbcd6c6dc76`;
+its size remains 1,211,060,224 bytes. `mount-storage.sh` therefore removes the
+same sixteen pre-systemd mask mounts. Physical behavior and storage-readiness
+parity remain required.
+
 ## Accepted v6.23 evidence
 
 The accepted human promotion binding is clean source
-`af83ca945815676d6dabc030ad568c1e5fbb62d2`, release
-`v6.23-20260808-214626`, manifest
-`2a8d51a52e9277e599f6e7a8401513c6c8a2e8edf1e75118360c44a3c5d3eed8`,
+`faca047b626c7cb13bb2414663742514d257c538`, release
+`v6.23-20260810-032646`, manifest
+`a9bfc96764b3e621ef52ec57989ce29ee52715ff8a5bf78525fb333458f7a85d`,
 device contract
 `1664a3778abcd3687865a82fd28bba5b468f6c3c7e9a46bf90f7c3acb1e08162`
 and catalogue
-`6ecb9512dfdcb4c62483cc13fb315e5e39fd7556b29f54e7a9f82ac1b730283d`.
+`9795aae6baddc292f5d9954a444656e303db305c639284f16eb10288c41f1f93`.
 The v6.23 baseline completed these gates:
 
 1. Build from the pinned inputs and verify every release file through

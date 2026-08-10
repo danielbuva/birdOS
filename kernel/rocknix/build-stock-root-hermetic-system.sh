@@ -4,11 +4,14 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd -P)
 DOCKERFILE=$ROOT/kernel/rocknix/Dockerfile.hermetic-system
 INVENTORY_SOURCE=$ROOT/kernel/rocknix/inventory-rootfs.py
+MASK_POLICY_SOURCE=$ROOT/kernel/rocknix/hermetic-system-masks.tsv
+MASK_VERIFY_SOURCE=$ROOT/kernel/rocknix/verify-system-mask-delta.py
 SYSTEM_SOURCE=${SYSTEM_SOURCE:-/Volumes/BIRD-DATA/MUOS/runtime/ROCKNIX-SYSTEM}
 SYSTEM_SHA=${SYSTEM_SHA:-6e2112fc9dc81d5fee944f2534346a8f20674f40e23a0a85bb795218d31eadac}
 SYSTEM_BYTES=${SYSTEM_BYTES:-1206476800}
 SYSTEM_MKFS_TIME=${SYSTEM_MKFS_TIME:-1782889443}
 OUTPUT=
+MODE=
 
 fail() {
 	printf 'error: %s\n' "$*" >&2
@@ -18,10 +21,14 @@ fail() {
 usage() {
 	cat <<'EOF'
 Usage: build-stock-root-hermetic-system.sh --parity OUTPUT
+       build-stock-root-hermetic-system.sh --mask-policy OUTPUT
 
 Build the shipping ROCKNIX SYSTEM twice in isolated containers. The command
 requires byte-identical repacks and complete effective-tree identity with the
 shipping input. It never deploys or writes to the card.
+
+--mask-policy additionally bakes the fixed, reviewed systemd masks into both
+isolated builds and proves that no undeclared filesystem node changed.
 EOF
 }
 
@@ -31,6 +38,14 @@ while [ "$#" -gt 0 ]; do
 		--parity)
 			[ "$#" -ge 2 ] || fail '--parity requires OUTPUT'
 			[ -z "$OUTPUT" ] || fail 'output specified more than once'
+			MODE=parity
+			OUTPUT=$2
+			shift 2
+			;;
+		--mask-policy)
+			[ "$#" -ge 2 ] || fail '--mask-policy requires OUTPUT'
+			[ -z "$OUTPUT" ] || fail 'output specified more than once'
+			MODE=mask-policy
 			OUTPUT=$2
 			shift 2
 			;;
@@ -42,12 +57,14 @@ while [ "$#" -gt 0 ]; do
 	esac
 done
 
-[ -n "$OUTPUT" ] || fail '--parity OUTPUT is required'
+[ -n "$OUTPUT" ] || fail '--parity or --mask-policy OUTPUT is required'
 case "$OUTPUT" in /*) ;; *) fail 'OUTPUT must be absolute' ;; esac
 [ ! -e "$OUTPUT" ] && [ ! -L "$OUTPUT" ] || fail 'OUTPUT already exists'
 [ -f "$SYSTEM_SOURCE" ] && [ ! -L "$SYSTEM_SOURCE" ] || fail 'SYSTEM input must be a regular non-symlink file'
 [ -f "$DOCKERFILE" ] && [ ! -L "$DOCKERFILE" ] || fail 'toolchain Dockerfile missing or unsafe'
 [ -f "$INVENTORY_SOURCE" ] && [ ! -L "$INVENTORY_SOURCE" ] || fail 'inventory source missing or unsafe'
+[ -f "$MASK_POLICY_SOURCE" ] && [ ! -L "$MASK_POLICY_SOURCE" ] || fail 'mask policy missing or unsafe'
+[ -f "$MASK_VERIFY_SOURCE" ] && [ ! -L "$MASK_VERIFY_SOURCE" ] || fail 'mask verifier missing or unsafe'
 command -v docker >/dev/null 2>&1 || fail 'docker is required'
 docker info >/dev/null 2>&1 || fail 'Docker engine is not running'
 
@@ -62,8 +79,23 @@ sha256() { shasum -a 256 "$1" | awk '{print $1}'; }
 [ "$(file_bytes "$SYSTEM_SOURCE")" = "$SYSTEM_BYTES" ] || fail 'SYSTEM input size changed'
 [ "$(sha256 "$SYSTEM_SOURCE")" = "$SYSTEM_SHA" ] || fail 'SYSTEM input digest changed'
 
+MASK_COUNT=$(awk -F '\t' '
+	function safe(path, n, part, i) {
+		if (path !~ /^[A-Za-z0-9._@\/-]+$/ || substr(path, 1, 1) == "/") return 0
+		n=split(path, part, "/")
+		for (i=1; i<=n; i++) if (part[i] == "" || part[i] == "." || part[i] == "..") return 0
+		return 1
+	}
+	NF != 2 || $1 != "mask" || $2 !~ /^usr\/lib\/systemd\/system\// ||
+		!safe($2) || seen[$2]++ {exit 1}
+	{count++}
+	END {if (count == 0) exit 1; print count}
+' "$MASK_POLICY_SOURCE") || fail 'mask policy is malformed'
+[ "$MASK_COUNT" -eq 16 ] || fail 'mask policy target count changed'
+
 SOURCE_BEFORE=$SYSTEM_SHA
-RECIPE_SHA=$(cat "$DOCKERFILE" "$INVENTORY_SOURCE" | shasum -a 256 | awk '{print $1}')
+RECIPE_SHA=$(cat "$DOCKERFILE" "$INVENTORY_SOURCE" "$MASK_POLICY_SOURCE" \
+	"$MASK_VERIFY_SOURCE" | shasum -a 256 | awk '{print $1}')
 IMAGE="bird-hermetic-system:${RECIPE_SHA}"
 
 docker build --platform linux/arm64 --pull=false --quiet \
@@ -92,19 +124,43 @@ run_build() {
 	RUN_OUTPUT=$1
 	docker run --rm --platform linux/arm64 \
 		-v "$SYSTEM_SOURCE:/input/SYSTEM:ro" \
+		-v "$MASK_POLICY_SOURCE:/input/masks.tsv:ro" \
+		-v "$MASK_VERIFY_SOURCE:/usr/local/libexec/verify-system-mask-delta.py:ro" \
 		-v "$RUN_OUTPUT:/output" \
 		-e BIRD_SYSTEM_MKFS_TIME="$SYSTEM_MKFS_TIME" \
+		-e BIRD_SYSTEM_POLICY="$MODE" \
 		"$IMAGE" '
 rm -rf /work && mkdir -p /work/source /work/repacked
 unsquashfs -no-progress -d /work/source /input/SYSTEM >/output/unsquashfs-input.log
 /usr/local/libexec/inventory-rootfs.py /work/source > /output/input-inventory.tsv
+if [ "$BIRD_SYSTEM_POLICY" = mask-policy ]; then
+  TAB=$(printf "\t")
+  touch -r /work/source/usr/lib/systemd/system /work/systemd-parent.timestamp
+  while IFS="$TAB" read -r kind target; do
+    [ "$kind" = mask ] && [ -n "$target" ] || exit 1
+    [ -e "/work/source/$target" ] || [ -L "/work/source/$target" ] || exit 1
+    rm -f "/work/source/$target"
+    ln -s /dev/null "/work/source/$target"
+    touch -h -d "@$BIRD_SYSTEM_MKFS_TIME" "/work/source/$target"
+  done < /input/masks.tsv
+  touch -r /work/systemd-parent.timestamp /work/source/usr/lib/systemd/system
+fi
+/usr/local/libexec/inventory-rootfs.py /work/source > /output/policy-inventory.tsv
+if [ "$BIRD_SYSTEM_POLICY" = mask-policy ]; then
+  python3 /usr/local/libexec/verify-system-mask-delta.py \
+    /output/input-inventory.tsv /output/policy-inventory.tsv /input/masks.tsv \
+    > /output/policy-verification.tsv
+else
+  cmp /output/input-inventory.tsv /output/policy-inventory.tsv
+  printf "verified-mask-targets\t0\n" > /output/policy-verification.tsv
+fi
 mksquashfs /work/source /output/SYSTEM \
   -noappend -no-progress -processors 1 -no-xattrs \
   -comp zstd -Xcompression-level 19 -b 1048576 \
   -mkfs-time "$BIRD_SYSTEM_MKFS_TIME" > /output/mksquashfs.log
 unsquashfs -no-progress -d /work/repacked /output/SYSTEM >/output/unsquashfs-output.log
 /usr/local/libexec/inventory-rootfs.py /work/repacked > /output/output-inventory.tsv
-cmp /output/input-inventory.tsv /output/output-inventory.tsv
+cmp /output/policy-inventory.tsv /output/output-inventory.tsv
 unsquashfs -s /output/SYSTEM > /output/superblock.txt
 '
 }
@@ -114,17 +170,21 @@ run_build "$STAGE/run-b"
 
 cmp "$STAGE/run-a/SYSTEM" "$STAGE/run-b/SYSTEM" || fail 'isolated SYSTEM repacks differ'
 cmp "$STAGE/run-a/input-inventory.tsv" "$STAGE/run-b/input-inventory.tsv" || fail 'input inventories differ'
+cmp "$STAGE/run-a/policy-inventory.tsv" "$STAGE/run-b/policy-inventory.tsv" || fail 'policy inventories differ'
 cmp "$STAGE/run-a/output-inventory.tsv" "$STAGE/run-b/output-inventory.tsv" || fail 'output inventories differ'
 
 [ "$(sha256 "$SYSTEM_SOURCE")" = "$SOURCE_BEFORE" ] || fail 'SYSTEM input changed during build'
 mkdir "$STAGE/final"
 cp "$STAGE/run-a/SYSTEM" "$STAGE/final/SYSTEM"
 cp "$STAGE/run-a/input-inventory.tsv" "$STAGE/final/shipping-inventory.tsv"
+cp "$STAGE/run-a/policy-inventory.tsv" "$STAGE/final/policy-inventory.tsv"
 cp "$STAGE/run-a/output-inventory.tsv" "$STAGE/final/repacked-inventory.tsv"
+cp "$STAGE/run-a/policy-verification.tsv" "$STAGE/final/policy-verification.tsv"
+cp "$MASK_POLICY_SOURCE" "$STAGE/final/hermetic-system-masks.tsv"
 cp "$STAGE/run-a/superblock.txt" "$STAGE/final/superblock.txt"
 printf '%s\n' "$TOOLCHAIN" >"$STAGE/final/toolchain.tsv"
 {
-	printf 'schema\tbird-hermetic-system-parity-v1\n'
+	printf 'schema\tbird-hermetic-system-%s-v1\n' "$MODE"
 	printf 'input-sha256\t%s\n' "$SYSTEM_SHA"
 	printf 'input-bytes\t%s\n' "$SYSTEM_BYTES"
 	printf 'mkfs-time\t%s\n' "$SYSTEM_MKFS_TIME"
@@ -133,6 +193,9 @@ printf '%s\n' "$TOOLCHAIN" >"$STAGE/final/toolchain.tsv"
 	printf 'output-sha256\t%s\n' "$(sha256 "$STAGE/final/SYSTEM")"
 	printf 'output-bytes\t%s\n' "$(file_bytes "$STAGE/final/SYSTEM")"
 	printf 'inventory-sha256\t%s\n' "$(sha256 "$STAGE/final/shipping-inventory.tsv")"
+	printf 'policy-inventory-sha256\t%s\n' "$(sha256 "$STAGE/final/policy-inventory.tsv")"
+	printf 'mask-policy-sha256\t%s\n' "$(sha256 "$MASK_POLICY_SOURCE")"
+	printf 'mask-targets\t%s\n' "$MASK_COUNT"
 } >"$STAGE/final/parity.tsv"
 
 mv "$STAGE/final" "$OUTPUT"

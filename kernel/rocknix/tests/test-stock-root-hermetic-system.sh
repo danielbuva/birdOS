@@ -5,6 +5,8 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd -P)
 BUILDER=$ROOT/kernel/rocknix/build-stock-root-hermetic-system.sh
 DOCKERFILE=$ROOT/kernel/rocknix/Dockerfile.hermetic-system
 INVENTORY=$ROOT/kernel/rocknix/inventory-rootfs.py
+MASK_POLICY=$ROOT/kernel/rocknix/hermetic-system-masks.tsv
+MASK_VERIFY=$ROOT/kernel/rocknix/verify-system-mask-delta.py
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/bird-hermetic-test.XXXXXX")
 trap 'rm -rf -- "$TMP"' EXIT HUP INT TERM
 
@@ -30,7 +32,8 @@ docker build --platform linux/arm64 --pull=false --quiet \
 
 mkdir "$TMP/fixture"
 docker run --rm --platform linux/arm64 \
-	-v "$TMP/fixture:/output" --entrypoint /bin/sh "$IMAGE" -ec '
+	-v "$TMP/fixture:/output" -v "$MASK_POLICY:/input/masks.tsv:ro" \
+	--entrypoint /bin/sh "$IMAGE" -ec '
 mkdir -p /work/root/etc /work/root/usr/bin /work/root/empty
 printf "bird\n" >/work/root/etc/hostname
 printf "#!/bin/sh\nexit 0\n" >/work/root/usr/bin/bird-test
@@ -38,6 +41,12 @@ chmod 0755 /work/root/usr/bin/bird-test
 ln /work/root/etc/hostname /work/root/etc/hostname.hardlink
 ln -s ../etc/hostname /work/root/hostname.link
 mkfifo /work/root/event.fifo
+while IFS="$(printf "\t")" read -r kind target; do
+  [ "$kind" = mask ] || exit 1
+  mkdir -p "/work/root/${target%/*}"
+  printf "unmasked %s\n" "$target" > "/work/root/$target"
+  chmod 0644 "/work/root/$target"
+done < /input/masks.tsv
 find /work/root -exec touch -h -d @1782889443 {} +
 mksquashfs /work/root /output/SYSTEM -noappend -no-progress -processors 1 \
   -no-xattrs -comp zstd -Xcompression-level 19 -b 1048576 \
@@ -62,6 +71,19 @@ grep -Fq 'event.fifo	fifo	0644' "$OUTPUT/shipping-inventory.tsv" ||
 	fail 'FIFO metadata missing from inventory'
 grep -Fq 'hostname.hardlink' "$OUTPUT/shipping-inventory.tsv" ||
 	fail 'hardlink metadata missing from inventory'
+
+MASK_OUTPUT=$TMP/mask-policy
+SYSTEM_SOURCE=$FIXTURE SYSTEM_SHA=$FIXTURE_SHA SYSTEM_BYTES=$FIXTURE_BYTES \
+	"$BUILDER" --mask-policy "$MASK_OUTPUT" >"$TMP/mask-policy.log"
+grep -Fq "$(printf 'schema\tbird-hermetic-system-mask-policy-v1')" \
+	"$MASK_OUTPUT/parity.tsv" || fail 'mask-policy schema missing'
+grep -Fq "$(printf 'verified-mask-targets\t16')" \
+	"$MASK_OUTPUT/policy-verification.tsv" || fail 'mask target proof missing'
+cmp "$MASK_OUTPUT/policy-inventory.tsv" "$MASK_OUTPUT/repacked-inventory.tsv" ||
+	fail 'masked effective tree changed during repack'
+python3 "$MASK_VERIFY" "$MASK_OUTPUT/shipping-inventory.tsv" \
+	"$MASK_OUTPUT/policy-inventory.tsv" "$MASK_POLICY" >/dev/null ||
+	fail 'published mask delta failed independent verification'
 
 if SYSTEM_SOURCE=$FIXTURE SYSTEM_SHA=$(printf '0%.0s' $(jot 64)) \
 	SYSTEM_BYTES=$FIXTURE_BYTES "$BUILDER" --parity "$TMP/bad" \
