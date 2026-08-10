@@ -629,7 +629,7 @@ if [ "$KERNEL_AUTHORITY" = source-parity ]; then
 			fail "source-kernel parity input missing or unsafe: $SOURCE_PARITY_INPUT"
 	done
 	[ "$(sha256 "$SOURCE_KERNEL_BUILD/Image")" = \
-		2b71f1405c222c4416f7a42613a190789c976f63755df0b299f1dcaee0b65990 ] && \
+		1d1e950eac7af564dfb3d439d3029989ea0e1ff5bd036cc19bda820f4d1cc9cd ] && \
 	[ "$(sha256 "$SOURCE_KERNEL_BUILD/sun50i-h700-anbernic-rg34xx-sp.dtb")" = \
 		f3a4273986d6e4f431b110cead8aa19e8da52ff08c64c4b204ef9664d28b5c31 ] && \
 	[ "$(sha256 "$SOURCE_KERNEL_BUILD/modules.tar.xz")" = \
@@ -637,11 +637,11 @@ if [ "$KERNEL_AUTHORITY" = source-parity ]; then
 	[ "$(sha256 "$SOURCE_KERNEL_BUILD/rocknix-singleadc-joypad.ko")" = \
 		fd2ceb95f0b3bdc1d68e7182a8ac5239b5286cc277a04980e53f65e0f73d3a05 ] && \
 	[ "$(sha256 "$SOURCE_KERNEL_BUILD/parity.tsv")" = \
-		614efb04b02f21c0f329085ffa9d2d59a6a99cd1f5a9f983cdb1880fe1c88a30 ] && \
+		897fffdba2f20fd62cd55175884132a7e47fe662f6d59964622989f3c71a19ed ] && \
 	[ "$(sha256 "$SOURCE_KERNEL_SYSTEM")" = \
 		bf8cb00a57f749483a986183e5aca396bf1f3f196996b20e703b43f26214ad11 ] && \
 	[ "$(sha256 "$SOURCE_KERNEL_AUTHORITY_RECORD")" = \
-		c47082ef8189a86c14f212240670b65fce19e0362d4434d68e19036caadd1c4e ] || \
+		74ea672573dd80f368314bdef6a9481b2af9cf54b321cfd6e165179cc3185ffc ] || \
 		fail 'source-kernel parity input digest changed'
 	SOURCE=$RUN_TEMP/source-kernel-input
 	mkdir "$SOURCE"

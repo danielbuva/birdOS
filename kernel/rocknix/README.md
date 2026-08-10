@@ -179,15 +179,19 @@ byte-identical to the release. The most important board artifact is exact:
 the rebuilt 49,010-byte RG34XX-SP DTB has the shipping SHA-256
 `f3a4273986d6e4f431b110cead8aa19e8da52ff08c64c4b204ef9664d28b5c31`.
 
-The broad source baseline with no embedded initramfs is 28,239,880 bytes. No
-driver or kernel option has been removed yet.
+The broad source kernel retains the exact 7,474,688-byte official embedded
+ROCKNIX initramfs. Bird's external initramfs is only an overlay and cannot boot
+alone. The first Stage 8 packaging accidentally used the earlier 28,239,880-byte
+no-initramfs research artifact; it rebooted before storage or persistent logs.
+The active source gate therefore rejects any other embedded archive. No driver
+or kernel option has been removed yet.
 
 The build identity is fixed as `bird@rg34xxsp`, build number 1 and
 `2026-07-01 04:53:00 UTC`. This removes Kbuild's host container and wall-clock
 inputs. Two isolated clean builds now produce byte-identical kernel Images,
 module archives, joypad modules, configurations, symbol versions and patch
-inventories. The no-initramfs source Image is
-`2b71f1405c222c4416f7a42613a190789c976f63755df0b299f1dcaee0b65990`;
+inventories. The corrected 30,926,856-byte source Image is
+`1d1e950eac7af564dfb3d439d3029989ea0e1ff5bd036cc19bda820f4d1cc9cd`;
 the module archive is
 `7267770aecb39069bbd5275b4538a9bb666e906cdabc844b275652603e1ad52e`.
 

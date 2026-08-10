@@ -4,6 +4,7 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../../.." && pwd -P)
 VERIFY=$ROOT/kernel/rocknix/verify-source-kernel-system-delta.py
 BUILDER=$ROOT/kernel/rocknix/build-source-kernel-system.sh
+SOURCE_BUILDER=$ROOT/kernel/rocknix/build-source-reference.sh
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/bird-source-system-test.XXXXXX")
 trap 'rm -rf -- "$TMP"' EXIT HUP INT TERM
 
@@ -42,6 +43,11 @@ grep -Fq 'installed source module inventory mismatch' "$TMP/missing.out" || \
 	fail 'module inventory diagnostic missing'
 
 sh -n "$BUILDER" || fail 'source SYSTEM builder shell syntax failed'
+sh -n "$SOURCE_BUILDER" || fail 'source kernel builder shell syntax failed'
+grep -Fq 'rocknix-official-initramfs-20260701/rocknix-initramfs.cpio' \
+	"$SOURCE_BUILDER" || fail 'source kernel no longer requires the official embedded initramfs'
+grep -Fq '5d2b7b247bfa78db7b1fad490e0c5cdc70ec31af18cac743aee4dc1027d66045' \
+	"$SOURCE_BUILDER" || fail 'official embedded initramfs digest gate missing'
 grep -Fq 'source module archive digest changed' "$BUILDER" || \
 	fail 'module archive digest gate missing'
 grep -Fq 'isolated source SYSTEM $FILE differs' "$BUILDER" || \

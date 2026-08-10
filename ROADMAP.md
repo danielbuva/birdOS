@@ -1599,8 +1599,13 @@ config/tool/patch provenance, pass the full hardware/application matrix and
 compare boot, interaction, power, size and memory. Promote that source-built
 baseline before optimizing the kernel.
 
-The first current-userspace candidate is now host-qualified. Two isolated
-digest-pinned builds produced identical 28,239,880-byte Images, complete module
+The first current-userspace candidate is now host-qualified. The initial
+28,239,880-byte packaging omitted the shipping kernel's embedded ROCKNIX
+initramfs; Bird's external initramfs is only an overlay, so the device rebooted
+before storage or persistent logging. No Bird userspace or replacement module
+ran. The corrected gate rejects that incomplete composition. Two isolated
+digest-pinned builds produced identical 30,926,856-byte Images containing the
+exact 7,474,688-byte official embedded initramfs, complete module
 archives, joypad modules, configurations, symbol versions and patch records.
 The 49,010-byte RG34XX-SP DTB is byte-identical to shipping. Two further
 isolated SYSTEM repacks replaced exactly 99 nodes beneath the Linux 7.0.11

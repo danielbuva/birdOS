@@ -10,11 +10,11 @@ ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 ROCKNIX_SOURCE=${ROCKNIX_SOURCE:-$HOME/rocknix-distribution-20260701}
 JOYPAD_SOURCE=${JOYPAD_SOURCE:-$HOME/muos-kernel-source/rocknix-joypad}
 FIRMWARE_SOURCE=${FIRMWARE_SOURCE:-$HOME/muos-kernel-source/linux-firmware-20260309}
-IMAGE=${BIRD_MAINLINE_BUILD_IMAGE:-dani-rg34xxsp-kernel-build:7.0.11@sha256:aac053f343e057c6bb412cf4d6bab3090b6d050b94c80d60e86a6d794185f460}
+IMAGE=${BIRD_MAINLINE_BUILD_IMAGE:-sha256:aac053f343e057c6bb412cf4d6bab3090b6d050b94c80d60e86a6d794185f460}
 OUTPUT=${OUTPUT:-$ROOT/kernel/work/rocknix-source-reference}
 BUILD_OUTPUT="$OUTPUT/build"
 SHIPPING_KERNEL=${SHIPPING_KERNEL:-$OUTPUT/shipping-KERNEL}
-INITRAMFS_ARCHIVE=${INITRAMFS_ARCHIVE:-}
+INITRAMFS_ARCHIVE=${INITRAMFS_ARCHIVE:-$ROOT/kernel/work/rocknix-official-initramfs-20260701/rocknix-initramfs.cpio}
 DEFER_PANFROST=${DEFER_PANFROST:-0}
 JOBS=${JOBS:-4}
 
@@ -24,6 +24,7 @@ JOYPAD_COMMIT=7647fdb0fc89cd69b284903bf7707e861df5dc7e
 SHIPPING_KERNEL_SHA=af4e75cb30b097ee5764764eb056d686bc00c6bd03fefece26b0ebbaa7fbb673
 SHIPPING_DTB_SHA=f3a4273986d6e4f431b110cead8aa19e8da52ff08c64c4b204ef9664d28b5c31
 SHIPPING_DTB_BYTES=49010
+INITRAMFS_ARCHIVE_SHA=5d2b7b247bfa78db7b1fad490e0c5cdc70ec31af18cac743aee4dc1027d66045
 PATCH_COUNT=30
 
 fail() {
@@ -82,6 +83,10 @@ if [ -n "$INITRAMFS_ARCHIVE" ]; then
 	esac
 	[ -f "$INITRAMFS_ARCHIVE" ] || \
 		fail "Bird initramfs archive missing: $INITRAMFS_ARCHIVE"
+	[ ! -L "$INITRAMFS_ARCHIVE" ] || \
+		fail "Bird initramfs archive is a symlink: $INITRAMFS_ARCHIVE"
+	[ "$(sha256 "$INITRAMFS_ARCHIVE")" = "$INITRAMFS_ARCHIVE_SHA" ] || \
+		fail 'official embedded initramfs digest changed'
 	INITRAMFS_CONFIG=/bird-initramfs.cpio
 	shasum -a 256 "$INITRAMFS_ARCHIVE" >"$BUILD_OUTPUT/input-initramfs.sha256"
 else

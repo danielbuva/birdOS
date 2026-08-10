@@ -237,7 +237,7 @@ write_manifest() {
 convert_manifest_to_source_parity() {
 	MANIFEST=$BIRD/bird-releases/prod-a/deploy-manifest.tsv
 	SOURCE_JOYPAD=fd2ceb95f0b3bdc1d68e7182a8ac5239b5286cc277a04980e53f65e0f73d3a05
-	SOURCE_AUTHORITY=c47082ef8189a86c14f212240670b65fce19e0362d4434d68e19036caadd1c4e
+	SOURCE_AUTHORITY=74ea672573dd80f368314bdef6a9481b2af9cf54b321cfd6e165179cc3185ffc
 	awk -F '\t' -v OFS='\t' -v joypad="$SOURCE_JOYPAD" -v authority="$SOURCE_AUTHORITY" '
 		$1 == "input" && $2 == "rocknix-singleadc-joypad.ko" {
 			$5 = joypad
@@ -1767,7 +1767,7 @@ convert_manifest_to_source_parity
 BASE_BEFORE=$(tree_digest "$BIRD/bird-releases/prod-a")
 run_dev --changed >"$CASE_ROOT/source-parity.out"
 awk -F '\t' '$1 == "input" && $2 == "source-kernel-parity.tsv" && \
-	$5 == "c47082ef8189a86c14f212240670b65fce19e0362d4434d68e19036caadd1c4e" { found = 1 } \
+	$5 == "74ea672573dd80f368314bdef6a9481b2af9cf54b321cfd6e165179cc3185ffc" { found = 1 } \
 	END { exit !found }' "$BIRD/bird-releases/dev-current/deploy-manifest.tsv"
 [ "$(selector_release)" = dev-current ]
 assert_base_and_fallback_unchanged
