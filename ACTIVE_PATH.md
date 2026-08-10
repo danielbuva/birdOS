@@ -125,6 +125,15 @@ canonical path remains `stock`; the candidate requires
 `--source-kernel-parity` and cannot become the source-built baseline before the
 separate RG34XX-SP gate.
 
+The corrected source-kernel package reaches Bird's early usable menu, but its
+first physical run did not reach a working application/content handoff and
+produced no new persistent final-root logs before forced reset. The next bounded
+diagnostic therefore adds a temporary 30-second watchdog to `bird-early.sh`.
+It starts beside the launcher from the early initramfs, independently retains a
+descriptor to the storage log, records readiness/process/mount/kernel evidence,
+syncs, and powers off. This is failure acquisition only, not a promoted runtime
+or timing candidate; remove it after the handoff fault is identified.
+
 ## Build and deployment
 
 Supported birdOS-owned local changes use

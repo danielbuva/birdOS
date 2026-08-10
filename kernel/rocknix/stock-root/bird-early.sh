@@ -12,6 +12,7 @@ JOYPAD=/opt/bird/rocknix-singleadc-joypad.ko
 BACKLIGHT=/sys/class/backlight/backlight
 STORAGE_MARKER=$RUN/bird-storage-anchor-ready
 STORAGE_SIGNAL=$RUN/bird-storage-ready
+WATCHDOG_PID_FILE=$RUN/boot-watchdog.pid
 
 log_leds() {
 	STAGE=$1
@@ -78,8 +79,82 @@ case "${1:-}" in
 			# ownership failure, never between display preparation and launcher
 			# dispatch.
 		} >"$LOG" 2>&1
+		# Temporary Stage 8 diagnostic. This process is launched by initramfs PID 1,
+		# before Bird and independently of the final-root supervisor, so it still
+		# runs when the application handoff is the broken boundary under investigation.
+		/bird-early.sh watchdog >/dev/null 2>&1 &
+		printf '%s\n' "$!" >"$WATCHDOG_PID_FILE"
 		"$LAUNCHER" >>"$LOG" 2>&1 &
 		printf '%s\n' "$!" >"$PID_FILE"
+		;;
+	watchdog)
+		WATCHDOG_TMP=$RUN/boot-watchdog.log
+		: >"$WATCHDOG_TMP"
+		PERSISTENT=0
+		COUNT=30
+		watchdog_line() {
+			if [ "$PERSISTENT" -eq 1 ]; then
+				printf '%s\n' "$*" >&5
+			else
+				printf '%s\n' "$*" >>"$WATCHDOG_TMP"
+			fi
+		}
+		while [ "$COUNT" -gt 0 ]; do
+			if [ "$PERSISTENT" -eq 0 ] && [ -d /birddata/Bird/log ]; then
+				# Start one fresh record for this diagnostic boot. Keep the open
+				# descriptor across the later storage mount move/switch_root.
+				exec 5>/birddata/Bird/log/boot-watchdog-latest.log
+				$BUSYBOX cat "$WATCHDOG_TMP" >&5
+				: >"$WATCHDOG_TMP"
+				PERSISTENT=1
+				watchdog_line 'persistent_log=retained path=/birddata/Bird/log/boot-watchdog-latest.log'
+			fi
+			watchdog_line "countdown remaining_s=$COUNT"
+			LED=/sys/class/leds/red:status/brightness
+			[ ! -w "$LED" ] || printf '%s\n' $((COUNT % 2)) >"$LED"
+			$BUSYBOX sleep 1
+			COUNT=$((COUNT - 1))
+		done
+		watchdog_line 'countdown complete action=forced-poweroff'
+		if [ "$PERSISTENT" -eq 1 ]; then
+			{
+				printf '%s\n' 'section=uptime'
+				$BUSYBOX cat /proc/uptime
+				printf '%s\n' 'section=cmdline'
+				$BUSYBOX cat /proc/cmdline
+				printf '%s\n' 'section=mounts'
+				$BUSYBOX cat /proc/mounts
+				printf '%s\n' 'section=modules'
+				$BUSYBOX cat /proc/modules
+				printf '%s\n' 'section=readiness'
+				for ITEM in "$RUN"/*; do
+					[ -e "$ITEM" ] || continue
+					if [ -f "$ITEM" ] && [ -r "$ITEM" ]; then
+						printf 'file=%s value=' "$ITEM"
+						$BUSYBOX head -c 256 "$ITEM"
+						printf '\n'
+					elif [ -p "$ITEM" ]; then
+						printf 'fifo=%s\n' "$ITEM"
+					else
+						printf 'node=%s\n' "$ITEM"
+					fi
+				done
+				printf '%s\n' 'section=processes'
+				for COMM in /proc/[0-9]*/comm; do
+					[ -r "$COMM" ] || continue
+					PID_PATH=${COMM#/proc/}
+					printf 'pid=%s comm=' "${PID_PATH%/comm}"
+					$BUSYBOX cat "$COMM"
+				done
+				printf '%s\n' 'section=early-launcher'
+				[ ! -r "$LOG" ] || $BUSYBOX cat "$LOG"
+				printf '%s\n' 'section=kernel'
+				$BUSYBOX dmesg
+			} >&5 2>&1
+		fi
+		$BUSYBOX sync
+		$BUSYBOX sleep 1
+		$BUSYBOX poweroff -f
 		;;
 	root-ready)
 		# prepare_sysroot has moved the completed storage tree beneath /sysroot,
@@ -165,7 +240,7 @@ case "${1:-}" in
 		$BUSYBOX poweroff -f
 		;;
 	*)
-		printf 'usage: %s {start|root-ready|handoff|storage-failed}\n' "$0" >&2
+		printf 'usage: %s {start|watchdog|root-ready|handoff|storage-failed}\n' "$0" >&2
 		exit 2
 		;;
 esac
