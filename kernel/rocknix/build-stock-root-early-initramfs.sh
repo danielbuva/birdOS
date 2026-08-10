@@ -221,6 +221,7 @@ awk '
 		print "          break"
 		print "        fi"
 		print "      done"
+		print "      /bird-early.sh storage-failed"
 		print "      while :; do sleep 3600; done"
 		print "    fi"
 		print "  else"

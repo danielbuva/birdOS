@@ -38,6 +38,15 @@ sed \
 grep -q '^STORAGE_IMAGE=/birddata/MUOS/runtime/ROCKNIX-STORAGE$' "$PREFIX"
 grep -q '^mount --move /birddata /run/bird-data || {$' "$PREFIX"
 grep -q '^mount --bind /run/bird-data /storage/bird-data || {$' "$PREFIX"
+if grep -Eq 'wc -l|grep -Fqx.*NAMESPACE_RECORD' "$PREFIX"; then
+	printf '%s\n' 'namespace validation still launches external readers' >&2
+	exit 1
+fi
+if grep -Eq 'exec [0-9]|<&[0-9]|[0-9]<&' "$PREFIX"; then
+	printf '%s\n' 'sourced storage hook borrows a caller file descriptor' >&2
+	exit 1
+fi
+grep -Fq 'done <"$NAMESPACE_RECORD"' "$PREFIX"
 grep -Fqx 'Storage=volatile' "$JOURNAL_POLICY"
 grep -Fqx 'Compress=no' "$JOURNAL_POLICY"
 grep -Fqx 'RuntimeMaxUse=2M' "$JOURNAL_POLICY"
@@ -208,6 +217,7 @@ export POLICY_EVENTS
 
 mkdir() {
 	printf 'mkdir|%s\n' "$*" >>"$EVENTS"
+	case "$*" in *"$TMP"*) /bin/mkdir "$@" ;; esac
 }
 
 mount_part() {
@@ -246,8 +256,13 @@ run_prefix() {
 # is published below /storage, and only then may ROM and BIOS aliases appear.
 FAIL_OPERATION=
 : >"$POLICY_EVENTS"
+FD3_SENTINEL=$TMP/upstream-fd3
+exec 3>"$FD3_SENTINEL"
 run_prefix
 [ "$STATUS" -eq 0 ]
+printf '%s\n' 'fd3-preserved' >&3
+exec 3>&-
+grep -Fxq 'fd3-preserved' "$FD3_SENTINEL"
 grep -Fxq 'system.suspendmode=off' "$TEST_SUSPEND_CONFIG"
 grep -Fxq 'system.suspend.enable=1' "$TEST_SUSPEND_CONFIG"
 grep -Fxq 'system.suspend.enable_timed_shutdown=1' "$TEST_SUSPEND_CONFIG"
@@ -274,18 +289,13 @@ grep -q '^system[.]hostname=' "$TEST_SUSPEND_CONFIG"
 [ "$(cat "$TMP/outside-policy-target")" = 'must remain' ]
 cat >"$TMP/expected-success" <<'EOF'
 loop|/birddata/MUOS/runtime/ROCKNIX-STORAGE|/storage|loop,rw,noatime
-mkdir|-p TEST_SLEEP_DIR
-mkdir|-p TEST_RETROARCH_DIR
 mkdir|-p /run/bird-data /storage/bird-data /storage/roms /storage/media
 mount|--move /birddata /run/bird-data
 mount|--bind /run/bird-data /storage/bird-data
 mount|--bind /storage/bird-data/ROMS /storage/roms
 mount|--bind /storage/bird-data/MEDIA /storage/media
 EOF
-sed -e "s#TEST_SLEEP_DIR#${TEST_SLEEP_CONFIG%/*}#" \
-	-e "s#TEST_RETROARCH_DIR#$TEST_RETROARCH_CONFIG_DIR#" \
-	"$TMP/expected-success" >"$TMP/expected-success.resolved"
-cmp "$TMP/expected-success.resolved" "$EVENTS"
+cmp "$TMP/expected-success" "$EVENTS"
 
 # Reverse the duplicate order to prove the canonical transaction agrees with
 # ROCKNIX's first-match get_setting semantics in either corruption pattern.
@@ -329,6 +339,33 @@ cmp "$TMP/system.cfg.accepted" "$TEST_SUSPEND_CONFIG"
 [ "$(grep -c '^cmp -s ' "$POLICY_EVENTS")" -eq 1 ]
 ! grep -Eq '^(awk|cp|chmod|mv|rm) ' "$POLICY_EVENTS"
 
+# Missing accepted-state directories retain the original repair behavior, but
+# existing directories no longer launch two unconditional mkdir children.
+/bin/mv "${TEST_SLEEP_CONFIG%/*}" "$TMP/sleep-policy.saved"
+/bin/mv "$TEST_RETROARCH_CONFIG_DIR" "$TMP/retroarch.saved"
+run_prefix
+[ "$STATUS" -eq 0 ]
+grep -Fxq "mkdir|-p ${TEST_SLEEP_CONFIG%/*}" "$EVENTS"
+grep -Fxq "mkdir|-p $TEST_RETROARCH_CONFIG_DIR" "$EVENTS"
+cmp "$TEST_FIXED_SLEEP_CONFIG" "$TEST_SLEEP_CONFIG"
+cmp "$TEST_FIXED_RETROARCH_CONFIG_DIR/retroarch.cfg" \
+	"$TEST_RETROARCH_CONFIG_DIR/retroarch.cfg"
+
+# The built-in namespace reader remains strict: order, cardinality and both
+# newline-terminated authority records are required before any mount move.
+for BAD_NAMESPACE in reversed extra truncated; do
+	case "$BAD_NAMESPACE" in
+		reversed) printf 'state\tcommitted\nrevision\tbird-canonical-namespace-v1\n' >"$TEST_NAMESPACE" ;;
+		extra) printf 'revision\tbird-canonical-namespace-v1\nstate\tcommitted\nextra\tbad\n' >"$TEST_NAMESPACE" ;;
+		truncated) printf 'revision\tbird-canonical-namespace-v1\n' >"$TEST_NAMESPACE" ;;
+	esac
+	run_prefix
+	[ "$STATUS" -eq 1 ]
+	grep -Fq 'error|bird-namespace|' "$EVENTS"
+	! grep -Fq 'mount|--move /birddata /run/bird-data' "$EVENTS"
+done
+printf 'revision\tbird-canonical-namespace-v1\nstate\tcommitted\n' >"$TEST_NAMESPACE"
+
 # A competing *.conf that cannot be removed must fail before final-root policy
 # can become ambiguous. In particular, rm -f must not turn an unexpected
 # directory into a silently accepted override boundary.
@@ -351,16 +388,11 @@ run_prefix
 [ "$STATUS" -eq 1 ]
 cat >"$TMP/expected-move-failure" <<'EOF'
 loop|/birddata/MUOS/runtime/ROCKNIX-STORAGE|/storage|loop,rw,noatime
-mkdir|-p TEST_SLEEP_DIR
-mkdir|-p TEST_RETROARCH_DIR
 mkdir|-p /run/bird-data /storage/bird-data /storage/roms /storage/media
 mount|--move /birddata /run/bird-data
 error|bird-data-move|Could not move large Bird data volume to its final mount
 EOF
-sed -e "s#TEST_SLEEP_DIR#${TEST_SLEEP_CONFIG%/*}#" \
-	-e "s#TEST_RETROARCH_DIR#$TEST_RETROARCH_CONFIG_DIR#" \
-	"$TMP/expected-move-failure" >"$TMP/expected-move-failure.resolved"
-cmp "$TMP/expected-move-failure.resolved" "$EVENTS"
+cmp "$TMP/expected-move-failure" "$EVENTS"
 
 # A failed publication bind must stop with the real filesystem still at its
 # safe /run mount, without attempting either nested library bind.
@@ -369,17 +401,12 @@ run_prefix
 [ "$STATUS" -eq 1 ]
 cat >"$TMP/expected-bind-failure" <<'EOF'
 loop|/birddata/MUOS/runtime/ROCKNIX-STORAGE|/storage|loop,rw,noatime
-mkdir|-p TEST_SLEEP_DIR
-mkdir|-p TEST_RETROARCH_DIR
 mkdir|-p /run/bird-data /storage/bird-data /storage/roms /storage/media
 mount|--move /birddata /run/bird-data
 mount|--bind /run/bird-data /storage/bird-data
 error|bird-data-bind|Could not publish the large Bird data volume
 EOF
-sed -e "s#TEST_SLEEP_DIR#${TEST_SLEEP_CONFIG%/*}#" \
-	-e "s#TEST_RETROARCH_DIR#$TEST_RETROARCH_CONFIG_DIR#" \
-	"$TMP/expected-bind-failure" >"$TMP/expected-bind-failure.resolved"
-cmp "$TMP/expected-bind-failure.resolved" "$EVENTS"
+cmp "$TMP/expected-bind-failure" "$EVENTS"
 
 # Execute the exact remaining mutable-policy publication block against a
 # temporary ext4-like tree. Immutable programs and provider data must stay at
@@ -545,6 +572,7 @@ hidecursor
 bird-early:start
 load_modules
 mount_storage
+bird-early:storage-failed
 fatal-sleep:3600
 EOF
 cmp "$TMP/expected-init-failure" "$INIT_EVENTS"

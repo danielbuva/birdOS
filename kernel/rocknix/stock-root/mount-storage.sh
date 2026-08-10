@@ -105,7 +105,8 @@ else
 	fi
 fi
 
-mkdir -p "${SUSPEND_SLEEP_CONFIG%/*}"
+[ -d "${SUSPEND_SLEEP_CONFIG%/*}" ] || \
+	mkdir -p "${SUSPEND_SLEEP_CONFIG%/*}"
 for FIXED_POLICY in "$FIXED_SLEEP_CONFIG:$SUSPEND_SLEEP_CONFIG"; do
 	POLICY_SOURCE=${FIXED_POLICY%%:*}
 	POLICY_TARGET=${FIXED_POLICY#*:}
@@ -138,7 +139,7 @@ done
 # application prerequisites is absent. Seed only the missing file now, after
 # Bird is already usable but before systemd, so that recovery cannot overwrite
 # Bird-owned system or sleep policy during the interactive session.
-mkdir -p "$RETROARCH_CONFIG_DIR"
+[ -d "$RETROARCH_CONFIG_DIR" ] || mkdir -p "$RETROARCH_CONFIG_DIR"
 for RETROARCH_CONFIG in retroarch-core-options.cfg retroarch.cfg; do
 	RETROARCH_SOURCE=$FIXED_RETROARCH_CONFIG_DIR/$RETROARCH_CONFIG
 	RETROARCH_TARGET=$RETROARCH_CONFIG_DIR/$RETROARCH_CONFIG
@@ -179,10 +180,23 @@ done
 # Only a bind alias lives below /storage, so shutdown can unmount the aliases,
 # then the loop, then p6 without a mount/backing-filesystem dependency cycle.
 NAMESPACE_RECORD=/birddata/Bird/namespace-v1.tsv
-[ -r "$NAMESPACE_RECORD" ] &&
-	[ "$(wc -l <"$NAMESPACE_RECORD")" -eq 2 ] &&
-	grep -Fqx 'revision	bird-canonical-namespace-v1' "$NAMESPACE_RECORD" &&
-	grep -Fqx 'state	committed' "$NAMESPACE_RECORD" || {
+NAMESPACE_REVISION=
+NAMESPACE_STATE=
+NAMESPACE_LINE_COUNT=0
+if [ -r "$NAMESPACE_RECORD" ]; then
+	# This file is sourced by the upstream BusyBox init. Use the same redirected
+	# read loop already exercised above instead of borrowing any caller FD.
+	while IFS= read -r NAMESPACE_LINE; do
+		NAMESPACE_LINE_COUNT=$((NAMESPACE_LINE_COUNT + 1))
+		case "$NAMESPACE_LINE_COUNT" in
+			1) NAMESPACE_REVISION=$NAMESPACE_LINE ;;
+			2) NAMESPACE_STATE=$NAMESPACE_LINE ;;
+		esac
+	done <"$NAMESPACE_RECORD"
+fi
+[ "$NAMESPACE_LINE_COUNT" -eq 2 ] &&
+	[ "$NAMESPACE_REVISION" = 'revision	bird-canonical-namespace-v1' ] &&
+	[ "$NAMESPACE_STATE" = 'state	committed' ] || {
 	error bird-namespace "Canonical namespace transaction is absent or ambiguous"
 	return 1
 }

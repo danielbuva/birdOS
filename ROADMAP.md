@@ -1486,13 +1486,63 @@ recent logs recorded input-ready 1218--1226 ms and usable-frame 1221--1236 ms;
 these remain descriptive parity samples. The image contains the sixteen
 accepted masks, with HDMI/Bluetooth-adjacent policy still reversible.
 
-The next independently measurable image subtraction bakes fourteen accepted
+The following independently measurable image subtraction bakes fourteen accepted
 fixed service/config files into that SYSTEM and removes their pre-systemd bind
 mounts. Two independent builds are byte-identical, the exact combined delta is
 sixteen masks plus fourteen files, output digest
 `214ae075864fbe848f0fc6c31d4bec68778a111efb2ed1de78366446348d2af4`,
-and image size remains 1,211,060,224 bytes. No service policy changes;
-physical behavior and application-readiness parity are the promotion gate.
+and image size remains 1,211,060,224 bytes. No service policy changes. It passed
+the broad physical gate in release `v6.23-20260810-080340`, source
+`e039e1dfd84f4196e4c9c7c0ad798cde948ce305`, manifest
+`6e59560198455dd68e3124f9aea3bb46bf749a46607d7a57541fd0941b3cc505`.
+The stopwatch remained below three seconds; two boots logged input ready at
+1219 ms, usable frame at 1225/1232 ms and storage receipt at 3384/3404 ms.
+
+The next bounded post-menu subtraction makes two accepted directories
+repair-only and replaces `wc` plus two `grep` namespace readers with strict
+shell built-ins. It removes five child processes while preserving missing-state
+repair and fail-closed namespace ordering/cardinality checks.
+The first development build exposed a sourced-hook descriptor collision: the
+new reader closed FD 3, already owned by the upstream init as `SILENT_OUT`, and
+therefore prevented final-root preparation after the early menu appeared. No
+new persistent boot log survived. Preserving FD 3 with a private FD 9 did not
+clear the device failure, so the next correction removes borrowed descriptors
+entirely and uses the already proven redirected BusyBox read loop. The host
+test still requires FD 3 to remain writable. For this development gate, the
+fatal storage boundary also writes directly to p6 and converts a later launcher
+exit into a logged three-second forced-poweroff countdown. Only this corrected
+build is eligible for the physical gate.
+
+Because the descriptor-free build still hung without reaching its failure
+return, the next diagnostic build starts a separate unconditional 30-second
+early-initramfs watchdog before storage work. It records countdown plus final
+mount/process/kernel evidence directly on p6, syncs and forces poweroff even if
+the main init shell is stuck. Temporary storage-stage markers localize the hang.
+This watchdog is not a promotion candidate and must be removed after diagnosis.
+
+The watchdog proved the stop occurs earlier than the storage hook: post-flash
+failed at 2.19 seconds because it derived the SYSTEM directory from
+`dev-current` instead of the recorded immutable production base. The corrected
+fast workflow specializes those authorities separately and rejects a dev
+release whose post-flash hook does not name its exact base SYSTEM.
+
+The corrected build then passed the broad RG34XX-SP gate. Logs prove that the
+selected supervisor was `dev-current`, input became ready at 1220 ms, the
+usable frame at 1223 ms and storage at 3467 ms; games, Ports, music, books,
+movies, PortMaster, Favorites, suspend and shutdown all completed. The
+diagnostic watchdog wrote only its 29- and 28-second ticks before successful
+`switch_root` retired the extra initramfs process, which is why no forced
+shutdown occurred. That is expected on a healthy boot. The follow-up removed
+the unconditional watchdog and eleven temporary storage-stage writes while the
+base-SYSTEM correction and five-child post-menu subtraction remained;
+the storage-failure-only logged three-second shutdown remains because it adds
+no normal-path work and covers the observed failure mode.
+
+The diagnostic-free follow-up also passed the broad hardware gate. Its boot
+logged input readiness at 1219 ms, usable-frame readiness at 1225 ms and
+storage readiness at 3408 ms. This physically accepts the base-SYSTEM
+correction and five-child subtraction without the watchdog or stage writes;
+the timings remain descriptive samples rather than a promoted distribution.
 
 ## Stage 7 — Fixed-fallback boot-contract subtraction (complete)
 

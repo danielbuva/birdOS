@@ -1692,21 +1692,78 @@ a promoted timing distribution. The accepted SYSTEM bakes sixteen fixed-device
 systemd masks as standard `/dev/null` symlinks while HDMI and
 Bluetooth-adjacent masks remain reversible runtime policy.
 
-The next bounded SYSTEM candidate also bakes fourteen already accepted fixed
+The following bounded SYSTEM candidate also bakes fourteen already accepted fixed
 service/config files byte-for-byte. Two isolated full builds are identical and
 the combined inventory delta proves exactly sixteen masks plus fourteen files.
 Its SYSTEM digest is
 `214ae075864fbe848f0fc6c31d4bec68778a111efb2ed1de78366446348d2af4`;
 its size remains 1,211,060,224 bytes. `mount-storage.sh` removes the fourteen
-matching pre-systemd bind mounts. Physical behavior and application-readiness
-parity remain required.
+matching pre-systemd bind mounts. It passed the broad hardware matrix in
+immutable release `v6.23-20260810-080340`, clean source
+`e039e1dfd84f4196e4c9c7c0ad798cde948ce305`, manifest
+`6e59560198455dd68e3124f9aea3bb46bf749a46607d7a57541fd0941b3cc505`.
+The stopwatch remained below three seconds; two returned boots recorded input
+ready at 1219 ms, usable frame at 1225/1232 ms and storage signal receipt at
+3384/3404 ms. These are descriptive samples.
+
+The next accepted-state storage candidate removes five more post-menu child
+processes: two directory creations now run only as repair, and the exact
+two-line namespace authority is validated with shell reads instead of `wc`
+plus two `grep` processes. Missing directories still repair and malformed,
+reordered, truncated or extra namespace records still fail before mount move.
+Its first `dev-current` build incorrectly used and closed file descriptor 3,
+which the sourcing ROCKNIX init owns as `SILENT_OUT`; the menu survived in the
+early launcher, but final-root preparation stopped, so storage, favourites,
+content, controls, power and persistent logs never became available. Preserving
+FD 3 with a private FD 9 did not clear the device failure. The second correction
+borrows no descriptor: it uses the redirected `while read` pattern already
+proven earlier in this exact BusyBox hook, while the host test still proves the
+caller's FD 3 remains usable. During this development gate only, a failed
+storage hook now records directly to p6 and watches the early launcher; after a
+requested action exits the launcher, a logged three-second countdown forces
+poweroff instead of requiring a reset. This candidate still requires the
+complete physical behavior gate.
+
+After the descriptor-free attempt also failed without returning through the
+storage failure boundary, the next diagnostic build adds an unconditional
+30-second watchdog as an independent early-initramfs process. It begins before
+the storage hook, records a one-second countdown and final mounts/process/kernel
+snapshot directly to p6 when available, syncs, and repeatedly requests forced
+poweroff. Temporary in-hook stage markers identify the last completed storage
+operation. This is diagnostic-only and must be removed after the fault is
+localized.
+
+The watchdog localized the actual stop before `mount-storage.sh`: at 2.19
+seconds the development post-flash hook searched for
+`Bird/runtime/dev-current/ROCKNIX-SYSTEM`, although `dev-current` intentionally
+reuses its immutable production base SYSTEM. The fast workflow now specializes
+two independent authorities: process/runtime files remain `dev-current`, while
+the SYSTEM path names the recorded immutable base release. Development
+verification and transaction tests require that exact split.
+
+The corrected `dev-current` passed the returned broad hardware gate. Its log
+identifies the development supervisor, input readiness at 1220 ms, usable-frame
+readiness at 1223 ms and storage readiness at 3467 ms, followed by successful
+games, Ports, music, books, movies, PortMaster, Favorites, suspend and shutdown.
+On this healthy boot the unconditional diagnostic watchdog recorded only 29
+and 28 seconds before successful `switch_root` retired it; it was never intended
+to shut down a working final root. The follow-up removed that watchdog and the
+eleven temporary p6 stage writes while retaining the actual immutable-base
+SYSTEM fix, the five-child storage subtraction and the failure-only
+three-second logged shutdown path.
+
+That diagnostic-free build passed the next broad hardware gate. It recorded
+input readiness at 1219 ms, usable-frame readiness at 1225 ms and storage
+readiness at 3408 ms. The actual base-SYSTEM fix and five-child subtraction are
+therefore accepted for continued development; those individual timings remain
+descriptive rather than a distribution claim.
 
 ## Accepted v6.23 evidence
 
 The accepted human promotion binding is clean source
-`bee2f26f6c53798c1e6455d6f2d66c2cd083e58b`, release
-`v6.23-20260810-051204`, manifest
-`b14b7a2552ede731712b0b9dbd1a25ebdc0d46c820a75bedab48cc8a36081a22`,
+`e039e1dfd84f4196e4c9c7c0ad798cde948ce305`, release
+`v6.23-20260810-080340`, manifest
+`6e59560198455dd68e3124f9aea3bb46bf749a46607d7a57541fd0941b3cc505`,
 device contract
 `1664a3778abcd3687865a82fd28bba5b468f6c3c7e9a46bf90f7c3acb1e08162`
 and catalogue

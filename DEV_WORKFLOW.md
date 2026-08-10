@@ -118,14 +118,22 @@ On the first development build, the command:
    production release;
 2. saves an exact copy of that production selector;
 3. copies the complete production release once to a new `dev-current`;
-4. applies all supported local components from the current working tree;
-5. regenerates and verifies the complete development manifest;
-6. marks the development release complete and atomically selects it.
+4. specializes the development boot hook so `dev-current` binds the immutable
+   ROCKNIX SYSTEM belonging to that recorded production base;
+5. applies all supported local components from the current working tree;
+6. regenerates and verifies the complete development manifest;
+7. marks the development release complete and atomically selects it.
 
 Later builds restore the production selector before mutating `dev-current`,
 replace only affected manifest-listed files, regenerate the whole development
 manifest, and reactivate `dev-current` only after verification succeeds. The
 base production release remains byte-for-byte untouched.
+
+The boot hook has two deliberate release authorities: its process and Bird
+runtime release is `dev-current`, while its large immutable ROCKNIX SYSTEM path
+names the recorded canonical base. The fast workflow specializes and verifies
+both. Deriving the SYSTEM directory from `dev-current` is invalid because the
+development release intentionally reuses rather than copies that large image.
 
 Development state is stored outside the immutable release under
 `/Volumes/BIRD/bird-dev`. It records the base selector and release, source

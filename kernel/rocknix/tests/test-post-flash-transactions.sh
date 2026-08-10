@@ -63,7 +63,8 @@ fi
 grep -Fq 'bird_loader_record_failure "$1"' "$LOADER"
 grep -Fq 'stop_boot bird-release "Release verification failed: $BIRD_RELEASE"' \
 	"$POST_FLASH"
-grep -Fq 'BIRD_SYSTEM_REL=Bird/runtime/$BIRD_RELEASE/ROCKNIX-SYSTEM' \
+grep -Fq 'BIRD_SYSTEM_RELEASE=$BIRD_RELEASE' "$POST_FLASH"
+grep -Fq 'BIRD_SYSTEM_REL=Bird/runtime/$BIRD_SYSTEM_RELEASE/ROCKNIX-SYSTEM' \
 	"$POST_FLASH"
 grep -Fq 'inputs != 14' "$POST_FLASH"
 

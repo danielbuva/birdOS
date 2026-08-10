@@ -555,6 +555,10 @@ grep -q '^release[[:space:]]*dev-current$' "$BIRD/bird-releases/dev-current/depl
 [ "$(cat "$BIRD/bird-releases/dev-current/.complete")" = \
 	"$(sha256 "$BIRD/bird-releases/dev-current/deploy-manifest.tsv")" ] || fail 'dev completion marker is wrong'
 grep -q '^RELEASE_ID=dev-current$' "$BIRD/bird-releases/dev-current/bird/supervisor.sh"
+grep -q '^BIRD_SYSTEM_RELEASE=prod-a$' \
+	"$BIRD/bird-releases/dev-current/post-flash.sh"
+grep -Fq 'BIRD_SYSTEM_REL=Bird/runtime/$BIRD_SYSTEM_RELEASE/ROCKNIX-SYSTEM' \
+	"$BIRD/bird-releases/dev-current/post-flash.sh"
 gzip -dc "$BIRD/bird-releases/dev-current/bird-initramfs.cpio.gz" | \
 	grep -a -q 'BIRD_LOADER_RELEASE=dev-current'
 [ ! -e "$DATA/Bird/boot-state/releases/dev-current/attempts" ]
@@ -1712,16 +1716,18 @@ grep -q '^selector-kind[[:space:]]*malformed-or-incomplete$' \
 grep -q '^rebase-required[[:space:]]*yes$' "$CASE_ROOT/malformed-selector.status"
 pass 'status reports a malformed selector without writing'
 
-# 22. Both process-lifetime release authorities are specialized to dev-current.
+# 22. Process lifetime uses dev-current while immutable SYSTEM uses its base.
 new_case specialized-authorities
 initialize_dev
 grep -q '^RELEASE_ID=dev-current$' "$BIRD/bird-releases/dev-current/bird/supervisor.sh"
+grep -q '^BIRD_SYSTEM_RELEASE=prod-a$' \
+	"$BIRD/bird-releases/dev-current/post-flash.sh"
 gzip -dc "$BIRD/bird-releases/dev-current/bird-initramfs.cpio.gz" | \
 	grep -a -q 'BIRD_LOADER_RELEASE=dev-current'
 run_dev --status >"$CASE_ROOT/status.out"
 grep -q '^selector-kind[[:space:]]*development$' "$CASE_ROOT/status.out"
 grep -q '^dev-current-verifies[[:space:]]*yes$' "$CASE_ROOT/status.out"
 assert_base_and_fallback_unchanged
-pass 'early loader and final supervisor both name dev-current'
+pass 'dev process authorities and immutable SYSTEM base are specialized independently'
 
 printf 'PASS: %s dev-current host transaction cases\n' "$PASS_COUNT"

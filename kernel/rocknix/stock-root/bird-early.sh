@@ -129,8 +129,43 @@ case "${1:-}" in
 		log_leds handoff-missing >>"$LOG" 2>&1
 		printf '%s\n' 'Bird early-init owner missing before mount move' >>"$LOG"
 		;;
+	storage-failed)
+		# The normal persistent tree is unavailable, but p6 is still mounted at
+		# /birddata. Keep the working early menu alive. When the launcher exits
+		# for any requested action, seal the failure evidence and force a bounded
+		# poweroff instead of leaving an unlogged frozen framebuffer.
+		FAILURE_LOG=/birddata/Bird/log/mount-storage-latest.log
+		[ -d /birddata/Bird/log ] || FAILURE_LOG=$LOG
+		printf 'status=fatal launcher_watch=ready uptime=' >>"$FAILURE_LOG"
+		$BUSYBOX cut -d ' ' -f 1 /proc/uptime >>"$FAILURE_LOG"
+		PID=
+		if [ -s "$PID_FILE" ]; then
+			PID=$($BUSYBOX cat "$PID_FILE")
+			case "$PID" in *[!0-9]*|'') PID= ;; esac
+		fi
+		while [ -n "$PID" ] && $BUSYBOX kill -0 "$PID" 2>/dev/null; do
+			$BUSYBOX sleep 1
+		done
+		printf 'launcher_exit=detected shutdown_countdown_s=3 uptime=' \
+			>>"$FAILURE_LOG"
+		$BUSYBOX cut -d ' ' -f 1 /proc/uptime >>"$FAILURE_LOG"
+		COUNT=3
+		while [ "$COUNT" -gt 0 ]; do
+			printf 'shutdown_countdown remaining_s=%s\n' "$COUNT" \
+				>>"$FAILURE_LOG"
+			LED=/sys/class/leds/red:status/brightness
+			[ ! -w "$LED" ] || printf '%s\n' $((COUNT % 2)) >"$LED"
+			$BUSYBOX sync
+			$BUSYBOX sleep 1
+			COUNT=$((COUNT - 1))
+		done
+		printf '%s\n' 'shutdown_countdown dispatch=poweroff-force' \
+			>>"$FAILURE_LOG"
+		$BUSYBOX sync
+		$BUSYBOX poweroff -f
+		;;
 	*)
-		printf 'usage: %s {start|root-ready|handoff}\n' "$0" >&2
+		printf 'usage: %s {start|root-ready|handoff|storage-failed}\n' "$0" >&2
 		exit 2
 		;;
 esac

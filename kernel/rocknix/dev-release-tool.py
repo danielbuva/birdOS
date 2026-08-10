@@ -1751,6 +1751,7 @@ def prepare_outputs(
     root: pathlib.Path,
     bird: pathlib.Path,
     data: pathlib.Path,
+    base_release: str,
     groups: set[str],
     profile: str,
     work: pathlib.Path,
@@ -1934,7 +1935,18 @@ def prepare_outputs(
 
     stock = root / "kernel/rocknix/stock-root"
     if "post-flash" in groups:
-        shutil.copyfile(stock / "post-flash.sh", updates / "post-flash.sh")
+        source = (stock / "post-flash.sh").read_text(encoding="utf-8")
+        transformed, count = re.subn(
+            r"^BIRD_SYSTEM_RELEASE=\$BIRD_RELEASE$",
+            f"BIRD_SYSTEM_RELEASE={base_release}",
+            source,
+            flags=re.MULTILINE,
+        )
+        if count != 1:
+            fail("post-flash development SYSTEM-base specialization contract changed")
+        (updates / "post-flash.sh").write_text(
+            transformed, encoding="utf-8", newline="\n"
+        )
     if "mount-storage" in groups:
         shutil.copyfile(stock / "mount-storage.sh", updates / "mount-storage.sh")
     for name in RUNTIME_FILES:
@@ -3179,7 +3191,14 @@ class Workflow:
             self.rollback_selector = base_selector
             self.restore_on_failure = True
             updates, generated_catalog_digest, build_tests = prepare_outputs(
-                self.root, self.bird, self.data, groups, self.profile, work, self.host_test
+                self.root,
+                self.bird,
+                self.data,
+                base_id,
+                groups,
+                self.profile,
+                work,
+                self.host_test,
             )
             self.tests.extend(build_tests)
             self.tests.extend(
@@ -3286,6 +3305,11 @@ class Workflow:
             supervisor = self.dev_root / "bird/supervisor.sh"
             if f"RELEASE_ID={DEV_RELEASE}\n".encode() not in supervisor.read_bytes():
                 fail("dev supervisor does not name dev-current")
+            post_flash = self.dev_root / "post-flash.sh"
+            if f"BIRD_SYSTEM_RELEASE={base_id}\n".encode() not in post_flash.read_bytes():
+                fail("dev post-flash does not name the immutable SYSTEM base")
+            if b"BIRD_SYSTEM_REL=Bird/runtime/$BIRD_SYSTEM_RELEASE/ROCKNIX-SYSTEM\n" not in post_flash.read_bytes():
+                fail("dev post-flash SYSTEM path contract changed")
             if "early-initramfs" not in groups:
                 loader = extract_newc_member(self.dev_root / "bird-initramfs.cpio.gz", "bird-release-loader.sh")
                 if f"BIRD_LOADER_RELEASE={DEV_RELEASE}\n".encode() not in loader:
