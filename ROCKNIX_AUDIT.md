@@ -1075,8 +1075,8 @@ The v6.15 audit found the following generic work and defects. Only items marked
 2. Keep p1 at 128 MiB with one immutable canonical base plus mutable
    `dev-current`. Archive and independently verify superseded immutable releases
    in the private GitHub repository before removing their card copies. A failed
-   boot returns the card to the host; the temporarily retained fixed v5.4
-   fallback is not normal release history or a promised recovery path.
+   boot persists its failure record and returns the card to the host; no fixed
+   v5.4 fallback or old UI is retained.
 3. Preserve the accepted warm seatd/udevd choice, HDMI and Bluetooth until a
    measured or explicit product decision changes them.
 4. Continue Stage 6 with the hermetic deterministic-image boundary while the

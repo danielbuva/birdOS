@@ -176,9 +176,8 @@ The replacement policy keeps p1 at 128 MiB and uses one immutable canonical
 base plus one mutable `dev-current` slot. Canonical deployment archives and
 independently verifies superseded immutable releases privately, self-references
 the activated canonical selector, and only then removes their card copies. The
-selector therefore never points at removed bytes. The fixed v5.4 fallback remains
-temporarily pending a separate boot-contract rewrite, but is not normal release
-history or development rollback. Failed boots return the card to the host.
+selector therefore never points at removed bytes. No alternate kernel, selector,
+or UI remains. Failed boots persist evidence and return the card to the host.
 
 ## Stage 1 — Low-risk release-path cleanup
 
@@ -1451,7 +1450,7 @@ feasible, yielding byte-identical output or a formally defined excluded-region
 list. Include a verified host restore/reimage procedure; an on-card A/B selector
 is not an acceptance requirement.
 
-## Stage 7 — Fixed-fallback boot-contract subtraction (deferred)
+## Stage 7 — Fixed-fallback boot-contract subtraction (complete)
 
 The earlier U-Boot A/B and on-card recovery lane is retired by operator choice.
 This one-device development workflow returns an unbootable card to the host and
@@ -1459,12 +1458,11 @@ restores or redeploys from verified canonical bytes. It does not spend p1 space
 on superseded immutable releases or block userspace, standalone-bootstrap, or
 source-kernel experiments on a new bootloader recovery state machine.
 
-The fixed v5.4 `KERNEL.fallback`, DTB and selector stay temporarily because they
-are part of the current updater, manifest and failed-boot contracts. Remove or
-replace them only as one separately tested boot-contract subtraction after the
-host-return procedure and canonical restore artifact are proven. Their presence
-is not a normal recovery promise, production history, or prerequisite for later
-performance work.
+The v5.4 fallback kernel, root fallback DTB, fallback selector, automatic
+selector mutation, boot-attempt journal, forced retry reboot and supervisor
+restart loop are removed together. Manifest verification persists a diagnostic
+and stops. Host repair and the private canonical archive are the accepted safety
+model.
 
 ## Stage 8 — Source-kernel parity lane
 

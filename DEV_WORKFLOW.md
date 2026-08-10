@@ -17,9 +17,8 @@ The fixed 128 MiB `BIRD` partition uses one rotating pair: one immutable
 canonical base plus `dev-current`. Superseded immutable releases are published
 and independently verified in the private GitHub release archive, then removed
 from the card by the canonical production workflow. The card is not a release-
-history store. The fixed v5.4 fallback remains temporarily as a separate legacy
-boot-contract asset; it is not the base, the development rollback, or another
-slot in the release history.
+history store. No alternate kernel, fallback selector, or older UI occupies a
+third slot.
 
 ## Typical use
 
@@ -325,12 +324,10 @@ release activates, it applies the same selector-before-removal sequence to the
 formerly active source. A later ordinary production cycle normally needs only
 that post-activation rotation.
 
-The fixed v5.4 fallback remains temporarily because deleting it changes the
-boot selector, updater, manifest and failure contracts together. It is not a
-normal rollback target or reason to retain additional production history. If a
-development build does not boot, return the card to the host and use the saved,
-verified canonical selector or redeploy; do not expect another immutable
-release to be resident on the card.
+No fallback kernel, alternate selector or boot-attempt retry state is retained.
+Manifest verification remains mandatory; a failed boot writes its reason and
+stops. Return the card to the host and use the saved verified canonical selector
+or redeploy.
 
 ## Host transaction safety and recovery
 

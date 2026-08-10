@@ -99,9 +99,6 @@ mkdir -p "$CARD/bird" "$CARD/extlinux" "$BIRD/bird" "$BIRD/extlinux" \
 	"$DATA/ROMS/Ports/PortMaster" "$CARD/bird/empty-runtime"
 printf 'revision\tbird-canonical-namespace-v1\nstate\tcommitted\n' \
 	>"$DATA/Bird/namespace-v1.tsv"
-PRIOR_ATTEMPTS=$DATA/Bird/boot-state/releases/v6.22/attempts
-RELEASE_ATTEMPTS=$DATA/Bird/boot-state/releases/v6.23/attempts
-printf '1\n' >"$PRIOR_ATTEMPTS"
 
 printf 'candidate-kernel\n' >"$CARD/KERNEL"
 printf 'fixed-dtb\n' >"$CARD/dtb.img"
@@ -116,15 +113,11 @@ printf '%s\n' \
 	'  INITRD /bird-releases/v6.23/bird-initramfs.cpio.gz' \
 	'  FDT /bird-releases/v6.23/dtb.img' \
 	'  APPEND bird_release=v6.23' >"$CARD/extlinux/extlinux.conf"
-printf '%s\n' \
-	'LABEL BIRD-FALLBACK' \
-	'  LINUX /KERNEL.fallback' \
-	'  FDT /dtb.img' >"$CARD/extlinux/extlinux.fallback.conf"
 chmod 0700 "$CARD/KERNEL" "$CARD/dtb.img"
 chmod 0755 "$CARD/post-flash.sh" "$CARD/mount-storage.sh" \
 	"$CARD/bird/bird-suspend.sh"
 chmod 0644 "$CARD/SYSTEM" "$CARD/bird-initramfs.cpio.gz" \
-	"$CARD/extlinux/extlinux.conf" "$CARD/extlinux/extlinux.fallback.conf"
+	"$CARD/extlinux/extlinux.conf"
 
 printf 'exact-runtime\n' >"$RUNTIME"
 dd if=/dev/zero of="$STORAGE_SOURCE" bs=2048 count=1 2>/dev/null
@@ -134,9 +127,6 @@ ROCKNIX_KERNEL_SHA=$(sha256 "$CARD/KERNEL")
 DTB_SHA=$(sha256 "$CARD/dtb.img")
 RUNTIME_SHA=$(sha256 "$RUNTIME")
 STORAGE_SHA=$(sha256 "$STORAGE_SOURCE")
-V54_KERNEL=$TMP/fallback-kernel
-printf 'fallback-kernel\n' >"$V54_KERNEL"
-V54_KERNEL_SHA=$(sha256 "$V54_KERNEL")
 AUTOSTART_SHA=1111111111111111111111111111111111111111111111111111111111111111
 OFFICIAL_INIT_SHA=2222222222222222222222222222222222222222222222222222222222222222
 JOYPAD_SHA=3333333333333333333333333333333333333333333333333333333333333333
@@ -182,8 +172,6 @@ find "$CARD" -mindepth 1 -type d -empty -print | LC_ALL=C sort >"$DIR_LIST"
 	printf 'input\trocknix-singleadc-joypad.ko\t644\t1\t%s\ttest:joypad\n' "$JOYPAD_SHA"
 	printf 'input\tinitramfs/busybox\t755\t1\t%s\ttest:busybox\n' "$INIT_BUSYBOX_SHA"
 	printf 'input\tPortMaster.zip\t644\t1\t%s\ttest:PortMaster.zip\n' "$PORTMASTER_ARCHIVE_SHA"
-	printf 'input\tKERNEL.fallback\t%s\t%s\t%s\ttest:fallback-KERNEL\n' \
-		"$(mode "$V54_KERNEL")" "$(bytes "$V54_KERNEL")" "$V54_KERNEL_SHA"
 	for NAME in pugwash PortMaster.sh mod_ROCKNIX.txt funcs.txt harbourmaster; do
 		FILE=$DATA/ROMS/Ports/PortMaster/$NAME
 		printf 'input\tPortMaster/%s\t%s\t%s\t%s\ttest:PortMaster/%s\n' \
@@ -199,7 +187,7 @@ find "$CARD" -mindepth 1 -type d -empty -print | LC_ALL=C sort >"$DIR_LIST"
 	done <"$FILE_LIST"
 } >"$MANIFEST"
 
-cp "$V54_KERNEL" "$BIRD/KERNEL"
+cp "$CARD/KERNEL" "$BIRD/KERNEL"
 cp "$CARD/dtb.img" "$BIRD/dtb.img"
 printf '#!/bin/sh\n# preserved legacy hook\nexit 0\n' >"$BIRD/post-flash.sh"
 cp "$CARD/mount-storage.sh" "$BIRD/mount-storage.sh"
@@ -723,8 +711,6 @@ if ! grep -q 'host-only injected failure: before-selector-activation' \
 fi
 [ -f "$BIRD/bird-releases/v6.23/.complete" ]
 [ "$(sha256 "$BIRD/extlinux/extlinux.conf")" = "$ACTIVE_BEFORE" ]
-[ "$(cat "$RELEASE_ATTEMPTS")" = 0 ]
-[ "$(cat "$PRIOR_ATTEMPTS")" = 1 ]
 
 if run_updater after-selector-rename >"$TMP/post-activation.out" \
 	2>"$TMP/post-activation.err"; then
@@ -735,7 +721,6 @@ grep -q 'selector activation failed; previous selector restored' \
 	"$TMP/post-activation.err"
 [ "$(sha256 "$BIRD/extlinux/extlinux.conf")" = "$ACTIVE_BEFORE" ]
 [ "$(sha256 "$BIRD/post-flash.sh")" = "$LEGACY_HOOK_SHA" ]
-[ "$(cat "$PRIOR_ATTEMPTS")" = 1 ]
 
 # The abrupt boundary differs from the rollback simulation above: terminate
 # immediately after the selector rename, before post-rename sync/verification.
@@ -757,8 +742,12 @@ if ! run_updater none >"$TMP/install.out" 2>"$TMP/install.err"; then
 	cat "$TMP/install.err" >&2
 	exit 1
 fi
-grep -Fq 'Production omits the serial console; the fixed diagnostic fallback retains it.' \
+grep -Fq 'Production omits the serial console and has no alternate boot target.' \
 	"$TMP/install.out"
+[ ! -e "$BIRD/KERNEL.fallback" ]
+[ ! -e "$BIRD/dtb.img" ]
+[ ! -e "$BIRD/extlinux/extlinux.fallback.conf" ]
+[ ! -e "$DATA/Bird/boot-state/releases" ]
 [ ! -e "$CARD_LOCK" ] && [ ! -L "$CARD_LOCK" ]
 
 # The namespace is deliberately fixed across effective UIDs. Simulate a
@@ -998,16 +987,14 @@ run_updater none >"$TMP/mutable-portmaster.out"
 
 # Once an immutable release is authoritative, the pre-versioned root KERNEL is
 # redundant. Its absence must remain a supported steady state; the selected
-# release, selector and fallback are still independently verified.
+# release and selector are still independently verified.
 ABSENT_KERNEL_SELECTOR_SHA=$(sha256 "$BIRD/extlinux/extlinux.conf")
 ABSENT_KERNEL_RELEASE_SHA=$(sha256 "$RELEASE/KERNEL")
-ABSENT_KERNEL_FALLBACK_SHA=$(sha256 "$BIRD/KERNEL.fallback")
 rm -f "$BIRD/KERNEL"
 run_updater none >"$TMP/absent-root-kernel.out"
 [ ! -e "$BIRD/KERNEL" ] && [ ! -L "$BIRD/KERNEL" ]
 [ "$(sha256 "$BIRD/extlinux/extlinux.conf")" = "$ABSENT_KERNEL_SELECTOR_SHA" ]
 [ "$(sha256 "$RELEASE/KERNEL")" = "$ABSENT_KERNEL_RELEASE_SHA" ]
-[ "$(sha256 "$BIRD/KERNEL.fallback")" = "$ABSENT_KERNEL_FALLBACK_SHA" ]
 
 ln -s "$TMP/missing-kernel-target" "$BIRD/KERNEL"
 if run_updater none >"$TMP/dangling-root-kernel.out" \
@@ -1019,16 +1006,6 @@ grep -q 'legacy top-level KERNEL is a symlink or special node' \
 	"$TMP/dangling-root-kernel.err"
 [ "$(sha256 "$BIRD/extlinux/extlinux.conf")" = "$ABSENT_KERNEL_SELECTOR_SHA" ]
 rm -f "$BIRD/KERNEL"
-
-mv "$BIRD/KERNEL.fallback" "$TMP/KERNEL.fallback.saved"
-if run_updater none >"$TMP/missing-fallback.out" 2>"$TMP/missing-fallback.err"; then
-	printf '%s\n' 'missing fallback with no root KERNEL unexpectedly succeeded' >&2
-	exit 1
-fi
-grep -q 'v5.4 fallback KERNEL is missing' "$TMP/missing-fallback.err"
-[ "$(sha256 "$BIRD/extlinux/extlinux.conf")" = "$ABSENT_KERNEL_SELECTOR_SHA" ]
-mv "$TMP/KERNEL.fallback.saved" "$BIRD/KERNEL.fallback"
-[ "$(sha256 "$BIRD/KERNEL.fallback")" = "$ABSENT_KERNEL_FALLBACK_SHA" ]
 
 # Prove lock ordering, not only exclusion: a contender waiting on the lifetime
 # transaction lock must not hold the short serial mutex needed by the owner to
@@ -1360,7 +1337,7 @@ DYNAMIC_RELEASE=$BIRD/bird-releases/$DYNAMIC_ID
 [ -f "$DYNAMIC_RELEASE/.complete" ]
 cmp "$DYNAMIC_MANIFEST" "$DYNAMIC_RELEASE/deploy-manifest.tsv"
 grep -Fq "bird_release=$DYNAMIC_ID" "$BIRD/extlinux/extlinux.conf"
-[ "$(cat "$DATA/Bird/boot-state/releases/$DYNAMIC_ID/attempts")" = 0 ]
+[ ! -e "$DATA/Bird/boot-state/releases/$DYNAMIC_ID/attempts" ]
 [ -f "$BIRD/bird-releases/v6.23/.complete" ]
 
 printf '%s\n' 'stock-root updater transaction tests passed'

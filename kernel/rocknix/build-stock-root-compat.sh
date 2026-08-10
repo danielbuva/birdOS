@@ -37,14 +37,11 @@ JOYPAD_SHA=a8ac6cacfa89672fa08dec7fa02179bb108a4a2303fd5c1eb5834f916089b79b
 INIT_BUSYBOX_SHA=5ee3d20d8ea5fd9b3ba5109da80599eaf46a5a337d9e40d4c67d28eef44d5dc8
 SYSTEM_BUSYBOX_SHA=b90f5f58dd5c39348f7be9bbef79b349f51e6ac0117b217691e2701d73714b38
 PORTMASTER_ARCHIVE_SHA=9d6f25d461afced95569923a57c6a9c42df225190c043d74fe2ec0edcf40a477
-FALLBACK_SELECTOR_SHA=f6434463ef51f752b6871186497a9d96888b89e9b2d158c3ea75bcbef9a58776
-FALLBACK_KERNEL_SHA=a53a3483731d28d2e96e53def0fba347fa53607aa9fbda8bfb82db677126daef
 PORTMASTER_PUGWASH_SHA=3b9ea60ccf202f64155c669fd0b2b18fcb0e5c72e293ad0c61f7c2f2fdcb51d8
 PORTMASTER_SH_SHA=554c92cf5ea6656a6bfbd1ddd81619fdf4ff0524ac40d14c19193f2aa33da804
 PORTMASTER_MOD_SHA=8eaf22ed31bbf446c5113b56b55666f42317f8f81d96e1c86a0f04dde07277a1
 PORTMASTER_FUNCS_SHA=f72b9971c2964e44592dd3ffca1b3ccf0ae31e9c4dd2cb32508a6990f81a5d22
 PORTMASTER_HARBOURMASTER_SHA=74f55c5cf9335ac56dc6b4dbbdd8c26a0a198e4117b2887323eec070c734ff40
-FALLBACK_KERNEL=${FALLBACK_KERNEL:-$SOURCE/KERNEL.fallback}
 OFFICIAL_INIT=${OFFICIAL_INIT:-$ROOT/kernel/work/rocknix-official-initramfs-20260701/ramdisk/init}
 JOYPAD=${JOYPAD:-$ROOT/kernel/work/rocknix-system-exact-20260701/usr/lib/kernel-overlays/base/lib/modules/7.0.11/rocknix-joypad/rocknix-singleadc-joypad.ko}
 INIT_BUSYBOX=${INIT_BUSYBOX:-$ROOT/kernel/work/rocknix-official-initramfs-20260701/ramdisk/usr/bin/busybox}
@@ -194,7 +191,6 @@ verify_source_identity() {
 [ -d "$SOURCE" ] || fail "mounted exact ROCKNIX release missing: $SOURCE"
 is_regular_file "$SOURCE/KERNEL" || fail 'release KERNEL missing or not regular'
 is_regular_file "$SOURCE/dtb.img" || fail 'release DTB missing or not regular'
-is_regular_file "$FALLBACK_KERNEL" || fail 'preserved v5.4 fallback KERNEL missing or not regular'
 is_regular_file "$SYSTEM_SOURCE" || fail 'release SYSTEM missing or not regular'
 is_regular_file "$STORAGE" || fail 'captured ROCKNIX STORAGE image missing or not regular'
 is_regular_file "$SYSTEM_TREE/usr/bin/autostart" || fail 'extracted exact autostart missing or not regular'
@@ -219,8 +215,6 @@ for APPLET in awk chmod cmp cp mv rm stat; do
 		fail "exact SYSTEM BusyBox lacks required $APPLET applet"
 done
 [ "$(sha256 "$PORTMASTER_ARCHIVE")" = "$PORTMASTER_ARCHIVE_SHA" ] || fail 'exact PortMaster archive changed'
-[ "$(sha256 "$FALLBACK_KERNEL")" = "$FALLBACK_KERNEL_SHA" ] || fail 'preserved v5.4 fallback KERNEL changed'
-[ "$(file_bytes "$FALLBACK_KERNEL")" = 29939720 ] || fail 'preserved v5.4 fallback KERNEL size changed'
 [ -x "$CLANG" ] || fail 'LLVM clang missing'
 [ -x "$LLD" ] || fail 'LLVM lld missing'
 [ -x "$READELF" ] || fail 'LLVM readelf missing'
@@ -264,9 +258,6 @@ python3 "$ROOT/firmware/generate-launcher-bootlogo.py" \
 	--xrgb-output "$OUTPUT/card/bird/launcher-base.xrgb"
 chmod 0644 "$OUTPUT/card/bird/boot-frame.contract" \
 	"$OUTPUT/card/bird/launcher-base.xrgb"
-
-[ "$(sha256 "$ROOT/kernel/rocknix/stock-root/extlinux.fallback.conf")" = \
-	"$FALLBACK_SELECTOR_SHA" ] || fail 'fallback selector digest changed'
 
 # These five immutable provider files are deployment inputs even though they
 # live inside the pinned PortMaster archive at build time and on p6 at update
@@ -349,8 +340,6 @@ cp -fp "$ROOT/kernel/rocknix/stock-root/mpv-input.conf" \
 	"$OUTPUT/card/bird/mpv-input.conf"
 cp -fp "$ROOT/kernel/rocknix/stock-root/extlinux.conf" \
 	"$OUTPUT/card/extlinux/extlinux.conf"
-cp -fp "$ROOT/kernel/rocknix/stock-root/extlinux.fallback.conf" \
-	"$OUTPUT/card/extlinux/extlinux.fallback.conf"
 touch "$OUTPUT/card/SYSTEM"
 
 # These three generated runtime files must agree with the manifest release.
@@ -621,24 +610,19 @@ if grep -Fq 'console=ttyS0,115200' \
 		"$OUTPUT/card/extlinux/extlinux.conf"; then
 	fail 'production selector unexpectedly enables the diagnostic serial console'
 fi
-grep -Fq 'console=ttyS0,115200' \
-	"$OUTPUT/card/extlinux/extlinux.fallback.conf" || \
-	fail 'fallback selector lost the diagnostic serial console'
 [ "$(awk '{ for (field = 1; field <= NF; field++) if ($field == "fbcon=map:1") { count++; if ($1 == "APPEND") append++ } } END { print (count + 0) ":" (append + 0) }' \
 	"$OUTPUT/card/extlinux/extlinux.conf")" = 1:1 ] || \
 	fail 'active selector must map fbcon away from the fixed panel exactly once'
 [ "$(awk '{ for (field = 1; field <= NF; field++) if ($field == "vt.global_cursor_default=0") { count++; if ($1 == "APPEND") append++ } } END { print (count + 0) ":" (append + 0) }' \
 	"$OUTPUT/card/extlinux/extlinux.conf")" = 1:1 ] || \
 	fail 'active selector must disable the VT cursor exactly once'
-grep -q 'BIRD_LOADER_SELECTOR_SHA=f6434463ef51f752' \
+if grep -Eq 'KERNEL\.fallback|extlinux\.fallback|BIRD_LOADER_(SELECTOR|KERNEL|DTB)_SHA|reboot -f' \
+		"$OUTPUT/build/early-initramfs/payload/bird-release-loader.sh"; then
+	fail 'alternate-boot machinery remained in release loader'
+fi
+grep -Fq 'bird_loader_record_failure "$1"' \
 	"$OUTPUT/build/early-initramfs/payload/bird-release-loader.sh" || \
-	fail 'pinned fallback selector missing from release loader'
-grep -q 'BIRD_LOADER_KERNEL_SHA=a53a3483731d28d2' \
-	"$OUTPUT/build/early-initramfs/payload/bird-release-loader.sh" || \
-	fail 'pinned fallback kernel missing from release loader'
-grep -q 'BIRD_LOADER_DTB_SHA=f3a4273986d6e4f4' \
-	"$OUTPUT/build/early-initramfs/payload/bird-release-loader.sh" || \
-	fail 'pinned fallback DTB missing from release loader'
+	fail 'durable boot-failure recording missing from release loader'
 grep -Fq '"$BIRD_LOADER_BUSYBOX" stat -Lt "$1"' \
 	"$OUTPUT/build/early-initramfs/payload/bird-release-loader.sh" || \
 	fail 'release loader does not use the pinned ROCKNIX BusyBox stat contract'
@@ -656,16 +640,10 @@ grep -Fq 'while :; do sleep 3600; done' \
 if grep -q '/flash/post-flash.sh' "$OUTPUT/build/early-initramfs/payload/init"; then
 	fail 'top-level mutable boot hook remained in versioned init'
 fi
-grep -Fq '[ "$(cat "$TEMP" 2>/dev/null)" = "$VALUE" ]' \
-	"$OUTPUT/card/post-flash.sh" || fail 'verified boot-attempt temporary missing'
-grep -Fq 'case "$ATTEMPTS" in 0|1|2) ;; *) ATTEMPTS=2 ;; esac' \
-	"$OUTPUT/card/post-flash.sh" || fail 'corrupt boot attempts fail-safe policy missing'
-grep -Fq 'BIRD_FIRST_FRAME=/run/bird/bird-first-frame-ready' \
-	"$OUTPUT/card/post-flash.sh" || fail 'honest first-frame health path missing'
-grep -Fq 'commit_first_usable_frame || FIRST_FRAME_COMMIT_RESULT=$?' \
-	"$OUTPUT/card/post-flash.sh" || fail 'usable-frame boot-health commit missing'
-grep -Fq 'write_attempts 0' \
-	"$OUTPUT/card/post-flash.sh" || fail 'usable-frame attempt reset missing'
+if grep -Eq 'boot-attempt|write_attempts|fallback_boot|extlinux\.fallback' \
+		"$OUTPUT/card/post-flash.sh"; then
+	fail 'boot retry or fallback machinery remained in post-flash'
+fi
 grep -Fq '$BUSYBOX kill -0 "$PID"' \
 	"$OUTPUT/build/early-initramfs/payload/bird-early.sh" || \
 	fail 'persistent early owner validation missing'
@@ -1158,8 +1136,6 @@ grep -Fq 'if (STORAGE_READY_SIGNAL[0] && !storage_handoff_signaled) return;' \
 	"$ROOT/launcher/bird-launcher.c" || fail 'pre-signal storage gate missing'
 grep -Fq 'storage_probe_attempted = 1;' \
 	"$ROOT/launcher/bird-launcher.c" || fail 'one-shot storage acquisition missing'
-grep -q '^STARTUP_FAILURE_LIMIT=3$' \
-	"$OUTPUT/card/bird/supervisor.sh" || fail 'bounded launcher startup retries missing'
 grep -Fq 'for ((check = 0; check < 1000; check++)); do' \
 	"$OUTPUT/card/bird/supervisor.sh" || fail 'bounded launcher health race missing'
 grep -Fq 'if launcher_exited "$pid"; then' \
@@ -1167,16 +1143,16 @@ grep -Fq 'if launcher_exited "$pid"; then' \
 if grep -Fq '"$PIDWAIT" "$pid" &' "$OUTPUT/card/bird/supervisor.sh"; then
 	fail 'cancellable background pidwait race returned'
 fi
-grep -q '^ATTEMPTS_TMP=\$ATTEMPTS\.tmp\.\$\$$' \
-	"$OUTPUT/card/bird/supervisor.sh" || fail 'atomic boot-attempt temporary missing'
-grep -Fqx "RELEASE_ID=$RELEASE_ID" \
-	"$OUTPUT/card/bird/supervisor.sh" || fail 'release-scoped boot-attempt identity missing'
-grep -Fq 'boot-state/releases/$RELEASE_ID/attempts' \
-	"$OUTPUT/card/bird/supervisor.sh" || fail 'release-scoped boot-attempt path missing'
-grep -Fq 'mv -f "$ATTEMPTS_TMP" "$ATTEMPTS"' \
-	"$OUTPUT/card/bird/supervisor.sh" || fail 'atomic boot-attempt commit missing'
-grep -Fq 'sync "${ATTEMPTS%/*}"' \
-	"$OUTPUT/card/bird/supervisor.sh" || fail 'boot-attempt directory durability missing'
+if grep -Eq 'ATTEMPTS|boot-attempt|reset_boot_attempts' \
+		"$OUTPUT/card/bird/supervisor.sh"; then
+	fail 'boot-attempt state remained in supervisor'
+fi
+grep -Fq 'bird launcher startup failure reason=%s result=%s; stopping' \
+	"$OUTPUT/card/bird/supervisor.sh" || fail 'launcher startup failure stop missing'
+if grep -Eq 'systemctl reboot --force|startup_backoff|runtime_backoff' \
+		"$OUTPUT/card/bird/supervisor.sh"; then
+	fail 'automatic launcher restart/reboot recovery remained in supervisor'
+fi
 grep -Fq 'read_completed_handoff_action || return 0' \
 	"$OUTPUT/card/bird/supervisor.sh" || fail 'completed early action validation missing'
 grep -Fq 'accept_completed_early_action || return 1' \
@@ -1244,9 +1220,6 @@ fi
 	printf 'input\tPortMaster.zip\t%s\t%s\t%s\t%s\n' \
 		"$(file_mode "$PORTMASTER_ARCHIVE")" "$(file_bytes "$PORTMASTER_ARCHIVE")" \
 		"$PORTMASTER_ARCHIVE_SHA" 'ROCKNIX-SYSTEM:/usr/config/PortMaster/release/PortMaster.zip'
-	printf 'input\tKERNEL.fallback\t%s\t%s\t%s\t%s\n' \
-		"$(file_mode "$FALLBACK_KERNEL")" "$(file_bytes "$FALLBACK_KERNEL")" \
-		"$FALLBACK_KERNEL_SHA" 'preserved-birdOS-v5.4:KERNEL'
 	for PROVIDER_SPEC in \
 		'pugwash:ROCKNIX-PortMaster.zip:/PortMaster/pugwash' \
 		'PortMaster.sh:ROCKNIX-PortMaster.zip:/PortMaster/PortMaster.sh' \

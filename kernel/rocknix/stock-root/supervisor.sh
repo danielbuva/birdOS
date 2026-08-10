@@ -14,15 +14,12 @@ EARLY_LOG=/run/bird/initramfs-launcher.log
 EARLY_PID=/run/bird/initramfs-launcher.pid
 PIDWAIT=/flash/bird/bird-pidwait
 RELEASE_ID=v6.23
-ATTEMPTS=/storage/bird-data/Bird/boot-state/releases/$RELEASE_ID/attempts
 LOG_DIR=/storage/bird-data/Bird/log
 LOG=$LOG_DIR/stock-root-supervisor.log
 LOG_BOOT_ID=$LOG_DIR/stock-root-supervisor.boot-id
 EARLY_LATEST=$LOG_DIR/early-initramfs-latest.log
 SHUTDOWN_LOG=$LOG_DIR/shutdown-latest.log
 CONTENT_STATE_DIR=/run/bird
-STARTUP_FAILURE_LIMIT=3
-ATTEMPTS_TMP=$ATTEMPTS.tmp.$$
 HEALTH_REASON=
 LAUNCHER_RESULT=0
 EARLY_LAUNCHER_PID=
@@ -70,7 +67,7 @@ read_single_line_file() {
 	} <"$path"
 }
 
-mkdir -p /run/bird "$LOG_DIR" "${ATTEMPTS%/*}"
+mkdir -p /run/bird "$LOG_DIR"
 IFS= read -r BOOT_ID_FULL </proc/sys/kernel/random/boot_id || BOOT_ID_FULL=
 BOOT_ID=${BOOT_ID_FULL:0:8}
 [ -n "$BOOT_ID" ] || BOOT_ID=unknown
@@ -100,7 +97,6 @@ printf 'bird supervisor boot_id=%s release_id=%s start uptime=' \
 uptime_now
 
 supervisor_signal() {
-	rm -f "$ATTEMPTS_TMP"
 	printf 'bird supervisor signal=%s uptime=' "$1"
 	uptime_now
 	exit 0
@@ -156,39 +152,6 @@ request_poweroff() {
 		"$result"
 	uptime_now
 	return "$result"
-}
-
-reset_boot_attempts() {
-	# A torn zero can be parsed as another failed boot by the initramfs. Publish
-	# the reset with one same-directory rename and verify both sides of it.
-	rm -f "$ATTEMPTS_TMP"
-	printf '0\n' >"$ATTEMPTS_TMP" || return 1
-	read_single_line_file "$ATTEMPTS_TMP" || return 1
-	[ "$SINGLE_LINE_VALUE" = 0 ] || return 1
-	sync "$ATTEMPTS_TMP" || return 1
-	mv -f "$ATTEMPTS_TMP" "$ATTEMPTS" || return 1
-	read_single_line_file "$ATTEMPTS" || return 1
-	[ "$SINGLE_LINE_VALUE" = 0 ] || return 1
-	sync "$ATTEMPTS" || return 1
-	# Persist the same-directory rename itself, not only the new file bytes. GNU
-	# sync supports directory fsync directly; retain syncfs/global fallbacks for
-	# the smaller recovery toolset.
-	if sync "${ATTEMPTS%/*}" 2>/dev/null; then
-		:
-	elif sync -f "${ATTEMPTS%/*}" 2>/dev/null; then
-		:
-	elif sync; then
-		:
-	else
-		return 1
-	fi
-	return 0
-}
-
-report_boot_attempt_reset_failure() {
-	rm -f "$ATTEMPTS_TMP"
-	printf 'bird boot-attempt reset failed path=%s uptime=' "$ATTEMPTS"
-	uptime_now
 }
 
 content_cleanup_pending() {
@@ -283,20 +246,13 @@ accept_completed_early_action() {
 	[ "$EARLY_HEALTH_COMMITTED" -eq 0 ] || return 0
 	[ -e "$FIRST_FRAME" ] || return 0
 	read_completed_handoff_action || return 0
-	if ! reset_boot_attempts; then
-		report_boot_attempt_reset_failure
-		return 1
-	fi
 	printf 'bird accepted completed initramfs action=%s uptime=' "$ACTION"
 	uptime_now
 	return 0
 }
 
 service_handoff_action() {
-	# Boot health must be durable before the authoritative action can be
-	# consumed. On reset failure, leave the action intact so a systemd restart
-	# can retry the transaction without losing or duplicating the request.
-	accept_completed_early_action || return 1
+	accept_completed_early_action
 	dispatch_handoff_action
 	# Preserve the existing behavior for a runner or poweroff-client failure:
 	# those results resume the launcher rather than becoming health failures.
@@ -357,11 +313,6 @@ accept_early_frame() {
 			if ! early_launcher_adoptable "$pid"; then
 				EARLY_ACCEPT_REASON=owner-invalid
 				return 2
-			fi
-			if ! reset_boot_attempts; then
-				report_boot_attempt_reset_failure
-				EARLY_ACCEPT_REASON=attempt-reset-failed
-				return 1
 			fi
 			[ -f "$EARLY_LOG" ] && \
 				cp -f "$EARLY_LOG" "$LOG_DIR/early-initramfs-latest.log"
@@ -452,11 +403,6 @@ mark_healthy() {
 				uptime_now
 				return 1
 			fi
-			if ! reset_boot_attempts; then
-				report_boot_attempt_reset_failure
-				HEALTH_REASON=attempt-reset-failed
-				return 1
-			fi
 			printf 'bird stock-root first frame uptime='
 			uptime_now
 			return 0
@@ -493,48 +439,6 @@ stop_and_reap_launcher() {
 	reap_launcher "$pid"
 }
 
-classify_startup_failure() {
-	local reason=$1 result=$2
-	case "$reason:$result" in
-		first-frame-timeout:*) STARTUP_CLASS=recoverable-timeout ;;
-		child-exit:2) STARTUP_CLASS=recoverable-framebuffer-wait ;;
-		child-exit:3) STARTUP_CLASS=recoverable-framebuffer-ioctl ;;
-		child-exit:5) STARTUP_CLASS=recoverable-framebuffer-map ;;
-		child-exit:6) STARTUP_CLASS=recoverable-input-wait ;;
-		child-exit:4) STARTUP_CLASS=fatal-framebuffer-format ;;
-		child-exit:126|child-exit:127) STARTUP_CLASS=fatal-exec ;;
-		child-exit:*)
-			if [ "$result" -ge 128 ]; then
-				STARTUP_CLASS=fatal-signal
-			else
-				STARTUP_CLASS=unexpected-exit
-			fi
-			;;
-		*) STARTUP_CLASS=unexpected-health-failure ;;
-	esac
-}
-
-startup_backoff() {
-	local class=$1 attempt=$2
-	case "$class:$attempt" in
-		recoverable-*:1) usleep 100000 ;;
-		recoverable-*:2) usleep 300000 ;;
-		recoverable-*:*) usleep 600000 ;;
-		*:1) usleep 500000 ;;
-		*:2) usleep 1000000 ;;
-		*) usleep 1500000 ;;
-	esac
-}
-
-runtime_backoff() {
-	case "$1" in
-		1) usleep 50000 ;;
-		2) usleep 100000 ;;
-		3) usleep 250000 ;;
-		*) usleep 500000 ;;
-	esac
-}
-
 # A restarted supervisor must honor an armed crash guard from its predecessor
 # before adopting or starting any launcher process.
 wait_content_cleanup
@@ -569,8 +473,6 @@ if ! service_handoff_action; then
 	exit 1
 fi
 
-STARTUP_FAILURES=0
-RUNTIME_FAILURES=0
 while :; do
 	rm -f "$FIRST_FRAME"
 	"$LAUNCHER" &
@@ -581,43 +483,27 @@ while :; do
 		else
 			stop_and_reap_launcher "$LAUNCHER_PID"
 		fi
-		STARTUP_FAILURES=$((STARTUP_FAILURES + 1))
-		classify_startup_failure "$HEALTH_REASON" "$LAUNCHER_RESULT"
-		printf 'bird launcher startup failure=%s result=%s attempt=%s/%s uptime=' \
-			"$STARTUP_CLASS" "$LAUNCHER_RESULT" "$STARTUP_FAILURES" \
-			"$STARTUP_FAILURE_LIMIT"
+		printf 'bird launcher startup failure reason=%s result=%s; stopping uptime=' \
+			"$HEALTH_REASON" "$LAUNCHER_RESULT"
 		uptime_now
-		if [ "$STARTUP_FAILURES" -lt "$STARTUP_FAILURE_LIMIT" ]; then
-			# Recoverable device timing gets a short retry. A fatal class is
-			# relaunched only to establish repeated boot-level failure before the
-			# fallback-driving reboot; it receives the slower backoff.
-			startup_backoff "$STARTUP_CLASS" "$STARTUP_FAILURES"
-			continue
-		fi
-		printf 'bird repeated boot-level launcher failure; rebooting uptime='
-		uptime_now
-		systemctl reboot --force
 		exit 1
 	fi
-	STARTUP_FAILURES=0
 	reap_launcher "$LAUNCHER_PID"
 	RESULT=$LAUNCHER_RESULT
 	printf 'bird launcher result=%s uptime=' "$RESULT"
 	uptime_now
 	case "$RESULT" in
-		10) RUNTIME_FAILURES=0; run_content "$REQUEST" ;;
-		11) RUNTIME_FAILURES=0; request_poweroff ;;
-		12) RUNTIME_FAILURES=0; run_content --portmaster ;;
+		10) run_content "$REQUEST" ;;
+		11) request_poweroff ;;
+		12) run_content --portmaster ;;
 		13)
-			RUNTIME_FAILURES=0
 			printf 'bird launcher user-requested reload\n'
 			;;
-		14) RUNTIME_FAILURES=0; request_reboot ;;
+		14) request_reboot ;;
 		*)
-			RUNTIME_FAILURES=$((RUNTIME_FAILURES + 1))
-			printf 'bird launcher unexpected post-frame exit streak=%s\n' \
-				"$RUNTIME_FAILURES"
-			runtime_backoff "$RUNTIME_FAILURES"
+			printf 'bird launcher unexpected post-frame exit=%s; stopping\n' \
+				"$RESULT"
+			exit 1
 			;;
 	esac
 done

@@ -39,9 +39,9 @@ an on-card release history. Stage 6 namespace v1 is active: the runtime uses
 `/run/bird`, `/storage/roms`, `/storage/media` and
 `/storage/bird-data/Bird`. The corrected canonical provider map and broad
 RetroArch, Flycast, PPSSPP, DraStic, OpenBOR, Ports, media, networking,
-persistence and hardware gate passed. Legacy namespace bytes remain only for
-the temporarily retained fixed v5.4 fallback, not as active-path compatibility
-rewrites or ordinary production history.
+persistence and hardware gate passed. Legacy fallback boot bytes and the old UI
+are no longer installed; remaining historical source is not active-path
+compatibility or ordinary production history.
 The immutable-dispatcher, immutable-supervisor, first-frame-preparation and
 boot-snapshot, complete-toolset, content-shell, fixed-autostart, fixed-session,
 fixed-housekeeping, fixed-application-profile, fixed-performance and warm-
@@ -1590,41 +1590,24 @@ The current generated catalogue additionally enforces host-test ceilings of
 16 KiB for the path-order index. Exact binary and section sizes remain reported
 benchmark outputs rather than brittle equality contracts.
 
-## Recovery semantics
+## Failure and host-repair semantics
 
-The current source still contains the historical fixed-fallback mechanism, but
-the operational workflow no longer treats it as normal release history or a
-promised recovery path. The fixed v5.4 kernel, DTB and selector are temporarily
-retained only until a separate boot-contract rewrite can remove or replace them
-without conflating storage policy with boot behavior. If a candidate fails to
-boot, return the card to the host and restore the verified canonical selector
-or redeploy. Do not keep another immutable release on p1 for that case.
+The active boot contract has one selected release. The release loader and
+post-flash hook still verify the manifest, completion marker and every exposed
+runtime byte. On failure they persist `bird-loader-failure.txt`, leave the
+selector unchanged and stop. They never increment a retry counter, reboot, or
+select another kernel or UI. Final-root launcher startup and unexpected-exit
+failures likewise log once and stop; systemd does not restart that supervisor.
 
-The retained mechanism and the launcher's B button remain unrelated:
-
-- The boot-attempt guard records attempts in state scoped to the selected
-  release, so staging or failed activation cannot reset the prior release's
-  health journal. The selected hook resets that state as soon as the verified
-  runtime and honest interactive-frame marker coexist; only boots that fail
-  before that usable boundary consume the threshold. After the fixed failure
-  threshold, it validates
-  and activates the
-  preserved clean-root fallback selector through a verified temporary-file
-  rename before rebooting.
-- Release-loader or post-flash verification failure takes the same verified
-  fallback path immediately, before the full-stack attempt threshold applies.
-- The current fallback cannot execute before the selected release loader. A
-  kernel, external-initramfs or earlier hang still requires manual selector
-  recovery. Automatic U-Boot-owned A/B across that boundary is no longer the
-  selected product policy; return the card to the host instead.
-- `KERNEL.fallback` and the fallback extlinux configuration are temporarily
-  preserved legacy boot-contract assets. Their presence does not make them the
-  accepted development rollback or superseded production history.
+- No `KERNEL.fallback`, fallback extlinux selector, root fallback DTB, alternate
+  UI, or release-scoped boot-attempt journal is installed.
+- A kernel, initramfs, verification, or launcher failure returns the card to the
+  host for evidence collection and a verified repair or redeployment.
 - B navigates back inside nested launcher views. On the main page it returns
   the selection to `PLAY` with an ordinary dirty-row update and is intentionally
   absent from the footer legend. It does **not** retire the early owner, open a
   stock ROCKNIX frontend, count as a runtime failure or select the boot
-  fallback.
+  target.
 
 ## Acceptance boundary
 

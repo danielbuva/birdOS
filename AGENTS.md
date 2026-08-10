@@ -26,11 +26,10 @@ Active development workflow:
   archive, atomically makes the previous selector self-reference the newly
   activated canonical release, and only then removes the old card copy. An
   archive failure leaves the complete old release and previous selector intact.
-- The fixed v5.4 fallback bytes remain temporarily because removing them changes
-  a separate boot contract. They are not normal development rollback or release
-  history. Do not depend on automatic boot recovery: after a failed device boot,
-  return the card to the host and restore or redeploy through the verified host
-  workflow.
+- No alternate boot release, fallback kernel, fallback selector or boot-attempt
+  retry journal is retained. Manifest and release verification remain mandatory;
+  failure persists a diagnostic and stops. Return the card to the host and repair
+  or redeploy through the verified workflow.
 - Never run the canonical production deployment while `dev-current` or
   `/flash/bird-dev` exists. Run `./dev-build-and-deploy.sh --clean` first. A
   pending `/flash/bird-dev-cleanup.tsv` or

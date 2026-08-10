@@ -8,22 +8,14 @@ case "$BIRD_HOST_TEST_MODE" in
 	0)
 		BIRD_LOADER_FLASH=/flash
 		BIRD_LOADER_CMDLINE=/proc/cmdline
-		BIRD_LOADER_REBOOT=reboot
 		BIRD_LOADER_BUSYBOX=/usr/bin/busybox
 		BIRD_LOADER_RELEASE=v6.23
-		BIRD_LOADER_SELECTOR_SHA=f6434463ef51f752b6871186497a9d96888b89e9b2d158c3ea75bcbef9a58776
-		BIRD_LOADER_KERNEL_SHA=a53a3483731d28d2e96e53def0fba347fa53607aa9fbda8bfb82db677126daef
-		BIRD_LOADER_DTB_SHA=f3a4273986d6e4f431b110cead8aa19e8da52ff08c64c4b204ef9664d28b5c31
 		;;
 	1)
 		BIRD_LOADER_FLASH=${BIRD_LOADER_FLASH:?}
 		BIRD_LOADER_CMDLINE=${BIRD_LOADER_CMDLINE:?}
-		BIRD_LOADER_REBOOT=${BIRD_LOADER_REBOOT:?}
 		BIRD_LOADER_BUSYBOX=${BIRD_LOADER_BUSYBOX:-}
 		BIRD_LOADER_RELEASE=${BIRD_LOADER_RELEASE:-v6.23}
-		BIRD_LOADER_SELECTOR_SHA=${BIRD_LOADER_SELECTOR_SHA:?}
-		BIRD_LOADER_KERNEL_SHA=${BIRD_LOADER_KERNEL_SHA:?}
-		BIRD_LOADER_DTB_SHA=${BIRD_LOADER_DTB_SHA:?}
 		case "$BIRD_LOADER_FLASH:$BIRD_LOADER_CMDLINE" in
 			/var/folders/*:/var/folders/*|/private/tmp/*:/private/tmp/*|/tmp/*:/tmp/*) ;;
 			*) printf '%s\n' 'unsafe Bird release-loader test paths' >&2; return 1 ;;
@@ -52,25 +44,12 @@ bird_loader_bytes() {
 	fi
 }
 
-bird_loader_activate_fallback() {
+bird_loader_record_failure() {
 	FAILURE_REASON=$1
-	SOURCE=$BIRD_LOADER_FLASH/extlinux/extlinux.fallback.conf
-	TARGET=$BIRD_LOADER_FLASH/extlinux/extlinux.conf
-	TEMP=$BIRD_LOADER_FLASH/extlinux/.extlinux.conf.loader.$$
 	DIAGNOSTIC=$BIRD_LOADER_FLASH/bird-loader-failure.txt
-	KERNEL=$BIRD_LOADER_FLASH/KERNEL.fallback
-	DTB=$BIRD_LOADER_FLASH/dtb.img
-
-	[ -f "$SOURCE" ] &&
-	[ "$(bird_loader_sha256 "$SOURCE")" = "$BIRD_LOADER_SELECTOR_SHA" ] &&
-	[ -f "$KERNEL" ] &&
-	[ "$(bird_loader_sha256 "$KERNEL")" = "$BIRD_LOADER_KERNEL_SHA" ] &&
-	[ -f "$DTB" ] &&
-	[ "$(bird_loader_sha256 "$DTB")" = "$BIRD_LOADER_DTB_SHA" ] || return 1
 	mount -o remount,rw "$BIRD_LOADER_FLASH" || return 1
-	# The forced reboot destroys /run and dmesg. Persist the exact fail-closed
-	# branch on the small boot volume before changing the selector so field
-	# failures remain diagnosable after the fallback has started.
+	# Persist the exact fail-closed branch without changing any selector. A
+	# failed release remains failed until the card returns to the host.
 	{
 		printf 'release=%s\n' "$BIRD_LOADER_SELECTED"
 		printf 'reason=%s\n' "$FAILURE_REASON"
@@ -78,31 +57,7 @@ bird_loader_activate_fallback() {
 		printf 'cmdline='
 		cat "$BIRD_LOADER_CMDLINE"
 		printf '\n'
-	} >"$DIAGNOSTIC" 2>/dev/null || :
-	cp -f "$SOURCE" "$TEMP" || {
-		rm -f "$TEMP"
-		mount -o remount,ro "$BIRD_LOADER_FLASH" || :
-		return 1
-	}
-	[ "$(bird_loader_sha256 "$TEMP")" = "$BIRD_LOADER_SELECTOR_SHA" ] || {
-		rm -f "$TEMP"
-		mount -o remount,ro "$BIRD_LOADER_FLASH" || :
-		return 1
-	}
-	sync || {
-		rm -f "$TEMP"
-		mount -o remount,ro "$BIRD_LOADER_FLASH" || :
-		return 1
-	}
-	mv -f "$TEMP" "$TARGET" || {
-		rm -f "$TEMP"
-		mount -o remount,ro "$BIRD_LOADER_FLASH" || :
-		return 1
-	}
-	[ "$(bird_loader_sha256 "$TARGET")" = "$BIRD_LOADER_SELECTOR_SHA" ] || {
-		mount -o remount,ro "$BIRD_LOADER_FLASH" || :
-		return 1
-	}
+	} >"$DIAGNOSTIC" 2>/dev/null || return 1
 	sync || {
 		mount -o remount,ro "$BIRD_LOADER_FLASH" || :
 		return 1
@@ -112,11 +67,11 @@ bird_loader_activate_fallback() {
 
 bird_loader_fail() {
 	{ printf 'bird release-loader: %s\n' "$1" >/dev/kmsg; } 2>/dev/null || :
-	if bird_loader_activate_fallback "$1"; then
-		"$BIRD_LOADER_REBOOT" -f
-		return 1
+	if ! bird_loader_record_failure "$1"; then
+		{ printf 'bird release-loader: could not persist failure record\n' \
+			>/dev/kmsg; } 2>/dev/null || :
 	fi
-	error bird-release-loader "$1; fallback activation also failed" || :
+	error bird-release-loader "$1" || :
 	return 1
 }
 

@@ -5,7 +5,6 @@ ROOT=$(CDPATH= cd -- "$(dirname "$0")/../../.." && pwd)
 BUILDER=$ROOT/kernel/rocknix/build-stock-root-compat.sh
 EARLY_BUILDER=$ROOT/kernel/rocknix/build-stock-root-early-initramfs.sh
 ACTIVE_SELECTOR=$ROOT/kernel/rocknix/stock-root/extlinux.conf
-FALLBACK_SELECTOR=$ROOT/kernel/rocknix/stock-root/extlinux.fallback.conf
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/bird-build-reproducibility.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT INT TERM HUP
 
@@ -22,7 +21,7 @@ line_number() {
 # tracked payload read and is rechecked after candidate bytes are complete but
 # before the manifest is published.
 RECORD_LINE=$(line_number '^record_source_identity$' "$BUILDER")
-FIRST_SOURCE_READ=$(line_number 'sha256.*extlinux\.fallback\.conf' "$BUILDER")
+FIRST_SOURCE_READ=$(line_number 'cp -fp.*bird-device-contract.tsv' "$BUILDER")
 VERIFY_LINE=$(line_number '^verify_source_identity$' "$BUILDER")
 MANIFEST_LINE=$(line_number '^MANIFEST=' "$BUILDER")
 [ "$RECORD_LINE" -lt "$FIRST_SOURCE_READ" ] || fail 'source identity is recorded too late'
@@ -78,8 +77,10 @@ done
 if grep -Fq 'console=ttyS0,115200' "$ACTIVE_SELECTOR"; then
 	fail 'production selector still enables the diagnostic serial console'
 fi
-grep -Fq 'console=ttyS0,115200' "$FALLBACK_SELECTOR" ||
-	fail 'fallback selector lost the diagnostic serial console'
+[ ! -e "$ROOT/kernel/rocknix/stock-root/extlinux.fallback.conf" ] ||
+	fail 'obsolete fallback selector source still exists'
+grep -Fq "fail 'alternate-boot machinery remained in release loader'" "$BUILDER" ||
+	fail 'production builder does not reject alternate-boot machinery'
 FINAL_ASSET_LINE=$(line_number '^validate_final_launcher_static_assets$' "$BUILDER")
 FINAL_COPY_LINE=$(line_number 'mpv-input.conf' "$BUILDER")
 FINAL_MANIFEST_LINE=$(line_number '^MANIFEST=' "$BUILDER")

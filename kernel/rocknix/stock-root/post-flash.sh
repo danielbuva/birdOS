@@ -11,9 +11,6 @@ case "$BIRD_HOST_TEST_MODE" in
 		BIRD_DATA_MOUNT=/birddata
 		BIRD_SYSTEM_REL=MUOS/runtime/ROCKNIX-SYSTEM
 		BIRD_STORAGE_REL=MUOS/runtime/ROCKNIX-STORAGE
-		BIRD_STATE_REL=Bird/boot-state
-		BIRD_FIRST_FRAME=/run/bird/bird-first-frame-ready
-		BIRD_FIRST_FRAME_WAIT_TICKS=1000
 		;;
 	1)
 		BIRD_FLASH_ROOT=${BIRD_FLASH_ROOT:-/flash}
@@ -21,16 +18,9 @@ case "$BIRD_HOST_TEST_MODE" in
 		BIRD_DATA_MOUNT=${BIRD_DATA_MOUNT:-/birddata}
 		BIRD_SYSTEM_REL=${BIRD_SYSTEM_REL:-MUOS/runtime/ROCKNIX-SYSTEM}
 		BIRD_STORAGE_REL=${BIRD_STORAGE_REL:-MUOS/runtime/ROCKNIX-STORAGE}
-		BIRD_STATE_REL=${BIRD_STATE_REL:-Bird/boot-state}
-		BIRD_FIRST_FRAME=${BIRD_FIRST_FRAME:?}
-		BIRD_FIRST_FRAME_WAIT_TICKS=${BIRD_FIRST_FRAME_WAIT_TICKS:-2}
 		case "$BIRD_FLASH_ROOT:$BIRD_DATA_MOUNT" in
 			/var/folders/*:/var/folders/*|/private/tmp/*:/private/tmp/*|/tmp/*:/tmp/*) ;;
 			*) printf '%s\n' 'unsafe Bird post-flash test paths' >&2; return 1 ;;
-		esac
-		case "$BIRD_FIRST_FRAME" in
-			/var/folders/*|/private/tmp/*|/tmp/*) ;;
-			*) printf '%s\n' 'unsafe Bird first-frame test path' >&2; return 1 ;;
 		esac
 		case "$BIRD_DATA_DEVICE" in /dev/bird-test) ;; *) return 1 ;; esac
 		;;
@@ -41,7 +31,6 @@ case "$BIRD_HOST_TEST_MODE" in
 esac
 [ -n "${BIRD_LOADER_SELECTED:-}" ] || return 1
 BIRD_RELEASE=$BIRD_LOADER_SELECTED
-BIRD_ATTEMPTS_REL=$BIRD_STATE_REL/releases/$BIRD_RELEASE/attempts
 BIRD_RELEASES_ROOT=$BIRD_FLASH_ROOT/bird-releases
 BIRD_DATA_MOUNTED=0
 BIRD_RUNTIME_BIND_MOUNTED=0
@@ -58,93 +47,46 @@ bytes_file() {
 	bird_loader_bytes "$1"
 }
 
-write_attempts() (
-	VALUE=$1
-	TEMP=$STATE_DIR/.attempts.$$
-	umask 077
-	printf '%s\n' "$VALUE" >"$TEMP" || {
-		rm -f "$TEMP"
-		return 1
-	}
-	[ "$(cat "$TEMP" 2>/dev/null)" = "$VALUE" ] || {
-		rm -f "$TEMP"
-		return 1
-	}
-	sync || {
-		rm -f "$TEMP"
-		return 1
-	}
-	mv -f "$TEMP" "$ATTEMPTS_FILE" || {
-		rm -f "$TEMP"
-		return 1
-	}
-	[ "$(cat "$ATTEMPTS_FILE" 2>/dev/null)" = "$VALUE" ] || return 1
-	sync || return 1
-)
-
-commit_first_usable_frame() (
-	# This is the boot-health boundary: the release runtime has verified and
-	# the launcher has published a framebuffer barrier reached with input open.
-	# Do not defer the reset to the later graphical supervisor; a deliberate
-	# user refresh or reboot after an already-usable menu is not a failed boot.
-	# Return 2 when the marker times out, 3 when the marker exists but its state
-	# reset cannot be committed, and 4 when the bounded wait itself fails. This
-	# distinction prevents persistence trouble from denying an observed usable
-	# frame while still allowing a genuinely marker-less third boot to recover.
-	COUNT=0
-	while [ ! -f "$BIRD_FIRST_FRAME" ] && \
-		[ "$COUNT" -lt "$BIRD_FIRST_FRAME_WAIT_TICKS" ]; do
-		"$BIRD_LOADER_BUSYBOX" usleep 20000 || return 4
-		COUNT=$((COUNT + 1))
-	done
-	[ -f "$BIRD_FIRST_FRAME" ] || return 2
-	write_attempts 0 || return 3
-)
-
-fallback_boot() {
+stop_boot() {
 	FAILURE_TAG=$1
 	FAILURE_MESSAGE=$2
-	# A fallback selector is followed by an immediate forced reboot. Flush p6,
-	# tear down only the release binds that actually succeeded, in reverse
-	# order, then require ExFAT to unmount before the loader mutates FAT
-	# metadata or reboots.  A cleanup failure deliberately leaves the current
-	# boot stopped on the failed candidate instead of risking cross-filesystem
-	# corruption during an automatic retry.
-	BIRD_FALLBACK_CLEAN=1
-	sync || BIRD_FALLBACK_CLEAN=0
+	# Flush and unwind any mounts established before the failure, then persist
+	# the reason on BIRD. Never select or boot a different release.
+	BIRD_FAILURE_CLEAN=1
+	sync || BIRD_FAILURE_CLEAN=0
 	if [ "$BIRD_SYSTEM_BIND_MOUNTED" -eq 1 ]; then
 		if umount "$BIRD_FLASH_ROOT/SYSTEM" 2>/dev/null; then
 			BIRD_SYSTEM_BIND_MOUNTED=0
 		else
-			BIRD_FALLBACK_CLEAN=0
+			BIRD_FAILURE_CLEAN=0
 		fi
 	fi
 	if [ "$BIRD_STORAGE_BIND_MOUNTED" -eq 1 ]; then
 		if umount "$BIRD_FLASH_ROOT/mount-storage.sh" 2>/dev/null; then
 			BIRD_STORAGE_BIND_MOUNTED=0
 		else
-			BIRD_FALLBACK_CLEAN=0
+			BIRD_FAILURE_CLEAN=0
 		fi
 	fi
 	if [ "$BIRD_RUNTIME_BIND_MOUNTED" -eq 1 ]; then
 		if umount "$BIRD_FLASH_ROOT/bird" 2>/dev/null; then
 			BIRD_RUNTIME_BIND_MOUNTED=0
 		else
-			BIRD_FALLBACK_CLEAN=0
+			BIRD_FAILURE_CLEAN=0
 		fi
 	fi
 	if [ "$BIRD_DATA_MOUNTED" -eq 1 ]; then
 		if umount "$BIRD_DATA_MOUNT" 2>/dev/null; then
 			BIRD_DATA_MOUNTED=0
 		else
-			BIRD_FALLBACK_CLEAN=0
+			BIRD_FAILURE_CLEAN=0
 		fi
 	fi
-	sync || BIRD_FALLBACK_CLEAN=0
-	if [ "$BIRD_FALLBACK_CLEAN" -ne 1 ]; then
-		{ printf 'bird post-flash: %s: fallback cleanup failed\n' \
+	sync || BIRD_FAILURE_CLEAN=0
+	if [ "$BIRD_FAILURE_CLEAN" -ne 1 ]; then
+		{ printf 'bird post-flash: %s: failure cleanup failed\n' \
 			"$FAILURE_TAG" >/dev/kmsg; } 2>/dev/null || :
-		return 1
+		FAILURE_MESSAGE="$FAILURE_MESSAGE; mount cleanup incomplete"
 	fi
 	bird_loader_fail "$FAILURE_TAG: $FAILURE_MESSAGE"
 	return 1
@@ -243,7 +185,7 @@ verify_release_runtime() {
 			    catalog_path != "launcher/catalog.generated.h" ||
 			    device_contract_file != 1 ||
 			    device_contract_digest != device_contract_file_digest ||
-			    inputs != 15 || files < 1 || runtime < 1 || hook != 1 ||
+			    inputs != 14 || files < 1 || runtime < 1 || hook != 1 ||
 			    storage_hook != 1 || bird < 1) exit 1
 		}
 	' "$RELEASE_MANIFEST" >"$RUNTIME_RECORDS" || {
@@ -269,78 +211,55 @@ verify_release_runtime() {
 }
 
 # The immutable release loader has already selected and verified this hook.
-# Empty/legacy selection is never valid here; the preserved legacy initramfs
-# continues to source its untouched top-level hook instead.
+# Empty or malformed selection is never valid here.
 case "$BIRD_RELEASE" in
 	''|*[!A-Za-z0-9._-]*|.*|*..*)
-	fallback_boot bird-release "Invalid release selector: $BIRD_RELEASE"
+	stop_boot bird-release "Invalid release selector: $BIRD_RELEASE"
 	return 1
 	;;
 esac
 
 mkdir -p "$BIRD_DATA_MOUNT" || {
-	fallback_boot bird-data "Could not create $BIRD_DATA_MOUNT"
+	stop_boot bird-data "Could not create $BIRD_DATA_MOUNT"
 	return 1
 }
 # ExFAT has no stored Unix mode bits. The explicit masks reproduce the proven
 # muOS mount contract and make PortMaster's scripts and native payloads 0755.
 mount -t exfat -o rw,exec,noatime,fmask=0022,dmask=0022 \
 	"$BIRD_DATA_DEVICE" "$BIRD_DATA_MOUNT" || {
-	fallback_boot bird-data "Could not mount $BIRD_DATA_DEVICE"
+	stop_boot bird-data "Could not mount $BIRD_DATA_DEVICE"
 	return 1
 }
 BIRD_DATA_MOUNTED=1
 
 SYSTEM_SOURCE=$BIRD_DATA_MOUNT/$BIRD_SYSTEM_REL
 STORAGE_SOURCE=$BIRD_DATA_MOUNT/$BIRD_STORAGE_REL
-STATE_DIR=${BIRD_DATA_MOUNT:?}/${BIRD_ATTEMPTS_REL%/*}
-ATTEMPTS_FILE=$BIRD_DATA_MOUNT/$BIRD_ATTEMPTS_REL
-
-mkdir -p "$STATE_DIR" || {
-	fallback_boot bird-attempts "Could not create $STATE_DIR"
-	return 1
-}
-[ -e "$ATTEMPTS_FILE" ] || {
-	fallback_boot bird-attempts 'Selected release has no boot-attempt state'
-	return 1
-}
-ATTEMPTS=$(cat "$ATTEMPTS_FILE" 2>/dev/null || printf '')
-# An unreadable, empty, malformed or out-of-range file may be a legacy/torn
-# state write. Consume the remaining retry budget instead of silently granting
-# more attempts or feeding an overflowing value to shell arithmetic.
-case "$ATTEMPTS" in 0|1|2) ;; *) ATTEMPTS=2 ;; esac
-ATTEMPTS=$((ATTEMPTS + 1))
-write_attempts "$ATTEMPTS" || {
-	fallback_boot bird-attempts 'Could not commit the boot-attempt transaction'
-	return 1
-}
-
 [ -f "$SYSTEM_SOURCE" ] || {
-	fallback_boot bird-system "Missing $SYSTEM_SOURCE"
+	stop_boot bird-system "Missing $SYSTEM_SOURCE"
 	return 1
 }
 [ -f "$STORAGE_SOURCE" ] || {
-	fallback_boot bird-storage "Missing $STORAGE_SOURCE"
+	stop_boot bird-storage "Missing $STORAGE_SOURCE"
 	return 1
 }
 
 verify_release_runtime || {
-	fallback_boot bird-release "Release verification failed: $BIRD_RELEASE"
+	stop_boot bird-release "Release verification failed: $BIRD_RELEASE"
 	return 1
 }
 [ -d "$BIRD_FLASH_ROOT/bird" ] &&
 [ -f "$BIRD_FLASH_ROOT/mount-storage.sh" ] || {
-	fallback_boot bird-release 'Legacy bind targets are missing'
+	stop_boot bird-release 'Release bind targets are missing'
 	return 1
 }
 mount --bind "$RELEASE_ROOT/bird" "$BIRD_FLASH_ROOT/bird" || {
-	fallback_boot bird-release "Could not bind release runtime: $BIRD_RELEASE"
+	stop_boot bird-release "Could not bind release runtime: $BIRD_RELEASE"
 	return 1
 }
 BIRD_RUNTIME_BIND_MOUNTED=1
 mount --bind "$RELEASE_ROOT/mount-storage.sh" \
 	"$BIRD_FLASH_ROOT/mount-storage.sh" || {
-	fallback_boot bird-release \
+	stop_boot bird-release \
 		"Could not bind release storage hook: $BIRD_RELEASE"
 	return 1
 }
@@ -350,54 +269,9 @@ BIRD_STORAGE_BIND_MOUNTED=1
 # exact immutable image over it so the unmodified ROCKNIX mount_sysroot path is
 # used without copying or repacking SYSTEM.
 mount --bind "$SYSTEM_SOURCE" "$BIRD_FLASH_ROOT/SYSTEM" || {
-	fallback_boot bird-system-bind 'Could not bind exact ROCKNIX SYSTEM'
+	stop_boot bird-system-bind 'Could not bind exact ROCKNIX SYSTEM'
 	return 1
 }
 BIRD_SYSTEM_BIND_MOUNTED=1
 
-export BIRD_DATA_MOUNT BIRD_STORAGE_REL BIRD_ATTEMPTS_REL BIRD_RELEASE
-FIRST_FRAME_COMMIT_RESULT=0
-commit_first_usable_frame || FIRST_FRAME_COMMIT_RESULT=$?
-
-# A marker that appears on the final polling boundary is still authoritative.
-# If the wait command itself failed at that boundary, make one direct reset
-# attempt instead of classifying an already-visible interactive menu as absent.
-FIRST_FRAME_OBSERVED=0
-case "$FIRST_FRAME_COMMIT_RESULT" in
-	0)
-		FIRST_FRAME_OBSERVED=1
-		;;
-	3)
-		FIRST_FRAME_OBSERVED=1
-		;;
-	*)
-		if [ -f "$BIRD_FIRST_FRAME" ]; then
-			FIRST_FRAME_OBSERVED=1
-			FIRST_FRAME_COMMIT_RESULT=0
-			write_attempts 0 || FIRST_FRAME_COMMIT_RESULT=3
-		fi
-		;;
-esac
-
-if [ "$FIRST_FRAME_COMMIT_RESULT" -eq 3 ]; then
-	# The honest frame wins even when p6 cannot persist its reset. The final-root
-	# supervisor observes the same marker and retains its bounded reset retry.
-	{ printf '%s\n' \
-		'bird post-flash: first usable frame observed; attempt reset deferred' \
-		>/dev/kmsg; } 2>/dev/null || :
-elif [ "$FIRST_FRAME_COMMIT_RESULT" -ne 0 ]; then
-	# The final-root supervisor retains its existing child/replacement health
-	# race and can commit the attempt later. Absence here is not permission to
-	# replace a verified release with the recovery UI.
-	{ printf 'bird post-flash: first usable frame unavailable result=%s\n' \
-		"$FIRST_FRAME_COMMIT_RESULT" >/dev/kmsg; } 2>/dev/null || :
-fi
-
-# Two starts that never reach a usable menu consume the fixed budget, but the
-# third boot still gets to prove its current interactive frame. Never replace
-# an already-usable release merely because older boots were interrupted before
-# their health transaction completed.
-if [ "$FIRST_FRAME_OBSERVED" -eq 0 ] && [ "$ATTEMPTS" -ge 3 ]; then
-	fallback_boot bird-attempts 'Candidate retry budget exhausted'
-	return 1
-fi
+export BIRD_DATA_MOUNT BIRD_STORAGE_REL BIRD_RELEASE

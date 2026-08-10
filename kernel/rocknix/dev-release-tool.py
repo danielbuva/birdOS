@@ -29,9 +29,6 @@ DEV_CLEANUP_SCHEMA = "bird-dev-cleanup-v1"
 MAX_SELECTOR_BYTES = 16 * 1024
 CLEANUP_PROTECTED_PATHS = (
     "extlinux/extlinux.previous.conf",
-    "extlinux/extlinux.fallback.conf",
-    "KERNEL.fallback",
-    "dtb.img",
 )
 STATE_SCHEMA = "bird-dev-state-v2"
 LEGACY_STATE_SCHEMA = "bird-dev-state-v1"
@@ -50,7 +47,6 @@ CATALOG_IGNORED_DIRECTORY_NAMES = frozenset(("imgs", "images"))
 SAFE_COMPAT_HELPER_EXTRACTION_SHA256 = "15f2d88c002025e256d2e221010b013ade2abb88ebd16936bd310ff7be072e4b"
 EXPECTED_INPUTS = {
     "KERNEL",
-    "KERNEL.fallback",
     "PortMaster.zip",
     "PortMaster/PortMaster.sh",
     "PortMaster/funcs.txt",
@@ -847,7 +843,7 @@ def parse_manifest(path: pathlib.Path, expected_release: str | None = None) -> M
         fail("deploy manifest source state is invalid")
     if expected_release is not None and release_id != expected_release:
         fail(f"deploy manifest release mismatch: expected {expected_release}, got {release_id}")
-    if input_names != EXPECTED_INPUTS or len(inputs) != 15:
+    if input_names != EXPECTED_INPUTS or len(inputs) != 14:
         fail("deploy manifest external-input set changed")
     if set(artifacts) != {"device-contract", "catalog"}:
         fail("deploy manifest artifact set changed")
@@ -1605,8 +1601,6 @@ def classify_path(path: str) -> tuple[str, set[str]]:
             return ("supported", {f"runtime:{name}"})
         if name == "bird-logind.conf":
             return ("supported", {"device-contract"})
-        if name == "extlinux.fallback.conf":
-            return ("full-release-only", set())
     full_only = {
         "build-and-deploy.sh",
         "build-launcher-object.sh",
@@ -2192,9 +2186,6 @@ class Workflow:
         selected = parse_selector(data)
         if selected is not None:
             return ("development" if is_dev_release_id(selected) else "production", selected)
-        fallback = self.bird / "extlinux/extlinux.fallback.conf"
-        if fallback.is_file() and not fallback.is_symlink() and data == fallback.read_bytes():
-            return ("fallback", None)
         return ("legacy-or-malformed", None)
 
     def verify_named_release(self, release_id: str) -> Manifest:
@@ -2864,9 +2855,6 @@ class Workflow:
         return snapshot_files(
             [
                 self.bird / "extlinux/extlinux.previous.conf",
-                self.bird / "extlinux/extlinux.fallback.conf",
-                self.bird / "KERNEL.fallback",
-                self.bird / "dtb.img",
             ]
         )
 
@@ -3018,14 +3006,6 @@ class Workflow:
             fail("dev selector activation did not verify")
         return sha256_bytes(selector)
 
-    def reset_dev_attempts(self) -> None:
-        directory = fixed_directory_chain(
-            self.data,
-            ("Bird", "boot-state", "releases", DEV_RELEASE),
-            create=True,
-        )
-        atomic_write(directory / "attempts", b"0\n", 0o600)
-
     def commit_state(
         self,
         base_id: str,
@@ -3172,7 +3152,6 @@ class Workflow:
                     return
                 self.rollback_selector = base_selector
                 self.restore_on_failure = True
-                self.reset_dev_attempts()
                 if not self.host_test:
                     sync_storage()
                 selector_sha = self.activate_selector(dev_selector)
@@ -3351,7 +3330,6 @@ class Workflow:
             if release_snapshot(base_root) != base_snapshot:
                 fail("base production release changed during dev transaction")
             compare_invariants(protected, "fallback/recovery")
-            self.reset_dev_attempts()
             if self.host_test:
                 self.tests.append("host fixture reached pre-activation sync boundary")
             else:
@@ -3377,7 +3355,7 @@ class Workflow:
                 fail("committed dev selector changed after state publication")
             if release_snapshot(base_root) != base_snapshot:
                 fail("base production release changed after activation")
-            compare_invariants(protected, "fallback/recovery")
+            compare_invariants(protected, "selector transaction")
             self.mutation_started = False
             self.restore_on_failure = False
 
@@ -3387,7 +3365,7 @@ class Workflow:
         print("Rebuilt groups: " + ", ".join(sorted(groups)))
         for relative, old, new in sorted(set(self.changed_release_paths)):
             print(f"changed\t{relative}\t{old}\t{new}")
-        print("Reused unchanged: KERNEL, KERNEL.fallback, dtb.img, ROCKNIX SYSTEM/STORAGE, PortMaster, KOReader, fallback selector")
+        print("Reused unchanged: KERNEL, dtb.img, ROCKNIX SYSTEM/STORAGE, PortMaster, KOReader")
         print(f"Manifest SHA-256: {manifest_sha}")
         print(f"Selector SHA-256: {selector_sha}")
         if self.tests:

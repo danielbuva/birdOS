@@ -37,8 +37,7 @@ replacing this experience contract.
 - Boot storage: the fixed 128 MiB `BIRD` partition keeps one immutable
   canonical base and one mutable `dev-current` slot. Superseded canonical
   releases are archived and verified privately before their card copies are
-  removed. The fixed v5.4 fallback bytes remain temporarily outside that
-  rotating pair pending a separate boot-contract decision.
+  removed. No alternate kernel, selector, or UI is retained outside that pair.
 - Offline boot targets the internal panel and built-in controls. Alternate
   boards, touchscreens and external-controller setup remain outside this
   product.
@@ -90,14 +89,11 @@ frequency, idle energy and memory rather than a universal warm/cold rule.
   captures.
 - Compatibility provider: the pinned ROCKNIX 20260701 application and hardware
   closure, with birdOS replacing its frontend and selected generic policy.
-- Boot failure policy: do not retain superseded canonical releases as an
-  on-card recovery chain and do not promise automatic recovery. Return a card
-  that fails to boot to the host, then restore the verified canonical selector
-  or redeploy. The existing fixed v5.4 fallback mechanism remains temporarily
-  present but is not the normal development rollback, production history, or
-  acceptance authority; changing or removing it is a separate boot-contract
-  candidate. B on the main menu refreshes birdOS in-process and never chooses
-  or modifies any boot selector.
+- Boot failure policy: retain no alternate kernel, selector, UI, retry counter,
+  or automatic supervisor restart. Verification failures persist a reason and
+  stop with the selected release unchanged. Return the card to the host, then
+  repair or redeploy from verified canonical bytes. B on the main menu refreshes
+  birdOS in-process and never chooses or modifies a boot selector.
 
 ## Launcher menu
 

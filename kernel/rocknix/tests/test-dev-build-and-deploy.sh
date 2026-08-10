@@ -207,7 +207,7 @@ write_manifest() {
 			"$(sha256 "$RELEASE_ROOT/bird/bird-device-contract.tsv")"
 		printf 'artifact\tcatalog\tlauncher/catalog.generated.h\t%s\n' \
 			"$(sha256 "$REPO/launcher/catalog.generated.h")"
-		for INPUT in KERNEL KERNEL.fallback PortMaster.zip \
+		for INPUT in KERNEL PortMaster.zip \
 			PortMaster/PortMaster.sh PortMaster/funcs.txt PortMaster/harbourmaster \
 			PortMaster/mod_ROCKNIX.txt PortMaster/pugwash ROCKNIX-STORAGE \
 			ROCKNIX-SYSTEM dtb.img initramfs/busybox initramfs/init \
@@ -239,7 +239,6 @@ create_release() {
 	RELEASE_ROOT=$BIRD/bird-releases/$RELEASE_ID
 	mkdir -p "$RELEASE_ROOT/bird" "$RELEASE_ROOT/extlinux"
 	printf 'kernel %s\n' "$RELEASE_ID" >"$RELEASE_ROOT/KERNEL"
-	printf 'fallback kernel %s\n' "$RELEASE_ID" >"$RELEASE_ROOT/KERNEL.fallback"
 	printf 'dtb %s\n' "$RELEASE_ID" >"$RELEASE_ROOT/dtb.img"
 	printf 'system %s\n' "$RELEASE_ID" >"$RELEASE_ROOT/ROCKNIX-SYSTEM"
 	printf 'storage %s\n' "$RELEASE_ID" >"$RELEASE_ROOT/ROCKNIX-STORAGE"
@@ -317,9 +316,7 @@ new_case() {
 	mkdir -p "$BIRD/bird-releases" "$BIRD/extlinux" \
 		"$DATA/Bird/boot-state/releases/prod-a" "$DATA/ROMS" "$DATA/MEDIA" "$BUILD_FIXTURE"
 	printf 'production attempts\n' >"$DATA/Bird/boot-state/releases/prod-a/attempts"
-	printf 'top fallback kernel\n' >"$BIRD/KERNEL.fallback"
 	printf 'top dtb\n' >"$BIRD/dtb.img"
-	printf 'fallback selector\n' >"$BIRD/extlinux/extlinux.fallback.conf"
 	printf 'previous selector\n' >"$BIRD/extlinux/extlinux.previous.conf"
 	create_build_fixture one
 	create_release prod-a
@@ -327,9 +324,7 @@ new_case() {
 	write_device_info "$WHOLE" "$DEVICE_INFO"
 	COMMAND=$REPO/dev-build-and-deploy.sh
 	BASE_BEFORE=$(tree_digest "$BIRD/bird-releases/prod-a")
-	FALLBACK_SELECTOR_BEFORE=$(sha256 "$BIRD/extlinux/extlinux.fallback.conf")
 	PREVIOUS_SELECTOR_BEFORE=$(sha256 "$BIRD/extlinux/extlinux.previous.conf")
-	TOP_FALLBACK_BEFORE=$(sha256 "$BIRD/KERNEL.fallback")
 	TOP_DTB_BEFORE=$(sha256 "$BIRD/dtb.img")
 	PRODUCTION_ATTEMPTS_BEFORE=$(sha256 "$DATA/Bird/boot-state/releases/prod-a/attempts")
 }
@@ -354,12 +349,8 @@ run_dev_failpoint() {
 assert_base_and_fallback_unchanged() {
 	[ "$(tree_digest "$BIRD/bird-releases/prod-a")" = "$BASE_BEFORE" ] || \
 		fail "$CASE_NAME changed the base production release"
-	[ "$(sha256 "$BIRD/extlinux/extlinux.fallback.conf")" = "$FALLBACK_SELECTOR_BEFORE" ] || \
-		fail "$CASE_NAME changed extlinux.fallback.conf"
 	[ "$(sha256 "$BIRD/extlinux/extlinux.previous.conf")" = "$PREVIOUS_SELECTOR_BEFORE" ] || \
 		fail "$CASE_NAME changed extlinux.previous.conf"
-	[ "$(sha256 "$BIRD/KERNEL.fallback")" = "$TOP_FALLBACK_BEFORE" ] || \
-		fail "$CASE_NAME changed top-level KERNEL.fallback"
 	[ "$(sha256 "$BIRD/dtb.img")" = "$TOP_DTB_BEFORE" ] || \
 		fail "$CASE_NAME changed top-level fallback DTB"
 	[ "$(sha256 "$DATA/Bird/boot-state/releases/prod-a/attempts")" = "$PRODUCTION_ATTEMPTS_BEFORE" ] || \
@@ -566,7 +557,7 @@ grep -q '^release[[:space:]]*dev-current$' "$BIRD/bird-releases/dev-current/depl
 grep -q '^RELEASE_ID=dev-current$' "$BIRD/bird-releases/dev-current/bird/supervisor.sh"
 gzip -dc "$BIRD/bird-releases/dev-current/bird-initramfs.cpio.gz" | \
 	grep -a -q 'BIRD_LOADER_RELEASE=dev-current'
-[ "$(cat "$DATA/Bird/boot-state/releases/dev-current/attempts")" = 0 ]
+[ ! -e "$DATA/Bird/boot-state/releases/dev-current/attempts" ]
 assert_base_and_fallback_unchanged
 [ -z "$(find "$BIRD/bird-releases/dev-current" -name '._*' -print -quit)" ]
 run_dev --status >"$CASE_ROOT/ready.status"
@@ -1266,30 +1257,6 @@ for CLEANUP_FAILPOINT in \
 	pass "$CLEANUP_FAILPOINT retains restartable cleanup authority"
 done
 
-new_case cleanup-cross-restart-fallback-binding
-initialize_dev
-if run_dev_failpoint cleanup-after-authority-publication --clean \
-		>"$CASE_ROOT/fail.out" 2>"$CASE_ROOT/fail.err"; then
-	fail 'cleanup authority publication failpoint did not fire'
-fi
-cp "$BIRD/extlinux/extlinux.fallback.conf" "$CASE_ROOT/fallback.good"
-printf 'changed after cleanup publication\n' \
-	>"$BIRD/extlinux/extlinux.fallback.conf"
-run_dev --recover-production >"$CASE_ROOT/recover.out"
-BEFORE_DEV=$(tree_digest "$BIRD/bird-releases/dev-current")
-if run_dev --clean-recovered >"$CASE_ROOT/clean.out" 2>"$CASE_ROOT/clean.err"; then
-	fail 'cleanup committed after a cross-restart fallback change'
-fi
-grep -q 'fallback/recovery since cleanup publication bytes changed' \
-	"$CASE_ROOT/clean.err"
-[ -f "$BIRD/bird-dev-cleanup.tsv" ]
-[ "$(tree_digest "$BIRD/bird-releases/dev-current")" = "$BEFORE_DEV" ]
-cp "$CASE_ROOT/fallback.good" "$BIRD/extlinux/extlinux.fallback.conf"
-run_dev --clean-recovered >"$CASE_ROOT/clean-retry.out"
-[ ! -e "$BIRD/bird-dev-cleanup.tsv" ]
-assert_base_and_fallback_unchanged
-pass 'durable cleanup authority binds fallback and recovery bytes across restart'
-
 new_case cleanup-missing-protected-type-invariant
 initialize_dev
 rm "$BIRD/extlinux/extlinux.previous.conf"
@@ -1328,9 +1295,6 @@ run_dev --clean-recovered >"$CASE_ROOT/clean.out"
 [ ! -e "$BIRD/bird-releases/dev-current" ]
 [ "$(selector_release)" = prod-a ]
 [ "$(tree_digest "$BIRD/bird-releases/prod-a")" = "$BASE_BEFORE" ]
-[ "$(sha256 "$BIRD/extlinux/extlinux.fallback.conf")" = \
-	"$FALLBACK_SELECTOR_BEFORE" ]
-[ "$(sha256 "$BIRD/KERNEL.fallback")" = "$TOP_FALLBACK_BEFORE" ]
 [ "$(sha256 "$BIRD/dtb.img")" = "$TOP_DTB_BEFORE" ]
 [ "$(sha256 "$DATA/Bird/boot-state/releases/prod-a/attempts")" = \
 	"$PRODUCTION_ATTEMPTS_BEFORE" ]
@@ -1481,10 +1445,12 @@ new_case single-fat-case-entry-cleanup
 initialize_dev
 run_dev --rollback >"$CASE_ROOT/rollback.out"
 mv "$BIRD/bird-dev" "$BIRD/BIRD-DEV"
-if [ -d "$BIRD/bird-dev" ]; then
+	if [ -d "$BIRD/bird-dev" ]; then
 	mv "$BIRD/bird-releases/dev-current" "$BIRD/bird-releases/DEV-CURRENT"
-	mv "$DATA/Bird/boot-state/releases/dev-current" \
-		"$DATA/Bird/boot-state/releases/DEV-CURRENT"
+	if [ -d "$DATA/Bird/boot-state/releases/dev-current" ]; then
+		mv "$DATA/Bird/boot-state/releases/dev-current" \
+			"$DATA/Bird/boot-state/releases/DEV-CURRENT"
+	fi
 	run_dev --clean >"$CASE_ROOT/clean.out"
 	[ ! -e "$BIRD/BIRD-DEV" ]
 	[ ! -e "$BIRD/bird-releases/DEV-CURRENT" ]

@@ -18,9 +18,9 @@ must serve this one device and this one experience.
 
 [`ACTIVE_PATH.md`](ACTIVE_PATH.md) is the authority for the current build,
 deployment transaction, boot sequence, readiness contracts, runtime ownership
-and recovery semantics. In particular, `deploy-manifest.tsv` is the single
+and failure semantics. In particular, `deploy-manifest.tsv` is the single
 source for both versioned staging and installed-tree verification; the launcher
-B button does not select the preserved boot fallback. On the main page it
+B button does not select a boot target. On the main page it
 refreshes birdOS in-process; it does not retire the early launcher or open the
 stock ROCKNIX frontend.
 
@@ -140,12 +140,10 @@ retains the superseded release and its previous selector and can be resumed
 safely.
 ROMs, BIOS, media, saves, and `BIRD-DATA` content are outside this lifecycle.
 
-The fixed v5.4 `KERNEL.fallback` and selector remain temporarily because their
-removal is a separate boot-contract change. They are not the ordinary release
-history, development rollback, or accepted recovery workflow. If a candidate
-does not boot, return the card to the Mac and repair or redeploy it from the
-verified canonical base; birdOS does not keep additional immutable releases on
-the card for that case.
+birdOS retains no fallback kernel, fallback selector or alternate UI. Release
+verification failures write `bird-loader-failure.txt` and stop without changing
+the selector or rebooting. If a candidate does not boot, return the card to the
+Mac and repair or redeploy it from the verified canonical base.
 
 Run `./build-and-deploy.sh --help` for the complete contract and, after a
 profiling boot, collect
@@ -174,8 +172,6 @@ profiling boot, collect
 - [`docs/history/README.md`](docs/history/README.md): index of superseded paths
   and retained engineering evidence.
 
-An untouched image or spare card can remain external insurance. The fixed v5.4
-fallback still exists on the current card as a temporary legacy boot contract,
-but the operator workflow does not rely on it. A failed boot returns the card
-to the host for verified repair or redeployment. Any future removal or
-replacement of the fallback is a separate boot-contract change.
+An untouched image or spare card can remain external insurance. The card itself
+has no fallback kernel, alternate selector, or old UI. A failed boot persists a
+diagnostic and returns the card to the host for verified repair or redeployment.

@@ -4,7 +4,7 @@
 # release and activates it with one extlinux selector rename.
 # It retains the exact kernel and complete working ROCKNIX userspace.
 # The exact ROCKNIX writable filesystem remains a loop image on p6, and the
-# accepted v5.4 kernel remains on p1 as a fallback.
+# alternate boot assets are removed after the versioned selector commits.
 
 set -eu
 
@@ -297,7 +297,7 @@ awk -F '\t' -v expected_release="$RELEASE_ID" '
 	{ exit 1 }
 	END {
 		if (schema != 1 || release != 1 || policy != 1 || source != 1 ||
-		    inputs != 15 || files < 1 ||
+		    inputs != 14 || files < 1 ||
 		    (artifacts != 0 && artifacts != 2) ||
 		    (artifacts == 2 && (device_contract != 1 || catalog != 1))) exit 1
 	}
@@ -322,7 +322,7 @@ fi
 
 awk -F '\t' '$1 == "input" {print $2}' "$MANIFEST_RECORDS" | \
 	LC_ALL=C sort >"$MANIFEST_INPUTS"
-printf '%s\n' KERNEL KERNEL.fallback PortMaster.zip \
+printf '%s\n' KERNEL PortMaster.zip \
 	PortMaster/PortMaster.sh PortMaster/funcs.txt PortMaster/harbourmaster \
 	PortMaster/mod_ROCKNIX.txt PortMaster/pugwash ROCKNIX-STORAGE \
 	ROCKNIX-SYSTEM dtb.img initramfs/busybox initramfs/init \
@@ -379,7 +379,6 @@ DTB_SHA=$(manifest_input_field dtb.img 5)
 RUNTIME_SHA=$(manifest_input_field ROCKNIX-SYSTEM 5)
 STORAGE_BYTES=$(manifest_input_field ROCKNIX-STORAGE 4)
 STORAGE_SHA=$(manifest_input_field ROCKNIX-STORAGE 5)
-V54_KERNEL_SHA=$(manifest_input_field KERNEL.fallback 5)
 PORTMASTER_PUGWASH_BYTES=$(manifest_input_field PortMaster/pugwash 4)
 PORTMASTER_PUGWASH_SHA=$(manifest_input_field PortMaster/pugwash 5)
 PORTMASTER_SH_BYTES=$(manifest_input_field PortMaster/PortMaster.sh 4)
@@ -565,9 +564,6 @@ apply_target_metadata() {
 [ "$(sha256 "$CANDIDATE/dtb.img")" = "$DTB_SHA" ] || fail 'candidate DTB changed'
 [ "$(sha256 "$RUNTIME")" = "$RUNTIME_SHA" ] || fail 'card SYSTEM changed'
 [ "$(sha256 "$STORAGE_SOURCE")" = "$STORAGE_SHA" ] || fail 'reference STORAGE changed'
-is_regular_file "$BIRD/dtb.img" && [ "$(sha256 "$BIRD/dtb.img")" = "$DTB_SHA" ] || \
-	fail 'fallback DTB changed, missing, or unsafe'
-
 # PortMaster may update itself over the network, but an offline birdOS
 # deployment accepts only a revision whose complete managed inventory has been
 # imported into the repository manifest. Migrate stale empty/v1/v2 checkpoints
@@ -601,27 +597,11 @@ CURRENT=missing
 if is_regular_file "$BIRD/KERNEL"; then
 	CURRENT=$(sha256 "$BIRD/KERNEL")
 	case "$CURRENT" in
-		"$V54_KERNEL_SHA"|"$ROCKNIX_KERNEL_SHA") ;;
+		"$ROCKNIX_KERNEL_SHA") ;;
 		*) fail "unexpected legacy top-level KERNEL: $CURRENT" ;;
 	esac
 elif [ -e "$BIRD/KERNEL" ] || [ -L "$BIRD/KERNEL" ]; then
 	fail 'legacy top-level KERNEL is a symlink or special node'
-fi
-
-if is_regular_file "$BIRD/KERNEL.fallback"; then
-	[ "$(sha256 "$BIRD/KERNEL.fallback")" = "$V54_KERNEL_SHA" ] || fail 'fallback KERNEL changed'
-elif [ -e "$BIRD/KERNEL.fallback" ]; then
-	fail 'fallback KERNEL is a symlink or special node'
-elif [ "$CURRENT" = "$V54_KERNEL_SHA" ]; then
-	COPYFILE_DISABLE=1 cp -f "$BIRD/KERNEL" "$BIRD/.KERNEL.fallback.new"
-	[ "$(sha256 "$BIRD/.KERNEL.fallback.new")" = "$V54_KERNEL_SHA" ] || fail 'fallback copy failed'
-	sync
-	mv -f "$BIRD/.KERNEL.fallback.new" "$BIRD/KERNEL.fallback"
-	sync
-	[ "$(sha256 "$BIRD/KERNEL.fallback")" = "$V54_KERNEL_SHA" ] || \
-		fail 'fallback KERNEL commit failed'
-else
-	fail 'v5.4 fallback KERNEL is missing'
 fi
 
 if is_regular_file "$STORAGE_TARGET"; then
@@ -641,8 +621,7 @@ fi
 
 RELEASE=$RELEASES/$RELEASE_ID
 MANIFEST_SHA=$(sha256 "$MANIFEST")
-ATTEMPTS_DIR=$DATA/Bird/boot-state/releases/$RELEASE_ID
-mkdir -p "$BIRD/extlinux" "$ATTEMPTS_DIR"
+mkdir -p "$BIRD/extlinux"
 
 manifest_file_field() {
 	REQUEST_PATH=$1
@@ -752,40 +731,14 @@ else
 	verify_release "$RELEASE"
 fi
 
-# Copy one manifest-listed inactive recovery config through a same-directory
-# rename, then verify the committed destination.
-atomic_install_manifest_file() {
-	RELATIVE=$1
-	DESTINATION=$2
-	MODE=$(manifest_file_field "$RELATIVE" 3)
-	BYTES=$(manifest_file_field "$RELATIVE" 4)
-	HASH=$(manifest_file_field "$RELATIVE" 5)
-	[ -n "$MODE" ] && [ -n "$BYTES" ] && [ -n "$HASH" ] || \
-		fail "manifest activation record missing: $RELATIVE"
-	TEMP=${DESTINATION%/*}/.${DESTINATION##*/}.new.$$
-	COPYFILE_DISABLE=1 cp -f "$RELEASE/$RELATIVE" "$TEMP"
-	apply_target_metadata "$TEMP" "$MODE"
-	[ "$(file_bytes "$TEMP")" = "$BYTES" ] || fail "activation size changed: $RELATIVE"
-	[ "$(sha256 "$TEMP")" = "$HASH" ] || fail "activation digest changed: $RELATIVE"
-	verify_target_mode "$TEMP" "$MODE" || fail "activation mode contract failed: $RELATIVE"
-	sync
-	mv -f "$TEMP" "$DESTINATION"
-	sync
-	[ "$(file_bytes "$DESTINATION")" = "$BYTES" ] || fail "committed size changed: $RELATIVE"
-	[ "$(sha256 "$DESTINATION")" = "$HASH" ] || fail "committed digest changed: $RELATIVE"
-	verify_target_mode "$DESTINATION" "$MODE" || fail "committed mode contract failed: $RELATIVE"
-}
-
 [ -d "$BIRD/bird" ] && [ ! -L "$BIRD/bird" ] || fail 'legacy Bird runtime bind target is missing or unsafe'
 is_regular_file "$BIRD/mount-storage.sh" || fail 'legacy storage-hook bind target is missing or unsafe'
 is_regular_file "$BIRD/SYSTEM" || fail 'legacy SYSTEM bind target is missing or unsafe'
 is_regular_file "$BIRD/post-flash.sh" || fail 'legacy boot hook is missing or unsafe'
 LEGACY_HOOK_SHA=$(sha256 "$BIRD/post-flash.sh")
-atomic_install_manifest_file extlinux/extlinux.fallback.conf \
-	"$BIRD/extlinux/extlinux.fallback.conf"
-
-# Preserve the exact selector for the previous complete runtime.  This is a
-# manual recovery point; the automatic three-attempt path remains v5.4.
+# Preserve the exact pre-activation selector as the updater's transaction
+# rollback source. Canonical rotation later makes this file self-reference the
+# new active selector; it is not an alternate boot target.
 is_regular_file "$BIRD/extlinux/extlinux.conf" || fail 'active extlinux selector is missing or unsafe'
 PREVIOUS_SHA=$(sha256 "$BIRD/extlinux/extlinux.conf")
 SELECTOR_ROLLBACK_SOURCE=$VERIFY_WORK/active-extlinux.conf
@@ -807,19 +760,15 @@ else
 		fail 'idempotent activation is missing its preserved previous selector'
 fi
 
-# Complete every cleanup and immutable verification before activation. No
-# release or recovery byte is mutated after the selector transaction starts.
+# Complete every cleanup and immutable verification before activation.
 if [ "$BIRD_SYNTHETIC_MODES" -eq 0 ]; then
 	xattr -cr "$RELEASE" 2>/dev/null || :
 	if is_regular_file "$BIRD/KERNEL"; then
-		xattr -c "$BIRD/KERNEL" "$BIRD/KERNEL.fallback" \
-			"$BIRD/extlinux/extlinux.fallback.conf" \
+		xattr -c "$BIRD/KERNEL" \
 			"$BIRD/extlinux/extlinux.previous.conf" "$STORAGE_TARGET" \
 			2>/dev/null || :
 	else
-		xattr -c "$BIRD/KERNEL.fallback" \
-			"$BIRD/extlinux/extlinux.fallback.conf" \
-			"$BIRD/extlinux/extlinux.previous.conf" "$STORAGE_TARGET" \
+		xattr -c "$BIRD/extlinux/extlinux.previous.conf" "$STORAGE_TARGET" \
 			2>/dev/null || :
 	fi
 fi
@@ -827,8 +776,6 @@ find "$RELEASE" "$BIRD/extlinux" -name '._*' -delete
 find "$BIRD" -maxdepth 1 -name '._KERNEL*' -delete
 find "$DATA/MUOS/runtime" -maxdepth 1 -name '._ROCKNIX-STORAGE' -delete
 sync
-[ "$(sha256 "$BIRD/KERNEL.fallback")" = "$V54_KERNEL_SHA" ] || \
-	fail 'installed fallback verification failed'
 [ "$(file_bytes "$STORAGE_TARGET")" = "$STORAGE_BYTES" ] || \
 	fail 'installed STORAGE size verification failed'
 [ "$(ext4_magic "$STORAGE_TARGET")" = 53ef ] || \
@@ -836,17 +783,6 @@ sync
 verify_release "$RELEASE"
 [ "$(sha256 "$BIRD/post-flash.sh")" = "$LEGACY_HOOK_SHA" ] || \
 	fail 'legacy boot hook changed before activation'
-
-# Arm only this candidate release before the sole activation switch. A failed
-# activation must never reset the health journal for the previously selected
-# release. The release-scoped transaction leaves either its prior value or 0.
-ATTEMPTS=$ATTEMPTS_DIR/attempts
-ATTEMPTS_TEMP=$ATTEMPTS_DIR/.attempts.new.$$
-printf '0\n' >"$ATTEMPTS_TEMP"
-sync
-mv -f "$ATTEMPTS_TEMP" "$ATTEMPTS"
-sync
-[ "$(cat "$ATTEMPTS")" = 0 ] || fail 'boot-attempt reset transaction failed'
 
 # This verified rename is the only operation that makes this release bootable.
 test_failpoint before-selector-activation
@@ -888,9 +824,43 @@ if [ "$SELECTOR_COMMITTED" -ne 1 ]; then
 	fail 'selector activation failed; previous selector restored'
 fi
 
+# The newly selected release is verified. Retire the obsolete alternate-boot
+# assets only now, so a pre-activation failure still leaves the original card
+# bytes untouched. Future loader failures persist evidence and stop.
+for OBSOLETE_BOOT_ASSET in \
+	"$BIRD/KERNEL.fallback" \
+	"$BIRD/dtb.img" \
+	"$BIRD/extlinux/extlinux.fallback.conf"; do
+	if is_regular_file "$OBSOLETE_BOOT_ASSET"; then
+		rm -f "$OBSOLETE_BOOT_ASSET"
+	elif [ -e "$OBSOLETE_BOOT_ASSET" ] || [ -L "$OBSOLETE_BOOT_ASSET" ]; then
+		fail "obsolete boot asset is not a safe regular file: $OBSOLETE_BOOT_ASSET"
+	fi
+done
+sync
+[ ! -e "$BIRD/KERNEL.fallback" ] && [ ! -L "$BIRD/KERNEL.fallback" ] &&
+[ ! -e "$BIRD/dtb.img" ] && [ ! -L "$BIRD/dtb.img" ] &&
+[ ! -e "$BIRD/extlinux/extlinux.fallback.conf" ] &&
+	[ ! -L "$BIRD/extlinux/extlinux.fallback.conf" ] || \
+	fail 'obsolete alternate-boot assets remain after activation'
+
+OBSOLETE_ATTEMPT_ROOT=$DATA/Bird/boot-state/releases
+if [ -d "$OBSOLETE_ATTEMPT_ROOT" ] && [ ! -L "$OBSOLETE_ATTEMPT_ROOT" ]; then
+	if find "$OBSOLETE_ATTEMPT_ROOT" -mindepth 1 ! -type f ! -type d \
+			-print -quit | grep -q .; then
+		fail 'obsolete boot-attempt tree contains a symlink or special node'
+	fi
+	rm -rf "$OBSOLETE_ATTEMPT_ROOT"
+elif [ -e "$OBSOLETE_ATTEMPT_ROOT" ] || [ -L "$OBSOLETE_ATTEMPT_ROOT" ]; then
+	fail 'obsolete boot-attempt root is not a safe directory'
+fi
+sync
+[ ! -e "$OBSOLETE_ATTEMPT_ROOT" ] && [ ! -L "$OBSOLETE_ATTEMPT_ROOT" ] || \
+	fail 'obsolete boot-attempt state remains after activation'
+
 # A loader failure record describes the selector that was active before this
 # verified activation. Do not let stale evidence masquerade as a failure of
-# the newly armed release; the loader recreates it before any future fallback.
+# the newly armed release.
 rm -f "$BIRD/bird-loader-failure.txt" 2>/dev/null || :
 
 printf 'Bird stock-root %s activated on /dev/%s.\n' "$RELEASE_ID" "$WHOLE"
@@ -900,7 +870,7 @@ printf 'Legacy Port data preflight is clean; no user content was moved.\n'
 printf 'Generic storage discovery replaced by the fixed p6 Bird view.\n'
 printf 'MPV physical volume ownership is system-only.\n'
 printf 'Bird starts before generic userspace; autostart cannot repaint it.\n'
-printf 'Production omits the serial console; the fixed diagnostic fallback retains it.\n'
+printf 'Production omits the serial console and has no alternate boot target.\n'
 printf 'Network is PortMaster-only; unused fixed-profile units are masked.\n'
 printf 'Early content selections queue once; fixed input and power events replace polling.\n'
 printf 'Resolver and time synchronization now share that PortMaster-only gate.\n'
@@ -933,5 +903,5 @@ printf 'Select+Start exits the managed foreground tree without grabbing app inpu
 printf 'MSX uses the pinned fMSX core and its existing shared BIOS ROMs.\n'
 printf 'p5 was not modified; this runtime transaction moved no p6 user content.\n'
 printf 'Exact ROCKNIX KERNEL: %s\n' "$ROCKNIX_KERNEL_SHA"
-printf 'Automatic fallback KERNEL: %s\n' "$V54_KERNEL_SHA"
+printf 'Release verification failures persist a diagnostic and stop for host repair.\n'
 printf 'Test early interaction timing, then repeat the broad compatibility gate.\n'

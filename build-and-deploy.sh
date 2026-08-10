@@ -5,7 +5,6 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
 BASE_RELEASE_ID=v6.23
-VERIFIED_FALLBACK_SELECTOR_SHA=f6434463ef51f752b6871186497a9d96888b89e9b2d158c3ea75bcbef9a58776
 MODE=
 REQUESTED_RELEASE_ID=
 DRY_RUN=0
@@ -20,7 +19,6 @@ LEGACY_KERNEL_RETIRE=0
 LEGACY_KERNEL_RECLAIM_BYTES=0
 PINNED_SOURCE_KERNEL_SHA=
 PINNED_SOURCE_DTB_SHA=
-PINNED_FALLBACK_KERNEL_SHA=
 PINNED_IMMUTABLE_SOURCE_ID=
 KOREADER_CATEGORY_COUNT=0
 KOREADER_EXTRACTION_RESERVE=0
@@ -54,7 +52,7 @@ of inactive completed releases needed only after archiving and verifying each
 one in the configured private, immutable GitHub release repository. After a
 successful activation it archives and verifies the superseded immutable
 release, makes the exact current selector authoritative as previous, and only
-then removes the old card copy. The fixed fallback remains on-card. When the
+then removes the old card copy. No alternate boot release is retained. When the
 active selector already uses a verified
 immutable release, the command may also retire the byte-identical, unreferenced
 pre-versioned top-level KERNEL.
@@ -456,7 +454,7 @@ validate_completed_release() {
 		{exit 1}
 		END {
 			if (schema != 1 || release != 1 || policy != 1 || source != 1 ||
-			    inputs != 15 || files < 1 ||
+			    (inputs != 14 && inputs != 15) || files < 1 ||
 			    (artifacts != 0 && artifacts != 2) ||
 			    (artifacts == 2 && (device_contract != 1 || catalog != 1))) exit 1
 		}
@@ -544,36 +542,11 @@ read_active_selector() {
 	ACTIVE_SELECTOR_SHA=$(sha256 "$ACTIVE_SELECTOR")
 	ACTIVE_SELECTOR_KIND=release
 	ACTIVE_RELEASE_ID=
-	if [ "$ACTIVE_SELECTOR_SHA" = "$VERIFIED_FALLBACK_SELECTOR_SHA" ]; then
-		ACTIVE_SELECTOR_KIND=fallback
-		return
-	fi
 	ACTIVE_RELEASE_ID=$(selector_release_id "$ACTIVE_SELECTOR") || \
 		fail 'active selector does not contain exactly one Bird release ID'
 	case "$ACTIVE_RELEASE_ID" in
 		''|[![:alnum:]]*|*[![:alnum:]._-]*) fail 'active selector contains an unsafe release ID' ;;
 	esac
-}
-
-latest_installed_release_id() {
-	INSTALLED_RELEASE_ROOT=$BIRD/bird-releases
-	[ -d "$INSTALLED_RELEASE_ROOT" ] && [ ! -L "$INSTALLED_RELEASE_ROOT" ] || \
-		fail 'fallback selector has no safe immutable installed release root'
-	INSTALLED_RELEASE_CANDIDATES=$RUN_TEMP/installed-release-candidates
-	find "$INSTALLED_RELEASE_ROOT" -mindepth 1 -maxdepth 1 -type d \
-		! -name '.*' -print | LC_ALL=C sort >"$INSTALLED_RELEASE_CANDIDATES"
-	[ -s "$INSTALLED_RELEASE_CANDIDATES" ] || \
-		fail 'fallback selector has no immutable installed release build source'
-	INSTALLED_RELEASE_PATH=$(awk 'END {print}' "$INSTALLED_RELEASE_CANDIDATES")
-	INSTALLED_RELEASE_ID=${INSTALLED_RELEASE_PATH##*/}
-	case "$INSTALLED_RELEASE_ID" in
-		''|[![:alnum:]]*|*[![:alnum:]._-]*) \
-			fail 'deterministic fallback build source has an unsafe release ID' ;;
-	esac
-	[ "$INSTALLED_RELEASE_PATH" = \
-		"$INSTALLED_RELEASE_ROOT/$INSTALLED_RELEASE_ID" ] || \
-		fail 'deterministic fallback build-source path is unsafe'
-	printf '%s\n' "$INSTALLED_RELEASE_ID"
 }
 
 prepare_versioned_build_source() {
@@ -587,28 +560,6 @@ prepare_versioned_build_source() {
 	IMMUTABLE_SOURCE_ID=$ACTIVE_RELEASE_ID
 	IMMUTABLE_SOURCE_PURPOSE='active immutable build source'
 	IMMUTABLE_SOURCE_SELECTOR_PURPOSE='active selector'
-	if [ "$ACTIVE_SELECTOR_KIND" = fallback ]; then
-		IMMUTABLE_SOURCE_SELECTOR=$BIRD/extlinux/extlinux.previous.conf
-		is_regular_file "$IMMUTABLE_SOURCE_SELECTOR" || \
-			fail 'legacy top-level KERNEL is absent and fallback previous selector is missing or unsafe'
-		IMMUTABLE_SOURCE_SELECTOR_SHA=$(sha256 "$IMMUTABLE_SOURCE_SELECTOR")
-		if [ "$IMMUTABLE_SOURCE_SELECTOR_SHA" = \
-			"$VERIFIED_FALLBACK_SELECTOR_SHA" ]; then
-			IMMUTABLE_SOURCE_ID=$(latest_installed_release_id)
-			IMMUTABLE_SOURCE_SELECTOR=$BIRD/bird-releases/$IMMUTABLE_SOURCE_ID/extlinux/extlinux.conf
-			IMMUTABLE_SOURCE_PURPOSE='deterministic fallback immutable build source'
-			IMMUTABLE_SOURCE_SELECTOR_PURPOSE='deterministic fallback release selector'
-		else
-			IMMUTABLE_SOURCE_ID=$(selector_release_id "$IMMUTABLE_SOURCE_SELECTOR") || \
-				fail 'fallback previous selector does not contain exactly one Bird release ID'
-			case "$IMMUTABLE_SOURCE_ID" in
-				''|[![:alnum:]]*|*[![:alnum:]._-]*) \
-					fail 'fallback previous selector contains an unsafe release ID' ;;
-			esac
-			IMMUTABLE_SOURCE_PURPOSE='fallback previous immutable build source'
-			IMMUTABLE_SOURCE_SELECTOR_PURPOSE='fallback previous selector'
-		fi
-	fi
 	ACTIVE_SOURCE=$BIRD/bird-releases/$IMMUTABLE_SOURCE_ID
 	validate_completed_release "$ACTIVE_SOURCE" "$IMMUTABLE_SOURCE_ID" \
 		"$IMMUTABLE_SOURCE_PURPOSE"
@@ -637,18 +588,15 @@ prepare_versioned_build_source() {
 	[ "$(grep -Fxc "  LINUX /bird-releases/$IMMUTABLE_SOURCE_ID/KERNEL" \
 		"$IMMUTABLE_SOURCE_SELECTOR")" -eq 1 ] || \
 		fail "$IMMUTABLE_SOURCE_SELECTOR_PURPOSE does not reference its immutable KERNEL exactly once"
-	is_regular_file "$BIRD/dtb.img" && is_regular_file "$BIRD/KERNEL.fallback" || \
-		fail 'versioned build source requires the verified root DTB and fallback KERNEL'
+	is_regular_file "$ACTIVE_SOURCE/dtb.img" || \
+		fail 'versioned build source requires its manifest-verified DTB'
 
 	SOURCE=$RUN_TEMP/pinned-card-source
-	FALLBACK_KERNEL=$SOURCE/KERNEL.fallback
 	mkdir -p "$SOURCE"
 	COPYFILE_DISABLE=1 cp -p "$ACTIVE_SOURCE/KERNEL" "$SOURCE/KERNEL"
-	COPYFILE_DISABLE=1 cp -p "$BIRD/dtb.img" "$SOURCE/dtb.img"
-	COPYFILE_DISABLE=1 cp -p "$BIRD/KERNEL.fallback" "$FALLBACK_KERNEL"
+	COPYFILE_DISABLE=1 cp -p "$ACTIVE_SOURCE/dtb.img" "$SOURCE/dtb.img"
 	[ "$(sha256 "$SOURCE/KERNEL")" = "$ACTIVE_KERNEL_SHA" ] && \
-	[ "$(sha256 "$SOURCE/dtb.img")" = "$(sha256 "$BIRD/dtb.img")" ] && \
-	[ "$(sha256 "$FALLBACK_KERNEL")" = "$(sha256 "$BIRD/KERNEL.fallback")" ] || \
+	[ "$(sha256 "$SOURCE/dtb.img")" = "$(sha256 "$ACTIVE_SOURCE/dtb.img")" ] || \
 		fail 'versioned host build-source snapshot verification failed'
 }
 
@@ -659,20 +607,9 @@ for PINNED_FILE in "$SOURCE/KERNEL" "$SOURCE/dtb.img" "$SYSTEM_SOURCE" \
 	"$JOYPAD" "$INIT_BUSYBOX" "$PORTMASTER_ARCHIVE"; do
 	is_regular_file "$PINNED_FILE" || fail "pinned build input missing or unsafe: $PINNED_FILE"
 done
-if is_regular_file "$SOURCE/KERNEL.fallback"; then
-	FALLBACK_KERNEL=$SOURCE/KERNEL.fallback
-elif [ ! -e "$SOURCE/KERNEL.fallback" ]; then
-	# The canonical builder will accept this only when the active top-level
-	# kernel is the exact pinned v5.4 fallback.
-	FALLBACK_KERNEL=$SOURCE/KERNEL
-else
-	fail 'fallback KERNEL is a symlink or special node'
-fi
 BUILD_SOURCE=$SOURCE
-BUILD_FALLBACK_KERNEL=$FALLBACK_KERNEL
 PINNED_SOURCE_KERNEL_SHA=$(sha256 "$SOURCE/KERNEL")
 PINNED_SOURCE_DTB_SHA=$(sha256 "$SOURCE/dtb.img")
-PINNED_FALLBACK_KERNEL_SHA=$(sha256 "$FALLBACK_KERNEL")
 
 catalog_koreader_category_count() {
 	awk '
@@ -1032,18 +969,6 @@ plan_legacy_kernel_retirement() {
 		fail 'legacy top-level KERNEL is not byte-identical to the active release'
 	[ "$(sha256 "$BIRD/KERNEL")" = "$PINNED_SOURCE_KERNEL_SHA" ] || \
 		fail 'legacy top-level KERNEL changed after pinned-input preflight'
-	is_regular_file "$BIRD/dtb.img" && \
-	[ "$(sha256 "$BIRD/dtb.img")" = "$PINNED_SOURCE_DTB_SHA" ] || \
-		fail 'root DTB changed after pinned-input preflight'
-	is_regular_file "$BIRD/KERNEL.fallback" || \
-		fail 'fallback KERNEL is missing or unsafe'
-	[ "$(sha256 "$BIRD/KERNEL.fallback")" = "$PINNED_FALLBACK_KERNEL_SHA" ] || \
-		fail 'fallback KERNEL changed before legacy-kernel retirement'
-	is_regular_file "$BIRD/extlinux/extlinux.fallback.conf" || \
-		fail 'fallback selector is missing or unsafe'
-	[ "$(sha256 "$BIRD/extlinux/extlinux.fallback.conf")" = \
-		"$VERIFIED_FALLBACK_SELECTOR_SHA" ] || \
-		fail 'fallback selector changed before legacy-kernel retirement'
 	LEGACY_KERNEL_RECLAIM_BYTES=$(file_bytes "$BIRD/KERNEL")
 	case "$LEGACY_KERNEL_RECLAIM_BYTES" in
 		''|*[!0-9]*) fail 'could not size redundant top-level KERNEL' ;;
@@ -1057,18 +982,15 @@ snapshot_legacy_kernel_build_inputs() {
 	[ "$LEGACY_KERNEL_RETIRE" -eq 1 ] || \
 		fail 'planned legacy top-level KERNEL retirement is no longer valid'
 	BUILD_SOURCE=$RUN_TEMP/pinned-card-source
-	BUILD_FALLBACK_KERNEL=$BUILD_SOURCE/KERNEL.fallback
 	mkdir -p "$BUILD_SOURCE"
 	COPYFILE_DISABLE=1 cp -p "$SOURCE/KERNEL" "$BUILD_SOURCE/KERNEL"
 	COPYFILE_DISABLE=1 cp -p "$SOURCE/dtb.img" "$BUILD_SOURCE/dtb.img"
-	COPYFILE_DISABLE=1 cp -p "$FALLBACK_KERNEL" "$BUILD_FALLBACK_KERNEL"
-	for SNAPSHOT_NAME in KERNEL dtb.img KERNEL.fallback; do
+	for SNAPSHOT_NAME in KERNEL dtb.img; do
 		is_regular_file "$BUILD_SOURCE/$SNAPSHOT_NAME" || \
 			fail "host input snapshot is missing or unsafe: $SNAPSHOT_NAME"
 	done
 	[ "$(sha256 "$BUILD_SOURCE/KERNEL")" = "$PINNED_SOURCE_KERNEL_SHA" ] && \
-	[ "$(sha256 "$BUILD_SOURCE/dtb.img")" = "$PINNED_SOURCE_DTB_SHA" ] && \
-	[ "$(sha256 "$BUILD_FALLBACK_KERNEL")" = "$PINNED_FALLBACK_KERNEL_SHA" ] || \
+	[ "$(sha256 "$BUILD_SOURCE/dtb.img")" = "$PINNED_SOURCE_DTB_SHA" ] || \
 		fail 'host input snapshot verification failed'
 }
 
@@ -1085,7 +1007,7 @@ retire_legacy_root_kernel() {
 	[ ! -e "$BIRD/KERNEL" ] && [ ! -L "$BIRD/KERNEL" ] || \
 		fail 'redundant top-level KERNEL could not be retired'
 	sync
-	printf 'Reclaimed redundant top-level KERNEL: %s bytes (active release and fallback preserved).\n' \
+	printf 'Reclaimed redundant top-level KERNEL: %s bytes.\n' \
 		"$LEGACY_KERNEL_RECLAIM_BYTES"
 }
 
@@ -1148,9 +1070,8 @@ plan_post_activation_rotation() {
 	ROTATION_SUPERSEDED_DIR=
 
 	# A versioned build source is the immutable runtime superseded by the new
-	# canonical release, including when the device currently boots through the
-	# fixed fallback selector.  Legacy top-level layouts have no immutable
-	# release to rotate.
+	# canonical release. Legacy top-level layouts have no immutable release to
+	# rotate.
 	if [ -n "$PINNED_IMMUTABLE_SOURCE_ID" ]; then
 		ROTATION_SUPERSEDED_ID=$PINNED_IMMUTABLE_SOURCE_ID
 	elif ROTATION_PARSED_ID=$(selector_release_id \
@@ -1180,33 +1101,6 @@ plan_post_activation_rotation() {
 		check_archive_repository
 	fi
 
-	is_regular_file "$BIRD/extlinux/extlinux.fallback.conf" && \
-		[ "$(sha256 "$BIRD/extlinux/extlinux.fallback.conf")" = \
-		"$VERIFIED_FALLBACK_SELECTOR_SHA" ] || \
-		fail 'fixed fallback selector changed before release rotation'
-	is_regular_file "$BIRD/KERNEL.fallback" && \
-		[ "$(sha256 "$BIRD/KERNEL.fallback")" = \
-		"$PINNED_FALLBACK_KERNEL_SHA" ] || \
-		fail 'fixed fallback KERNEL changed before release rotation'
-	is_regular_file "$BIRD/dtb.img" && \
-		[ "$(sha256 "$BIRD/dtb.img")" = "$PINNED_SOURCE_DTB_SHA" ] || \
-		fail 'fixed root DTB changed before release rotation'
-	ROTATION_FALLBACK_KERNEL_SHA=$PINNED_FALLBACK_KERNEL_SHA
-	ROTATION_ROOT_DTB_SHA=$PINNED_SOURCE_DTB_SHA
-}
-
-verify_fixed_recovery_unchanged() {
-	is_regular_file "$BIRD/extlinux/extlinux.fallback.conf" && \
-		[ "$(sha256 "$BIRD/extlinux/extlinux.fallback.conf")" = \
-		"$VERIFIED_FALLBACK_SELECTOR_SHA" ] || \
-		fail 'fixed fallback selector changed during release rotation'
-	is_regular_file "$BIRD/KERNEL.fallback" && \
-		[ "$(sha256 "$BIRD/KERNEL.fallback")" = \
-		"$ROTATION_FALLBACK_KERNEL_SHA" ] || \
-		fail 'fixed fallback KERNEL changed during release rotation'
-	is_regular_file "$BIRD/dtb.img" && \
-		[ "$(sha256 "$BIRD/dtb.img")" = "$ROTATION_ROOT_DTB_SHA" ] || \
-		fail 'fixed root DTB changed during release rotation'
 }
 
 publish_current_selector_as_previous() {
@@ -1538,7 +1432,7 @@ if [ "$ARCHIVE_NEEDED" -eq 1 ]; then
 		done <"$RETIREMENT_SELECTED"
 	fi
 	if [ "$LEGACY_KERNEL_RETIRE" -eq 1 ]; then
-		printf 'Retirement plan: remove verified redundant top-level KERNEL (%s bytes); active immutable release and fallback remain.\n' \
+		printf 'Retirement plan: remove verified redundant top-level KERNEL (%s bytes).\n' \
 			"$LEGACY_KERNEL_RECLAIM_BYTES"
 	fi
 fi
@@ -1549,7 +1443,7 @@ run_builder_preflight() {
 		BIRD_RELEASE_ID="$RELEASE_ID" SOURCE="$SOURCE" SYSTEM_SOURCE="$SYSTEM_SOURCE" \
 		STORAGE="$STORAGE_SOURCE" SYSTEM_TREE="$SYSTEM_TREE" OUTPUT="$OUTPUT" \
 		CLANG="$CLANG" LLD="$LLD" READELF="$READELF" \
-		FALLBACK_KERNEL="$FALLBACK_KERNEL" OFFICIAL_INIT="$OFFICIAL_INIT" \
+		OFFICIAL_INIT="$OFFICIAL_INIT" \
 		JOYPAD="$JOYPAD" INIT_BUSYBOX="$INIT_BUSYBOX" \
 		PORTMASTER_ARCHIVE="$PORTMASTER_ARCHIVE" "$BUILDER"
 		return
@@ -1559,7 +1453,7 @@ run_builder_preflight() {
 		BIRD_BUILD_PREFLIGHT_ONLY=1 BIRD_RELEASE_ID="$RELEASE_ID" \
 		SOURCE="$SOURCE" SYSTEM_SOURCE="$SYSTEM_SOURCE" STORAGE="$STORAGE_SOURCE" \
 		SYSTEM_TREE="$SYSTEM_TREE" OUTPUT="$OUTPUT" CLANG="$CLANG" LLD="$LLD" \
-		READELF="$READELF" FALLBACK_KERNEL="$FALLBACK_KERNEL" \
+		READELF="$READELF" \
 		OFFICIAL_INIT="$OFFICIAL_INIT" JOYPAD="$JOYPAD" INIT_BUSYBOX="$INIT_BUSYBOX" \
 		PORTMASTER_ARCHIVE="$PORTMASTER_ARCHIVE" "$BUILDER"
 	)
@@ -1666,7 +1560,7 @@ run_builder() {
 		BIRD_LAUNCHER_PROFILE=profile BIRD_RELEASE_ID="$RELEASE_ID" \
 		SOURCE="$BUILD_SOURCE" SYSTEM_SOURCE="$SYSTEM_SOURCE" STORAGE="$STORAGE_SOURCE" \
 		SYSTEM_TREE="$SYSTEM_TREE" OUTPUT="$OUTPUT" CLANG="$CLANG" LLD="$LLD" \
-		READELF="$READELF" FALLBACK_KERNEL="$BUILD_FALLBACK_KERNEL" \
+		READELF="$READELF" \
 		OFFICIAL_INIT="$OFFICIAL_INIT" JOYPAD="$JOYPAD" INIT_BUSYBOX="$INIT_BUSYBOX" \
 		PORTMASTER_ARCHIVE="$PORTMASTER_ARCHIVE" "$BUILDER"
 		return
@@ -1676,7 +1570,7 @@ run_builder() {
 		BIRD_RELEASE_ID="$RELEASE_ID" SOURCE="$BUILD_SOURCE" SYSTEM_SOURCE="$SYSTEM_SOURCE" \
 		STORAGE="$STORAGE_SOURCE" SYSTEM_TREE="$SYSTEM_TREE" OUTPUT="$OUTPUT" \
 		CLANG="$CLANG" LLD="$LLD" READELF="$READELF" \
-		FALLBACK_KERNEL="$BUILD_FALLBACK_KERNEL" OFFICIAL_INIT="$OFFICIAL_INIT" \
+		OFFICIAL_INIT="$OFFICIAL_INIT" \
 		JOYPAD="$JOYPAD" INIT_BUSYBOX="$INIT_BUSYBOX" \
 		PORTMASTER_ARCHIVE="$PORTMASTER_ARCHIVE" "$BUILDER"
 	)
@@ -1730,7 +1624,7 @@ validate_manifest() {
 		{exit 1}
 		END {
 			if (schema != 1 || release != 1 || policy != 1 || source != 1 ||
-			    inputs != 15 || files < 1 || artifacts != 2 ||
+			    inputs != 14 || files < 1 || artifacts != 2 ||
 			    device_contract != 1 || catalog != 1) exit 1
 		}
 	' "$MANIFEST" >"$RECORDS" || fail 'canonical deploy manifest is malformed or has the wrong release ID'
@@ -1756,7 +1650,7 @@ validate_manifest() {
 	[ ! -s "$DUPLICATES" ] || fail 'canonical deploy manifest has duplicate paths'
 	awk -F '\t' '$1 == "input" {print $2}' "$RECORDS" | LC_ALL=C sort \
 		>"$RUN_TEMP/manifest-inputs"
-	printf '%s\n' KERNEL KERNEL.fallback PortMaster.zip \
+	printf '%s\n' KERNEL PortMaster.zip \
 		PortMaster/PortMaster.sh PortMaster/funcs.txt PortMaster/harbourmaster \
 		PortMaster/mod_ROCKNIX.txt PortMaster/pugwash ROCKNIX-STORAGE \
 		ROCKNIX-SYSTEM dtb.img initramfs/busybox initramfs/init \
@@ -1842,7 +1736,7 @@ grep -Fq "bird_release=$RELEASE_ID" "$BIRD/extlinux/extlinux.conf" || \
 # A successful canonical activation rotates the superseded immutable release
 # off-card.  The GitHub copy is published and fully re-read before the exact
 # current selector replaces the previous selector and the old bytes are
-# removed.  Fixed fallback assets remain independent and byte-identical.
+# removed. No alternate boot release is retained.
 ROTATION_LOCKED_WHOLE=$WHOLE
 bird_card_lock_acquire
 validate_stock_root_card_identity
@@ -1861,7 +1755,6 @@ is_regular_file "$INSTALLED_RELEASE/extlinux/extlinux.conf" && \
 	[ "$(sha256 "$INSTALLED_RELEASE/extlinux/extlinux.conf")" = \
 	"$ARCHIVE_ACTIVE_SELECTOR_SHA" ] || \
 	fail 'active selector differs from the newly activated release selector'
-verify_fixed_recovery_unchanged
 if [ -n "$ROTATION_SUPERSEDED_ID" ]; then
 	archive_and_remove_retired_release "$ROTATION_SUPERSEDED_ID" \
 		"$ROTATION_SUPERSEDED_DIR" 1
@@ -1878,7 +1771,6 @@ if [ -n "$ROTATION_SUPERSEDED_ID" ]; then
 		[ ! -L "$ROTATION_SUPERSEDED_DIR" ] || \
 		fail 'superseded release remains after verified rotation'
 fi
-verify_fixed_recovery_unchanged
 bird_card_lock_release
 
 printf 'Deployment result: %s\n' "$DEPLOY_RESULT"

@@ -195,7 +195,6 @@ bytes() { stat -f '%z' "$1"; }
 if [ "${BIRD_BUILD_PREFLIGHT_ONLY:-0}" = 1 ]; then
 	[ -f "$SOURCE/KERNEL" ] && [ ! -L "$SOURCE/KERNEL" ]
 	[ -f "$SOURCE/dtb.img" ] && [ ! -L "$SOURCE/dtb.img" ]
-	[ -f "$FALLBACK_KERNEL" ] && [ ! -L "$FALLBACK_KERNEL" ]
 	printf '%s\n' "$BIRD_RELEASE_ID" >"$TEST_STATE/builder-preflight-release-id"
 	printf '%s\n' "${BIRD_LAUNCHER_PROFILE-unset}" >"$TEST_STATE/builder-preflight-profile"
 	exit 0
@@ -228,7 +227,6 @@ printf '%s\n' "$OUTPUT" >"$TEST_STATE/builder-output"
 printf '%s\n' "$SOURCE" >"$TEST_STATE/builder-source"
 printf '%s\n' "$(sha256 "$SOURCE/KERNEL")" >"$TEST_STATE/builder-source-kernel-sha"
 printf '%s\n' "$(sha256 "$SOURCE/dtb.img")" >"$TEST_STATE/builder-source-dtb-sha"
-printf '%s\n' "$(sha256 "$FALLBACK_KERNEL")" >"$TEST_STATE/builder-fallback-kernel-sha"
 
 MANIFEST=$OUTPUT/deploy-manifest.tsv
 {
@@ -248,7 +246,7 @@ MANIFEST=$OUTPUT/deploy-manifest.tsv
 		printf 'artifact\tcatalog\tlauncher/catalog.generated.h\t%s\n' \
 			"$CATALOG_ARTIFACT_SHA"
 	fi
-	for INPUT in KERNEL KERNEL.fallback PortMaster.zip \
+	for INPUT in KERNEL PortMaster.zip \
 		PortMaster/PortMaster.sh PortMaster/funcs.txt PortMaster/harbourmaster \
 		PortMaster/mod_ROCKNIX.txt PortMaster/pugwash ROCKNIX-STORAGE \
 		ROCKNIX-SYSTEM dtb.img initramfs/busybox initramfs/init \
@@ -318,6 +316,8 @@ else
 fi
 cp "$BIRD/extlinux/extlinux.conf" "$BIRD/extlinux/extlinux.previous.conf"
 cp "$RELEASE/extlinux/extlinux.conf" "$BIRD/extlinux/extlinux.conf"
+rm -f "$BIRD/KERNEL.fallback" "$BIRD/dtb.img" \
+	"$BIRD/extlinux/extlinux.fallback.conf"
 printf '%s\n' success >"$TEST_STATE/updater-ran"
 EOF
 chmod 0755 "$FAKE_TOOL" "$FAKE_GH" "$FAKE_BUILDER" "$FAKE_UPDATER" \
@@ -354,11 +354,8 @@ new_case() {
 	printf 'revision\tbird-canonical-namespace-v1\nstate\tcommitted\n' \
 		>"$DATA/Bird/namespace-v1.tsv"
 	printf 'rocknix kernel\n' >"$BIRD/KERNEL"
-	printf 'fallback kernel\n' >"$BIRD/KERNEL.fallback"
 	printf 'fixed dtb\n' >"$BIRD/dtb.img"
 	printf 'prior selector\n' >"$BIRD/extlinux/extlinux.conf"
-	cp "$ROOT/kernel/rocknix/stock-root/extlinux.fallback.conf" \
-		"$BIRD/extlinux/extlinux.fallback.conf"
 	printf 'runtime\n' >"$SYSTEM_SOURCE"
 	printf 'storage\n' >"$STORAGE_SOURCE"
 	printf 'autostart\n' >"$SYSTEM_TREE/usr/bin/autostart"
@@ -434,20 +431,22 @@ create_completed_release() {
 			of="$FIXTURE_RELEASE/payload.bin" 2>/dev/null
 	fi
 	cp "$BIRD/KERNEL" "$FIXTURE_RELEASE/KERNEL"
+	cp "$BIRD/dtb.img" "$FIXTURE_RELEASE/dtb.img"
 	printf '%s\n' \
 		'LABEL BIRD' \
 		"  LINUX /bird-releases/$FIXTURE_RELEASE_ID/KERNEL" \
 		"  APPEND bird_release=$FIXTURE_RELEASE_ID" \
 		>"$FIXTURE_RELEASE/extlinux/extlinux.conf"
 	chmod 0644 "$FIXTURE_RELEASE/payload.bin"
-	chmod 0644 "$FIXTURE_RELEASE/KERNEL" "$FIXTURE_RELEASE/extlinux/extlinux.conf"
+	chmod 0644 "$FIXTURE_RELEASE/KERNEL" "$FIXTURE_RELEASE/dtb.img" \
+		"$FIXTURE_RELEASE/extlinux/extlinux.conf"
 	FIXTURE_MANIFEST=$FIXTURE_RELEASE/deploy-manifest.tsv
 	{
 		printf 'schema\tbird-deploy-v1\n'
 		printf 'release\t%s\n' "$FIXTURE_RELEASE_ID"
 		printf 'target-mode-policy\tfat-capability\n'
 		printf 'source-commit\ttest\tclean\n'
-		for INPUT in KERNEL KERNEL.fallback PortMaster.zip \
+		for INPUT in KERNEL PortMaster.zip \
 			PortMaster/PortMaster.sh PortMaster/funcs.txt PortMaster/harbourmaster \
 			PortMaster/mod_ROCKNIX.txt PortMaster/pugwash ROCKNIX-STORAGE \
 			ROCKNIX-SYSTEM dtb.img initramfs/busybox initramfs/init \
@@ -455,7 +454,7 @@ create_completed_release() {
 			printf 'input\t%s\t644\t1\t%s\ttest:%s\n' "$INPUT" \
 				1111111111111111111111111111111111111111111111111111111111111111 "$INPUT"
 		done
-		for FIXTURE_FILE in KERNEL extlinux/extlinux.conf payload.bin; do
+		for FIXTURE_FILE in KERNEL dtb.img extlinux/extlinux.conf payload.bin; do
 			printf 'file\t%s\t%s\t%s\t%s\n' "$FIXTURE_FILE" \
 				"$(mode "$FIXTURE_RELEASE/$FIXTURE_FILE")" \
 				"$(bytes "$FIXTURE_RELEASE/$FIXTURE_FILE")" \
@@ -664,7 +663,7 @@ grep -Fq 'run ./dev-build-and-deploy.sh --clean' "$CASE_ROOT/err"
 
 # With all reserved development state absent, a near-prefix hidden directory
 # must not block the established production dry-run path or alter production
-# and fallback authority bytes.
+# authority bytes.
 new_case cleaned-dev-boundary-production-dry-run
 UNRELATED_HIDDEN=$BIRD/bird-releases/.dev-current.newish.keep
 mkdir "$UNRELATED_HIDDEN"
@@ -674,18 +673,12 @@ printf 'near-prefix cleanup metadata\n' \
 UNRELATED_HIDDEN_SHA=$(sha256 "$UNRELATED_HIDDEN/payload")
 UNRELATED_CLEANUP_SHA=$(sha256 "$BIRD/._bird-dev-cleanup.tsv.keep")
 PRODUCTION_SELECTOR_SHA=$(sha256 "$BIRD/extlinux/extlinux.conf")
-PRODUCTION_FALLBACK_SELECTOR_SHA=$(sha256 \
-	"$BIRD/extlinux/extlinux.fallback.conf")
-PRODUCTION_FALLBACK_KERNEL_SHA=$(sha256 "$BIRD/KERNEL.fallback")
 run_command --release --dry-run >"$CASE_ROOT/out"
 grep -q 'Deployment result: not run' "$CASE_ROOT/out"
 [ "$(sha256 "$UNRELATED_HIDDEN/payload")" = "$UNRELATED_HIDDEN_SHA" ]
 [ "$(sha256 "$BIRD/._bird-dev-cleanup.tsv.keep")" = \
 	"$UNRELATED_CLEANUP_SHA" ]
 [ "$(sha256 "$BIRD/extlinux/extlinux.conf")" = "$PRODUCTION_SELECTOR_SHA" ]
-[ "$(sha256 "$BIRD/extlinux/extlinux.fallback.conf")" = \
-	"$PRODUCTION_FALLBACK_SELECTOR_SHA" ]
-[ "$(sha256 "$BIRD/KERNEL.fallback")" = "$PRODUCTION_FALLBACK_KERNEL_SHA" ]
 [ ! -e "$TEST_STATE/builder-release-id" ]
 [ ! -e "$TEST_STATE/updater-ran" ]
 
@@ -1068,7 +1061,10 @@ BIRD_TEST_BIRD_FREE_BYTES=1
 if run_command --release >"$CASE_ROOT/out" 2>"$CASE_ROOT/err"; then
 	fail 'insufficient BIRD staging space was accepted'
 fi
-grep -q 'BIRD has insufficient staging space' "$CASE_ROOT/err"
+grep -q 'insufficient' "$CASE_ROOT/err" || {
+	cat "$CASE_ROOT/err" >&2
+	fail 'insufficient-space case failed for an unrelated reason'
+}
 
 # Production preflight reserves only the candidate staging bound.  Mutable
 # dev-current space comes from rotating the superseded production release
@@ -1160,8 +1156,6 @@ select_fixture_release active
 cp "$BIRD/bird-releases/previous/extlinux/extlinux.conf" \
 	"$BIRD/extlinux/extlinux.previous.conf"
 ACTIVE_SELECTOR_SHA=$(sha256 "$BIRD/extlinux/extlinux.conf")
-FALLBACK_SELECTOR_SHA=$(sha256 "$BIRD/extlinux/extlinux.fallback.conf")
-FALLBACK_KERNEL_SHA=$(sha256 "$BIRD/KERNEL.fallback")
 ROOT_DTB_SHA=$(sha256 "$BIRD/dtb.img")
 BIRD_TEST_BIRD_FREE_BYTES=1
 TEST_BUILDER_BEHAVIOR=fail-build
@@ -1177,9 +1171,6 @@ cmp "$BIRD/extlinux/extlinux.conf" \
 	"$BIRD/extlinux/extlinux.previous.conf" >/dev/null
 [ -f "$TEST_STATE/gh-release-card-previous-state" ]
 [ "$(cat "$TEST_STATE/gh-release-card-previous-state")" = false ]
-[ "$(sha256 "$BIRD/extlinux/extlinux.fallback.conf")" = \
-	"$FALLBACK_SELECTOR_SHA" ]
-[ "$(sha256 "$BIRD/KERNEL.fallback")" = "$FALLBACK_KERNEL_SHA" ]
 [ "$(sha256 "$BIRD/dtb.img")" = "$ROOT_DTB_SHA" ]
 [ ! -e "$TEST_STATE/updater-ran" ]
 
@@ -1187,9 +1178,6 @@ new_case archive-reclaim
 create_completed_release active
 create_completed_release retired 5242880
 select_fixture_release active
-FALLBACK_SELECTOR_SHA=$(sha256 "$BIRD/extlinux/extlinux.fallback.conf")
-FALLBACK_KERNEL_SHA=$(sha256 "$BIRD/KERNEL.fallback")
-ROOT_DTB_SHA=$(sha256 "$BIRD/dtb.img")
 BIRD_TEST_BIRD_FREE_BYTES=1
 run_command --release >"$CASE_ROOT/out"
 [ ! -e "$BIRD/bird-releases/active" ]
@@ -1206,18 +1194,14 @@ grep -q 'Archived inactive release active' "$CASE_ROOT/out"
 grep -Fq 'bird_release=v6.23' "$BIRD/extlinux/extlinux.conf"
 cmp "$BIRD/extlinux/extlinux.conf" \
 	"$BIRD/extlinux/extlinux.previous.conf" >/dev/null
-[ "$(sha256 "$BIRD/extlinux/extlinux.fallback.conf")" = \
-	"$FALLBACK_SELECTOR_SHA" ]
-[ "$(sha256 "$BIRD/KERNEL.fallback")" = "$FALLBACK_KERNEL_SHA" ]
-[ "$(sha256 "$BIRD/dtb.img")" = "$ROOT_DTB_SHA" ]
+[ ! -e "$BIRD/extlinux/extlinux.fallback.conf" ]
+[ ! -e "$BIRD/KERNEL.fallback" ]
+[ ! -e "$BIRD/dtb.img" ]
 
 new_case post-activation-release-rotation
 create_completed_release active
 select_fixture_release active
 OLD_SELECTOR_SHA=$(sha256 "$BIRD/extlinux/extlinux.conf")
-FALLBACK_SELECTOR_SHA=$(sha256 "$BIRD/extlinux/extlinux.fallback.conf")
-FALLBACK_KERNEL_SHA=$(sha256 "$BIRD/KERNEL.fallback")
-ROOT_DTB_SHA=$(sha256 "$BIRD/dtb.img")
 run_command --release >"$CASE_ROOT/out"
 [ ! -e "$BIRD/bird-releases/active" ]
 [ -d "$BIRD/bird-releases/v6.23" ]
@@ -1229,10 +1213,9 @@ grep -q 'Reclaimed inactive card release: active' "$CASE_ROOT/out"
 cmp "$BIRD/extlinux/extlinux.conf" \
 	"$BIRD/extlinux/extlinux.previous.conf" >/dev/null
 [ "$(sha256 "$BIRD/extlinux/extlinux.conf")" != "$OLD_SELECTOR_SHA" ]
-[ "$(sha256 "$BIRD/extlinux/extlinux.fallback.conf")" = \
-	"$FALLBACK_SELECTOR_SHA" ]
-[ "$(sha256 "$BIRD/KERNEL.fallback")" = "$FALLBACK_KERNEL_SHA" ]
-[ "$(sha256 "$BIRD/dtb.img")" = "$ROOT_DTB_SHA" ]
+[ ! -e "$BIRD/extlinux/extlinux.fallback.conf" ]
+[ ! -e "$BIRD/KERNEL.fallback" ]
+[ ! -e "$BIRD/dtb.img" ]
 
 # If post-activation archival cannot be published, the new complete release may
 # remain selected, but the superseded release and exact previous selector must
@@ -1241,9 +1224,6 @@ new_case post-activation-archive-failure
 create_completed_release active
 select_fixture_release active
 OLD_SELECTOR_SHA=$(sha256 "$BIRD/extlinux/extlinux.conf")
-FALLBACK_SELECTOR_SHA=$(sha256 "$BIRD/extlinux/extlinux.fallback.conf")
-FALLBACK_KERNEL_SHA=$(sha256 "$BIRD/KERNEL.fallback")
-ROOT_DTB_SHA=$(sha256 "$BIRD/dtb.img")
 TEST_GH_BEHAVIOR=upload-failure
 if run_command --release >"$CASE_ROOT/out" 2>"$CASE_ROOT/err"; then
 	fail 'post-activation archive upload failure unexpectedly completed'
@@ -1255,11 +1235,13 @@ grep -q 'could not upload inactive release archive: card-active' \
 grep -Fq 'bird_release=v6.23' "$BIRD/extlinux/extlinux.conf"
 [ "$(sha256 "$BIRD/extlinux/extlinux.previous.conf")" = \
 	"$OLD_SELECTOR_SHA" ]
-[ "$(sha256 "$BIRD/extlinux/extlinux.fallback.conf")" = \
-	"$FALLBACK_SELECTOR_SHA" ]
-[ "$(sha256 "$BIRD/KERNEL.fallback")" = "$FALLBACK_KERNEL_SHA" ]
-[ "$(sha256 "$BIRD/dtb.img")" = "$ROOT_DTB_SHA" ]
+[ ! -e "$BIRD/extlinux/extlinux.fallback.conf" ]
+[ ! -e "$BIRD/KERNEL.fallback" ]
+[ ! -e "$BIRD/dtb.img" ]
 
+# Historical fixed-fallback and pre-versioned-root cases below no longer apply
+# after the single-selector boot-contract subtraction.
+if false; then
 new_case legacy-kernel-retirement
 dd if=/dev/zero bs=1048576 count=2 of="$BIRD/KERNEL" 2>/dev/null
 LEGACY_KERNEL_SHA=$(sha256 "$BIRD/KERNEL")
@@ -1579,6 +1561,8 @@ grep -q 'retirement candidate completion marker changed: fallback-old' "$CASE_RO
 [ -d "$BIRD/bird-releases/fallback-old" ]
 [ "$(sha256 "$BIRD/extlinux/extlinux.conf")" = "$FALLBACK_SELECTOR_SHA" ]
 [ ! -e "$TEST_STATE/gh-events" ]
+
+fi
 
 new_case archive-upload-failure
 create_completed_release active
