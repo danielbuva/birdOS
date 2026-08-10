@@ -1450,6 +1450,23 @@ feasible, yielding byte-identical output or a formally defined excluded-region
 list. Include a verified host restore/reimage procedure; an on-card A/B selector
 is not an acceptance requirement.
 
+The first hermetic boundary is now proven without changing the device image.
+`build-stock-root-hermetic-system.sh --parity` uses a digest-pinned arm64 Debian
+base, a dated immutable package snapshot and byte-pinned SquashFS/Python tools.
+It extracts the shipping SYSTEM twice in independent containers, records every
+node's type, mode, uid/gid, timestamp, content, link target, hardlink topology
+and xattrs, repacks with fixed zstd/block/time options, and requires both output
+images to be byte-identical and both effective trees to match the shipping
+tree. The full 54,510-node gate passed: shipping digest
+`6e2112fc9dc81d5fee944f2534346a8f20674f40e23a0a85bb795218d31eadac`,
+deterministic repack digest
+`769edbb4522ae031129e5a07712b5529a7ec238735762c2d3d7ddb288e7e37ab`,
+and inventory digest
+`0714f306f480e40849efa722505d8ae9ddc2921ebf2629130be579629725f86f`.
+The repack is 4,583,424 bytes larger, so it is not silently substituted yet.
+The next bounded Stage 6 candidate is a physical behavior/boot parity gate for
+that no-content-change repack before any Bird override is baked into SYSTEM.
+
 ## Stage 7 — Fixed-fallback boot-contract subtraction (complete)
 
 The earlier U-Boot A/B and on-card recovery lane is retired by operator choice.

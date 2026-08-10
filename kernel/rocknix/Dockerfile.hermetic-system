@@ -1,0 +1,19 @@
+FROM debian@sha256:817e6cf99d6fc127ff4ffe8580049b60deba0adfbbb2bd65ddc3ef8fbb7aade0
+
+ARG DEBIAN_SNAPSHOT=20260803T000000Z
+RUN printf '%s\n' \
+      "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT} bookworm main" \
+      > /etc/apt/sources.list \
+    && rm -f /etc/apt/sources.list.d/debian.sources \
+    && apt-get update -qq \
+    && apt-get install -y --no-install-recommends \
+      python3=3.11.2-1+b1 \
+      squashfs-tools=1:4.5.1-1 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY kernel/rocknix/inventory-rootfs.py /usr/local/libexec/inventory-rootfs.py
+RUN chmod 0555 /usr/local/libexec/inventory-rootfs.py \
+    && sha256sum /usr/bin/mksquashfs /usr/bin/unsquashfs /usr/bin/python3
+
+ENV LC_ALL=C LANG=C TZ=UTC PYTHONDONTWRITEBYTECODE=1
+ENTRYPOINT ["/bin/sh", "-euc"]

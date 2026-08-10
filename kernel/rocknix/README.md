@@ -9,11 +9,25 @@ hardening candidate is tested. The active path retains the exact ROCKNIX
 20260701 release kernel, DTB, immutable system and configured writable provider;
 birdOS supplies the external early overlay and fixed integration layer.
 
+The Stage 6 no-change SYSTEM parity command is:
+
+```sh
+./kernel/rocknix/build-stock-root-hermetic-system.sh --parity /absolute/output
+```
+
+It uses `Dockerfile.hermetic-system` plus `inventory-rootfs.py`; it never
+deploys. Two isolated SquashFS builds must be byte-identical and each extracted
+tree must exactly match the shipping SYSTEM inventory. The accepted host run
+produced repack SHA-256
+`769edbb4522ae031129e5a07712b5529a7ec238735762c2d3d7ddb288e7e37ab`
+and inventory SHA-256
+`0714f306f480e40849efa722505d8ae9ddc2921ebf2629130be579629725f86f`.
+
 The chronological source-kernel, clean-root and stock-root investigation below
 is preserved as evidence. It is not a menu of supported deployment paths. In
 particular, the source-kernel challenger and clean-root builders are historical;
-the clean-root v5.4 kernel is retained only as the validated automatic boot
-fallback. See [`docs/history/README.md`](../../docs/history/README.md) for the
+the old clean-root v5.4 kernel is historical and is no longer installed as an
+automatic boot fallback. See [`docs/history/README.md`](../../docs/history/README.md) for the
 repository-wide history index.
 
 ## Historical source-kernel challenger: exact ROCKNIX chain

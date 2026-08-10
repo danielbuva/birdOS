@@ -1655,6 +1655,17 @@ readiness. Port payload saves and configuration
 below `ROMS/Ports/<game>/` are excluded from development catalog fingerprints,
 matching the embedded catalog's top-level Port-launcher authority.
 
+Stage 6 now also has a host-proven no-change SYSTEM builder. A digest-pinned
+arm64 container and dated Debian snapshot produced two byte-identical
+1,211,060,224-byte SquashFS images from separate clean extractions. Their full
+54,510-node inventories are identical to the shipping SYSTEM, including Linux
+ownership, modes, timestamps, links, hardlinks and content. The repack digest is
+`769edbb4522ae031129e5a07712b5529a7ec238735762c2d3d7ddb288e7e37ab`;
+the sealed inventory digest is
+`0714f306f480e40849efa722505d8ae9ddc2921ebf2629130be579629725f86f`.
+This is reproducibility evidence only. It has not yet replaced the active
+SYSTEM and makes no device timing, energy or behavior claim.
+
 ## Accepted v6.23 evidence
 
 The accepted human promotion binding is clean source
