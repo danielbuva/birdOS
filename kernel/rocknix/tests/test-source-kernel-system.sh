@@ -54,12 +54,12 @@ grep -Fq 'built-in H700 input initcall missing' "$SOURCE_BUILDER" || \
 	fail 'built-in H700 input symbol gate missing'
 grep -Fq 'joypad-linkage' "$SOURCE_BUILDER" || \
 	fail 'built-in/module input authority record missing'
-grep -Fq 'FIXED_NO_ANALOG_POLL requires BUILTIN_JOYPAD=1' "$SOURCE_BUILDER" || \
-	fail 'fixed-device analog subtraction dependency gate missing'
-grep -Fq 'RG34XX-SP has buttons only' "$SOURCE_BUILDER" || \
-	fail 'fixed-device no-analog polling policy missing'
-grep -Fq 'joypad-policy' "$SOURCE_BUILDER" || \
-	fail 'fixed-device input policy authority record missing'
+if grep -Fq 'FIXED_NO_ANALOG_POLL' "$SOURCE_BUILDER"; then
+	fail 'rejected no-analog polling mode remains selectable'
+fi
+if grep -Fq 'RG34XX-SP has buttons only' "$SOURCE_BUILDER"; then
+	fail 'rejected button-only hardware assumption remains'
+fi
 grep -Fq 'source module archive digest changed' "$BUILDER" || \
 	fail 'module archive digest gate missing'
 grep -Fq 'isolated source SYSTEM $FILE differs' "$BUILDER" || \

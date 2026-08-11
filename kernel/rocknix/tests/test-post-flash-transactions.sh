@@ -119,10 +119,6 @@ write_runtime_manifest() {
 				printf 'input\tsource-kernel-builtin-input.tsv\t644\t1\t%s\tfixture\n' \
 					'0000000000000000000000000000000000000000000000000000000000000000'
 				;;
-			fixed)
-				printf 'input\tsource-kernel-fixed-input.tsv\t644\t1\t%s\tfixture\n' \
-					'0000000000000000000000000000000000000000000000000000000000000000'
-				;;
 			unknown)
 				printf 'input\tunknown-authority.tsv\t644\t1\t%s\tfixture\n' \
 					'0000000000000000000000000000000000000000000000000000000000000000'

@@ -548,12 +548,11 @@ if "$COMMAND" --profile --builtin-input-kernel \
 	exit 1
 fi
 grep -q -- 'source-kernel authorities require --release' "$TMP/builtin-profile.err"
-if "$COMMAND" --profile --fixed-input-kernel \
-	>"$TMP/fixed-profile.out" 2>"$TMP/fixed-profile.err"; then
-	printf '%s\n' 'fixed-input kernel unexpectedly accepted profile mode' >&2
-	exit 1
+if "$COMMAND" --release --fixed-input-kernel \
+	>"$TMP/fixed-input.out" 2>"$TMP/fixed-input.err"; then
+	fail 'rejected fixed-input kernel option remains accepted'
 fi
-grep -q -- 'source-kernel authorities require --release' "$TMP/fixed-profile.err"
+grep -q -- 'unknown option: --fixed-input-kernel' "$TMP/fixed-input.err"
 if "$COMMAND" --release --source-kernel-parity --builtin-input-kernel \
 	>"$TMP/kernel-authority.out" 2>"$TMP/kernel-authority.err"; then
 	printf '%s\n' 'multiple source-kernel authorities unexpectedly accepted' >&2

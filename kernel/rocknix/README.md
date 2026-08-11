@@ -215,12 +215,11 @@ shipping-identical DTB and deterministic SYSTEM. The external early overlay
 omits the now-duplicate module and the retained hook recognizes the built-in
 platform driver before launching Bird.
 
-The follow-up `FIXED_NO_ANALOG_POLL=1` mode requires the built-in driver. The
-RG34XX-SP has no analog sticks, so this mode retains its existing four neutral
-ABS capabilities but skips four analog-mux ADC reads before the GPIO button
-scan every 10 ms. `--fixed-input-kernel` selects the separately bound
-`source-kernel-fixed-input.tsv` candidate; the module archive, DTB and accepted
-SYSTEM remain unchanged.
+The later button-only experiment was rejected on hardware. RG34XX-SP has two
+working analog sticks, and the driver must sample `ABS_X`, `ABS_Y`, `ABS_RX`
+and `ABS_RY`; retaining only the capability bitmap with neutral values disables
+real controls. The no-analog build mode and authority were removed. The
+accepted `--builtin-input-kernel` recipe retains the complete pinned driver.
 
 ## First Bird substitution candidate
 

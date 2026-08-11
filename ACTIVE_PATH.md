@@ -139,10 +139,12 @@ The candidate kernel and SYSTEM reproduced byte-for-byte in independent builds;
 the Image size is unchanged and the external early overlay is 11,683 compressed
 bytes smaller. These are host artifact results, not a hardware timing claim.
 Immutable release `v6.23-20260811-030650` passed the broad device gate and is
-now the accepted built-in-input baseline. The next authority,
-`source-kernel-fixed-input.tsv`, removes only the four unpopulated analog-mux
-reads performed before GPIO buttons in each 10 ms poll while preserving the
-same ABS bitmap and neutral axis state.
+now the accepted built-in-input baseline. A subsequent button-only candidate,
+immutable release `v6.23-20260811-034244`, incorrectly treated the four analog
+axes as unpopulated and stopped sampling them. Physical testing proved the
+RG34XX-SP has two working sticks; that candidate is rejected and its build mode
+has been removed. The accepted built-in driver, axis capabilities and ADC
+sampling remain the authority.
 
 The corrected source-kernel package reached Bird's early usable menu but not
 application readiness. A temporary early watchdog proved that release-runtime

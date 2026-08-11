@@ -25,7 +25,10 @@ replacing this experience contract.
 - Device: Anbernic RG34XX-SP only (`rg34xx-sp`).
 - SoC: Allwinner H700, AArch64 Cortex-A53.
 - Internal display: 720x480, landscape, 3:2.
-- Input: built-in D-pad, A/B/X/Y, shoulders, Start/Select/Menu and lid switch.
+- Input: built-in left and right analog sticks, D-pad, A/B/X/Y, shoulders,
+  Start/Select/Menu and lid switch. Both sticks and all four axes
+  (`ABS_X`, `ABS_Y`, `ABS_RX`, `ABS_RY`) are required hardware; their ADC
+  sampling must not be removed as presumed-unused polling.
   The primary launcher device is the exact `H700 Gamepad` identity
   `0019:484b:14df:0100` with its complete generated event, key, absolute-axis
   and force-feedback closure. Retained hardware captures establish the full

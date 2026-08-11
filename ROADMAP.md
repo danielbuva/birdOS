@@ -1684,12 +1684,12 @@ duplicate early module reduced the gzip-9 external overlay from the accepted
 615,201 bytes to 603,518 bytes (11,683 bytes).
 
 That candidate passed its complete RG34XX-SP behavior gate as immutable release
-`v6.23-20260811-030650`. The next bounded input candidate keeps the exact input
-identity and four neutral ABS capabilities but removes four unpopulated analog
-mux reads from each 10 ms poll on this button-only device. It changes only the
-built-in driver text in the kernel Image; DTB, module archive and SYSTEM remain
-byte-identical. Interaction and idle-energy acceptance require the physical
-gate; the source-level removal is not itself a latency or battery claim.
+`v6.23-20260811-030650`. The following button-only experiment in immutable
+release `v6.23-20260811-034244` stopped the four-axis ADC sampling while leaving
+the advertised ABS bitmap intact. It is rejected: physical testing established
+that RG34XX-SP has working left and right analog sticks. Future input work must
+preserve `ABS_X`, `ABS_Y`, `ABS_RX`, `ABS_RY`, their live sampling, dead zones,
+reconnect behavior and provider mappings.
 Subtract drivers, modules, probes, buses, protocols and subsystems one
 attributable group at a time only after complete consumer closure. Neutral
 kernel measurement/readiness infrastructure may promote without regression;

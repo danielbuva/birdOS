@@ -19,6 +19,12 @@ input at 1223–1229 ms and usable frame at 1226–1233 ms while the stopwatch
 remained below three seconds. This promotes the reproducible fixed-device input
 kernel without claiming a calibrated energy distribution.
 
+A later button-only kernel candidate was rejected after immutable release
+`v6.23-20260811-034244` disabled both physical analog sticks. The RG34XX-SP
+input closure includes live `ABS_X`, `ABS_Y`, `ABS_RX` and `ABS_RY` sampling;
+these reads are consumers, not removable idle polling. The accepted built-in
+driver release remains the input baseline.
+
 ## Measured boundaries
 
 The last physically accepted v6.14 boot recorded:
