@@ -1621,7 +1621,18 @@ fourteen-input stock manifest, while source parity intentionally adds a unique
 fifteenth `source-kernel-parity.tsv` authority record. The parser now verifies
 the complete named stock set and permits only that optional authority; unknown,
 missing and duplicate inputs remain fatal. The watchdog was removed after this
-evidence was acquired. Physical application-handoff verification remains open.
+evidence was acquired.
+
+The corrected handoff then passed on clean `dev-current` source
+`741a997955e3463149b340e56e10d905b2d0ec98`. The broad hardware/application
+matrix was functional across games, Ports, media, reader, PortMaster, controls,
+suspend and shutdown. Two source-kernel boots recorded input/usable readiness
+at 1219/1222 ms and 1230/1232 ms, inside the accepted stock range; storage
+anchored at 3475/3430 ms. Retained stock evidence contains the same two DRM
+property warnings. Functional and boot screening therefore pass. Before the
+immutable source-built baseline is promoted, acquire one condition-gated
+30-second-settled, 60-second menu-idle structural sample and compare PSS/USS,
+scheduler, IRQ and residency counters with the accepted stock window.
 
 ## Stage 9 — Fixed-device kernel optimization
 

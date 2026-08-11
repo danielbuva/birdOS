@@ -1078,7 +1078,11 @@ The v6.15 audit found the following generic work and defects. Only items marked
    parser rejected source parity's fifteenth authority input before final-root
    handoff. The temporary watchdog captured that boundary and was removed. The
    parser now accepts the exact fourteen stock inputs plus only the optional
-   unique source-kernel authority; repeat the physical application gate.
+   unique source-kernel authority. Clean `dev-current` source `741a997` then
+   passed the broad device/application gate. Two boots measured input/usable at
+   1219/1222 and 1230/1232 ms, with storage at 3475/3430 ms; retained stock
+   evidence contains the same DRM warnings. Acquire one condition-gated clean
+   menu-idle structural window before canonical source-baseline promotion.
 2. Stabilize the mutable fast-development path through real `--changed` and
    `--all-local` use. Record duration, rebuild scope, output clarity and actual
    cleanup/rollback failures; add safety states only from observed evidence or

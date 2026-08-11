@@ -134,6 +134,17 @@ fourteen stock inputs plus that one optional, unique source-kernel authority;
 unknown, missing and duplicate inputs still fail closed. The diagnostic
 watchdog was removed after acquiring this evidence.
 
+Clean `dev-current` source `741a997955e3463149b340e56e10d905b2d0ec98`
+then passed the broad RG34XX-SP application and hardware matrix on the source
+kernel. Two returned boots recorded input/usable readiness at 1219/1222 ms and
+1230/1232 ms, with storage anchored at 3475 and 3430 ms. Games, native Ports,
+music, books, movies, PortMaster, controls, suspend and shutdown reached their
+normal owners. The two early DRM property warnings also occur in retained stock
+kernel evidence and are not a source-build regression. This closes functional
+and boot screening, not canonical source-baseline promotion. A condition-gated
+30-second-settled, 60-second short-label menu-idle sample is the next parity
+measurement for PSS/USS, scheduler, IRQ and residency comparison.
+
 ## Build and deployment
 
 Supported birdOS-owned local changes use
