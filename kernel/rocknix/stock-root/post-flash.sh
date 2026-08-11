@@ -171,7 +171,8 @@ verify_release_runtime() {
 			    $2 != "source-kernel-builtin-input.tsv" &&
 			    $2 != "source-kernel-single-gpio-read.tsv" &&
 			    $2 != "source-kernel-single-input-sync.tsv" &&
-			    $2 != "source-kernel-changed-input-sync.tsv")
+			    $2 != "source-kernel-changed-input-sync.tsv" &&
+			    $2 != "source-kernel-fixed-gpio-fastpath.tsv")
 				exit 1
 			if (input_seen[$2]++) exit 1
 			inputs++
@@ -214,8 +215,8 @@ verify_release_runtime() {
 			    catalog_path != "launcher/catalog.generated.h" ||
 			    device_contract_file != 1 ||
 			    device_contract_digest != device_contract_file_digest ||
-			    inputs != 14 + (input_seen["source-kernel-parity.tsv"] == 1) + (input_seen["source-kernel-builtin-input.tsv"] == 1) + (input_seen["source-kernel-single-gpio-read.tsv"] == 1) + (input_seen["source-kernel-single-input-sync.tsv"] == 1) + (input_seen["source-kernel-changed-input-sync.tsv"] == 1) ||
-			    input_seen["source-kernel-parity.tsv"] + input_seen["source-kernel-builtin-input.tsv"] + input_seen["source-kernel-single-gpio-read.tsv"] + input_seen["source-kernel-single-input-sync.tsv"] + input_seen["source-kernel-changed-input-sync.tsv"] > 1 ||
+			    inputs != 14 + (input_seen["source-kernel-parity.tsv"] == 1) + (input_seen["source-kernel-builtin-input.tsv"] == 1) + (input_seen["source-kernel-single-gpio-read.tsv"] == 1) + (input_seen["source-kernel-single-input-sync.tsv"] == 1) + (input_seen["source-kernel-changed-input-sync.tsv"] == 1) + (input_seen["source-kernel-fixed-gpio-fastpath.tsv"] == 1) ||
+			    input_seen["source-kernel-parity.tsv"] + input_seen["source-kernel-builtin-input.tsv"] + input_seen["source-kernel-single-gpio-read.tsv"] + input_seen["source-kernel-single-input-sync.tsv"] + input_seen["source-kernel-changed-input-sync.tsv"] + input_seen["source-kernel-fixed-gpio-fastpath.tsv"] > 1 ||
 			    files < 1 || runtime < 1 || hook != 1 ||
 			    storage_hook != 1 || bird < 1) exit 1
 		}

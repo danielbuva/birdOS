@@ -51,9 +51,10 @@ and must produce byte-identical kernels, modules and device trees. The complete
 release is then tested on the RG34XX-SP before becoming the accepted kernel.
 
 The currently accepted kernel shipped in release
-`v6.23-20260811-093148`. Broad hardware testing passed, including buttons, both
-sticks, games, media, suspend, shutdown and application return. Stopwatch boot
-timing remained below three seconds.
+`v6.23-20260811-100937`. Broad hardware testing passed, including buttons, both
+sticks, games, media, suspend, shutdown and application return. This release
+also stops publishing empty input frames while every accepted control value is
+unchanged. Stopwatch boot timing remained below three seconds.
 
 Exact source commits, artifact hashes and experimental authority records remain
 available under `kernel/rocknix/` for reproducibility without turning this
@@ -61,10 +62,13 @@ overview into a development log.
 
 ## Next improvements
 
+The current test candidate also uses the H700 controller's direct non-sleeping
+GPIO read for every digital button and combines input-device open/reconnect into
+one initial event frame instead of two. Both changes preserve the 10 ms analog
+stick sampling and the single `H700 Gamepad` identity.
+
 Future fixed-device work will investigate:
 
-- the current candidate publishes no empty input frames while controls are
-  unchanged, pending its RG34XX-SP gate;
 - whether any stick or button polling can safely become interrupt-driven;
 - kernel-owned panel readiness and exact brightness restoration;
 - a green, low-power boot LED policy;

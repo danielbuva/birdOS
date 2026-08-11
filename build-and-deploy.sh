@@ -31,7 +31,7 @@ ROTATION_SELECTOR_TEMP=
 usage() {
 	cat <<'EOF'
 Usage:
-  ./build-and-deploy.sh --release [--source-kernel-parity|--builtin-input-kernel|--single-gpio-read-kernel|--single-input-sync-kernel|--changed-input-sync-kernel] [--release-id ID] [--dry-run]
+  ./build-and-deploy.sh --release [--source-kernel-parity|--builtin-input-kernel|--single-gpio-read-kernel|--single-input-sync-kernel|--changed-input-sync-kernel|--fixed-gpio-fastpath-kernel] [--release-id ID] [--dry-run]
   ./build-and-deploy.sh --profile [--release-id ID] [--dry-run]
   ./build-and-deploy.sh --help
 
@@ -59,6 +59,9 @@ Options:
   --changed-input-sync-kernel
                   Build the Stage 9 kernel that publishes the combined input
                   frame only when a control changed. Valid only with --release.
+  --fixed-gpio-fastpath-kernel
+                  Build the Stage 9 fixed-H700 GPIO access and single-open-frame
+                  kernel. Valid only with --release.
   --dry-run       Perform read-only preflight and print the selected commands.
   --help          Show this help text.
 
@@ -136,6 +139,11 @@ while [ "$#" -gt 0 ]; do
 			[ "$KERNEL_AUTHORITY" = stock ] || \
 				fail 'choose only one source-kernel authority'
 			KERNEL_AUTHORITY=source-changed-input-sync
+			;;
+		--fixed-gpio-fastpath-kernel)
+			[ "$KERNEL_AUTHORITY" = stock ] || \
+				fail 'choose only one source-kernel authority'
+			KERNEL_AUTHORITY=source-fixed-gpio-fastpath
 			;;
 		--release-id)
 			[ "$#" -ge 2 ] || fail '--release-id requires a value'
@@ -282,6 +290,11 @@ if [ "$KERNEL_AUTHORITY" = source-changed-input-sync ]; then
 	SOURCE_KERNEL_BUILD=$ROOT/kernel/work/rocknix-source-changed-input-sync/build
 	SOURCE_KERNEL_SYSTEM=$ROOT/kernel/work/rocknix-source-builtin-joypad-system/SYSTEM
 	SOURCE_KERNEL_AUTHORITY_RECORD=$ROOT/kernel/rocknix/source-kernel-changed-input-sync.tsv
+fi
+if [ "$KERNEL_AUTHORITY" = source-fixed-gpio-fastpath ]; then
+	SOURCE_KERNEL_BUILD=$ROOT/kernel/work/rocknix-source-fixed-gpio-fastpath/build
+	SOURCE_KERNEL_SYSTEM=$ROOT/kernel/work/rocknix-source-builtin-joypad-system/SYSTEM
+	SOURCE_KERNEL_AUTHORITY_RECORD=$ROOT/kernel/rocknix/source-kernel-fixed-gpio-fastpath.tsv
 fi
 INIT_BUSYBOX=${INIT_BUSYBOX:-$ROOT/kernel/work/rocknix-official-initramfs-20260701/ramdisk/usr/bin/busybox}
 PORTMASTER_ARCHIVE=${PORTMASTER_ARCHIVE:-$SYSTEM_TREE/usr/config/PortMaster/release/PortMaster.zip}
@@ -715,6 +728,13 @@ if [ "$KERNEL_AUTHORITY" != stock ]; then
 		EXPECTED_SOURCE_PARITY_SHA=8c434778fe4a81e0268800230759ddcbe134217404a35a6f68ff101ebdaff536
 		EXPECTED_SOURCE_SYSTEM_SHA=57210b5cb6072bf1e2b81dea31df76f9b5d4aab5534d7d3b668fdfdc51a1c527
 		EXPECTED_SOURCE_AUTHORITY_SHA=8ae897ae79536313d1501c72ccb2c6dd9472963e7c2d0bfd6c1dbf54a51831c6
+		;;
+	source-fixed-gpio-fastpath)
+		EXPECTED_SOURCE_KERNEL_SHA=e112527fac5790b4dfee8a5381224ff15dffc84a16e64202c46c981335b3b549
+		EXPECTED_SOURCE_MODULES_SHA=56bd291210ef47a020c3c6dfcac6f6987135ef4bf20f22435138acafb6107211
+		EXPECTED_SOURCE_PARITY_SHA=be2ab8c1f0e12d8f3350e6e8d08528ee675d45652f8bfcfc3499d30579fa77ad
+		EXPECTED_SOURCE_SYSTEM_SHA=57210b5cb6072bf1e2b81dea31df76f9b5d4aab5534d7d3b668fdfdc51a1c527
+		EXPECTED_SOURCE_AUTHORITY_SHA=c727c365941c0957d9d56994d1cc9a5c0d16dccf315ff1d664944bac732b4820
 		;;
 	esac
 	[ "$(sha256 "$SOURCE_KERNEL_BUILD/Image")" = "$EXPECTED_SOURCE_KERNEL_SHA" ] && \

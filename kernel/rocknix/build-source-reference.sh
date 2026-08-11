@@ -20,6 +20,7 @@ BUILTIN_JOYPAD=${BUILTIN_JOYPAD:-0}
 SINGLE_GPIO_READ=${SINGLE_GPIO_READ:-0}
 SINGLE_INPUT_SYNC=${SINGLE_INPUT_SYNC:-0}
 CHANGED_INPUT_SYNC=${CHANGED_INPUT_SYNC:-0}
+FIXED_GPIO_FASTPATH=${FIXED_GPIO_FASTPATH:-0}
 JOBS=${JOBS:-4}
 
 ROCKNIX_COMMIT=3e4ee5852e6ca5ea73a38369d2639fad2262648b
@@ -66,6 +67,12 @@ case "$CHANGED_INPUT_SYNC" in
 esac
 [ "$CHANGED_INPUT_SYNC" -eq 0 ] || [ "$SINGLE_INPUT_SYNC" -eq 1 ] || \
 	fail 'CHANGED_INPUT_SYNC requires SINGLE_INPUT_SYNC=1'
+case "$FIXED_GPIO_FASTPATH" in
+	0 | 1) ;;
+	*) fail 'FIXED_GPIO_FASTPATH must be 0 or 1' ;;
+esac
+[ "$FIXED_GPIO_FASTPATH" -eq 0 ] || [ "$CHANGED_INPUT_SYNC" -eq 1 ] || \
+	fail 'FIXED_GPIO_FASTPATH requires CHANGED_INPUT_SYNC=1'
 [ -d "$ROCKNIX_SOURCE/.git" ] || fail "ROCKNIX source missing: $ROCKNIX_SOURCE"
 [ "$(git -C "$ROCKNIX_SOURCE" rev-parse HEAD)" = "$ROCKNIX_COMMIT" ] || \
 	fail 'ROCKNIX source commit mismatch'
@@ -130,6 +137,7 @@ set -- docker run --rm --platform linux/arm64 \
 	-e SINGLE_GPIO_READ="$SINGLE_GPIO_READ" \
 	-e SINGLE_INPUT_SYNC="$SINGLE_INPUT_SYNC" \
 	-e CHANGED_INPUT_SYNC="$CHANGED_INPUT_SYNC" \
+	-e FIXED_GPIO_FASTPATH="$FIXED_GPIO_FASTPATH" \
 	-e LOCALVERSION= \
 	-v "$ROCKNIX_SOURCE:/rocknix:ro" \
 	-v "$JOYPAD_SOURCE:/rocknix-joypad:ro" \
@@ -397,6 +405,37 @@ PY
 				[ "$(grep -Fc "input_abs_get_val(poll_dev->input" \
 					drivers/input/joystick/rocknix-singleadc-joypad.c)" -eq 12 ]
 			fi
+			if [ "$FIXED_GPIO_FASTPATH" = 1 ]; then
+				python3 - drivers/input/joystick/rocknix-singleadc-joypad.c <<"PY"
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+source = path.read_text(encoding="utf-8")
+old_read = "gpio_get_value_cansleep(gpio->num)"
+if source.count(old_read) != 2:
+    raise SystemExit("joypad fixed GPIO access authority changed")
+source = source.replace(old_read, "gpio_get_value(gpio->num)")
+
+old_open = """\t}
+\tinput_sync(poll_dev->input);
+
+\tfor (nbtn = 0; nbtn < joypad->amux_count; nbtn++) {"""
+new_open = """\t}
+
+\tfor (nbtn = 0; nbtn < joypad->amux_count; nbtn++) {"""
+if source.count(old_open) != 1:
+    raise SystemExit("joypad open frame authority changed")
+source = source.replace(old_open, new_open)
+path.write_text(source, encoding="utf-8")
+PY
+				[ "$(grep -Fc "gpio_get_value(gpio->num)" \
+					drivers/input/joystick/rocknix-singleadc-joypad.c)" -eq 2 ]
+				[ "$(grep -Fc "gpio_get_value_cansleep(gpio->num)" \
+					drivers/input/joystick/rocknix-singleadc-joypad.c)" -eq 0 ]
+				[ "$(grep -Fc "input_sync(poll_dev->input);" \
+					drivers/input/joystick/rocknix-singleadc-joypad.c)" -eq 2 ]
+			fi
 		fi
 
 		mkdir -p external-firmware/panels external-firmware/rtl_bt \
@@ -654,6 +693,10 @@ fi
 	fi
 	if [ "$CHANGED_INPUT_SYNC" = 1 ]; then
 		printf 'joypad-idle-policy\tchanged-input-sync\n'
+	fi
+	if [ "$FIXED_GPIO_FASTPATH" = 1 ]; then
+		printf 'joypad-gpio-access\tfixed-nonsleeping\n'
+		printf 'joypad-open-policy\tsingle-open-sync\n'
 	fi
 	printf 'shipping-kernel-sha256\t%s\n' "$SHIPPING_KERNEL_SHA"
 	printf 'shipping-dtb-sha256\t%s\n' "$SHIPPING_DTB_SHA"

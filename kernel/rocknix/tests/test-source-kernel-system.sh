@@ -78,6 +78,12 @@ grep -Fq 'input_abs_get_val(poll_dev->input' "$SOURCE_BUILDER" || \
 	fail 'accepted input-value change tracking missing'
 grep -Fq 'joypad-idle-policy' "$SOURCE_BUILDER" || \
 	fail 'changed input sync authority record missing'
+grep -Fq 'FIXED_GPIO_FASTPATH requires CHANGED_INPUT_SYNC=1' "$SOURCE_BUILDER" || \
+	fail 'fixed GPIO fast-path sequencing gate missing'
+grep -Fq 'joypad fixed GPIO access authority changed' "$SOURCE_BUILDER" || \
+	fail 'fixed GPIO source authority gate missing'
+grep -Fq 'joypad-open-policy' "$SOURCE_BUILDER" || \
+	fail 'single open-frame authority record missing'
 grep -Fq 'source module archive digest changed' "$BUILDER" || \
 	fail 'module archive digest gate missing'
 grep -Fq 'isolated source SYSTEM $FILE differs' "$BUILDER" || \

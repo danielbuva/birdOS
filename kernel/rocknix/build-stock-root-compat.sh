@@ -91,6 +91,16 @@ case "$KERNEL_AUTHORITY" in
 		SYSTEM_PROVIDER='bird-source-changed-input-sync:accepted-builtin-input-SYSTEM'
 		JOYPAD_PROVIDER='bird-source-changed-input-sync:build-oracle:rocknix-singleadc-joypad.ko'
 		;;
+	source-fixed-gpio-fastpath)
+		KERNEL_SHA=e112527fac5790b4dfee8a5381224ff15dffc84a16e64202c46c981335b3b549
+		DTB_SHA=f3a4273986d6e4f431b110cead8aa19e8da52ff08c64c4b204ef9664d28b5c31
+		SYSTEM_SHA=57210b5cb6072bf1e2b81dea31df76f9b5d4aab5534d7d3b668fdfdc51a1c527
+		JOYPAD_SHA=fd2ceb95f0b3bdc1d68e7182a8ac5239b5286cc277a04980e53f65e0f73d3a05
+		KERNEL_PROVIDER='bird-source-fixed-gpio-fastpath:linux-7.0.11:Image'
+		DTB_PROVIDER='bird-source-fixed-gpio-fastpath:ROCKNIX-H700:dtb.img'
+		SYSTEM_PROVIDER='bird-source-fixed-gpio-fastpath:accepted-builtin-input-SYSTEM'
+		JOYPAD_PROVIDER='bird-source-fixed-gpio-fastpath:build-oracle:rocknix-singleadc-joypad.ko'
+		;;
 	*) printf 'error: unknown kernel authority: %s\n' "$KERNEL_AUTHORITY" >&2; exit 1 ;;
 esac
 STORAGE_SHA=12affdad7bc2042cb590fea60fc015a7ee8d4374ebcc3b1c11098a64b9ffa3be
@@ -116,6 +126,7 @@ case "$KERNEL_AUTHORITY" in
 	source-single-gpio-read) SOURCE_KERNEL_AUTHORITY_SHA=d4d3977294603f15085e38972370795d7932cb503110f7eddec104dfecab0194 ;;
 	source-single-input-sync) SOURCE_KERNEL_AUTHORITY_SHA=afe2693b5a632170b638eda70f27a77198ca89e2b792dfa5628f5057a8f49fa8 ;;
 	source-changed-input-sync) SOURCE_KERNEL_AUTHORITY_SHA=8ae897ae79536313d1501c72ccb2c6dd9472963e7c2d0bfd6c1dbf54a51831c6 ;;
+	source-fixed-gpio-fastpath) SOURCE_KERNEL_AUTHORITY_SHA=c727c365941c0957d9d56994d1cc9a5c0d16dccf315ff1d664944bac732b4820 ;;
 	*) SOURCE_KERNEL_AUTHORITY_SHA= ;;
 esac
 

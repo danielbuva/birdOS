@@ -563,6 +563,11 @@ if "$COMMAND" --profile --changed-input-sync-kernel \
 	fail 'changed-input-sync kernel unexpectedly accepted profile mode'
 fi
 grep -q -- 'source-kernel authorities require --release' "$TMP/changed-sync-profile.err"
+if "$COMMAND" --profile --fixed-gpio-fastpath-kernel \
+	>"$TMP/fixed-gpio-profile.out" 2>"$TMP/fixed-gpio-profile.err"; then
+	fail 'fixed-GPIO-fastpath kernel unexpectedly accepted profile mode'
+fi
+grep -q -- 'source-kernel authorities require --release' "$TMP/fixed-gpio-profile.err"
 if "$COMMAND" --release --fixed-input-kernel \
 	>"$TMP/fixed-input.out" 2>"$TMP/fixed-input.err"; then
 	fail 'rejected fixed-input kernel option remains accepted'
@@ -589,6 +594,11 @@ if "$COMMAND" --release --single-input-sync-kernel --changed-input-sync-kernel \
 	fail 'multiple input-sync authorities unexpectedly accepted'
 fi
 grep -q -- 'choose only one source-kernel authority' "$TMP/changed-sync-authority.err"
+if "$COMMAND" --release --changed-input-sync-kernel --fixed-gpio-fastpath-kernel \
+	>"$TMP/fixed-gpio-authority.out" 2>"$TMP/fixed-gpio-authority.err"; then
+	fail 'multiple changed-input/fixed-GPIO authorities unexpectedly accepted'
+fi
+grep -q -- 'choose only one source-kernel authority' "$TMP/fixed-gpio-authority.err"
 if "$COMMAND" --release --release-id '../unsafe' >"$TMP/id.out" 2>"$TMP/id.err"; then
 	fail 'unsafe release ID was accepted'
 fi

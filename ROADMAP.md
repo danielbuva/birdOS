@@ -1698,8 +1698,14 @@ stick ADC reads remained intact, the broad hardware gate passed, and stopwatch
 timing stayed below three seconds. Release `v6.23-20260811-093148` retained every
 sample but emitted one combined axes-and-buttons input frame per polling cycle;
 its broad hardware gate passed with normal sub-three-second stopwatch timing.
-The next candidate keeps that sampling cadence and publishes only when Linux's
-input core accepted a changed button or axis value.
+Release `v6.23-20260811-100937` kept that sampling cadence and published only
+when Linux's input core accepted a changed button or axis value. Its broad
+hardware gate passed with normal sub-three-second stopwatch timing. The next
+batched candidate uses the fixed H700 PIO controller's non-sleeping GPIO access
+for digital buttons and removes the earlier of two input-device open frames.
+It retains the exact DTB, all four stick samples, the 10 ms cadence, one input
+identity, rumble and reconnect. IRQ-backed digital delivery remains a later
+separate experiment because it changes debounce and event timing.
 Subtract drivers, modules, probes, buses, protocols and subsystems one
 attributable group at a time only after complete consumer closure. Neutral
 kernel measurement/readiness infrastructure may promote without regression;
