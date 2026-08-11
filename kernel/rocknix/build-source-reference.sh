@@ -18,6 +18,7 @@ INITRAMFS_ARCHIVE=${INITRAMFS_ARCHIVE:-$ROOT/kernel/work/rocknix-official-initra
 DEFER_PANFROST=${DEFER_PANFROST:-0}
 BUILTIN_JOYPAD=${BUILTIN_JOYPAD:-0}
 SINGLE_GPIO_READ=${SINGLE_GPIO_READ:-0}
+SINGLE_INPUT_SYNC=${SINGLE_INPUT_SYNC:-0}
 JOBS=${JOBS:-4}
 
 ROCKNIX_COMMIT=3e4ee5852e6ca5ea73a38369d2639fad2262648b
@@ -52,6 +53,12 @@ case "$SINGLE_GPIO_READ" in
 esac
 [ "$SINGLE_GPIO_READ" -eq 0 ] || [ "$BUILTIN_JOYPAD" -eq 1 ] || \
 	fail 'SINGLE_GPIO_READ requires BUILTIN_JOYPAD=1'
+case "$SINGLE_INPUT_SYNC" in
+	0 | 1) ;;
+	*) fail 'SINGLE_INPUT_SYNC must be 0 or 1' ;;
+esac
+[ "$SINGLE_INPUT_SYNC" -eq 0 ] || [ "$SINGLE_GPIO_READ" -eq 1 ] || \
+	fail 'SINGLE_INPUT_SYNC requires SINGLE_GPIO_READ=1'
 [ -d "$ROCKNIX_SOURCE/.git" ] || fail "ROCKNIX source missing: $ROCKNIX_SOURCE"
 [ "$(git -C "$ROCKNIX_SOURCE" rev-parse HEAD)" = "$ROCKNIX_COMMIT" ] || \
 	fail 'ROCKNIX source commit mismatch'
@@ -114,6 +121,7 @@ set -- docker run --rm --platform linux/arm64 \
 	-e DEFER_PANFROST="$DEFER_PANFROST" \
 	-e BUILTIN_JOYPAD="$BUILTIN_JOYPAD" \
 	-e SINGLE_GPIO_READ="$SINGLE_GPIO_READ" \
+	-e SINGLE_INPUT_SYNC="$SINGLE_INPUT_SYNC" \
 	-e LOCALVERSION= \
 	-v "$ROCKNIX_SOURCE:/rocknix:ro" \
 	-v "$JOYPAD_SOURCE:/rocknix-joypad:ro" \
@@ -190,6 +198,80 @@ path.write_text(source.replace(old, new), encoding="utf-8")
 PY
 				[ "$(grep -Fc "gpio_get_value_cansleep(gpio->num)" \
 					drivers/input/joystick/rocknix-singleadc-joypad.c)" -eq 2 ]
+				[ "$(grep -Fc "joypad_adc_check(poll_dev);" \
+					drivers/input/joystick/rocknix-singleadc-joypad.c)" -eq 2 ]
+			fi
+			if [ "$SINGLE_INPUT_SYNC" = 1 ]; then
+				python3 - drivers/input/joystick/rocknix-singleadc-joypad.c <<"PY"
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+source = path.read_text(encoding="utf-8")
+old_gpio = """\t}
+\tinput_sync(poll_dev->input);
+}
+
+/*----------------------------------------------------------------------------*/
+static void joypad_adc_check"""
+new_gpio = """\t}
+}
+
+/*----------------------------------------------------------------------------*/
+static void joypad_adc_check"""
+old_adc = """\t}
+\tinput_sync(poll_dev->input);
+}
+
+/*----------------------------------------------------------------------------*/
+static void joypad_poll"""
+new_adc = """\t}
+}
+
+/*----------------------------------------------------------------------------*/
+static void joypad_poll"""
+old_poll = """\t\t\tinput_report_abs(poll_dev->input, ABS_RY, joypad->miyoo.right_y);
+\t\t\tinput_sync(poll_dev->input);
+
+\t\t\tjoypad_gpio_check(poll_dev);
+\t\t} else {
+\t\t\tjoypad_adc_check(poll_dev);
+\t\t\tjoypad_gpio_check(poll_dev);
+\t\t}
+\t}
+"""
+new_poll = """\t\t\tinput_report_abs(poll_dev->input, ABS_RY, joypad->miyoo.right_y);
+
+\t\t\tjoypad_gpio_check(poll_dev);
+\t\t} else {
+\t\t\tjoypad_adc_check(poll_dev);
+\t\t\tjoypad_gpio_check(poll_dev);
+\t\t}
+\t\tinput_sync(poll_dev->input);
+\t}
+"""
+old_open = """\tjoypad_adc_check(poll_dev);
+\tjoypad_gpio_check(poll_dev);
+
+\t/* button report enable */"""
+new_open = """\tjoypad_adc_check(poll_dev);
+\tjoypad_gpio_check(poll_dev);
+\tinput_sync(poll_dev->input);
+
+\t/* button report enable */"""
+for old, new, label in (
+    (old_gpio, new_gpio, "GPIO helper sync"),
+    (old_adc, new_adc, "ADC helper sync"),
+    (old_poll, new_poll, "poll frame"),
+    (old_open, new_open, "open frame"),
+):
+    if source.count(old) != 1:
+        raise SystemExit(f"joypad {label} authority changed")
+    source = source.replace(old, new)
+path.write_text(source, encoding="utf-8")
+PY
+				[ "$(grep -Fc "input_sync(poll_dev->input);" \
+					drivers/input/joystick/rocknix-singleadc-joypad.c)" -eq 3 ]
 				[ "$(grep -Fc "joypad_adc_check(poll_dev);" \
 					drivers/input/joystick/rocknix-singleadc-joypad.c)" -eq 2 ]
 			fi
@@ -444,6 +526,9 @@ fi
 	fi
 	if [ "$SINGLE_GPIO_READ" = 1 ]; then
 		printf 'joypad-policy\tsingle-gpio-read\n'
+	fi
+	if [ "$SINGLE_INPUT_SYNC" = 1 ]; then
+		printf 'joypad-event-policy\tsingle-poll-sync\n'
 	fi
 	printf 'shipping-kernel-sha256\t%s\n' "$SHIPPING_KERNEL_SHA"
 	printf 'shipping-dtb-sha256\t%s\n' "$SHIPPING_DTB_SHA"

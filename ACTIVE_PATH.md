@@ -3,18 +3,17 @@
 This document is the authority for the code that builds, installs and runs the
 current birdOS system. The active implementation path is **stock-root v6.23**.
 The current human promotion record binds clean public source
-`cc1e3d77600d4e934f9db66ed55e40fb52c7d7ec`, immutable release
-`v6.23-20260811-050010`, deploy-manifest digest
-`45ac4cc0f99309a25d0d68a034f9ae80e601786601b9869f7c4ae8a82d770a15`,
+`8aeb117d995e5b56c875fd5016a727189e01bc55`, immutable release
+`v6.23-20260811-071550`, deploy-manifest digest
+`5569cca6998617850aeeda9a77597c16b08a1755b5538d96c7e62665e9a1b415`,
 device-contract digest
 `1664a3778abcd3687865a82fd28bba5b468f6c3c7e9a46bf90f7c3acb1e08162`
 and generated-catalog digest
 `9795aae6baddc292f5d9954a444656e303db305c639284f16eb10288c41f1f93`.
-The complete host gate and broad RG34XX-SP behavior gate passed on 2026-08-10.
-This promotes the first Stage 9 fixed-device change: the exact H700 controls
-driver is linked into the reproducible kernel and omitted from the early
-overlay. Accepted boots logged input at 1223–1229 ms and usable frame at
-1226–1233 ms while the stopwatch remained below three seconds. This is
+The complete host gate and broad RG34XX-SP behavior gate passed on 2026-08-11.
+This promotes the Stage 9 single-GPIO-read change on top of the built-in H700
+controls driver. All buttons, both sticks and broad hardware behavior passed;
+the stopwatch remained below three seconds. This is
 functional and descriptive timing acceptance, not a new
 calibrated energy distribution. The previously accepted immutable binary reference is release
 `v6.23-20260731-054816`, published as `stable-v6.23-20260731-054816`; its
@@ -145,8 +144,11 @@ axes as unpopulated and stopped sampling them. Physical testing proved the
 RG34XX-SP has two working sticks; that candidate is rejected and its build mode
 has been removed. Corrective release `v6.23-20260811-050010` restored the
 accepted built-in driver, axis capabilities and ADC sampling and passed the
-broad hardware gate. The next candidate preserves every ADC path and collapses
-each GPIO button's immediate error-check/value double read to one read.
+broad hardware gate. Release `v6.23-20260811-071550` then preserved every ADC
+path while collapsing each GPIO button's immediate error-check/value double
+read to one read; its broad hardware gate passed with normal stopwatch timing.
+The next candidate retains every sample and publishes axes plus buttons in one
+combined input frame per poll instead of two successive frames.
 
 The corrected source-kernel package reached Bird's early usable menu but not
 application readiness. A temporary early watchdog proved that release-runtime

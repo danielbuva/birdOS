@@ -31,7 +31,7 @@ ROTATION_SELECTOR_TEMP=
 usage() {
 	cat <<'EOF'
 Usage:
-  ./build-and-deploy.sh --release [--source-kernel-parity|--builtin-input-kernel|--single-gpio-read-kernel] [--release-id ID] [--dry-run]
+  ./build-and-deploy.sh --release [--source-kernel-parity|--builtin-input-kernel|--single-gpio-read-kernel|--single-input-sync-kernel] [--release-id ID] [--dry-run]
   ./build-and-deploy.sh --profile [--release-id ID] [--dry-run]
   ./build-and-deploy.sh --help
 
@@ -53,6 +53,9 @@ Options:
   --single-gpio-read-kernel
                   Build the Stage 9 built-in-input kernel with one GPIO read
                   per button per polling cycle. Valid only with --release.
+  --single-input-sync-kernel
+                  Build the Stage 9 kernel with one combined axes-and-buttons
+                  input frame per polling cycle. Valid only with --release.
   --dry-run       Perform read-only preflight and print the selected commands.
   --help          Show this help text.
 
@@ -120,6 +123,11 @@ while [ "$#" -gt 0 ]; do
 			[ "$KERNEL_AUTHORITY" = stock ] || \
 				fail 'choose only one source-kernel authority'
 			KERNEL_AUTHORITY=source-single-gpio-read
+			;;
+		--single-input-sync-kernel)
+			[ "$KERNEL_AUTHORITY" = stock ] || \
+				fail 'choose only one source-kernel authority'
+			KERNEL_AUTHORITY=source-single-input-sync
 			;;
 		--release-id)
 			[ "$#" -ge 2 ] || fail '--release-id requires a value'
@@ -256,6 +264,11 @@ if [ "$KERNEL_AUTHORITY" = source-single-gpio-read ]; then
 	SOURCE_KERNEL_BUILD=$ROOT/kernel/work/rocknix-source-single-gpio-read/build
 	SOURCE_KERNEL_SYSTEM=$ROOT/kernel/work/rocknix-source-builtin-joypad-system/SYSTEM
 	SOURCE_KERNEL_AUTHORITY_RECORD=$ROOT/kernel/rocknix/source-kernel-single-gpio-read.tsv
+fi
+if [ "$KERNEL_AUTHORITY" = source-single-input-sync ]; then
+	SOURCE_KERNEL_BUILD=$ROOT/kernel/work/rocknix-source-single-input-sync/build
+	SOURCE_KERNEL_SYSTEM=$ROOT/kernel/work/rocknix-source-builtin-joypad-system/SYSTEM
+	SOURCE_KERNEL_AUTHORITY_RECORD=$ROOT/kernel/rocknix/source-kernel-single-input-sync.tsv
 fi
 INIT_BUSYBOX=${INIT_BUSYBOX:-$ROOT/kernel/work/rocknix-official-initramfs-20260701/ramdisk/usr/bin/busybox}
 PORTMASTER_ARCHIVE=${PORTMASTER_ARCHIVE:-$SYSTEM_TREE/usr/config/PortMaster/release/PortMaster.zip}
@@ -675,6 +688,13 @@ if [ "$KERNEL_AUTHORITY" != stock ]; then
 		EXPECTED_SOURCE_PARITY_SHA=9c8c899d1561ab12b423c34fe3dccdb2173964113188b3158425c5ca2a6d9932
 		EXPECTED_SOURCE_SYSTEM_SHA=57210b5cb6072bf1e2b81dea31df76f9b5d4aab5534d7d3b668fdfdc51a1c527
 		EXPECTED_SOURCE_AUTHORITY_SHA=d4d3977294603f15085e38972370795d7932cb503110f7eddec104dfecab0194
+		;;
+	source-single-input-sync)
+		EXPECTED_SOURCE_KERNEL_SHA=7c37f4faad42326926740286f1b9d8d2beb461d31751d81103c25d9baa44bde3
+		EXPECTED_SOURCE_MODULES_SHA=56bd291210ef47a020c3c6dfcac6f6987135ef4bf20f22435138acafb6107211
+		EXPECTED_SOURCE_PARITY_SHA=9465c8ff031d14effae2a1cbc6ed72dddd24f95d7a48d17c4b1db6fe59b0b2aa
+		EXPECTED_SOURCE_SYSTEM_SHA=57210b5cb6072bf1e2b81dea31df76f9b5d4aab5534d7d3b668fdfdc51a1c527
+		EXPECTED_SOURCE_AUTHORITY_SHA=afe2693b5a632170b638eda70f27a77198ca89e2b792dfa5628f5057a8f49fa8
 		;;
 	esac
 	[ "$(sha256 "$SOURCE_KERNEL_BUILD/Image")" = "$EXPECTED_SOURCE_KERNEL_SHA" ] && \

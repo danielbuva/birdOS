@@ -66,6 +66,12 @@ grep -Fq 'joypad GPIO poll authority changed' "$SOURCE_BUILDER" || \
 	fail 'single GPIO read source authority gate missing'
 grep -Fq 'joypad_adc_check(poll_dev);' "$SOURCE_BUILDER" || \
 	fail 'analog stick polling preservation gate missing'
+grep -Fq 'SINGLE_INPUT_SYNC requires SINGLE_GPIO_READ=1' "$SOURCE_BUILDER" || \
+	fail 'single input sync sequencing gate missing'
+grep -Fq 'old_poll = ' "$SOURCE_BUILDER" || \
+	fail 'single input sync source authority gate missing'
+grep -Fq 'joypad-event-policy' "$SOURCE_BUILDER" || \
+	fail 'single input sync authority record missing'
 grep -Fq 'source module archive digest changed' "$BUILDER" || \
 	fail 'module archive digest gate missing'
 grep -Fq 'isolated source SYSTEM $FILE differs' "$BUILDER" || \

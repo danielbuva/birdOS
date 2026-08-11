@@ -165,6 +165,8 @@ profiling boot, collect
   `dev-current` build and deployment entry point for supported local changes.
 - [`DEV_WORKFLOW.md`](DEV_WORKFLOW.md): development commands, supported
   component map, recovery and production handoff contract.
+- [`KERNEL_DELTA.md`](KERNEL_DELTA.md): exact accepted and candidate kernel
+  differences from stock ROCKNIX.
 - [`launcher/bird-launcher.c`](launcher/bird-launcher.c): active freestanding
   launcher source.
 - [`DEVICE_PROFILE.md`](DEVICE_PROFILE.md): fixed hardware and experience

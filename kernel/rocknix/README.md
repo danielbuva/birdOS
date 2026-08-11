@@ -230,6 +230,13 @@ dead zones, rumble or reconnect behavior. The canonical candidate flag is
 `--single-gpio-read-kernel`, bound by
 `source-kernel-single-gpio-read.tsv`.
 
+`SINGLE_INPUT_SYNC=1` preserves that complete sampling path but moves event
+publication out of the separate ADC and GPIO helpers. Each 10 ms poll now ends
+with one combined `SYN_REPORT` containing the current axes and buttons instead
+of publishing two successive frames. Driver open still publishes one complete
+initial state. This is a bounded event-publication candidate; input identity,
+capabilities, mappings, sampling, rumble and reconnect are unchanged.
+
 ## First Bird substitution candidate
 
 `build-bird-initramfs.sh` reconstructs the accepted direct-handoff archive

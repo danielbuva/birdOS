@@ -2,9 +2,9 @@
 
 This is the governing constitution for the active stock-root implementation.
 The current human promotion record binds clean source
-`cc1e3d77600d4e934f9db66ed55e40fb52c7d7ec`, immutable release
-`v6.23-20260811-050010`, deploy manifest
-`45ac4cc0f99309a25d0d68a034f9ae80e601786601b9869f7c4ae8a82d770a15`,
+`8aeb117d995e5b56c875fd5016a727189e01bc55`, immutable release
+`v6.23-20260811-071550`, deploy manifest
+`5569cca6998617850aeeda9a77597c16b08a1755b5538d96c7e62665e9a1b415`,
 device contract
 `1664a3778abcd3687865a82fd28bba5b468f6c3c7e9a46bf90f7c3acb1e08162`
 and catalogue
@@ -1690,11 +1690,13 @@ the advertised ABS bitmap intact. It is rejected: physical testing established
 that RG34XX-SP has working left and right analog sticks. Future input work must
 preserve `ABS_X`, `ABS_Y`, `ABS_RX`, `ABS_RY`, their live sampling, dead zones,
 reconnect behavior and provider mappings.
-Corrective release `v6.23-20260811-050010` restored that accepted input path
-and passed the broad hardware gate. The next candidate stores one
-`gpio_get_value_cansleep()` result per button and uses it for both error
-handling and state reporting, instead of reading the same GPIO twice. All four
-stick ADC reads remain intact.
+Corrective release `v6.23-20260811-050010` restored that accepted input path.
+Release `v6.23-20260811-071550` then stored one
+`gpio_get_value_cansleep()` result per button and used it for both error
+handling and state reporting instead of reading the same GPIO twice. All four
+stick ADC reads remained intact, the broad hardware gate passed, and stopwatch
+timing stayed below three seconds. The next candidate retains every sample but
+emits one combined axes-and-buttons input frame per polling cycle.
 Subtract drivers, modules, probes, buses, protocols and subsystems one
 attributable group at a time only after complete consumer closure. Neutral
 kernel measurement/readiness infrastructure may promote without regression;

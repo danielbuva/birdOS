@@ -7,9 +7,9 @@ closure from the later application-compatibility closure and replaces generic
 discovery only after its consumers are proven.
 
 The current accepted stock-root binding is clean source
-`cc1e3d77600d4e934f9db66ed55e40fb52c7d7ec`, immutable release
-`v6.23-20260811-050010`, deploy-manifest digest
-`45ac4cc0f99309a25d0d68a034f9ae80e601786601b9869f7c4ae8a82d770a15`,
+`8aeb117d995e5b56c875fd5016a727189e01bc55`, immutable release
+`v6.23-20260811-071550`, deploy-manifest digest
+`5569cca6998617850aeeda9a77597c16b08a1755b5538d96c7e62665e9a1b415`,
 device-contract digest
 `1664a3778abcd3687865a82fd28bba5b468f6c3c7e9a46bf90f7c3acb1e08162`
 and catalog digest
@@ -25,9 +25,11 @@ input closure includes live `ABS_X`, `ABS_Y`, `ABS_RX` and `ABS_RY` sampling;
 these reads are consumers, not removable idle polling. The accepted built-in
 driver release remains the input baseline.
 
-Corrective release `v6.23-20260811-050010` passed the broad hardware gate. The
-next input candidate keeps the full ADC path and removes only the redundant
-second GPIO read for each button in every polling cycle.
+Corrective release `v6.23-20260811-050010` passed the broad hardware gate.
+Release `v6.23-20260811-071550` then kept the full ADC path and removed only the
+redundant second GPIO read for each button in every polling cycle. Its broad
+hardware gate passed and stopwatch timing remained below three seconds. The
+next candidate consolidates the two event publications without removing reads.
 
 ## Measured boundaries
 
