@@ -1629,10 +1629,21 @@ matrix was functional across games, Ports, media, reader, PortMaster, controls,
 suspend and shutdown. Two source-kernel boots recorded input/usable readiness
 at 1219/1222 ms and 1230/1232 ms, inside the accepted stock range; storage
 anchored at 3475/3430 ms. Retained stock evidence contains the same two DRM
-property warnings. Functional and boot screening therefore pass. Before the
-immutable source-built baseline is promoted, acquire one condition-gated
-30-second-settled, 60-second menu-idle structural sample and compare PSS/USS,
-scheduler, IRQ and residency counters with the accepted stock window.
+property warnings. Functional and boot screening therefore pass.
+
+The condition-gated 30-second-settled, 60-second short-label menu-idle window
+then passed structural parity. D-pad activity at 3.7/4.5 seconds was before the
+settle boundary. Source versus accepted stock measured 0.285/0.289 percent
+aggregate busy, 1462.6/1454.5 context switches per second, 957.6/949.9 total
+interrupts per second, 474.3/464.2 arch-timer interrupts per second and an
+identical 300.1 ADC interrupts per second. Launcher, supervisor and warm audio
+services accumulated zero runtime; powerstate was 0.876 ms/eight slices versus
+0.868 ms/eight. Launcher PSS/USS was 1832/1824 KiB versus 1776/1772 KiB; the
+warm audio stack was 20,600 KiB versus 20,898 KiB and seatd was identical at
+263 KiB. The instantaneous 418-to-421 mA battery readings are context only, not
+calibrated energy. This closes Stage 8 dev-current structural screening. Run
+the all-local host gate, build the canonical immutable source-kernel release,
+and give that exact release its final physical gate before promotion.
 
 ## Stage 9 — Fixed-device kernel optimization
 

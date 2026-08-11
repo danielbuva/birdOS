@@ -1081,8 +1081,18 @@ The v6.15 audit found the following generic work and defects. Only items marked
    unique source-kernel authority. Clean `dev-current` source `741a997` then
    passed the broad device/application gate. Two boots measured input/usable at
    1219/1222 and 1230/1232 ms, with storage at 3475/3430 ms; retained stock
-   evidence contains the same DRM warnings. Acquire one condition-gated clean
-   menu-idle structural window before canonical source-baseline promotion.
+   evidence contains the same DRM warnings. The following 30-second-settled,
+   60-second menu-idle window was valid despite two D-pad edges before the
+   settle boundary. Source/stock aggregate busy was 0.285/0.289 percent,
+   context switches 1462.6/1454.5 per second, interrupts 957.6/949.9 per
+   second, arch timer 474.3/464.2 per second and ADC identical at 300.1 per
+   second. Launcher, supervisor and warm audio services did no work;
+   powerstate was 0.876 ms/eight slices versus 0.868 ms/eight. Launcher
+   PSS/USS was 1832/1824 KiB versus 1776/1772 KiB, warm audio PSS was
+   20,600/20,898 KiB and seatd remained 263 KiB. Structural idle and memory
+   screening pass without a calibrated energy claim. Complete the all-local
+   host gate and canonical immutable source build, then physically accept that
+   exact release before kernel subtraction.
 2. Stabilize the mutable fast-development path through real `--changed` and
    `--all-local` use. Record duration, rebuild scope, output clarity and actual
    cleanup/rollback failures; add safety states only from observed evidence or

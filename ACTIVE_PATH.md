@@ -141,9 +141,21 @@ kernel. Two returned boots recorded input/usable readiness at 1219/1222 ms and
 music, books, movies, PortMaster, controls, suspend and shutdown reached their
 normal owners. The two early DRM property warnings also occur in retained stock
 kernel evidence and are not a source-build regression. This closes functional
-and boot screening, not canonical source-baseline promotion. A condition-gated
-30-second-settled, 60-second short-label menu-idle sample is the next parity
-measurement for PSS/USS, scheduler, IRQ and residency comparison.
+and boot screening, not canonical source-baseline promotion.
+
+The requested 30-second-settled, 60-second short-label menu-idle sample also
+passed structural parity. The two D-pad edges at 3.7 and 4.5 seconds preceded
+the settle boundary and are excluded. Aggregate busy time was 0.285 percent
+versus the accepted stock window's 0.289 percent; context switches and total
+interrupts were within 0.6 and 0.8 percent, and arch-timer interrupts were
+within 2.2 percent. ADC remained 300.1/s. Launcher, supervisor, PipeWire,
+PulseAudio, WirePlumber and seatd accumulated no runtime or timeslices;
+powerstate accumulated 0.876 ms and eight timeslices versus stock's 0.868 ms
+and eight. Launcher PSS/USS was 1832/1824 KiB versus stock's 1776/1772 KiB,
+while the warm audio stack was 20,600 KiB versus 20,898 KiB and seatd remained
+263 KiB. These are non-inferior structural and memory screening results, not a
+calibrated energy claim. Stage 8 may now proceed to the all-local host gate and
+canonical immutable source-kernel build before its final physical acceptance.
 
 ## Build and deployment
 
