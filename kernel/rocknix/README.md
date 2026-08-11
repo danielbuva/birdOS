@@ -237,6 +237,13 @@ of publishing two successive frames. Driver open still publishes one complete
 initial state. This is a bounded event-publication candidate; input identity,
 capabilities, mappings, sampling, rumble and reconnect are unchanged.
 
+`CHANGED_INPUT_SYNC=1` keeps the same 10 ms sampling cadence. It compares each
+reported axis against the value accepted by Linux's input core and carries the
+existing explicit GPIO change result into the poll function. The combined
+`SYN_REPORT` is emitted only when at least one accepted axis or button value
+changed. Open still publishes the complete initial state. This targets idle
+event traffic without delaying an active control sample.
+
 ## First Bird substitution candidate
 
 `build-bird-initramfs.sh` reconstructs the accepted direct-handoff archive

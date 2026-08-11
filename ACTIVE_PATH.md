@@ -3,16 +3,17 @@
 This document is the authority for the code that builds, installs and runs the
 current birdOS system. The active implementation path is **stock-root v6.23**.
 The current human promotion record binds clean public source
-`8aeb117d995e5b56c875fd5016a727189e01bc55`, immutable release
-`v6.23-20260811-071550`, deploy-manifest digest
-`5569cca6998617850aeeda9a77597c16b08a1755b5538d96c7e62665e9a1b415`,
+`720958a49abe36bb669583e1928d3ff9418e8596`, immutable release
+`v6.23-20260811-093148`, deploy-manifest digest
+`429f4040f7613fd950c688af8bdff6d59065ba381b32f344110ab94d38a885bb`,
 device-contract digest
 `1664a3778abcd3687865a82fd28bba5b468f6c3c7e9a46bf90f7c3acb1e08162`
 and generated-catalog digest
 `9795aae6baddc292f5d9954a444656e303db305c639284f16eb10288c41f1f93`.
 The complete host gate and broad RG34XX-SP behavior gate passed on 2026-08-11.
-This promotes the Stage 9 single-GPIO-read change on top of the built-in H700
-controls driver. All buttons, both sticks and broad hardware behavior passed;
+This promotes the Stage 9 combined-input-frame change on top of the built-in
+H700 controls driver and single-GPIO-read policy. All buttons, both sticks and
+broad hardware behavior passed;
 the stopwatch remained below three seconds. This is
 functional and descriptive timing acceptance, not a new
 calibrated energy distribution. The previously accepted immutable binary reference is release
@@ -147,8 +148,11 @@ accepted built-in driver, axis capabilities and ADC sampling and passed the
 broad hardware gate. Release `v6.23-20260811-071550` then preserved every ADC
 path while collapsing each GPIO button's immediate error-check/value double
 read to one read; its broad hardware gate passed with normal stopwatch timing.
-The next candidate retains every sample and publishes axes plus buttons in one
-combined input frame per poll instead of two successive frames.
+Release `v6.23-20260811-093148` then retained every sample while publishing axes
+plus buttons in one combined input frame per poll instead of two successive
+frames. Its broad gate passed with normal sub-three-second stopwatch timing.
+The next candidate preserves the 10 ms sampling cadence but suppresses the
+combined frame when Linux accepted no changed control value.
 
 The corrected source-kernel package reached Bird's early usable menu but not
 application readiness. A temporary early watchdog proved that release-runtime

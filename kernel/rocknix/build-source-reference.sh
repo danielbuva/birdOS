@@ -19,6 +19,7 @@ DEFER_PANFROST=${DEFER_PANFROST:-0}
 BUILTIN_JOYPAD=${BUILTIN_JOYPAD:-0}
 SINGLE_GPIO_READ=${SINGLE_GPIO_READ:-0}
 SINGLE_INPUT_SYNC=${SINGLE_INPUT_SYNC:-0}
+CHANGED_INPUT_SYNC=${CHANGED_INPUT_SYNC:-0}
 JOBS=${JOBS:-4}
 
 ROCKNIX_COMMIT=3e4ee5852e6ca5ea73a38369d2639fad2262648b
@@ -59,6 +60,12 @@ case "$SINGLE_INPUT_SYNC" in
 esac
 [ "$SINGLE_INPUT_SYNC" -eq 0 ] || [ "$SINGLE_GPIO_READ" -eq 1 ] || \
 	fail 'SINGLE_INPUT_SYNC requires SINGLE_GPIO_READ=1'
+case "$CHANGED_INPUT_SYNC" in
+	0 | 1) ;;
+	*) fail 'CHANGED_INPUT_SYNC must be 0 or 1' ;;
+esac
+[ "$CHANGED_INPUT_SYNC" -eq 0 ] || [ "$SINGLE_INPUT_SYNC" -eq 1 ] || \
+	fail 'CHANGED_INPUT_SYNC requires SINGLE_INPUT_SYNC=1'
 [ -d "$ROCKNIX_SOURCE/.git" ] || fail "ROCKNIX source missing: $ROCKNIX_SOURCE"
 [ "$(git -C "$ROCKNIX_SOURCE" rev-parse HEAD)" = "$ROCKNIX_COMMIT" ] || \
 	fail 'ROCKNIX source commit mismatch'
@@ -122,6 +129,7 @@ set -- docker run --rm --platform linux/arm64 \
 	-e BUILTIN_JOYPAD="$BUILTIN_JOYPAD" \
 	-e SINGLE_GPIO_READ="$SINGLE_GPIO_READ" \
 	-e SINGLE_INPUT_SYNC="$SINGLE_INPUT_SYNC" \
+	-e CHANGED_INPUT_SYNC="$CHANGED_INPUT_SYNC" \
 	-e LOCALVERSION= \
 	-v "$ROCKNIX_SOURCE:/rocknix:ro" \
 	-v "$JOYPAD_SOURCE:/rocknix-joypad:ro" \
@@ -274,6 +282,120 @@ PY
 					drivers/input/joystick/rocknix-singleadc-joypad.c)" -eq 3 ]
 				[ "$(grep -Fc "joypad_adc_check(poll_dev);" \
 					drivers/input/joystick/rocknix-singleadc-joypad.c)" -eq 2 ]
+			fi
+			if [ "$CHANGED_INPUT_SYNC" = 1 ]; then
+				python3 - drivers/input/joystick/rocknix-singleadc-joypad.c <<"PY"
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+source = path.read_text(encoding="utf-8")
+replacements = (
+    (
+        "static void joypad_gpio_check(struct input_polled_dev *poll_dev)\n{\n"
+        "\tstruct joypad *joypad = poll_dev->private;\n\tint nbtn, value;",
+        "static bool joypad_gpio_check(struct input_polled_dev *poll_dev)\n{\n"
+        "\tstruct joypad *joypad = poll_dev->private;\n"
+        "\tbool changed = false;\n\tint nbtn, value;",
+        "GPIO change result declaration",
+    ),
+    (
+        "\t\tif (value != gpio->old_value) {\n\t\t\tinput_event(poll_dev->input,",
+        "\t\tif (value != gpio->old_value) {\n\t\t\tchanged = true;\n"
+        "\t\t\tinput_event(poll_dev->input,",
+        "GPIO changed flag",
+    ),
+    (
+        "\t}\n}\n\n/*----------------------------------------------------------------------------*/\n"
+        "static void joypad_adc_check",
+        "\t}\n\treturn changed;\n}\n\n"
+        "/*----------------------------------------------------------------------------*/\nstatic bool joypad_adc_check",
+        "GPIO return and ADC signature",
+    ),
+    (
+        "\tstruct joypad *joypad = poll_dev->private;\n\tint nbtn;\n\tint mag;\n\n"
+        "\t/* Assumes an even number of axes",
+        "\tstruct joypad *joypad = poll_dev->private;\n"
+        "\tbool changed = false;\n\tint nbtn;\n\tint mag;\n\tint old_value;\n\n"
+        "\t/* Assumes an even number of axes",
+        "ADC change result declaration",
+    ),
+    (
+        "\t\tinput_report_abs(poll_dev->input,\n"
+        "\t\t\tadcx->report_type,\n"
+        "\t\t\tadcx->invert ? adcx->value * (-1) : adcx->value);\n"
+        "\t\tinput_report_abs(poll_dev->input,\n"
+        "\t\t\tadcy->report_type,\n"
+        "\t\t\tadcy->invert ? adcy->value * (-1) : adcy->value);",
+        "\t\told_value = input_abs_get_val(poll_dev->input, adcx->report_type);\n"
+        "\t\tinput_report_abs(poll_dev->input,\n"
+        "\t\t\tadcx->report_type,\n"
+        "\t\t\tadcx->invert ? adcx->value * (-1) : adcx->value);\n"
+        "\t\tchanged |= input_abs_get_val(poll_dev->input, adcx->report_type) != old_value;\n"
+        "\t\told_value = input_abs_get_val(poll_dev->input, adcy->report_type);\n"
+        "\t\tinput_report_abs(poll_dev->input,\n"
+        "\t\t\tadcy->report_type,\n"
+        "\t\t\tadcy->invert ? adcy->value * (-1) : adcy->value);\n"
+        "\t\tchanged |= input_abs_get_val(poll_dev->input, adcy->report_type) != old_value;",
+        "ADC accepted-value change tracking",
+    ),
+    (
+        "\t}\n}\n\n/*----------------------------------------------------------------------------*/\n"
+        "static void joypad_poll",
+        "\t}\n\treturn changed;\n}\n\n"
+        "/*----------------------------------------------------------------------------*/\nstatic void joypad_poll",
+        "ADC return",
+    ),
+    (
+        "\tstruct joypad *joypad = poll_dev->private;\n\n\tif (joypad->enable) {",
+        "\tstruct joypad *joypad = poll_dev->private;\n"
+        "\tbool changed = false;\n\tint old_value;\n\n\tif (joypad->enable) {",
+        "poll change declaration",
+    ),
+)
+for old, new, label in replacements:
+    if source.count(old) != 1:
+        raise SystemExit(f"joypad {label} authority changed")
+    source = source.replace(old, new)
+
+for code, spacing, expression in (
+    ("ABS_X", "  ", "joypad->miyoo.left_x"),
+    ("ABS_Y", "  ", "joypad->miyoo.left_y"),
+    ("ABS_RX", " ", "joypad->miyoo.right_x"),
+    ("ABS_RY", " ", "joypad->miyoo.right_y"),
+):
+    old = f"\t\t\tinput_report_abs(poll_dev->input, {code},{spacing}{expression});"
+    new = (
+        f"\t\t\told_value = input_abs_get_val(poll_dev->input, {code});\n"
+        f"\t\t\tinput_report_abs(poll_dev->input, {code}, {expression});\n"
+        f"\t\t\tchanged |= input_abs_get_val(poll_dev->input, {code}) != old_value;"
+    )
+    if source.count(old) != 1:
+        raise SystemExit(f"joypad {code} change tracking authority changed")
+    source = source.replace(old, new)
+
+for old, new, label in (
+    ("\t\t\tjoypad_gpio_check(poll_dev);\n\t\t} else {",
+     "\t\t\tchanged |= joypad_gpio_check(poll_dev);\n\t\t} else {",
+     "serial GPIO result"),
+    ("\t\t\tjoypad_adc_check(poll_dev);\n\t\t\tjoypad_gpio_check(poll_dev);",
+     "\t\t\tchanged |= joypad_adc_check(poll_dev);\n"
+     "\t\t\tchanged |= joypad_gpio_check(poll_dev);",
+     "ADC/GPIO results"),
+    ("\t\tinput_sync(poll_dev->input);\n\t}",
+     "\t\tif (changed)\n\t\t\tinput_sync(poll_dev->input);\n\t}",
+     "conditional poll sync"),
+):
+    if source.count(old) != 1:
+        raise SystemExit(f"joypad {label} authority changed")
+    source = source.replace(old, new)
+
+path.write_text(source, encoding="utf-8")
+PY
+				[ "$(grep -Fc "if (changed)" \
+					drivers/input/joystick/rocknix-singleadc-joypad.c)" -eq 1 ]
+				[ "$(grep -Fc "input_abs_get_val(poll_dev->input" \
+					drivers/input/joystick/rocknix-singleadc-joypad.c)" -eq 12 ]
 			fi
 		fi
 
@@ -529,6 +651,9 @@ fi
 	fi
 	if [ "$SINGLE_INPUT_SYNC" = 1 ]; then
 		printf 'joypad-event-policy\tsingle-poll-sync\n'
+	fi
+	if [ "$CHANGED_INPUT_SYNC" = 1 ]; then
+		printf 'joypad-idle-policy\tchanged-input-sync\n'
 	fi
 	printf 'shipping-kernel-sha256\t%s\n' "$SHIPPING_KERNEL_SHA"
 	printf 'shipping-dtb-sha256\t%s\n' "$SHIPPING_DTB_SHA"

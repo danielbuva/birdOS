@@ -2,9 +2,9 @@
 
 This is the governing constitution for the active stock-root implementation.
 The current human promotion record binds clean source
-`8aeb117d995e5b56c875fd5016a727189e01bc55`, immutable release
-`v6.23-20260811-071550`, deploy manifest
-`5569cca6998617850aeeda9a77597c16b08a1755b5538d96c7e62665e9a1b415`,
+`720958a49abe36bb669583e1928d3ff9418e8596`, immutable release
+`v6.23-20260811-093148`, deploy manifest
+`429f4040f7613fd950c688af8bdff6d59065ba381b32f344110ab94d38a885bb`,
 device contract
 `1664a3778abcd3687865a82fd28bba5b468f6c3c7e9a46bf90f7c3acb1e08162`
 and catalogue
@@ -1695,8 +1695,11 @@ Release `v6.23-20260811-071550` then stored one
 `gpio_get_value_cansleep()` result per button and used it for both error
 handling and state reporting instead of reading the same GPIO twice. All four
 stick ADC reads remained intact, the broad hardware gate passed, and stopwatch
-timing stayed below three seconds. The next candidate retains every sample but
-emits one combined axes-and-buttons input frame per polling cycle.
+timing stayed below three seconds. Release `v6.23-20260811-093148` retained every
+sample but emitted one combined axes-and-buttons input frame per polling cycle;
+its broad hardware gate passed with normal sub-three-second stopwatch timing.
+The next candidate keeps that sampling cadence and publishes only when Linux's
+input core accepted a changed button or axis value.
 Subtract drivers, modules, probes, buses, protocols and subsystems one
 attributable group at a time only after complete consumer closure. Neutral
 kernel measurement/readiness infrastructure may promote without regression;
