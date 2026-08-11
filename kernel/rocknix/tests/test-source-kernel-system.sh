@@ -48,6 +48,12 @@ grep -Fq 'rocknix-official-initramfs-20260701/rocknix-initramfs.cpio' \
 	"$SOURCE_BUILDER" || fail 'source kernel no longer requires the official embedded initramfs'
 grep -Fq '5d2b7b247bfa78db7b1fad490e0c5cdc70ec31af18cac743aee4dc1027d66045' \
 	"$SOURCE_BUILDER" || fail 'official embedded initramfs digest gate missing'
+grep -Fq 'obj-y += rocknix-singleadc-joypad.o' "$SOURCE_BUILDER" || \
+	fail 'fixed-device built-in H700 input linkage missing'
+grep -Fq 'built-in H700 input initcall missing' "$SOURCE_BUILDER" || \
+	fail 'built-in H700 input symbol gate missing'
+grep -Fq 'joypad-linkage' "$SOURCE_BUILDER" || \
+	fail 'built-in/module input authority record missing'
 grep -Fq 'source module archive digest changed' "$BUILDER" || \
 	fail 'module archive digest gate missing'
 grep -Fq 'isolated source SYSTEM $FILE differs' "$BUILDER" || \

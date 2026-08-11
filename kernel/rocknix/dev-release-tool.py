@@ -61,10 +61,14 @@ EXPECTED_INPUTS = {
     "rocknix-singleadc-joypad.ko",
     "usr/bin/autostart",
 }
-OPTIONAL_SOURCE_KERNEL_INPUT = "source-kernel-parity.tsv"
+OPTIONAL_SOURCE_KERNEL_INPUTS = {
+    "source-kernel-parity.tsv",
+    "source-kernel-builtin-input.tsv",
+}
 STOCK_JOYPAD_SHA256 = "a8ac6cacfa89672fa08dec7fa02179bb108a4a2303fd5c1eb5834f916089b79b"
 SOURCE_PARITY_JOYPAD_SHA256 = "fd2ceb95f0b3bdc1d68e7182a8ac5239b5286cc277a04980e53f65e0f73d3a05"
 SOURCE_PARITY_AUTHORITY_SHA256 = "74ea672573dd80f368314bdef6a9481b2af9cf54b321cfd6e165179cc3185ffc"
+SOURCE_BUILTIN_INPUT_AUTHORITY_SHA256 = "53116bb1df39e4520699dc481f4155a2a93bcedb81695fa1c15b2bd562bd94cd"
 EARLY_INPUT_DIGESTS = {
     "initramfs/init": "3473415af0cf5df44e70259c3392817b1df421a12a617ec083ec018ff51dbc48",
     "initramfs/busybox": "5ee3d20d8ea5fd9b3ba5109da80599eaf46a5a337d9e40d4c67d28eef44d5dc8",
@@ -851,7 +855,9 @@ def parse_manifest(path: pathlib.Path, expected_release: str | None = None) -> M
         fail("deploy manifest source state is invalid")
     if expected_release is not None and release_id != expected_release:
         fail(f"deploy manifest release mismatch: expected {expected_release}, got {release_id}")
-    valid_input_sets = (EXPECTED_INPUTS, EXPECTED_INPUTS | {OPTIONAL_SOURCE_KERNEL_INPUT})
+    valid_input_sets = (EXPECTED_INPUTS,) + tuple(
+        EXPECTED_INPUTS | {name} for name in OPTIONAL_SOURCE_KERNEL_INPUTS
+    )
     if input_names not in valid_input_sets or len(inputs) != len(input_names):
         fail("deploy manifest external-input set changed")
     if set(artifacts) != {"device-contract", "catalog"}:
@@ -865,15 +871,25 @@ def parse_manifest(path: pathlib.Path, expected_release: str | None = None) -> M
 
 def early_kernel_authority(manifest: Manifest) -> str:
     joypad_digest = manifest.input_digests.get("rocknix-singleadc-joypad.ko")
-    source_authority = manifest.input_digests.get(OPTIONAL_SOURCE_KERNEL_INPUT)
-    has_source_authority = source_authority is not None
+    source_authorities = {
+        name: manifest.input_digests[name]
+        for name in OPTIONAL_SOURCE_KERNEL_INPUTS
+        if name in manifest.input_digests
+    }
+    has_source_authority = bool(source_authorities)
     if joypad_digest == STOCK_JOYPAD_SHA256 and not has_source_authority:
         return "stock"
     if (
         joypad_digest == SOURCE_PARITY_JOYPAD_SHA256
-        and source_authority == SOURCE_PARITY_AUTHORITY_SHA256
+        and source_authorities.get("source-kernel-parity.tsv") == SOURCE_PARITY_AUTHORITY_SHA256
     ):
         return "source-parity"
+    if (
+        joypad_digest == SOURCE_PARITY_JOYPAD_SHA256
+        and source_authorities.get("source-kernel-builtin-input.tsv")
+        == SOURCE_BUILTIN_INPUT_AUTHORITY_SHA256
+    ):
+        return "source-builtin-input"
     fail("base release kernel authority and early joypad input do not agree")
 
 

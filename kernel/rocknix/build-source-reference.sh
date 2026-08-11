@@ -16,6 +16,7 @@ BUILD_OUTPUT="$OUTPUT/build"
 SHIPPING_KERNEL=${SHIPPING_KERNEL:-$OUTPUT/shipping-KERNEL}
 INITRAMFS_ARCHIVE=${INITRAMFS_ARCHIVE:-$ROOT/kernel/work/rocknix-official-initramfs-20260701/rocknix-initramfs.cpio}
 DEFER_PANFROST=${DEFER_PANFROST:-0}
+BUILTIN_JOYPAD=${BUILTIN_JOYPAD:-0}
 JOBS=${JOBS:-4}
 
 ROCKNIX_COMMIT=3e4ee5852e6ca5ea73a38369d2639fad2262648b
@@ -39,6 +40,10 @@ command -v python3 >/dev/null 2>&1 || fail 'python3 is required'
 case "$DEFER_PANFROST" in
 	0 | 1) ;;
 	*) fail 'DEFER_PANFROST must be 0 or 1' ;;
+esac
+case "$BUILTIN_JOYPAD" in
+	0 | 1) ;;
+	*) fail 'BUILTIN_JOYPAD must be 0 or 1' ;;
 esac
 [ -d "$ROCKNIX_SOURCE/.git" ] || fail "ROCKNIX source missing: $ROCKNIX_SOURCE"
 [ "$(git -C "$ROCKNIX_SOURCE" rev-parse HEAD)" = "$ROCKNIX_COMMIT" ] || \
@@ -100,6 +105,7 @@ set -- docker run --rm --platform linux/arm64 \
 	-e JOYPAD_COMMIT="$JOYPAD_COMMIT" \
 	-e INITRAMFS_CONFIG="$INITRAMFS_CONFIG" \
 	-e DEFER_PANFROST="$DEFER_PANFROST" \
+	-e BUILTIN_JOYPAD="$BUILTIN_JOYPAD" \
 	-e LOCALVERSION= \
 	-v "$ROCKNIX_SOURCE:/rocknix:ro" \
 	-v "$JOYPAD_SOURCE:/rocknix-joypad:ro" \
@@ -138,6 +144,20 @@ set -- "$@" "$IMAGE" sh -eu -c '
 		rsync -a \
 			/rocknix/projects/ROCKNIX/devices/H700/linux/dts/ \
 			arch/arm64/boot/dts/
+
+		# RG34XX-SP is the only target. In the Stage 9 candidate, link the
+		# already pinned H700 input driver into the kernel so device-init can
+		# register it before initramfs userspace instead of spawning insmod on
+		# the menu-critical path. Keep producing the exact external module as
+		# a build oracle until the physical candidate is accepted.
+		if [ "$BUILTIN_JOYPAD" = 1 ]; then
+			cp /rocknix-joypad/rocknix-singleadc-joypad.c \
+				drivers/input/joystick/rocknix-singleadc-joypad.c
+			cp /rocknix-joypad/rocknix-joypad.h \
+				drivers/input/joystick/rocknix-joypad.h
+			printf "%s\n" "obj-y += rocknix-singleadc-joypad.o" \
+				>> drivers/input/joystick/Makefile
+		fi
 
 		mkdir -p external-firmware/panels external-firmware/rtl_bt \
 			external-firmware/rtw88
@@ -200,6 +220,13 @@ set -- "$@" "$IMAGE" sh -eu -c '
 			/out/modules.tar.xz .
 '
 "$@"
+
+if [ "$BUILTIN_JOYPAD" = 1 ]; then
+	grep -Eq '[[:space:]][tT][[:space:]]+joypad_init$' \
+		"$BUILD_OUTPUT/System.map" || fail 'built-in H700 input initcall missing'
+	strings "$BUILD_OUTPUT/Image" | grep -Fqx 'rocknix-singleadc-joypad' || \
+		fail 'built-in H700 input identity missing from Image'
+fi
 
 [ "$(wc -l < "$BUILD_OUTPUT/applied-patches.txt" | tr -d ' ')" -eq \
 	"$PATCH_COUNT" ] || fail 'executed patch count mismatch'
@@ -377,6 +404,9 @@ fi
 	printf 'rocknix-commit\t%s\n' "$ROCKNIX_COMMIT"
 	printf 'linux-commit\t%s\n' "$LINUX_COMMIT"
 	printf 'joypad-commit\t%s\n' "$JOYPAD_COMMIT"
+	if [ "$BUILTIN_JOYPAD" = 1 ]; then
+		printf 'joypad-linkage\tbuiltin\n'
+	fi
 	printf 'shipping-kernel-sha256\t%s\n' "$SHIPPING_KERNEL_SHA"
 	printf 'shipping-dtb-sha256\t%s\n' "$SHIPPING_DTB_SHA"
 	printf 'source-kernel-sha256\t%s\n' "$(sha256 "$BUILD_OUTPUT/Image")"

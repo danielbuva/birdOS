@@ -51,6 +51,16 @@ case "$KERNEL_AUTHORITY" in
 		SYSTEM_PROVIDER='bird-source-parity:accepted-SYSTEM+source-modules'
 		JOYPAD_PROVIDER='bird-source-parity:rocknix-singleadc-joypad.ko'
 		;;
+	source-builtin-input)
+		KERNEL_SHA=2c5c2a69b4ce4d16ec9a77e7fca4c14e2b8f537d7877cc8d52315277a0b69404
+		DTB_SHA=f3a4273986d6e4f431b110cead8aa19e8da52ff08c64c4b204ef9664d28b5c31
+		SYSTEM_SHA=57210b5cb6072bf1e2b81dea31df76f9b5d4aab5534d7d3b668fdfdc51a1c527
+		JOYPAD_SHA=fd2ceb95f0b3bdc1d68e7182a8ac5239b5286cc277a04980e53f65e0f73d3a05
+		KERNEL_PROVIDER='bird-source-builtin-input:linux-7.0.11:Image'
+		DTB_PROVIDER='bird-source-builtin-input:ROCKNIX-H700:dtb.img'
+		SYSTEM_PROVIDER='bird-source-builtin-input:accepted-SYSTEM+builtin-input-modules'
+		JOYPAD_PROVIDER='bird-source-builtin-input:build-oracle:rocknix-singleadc-joypad.ko'
+		;;
 	*) printf 'error: unknown kernel authority: %s\n' "$KERNEL_AUTHORITY" >&2; exit 1 ;;
 esac
 STORAGE_SHA=12affdad7bc2042cb590fea60fc015a7ee8d4374ebcc3b1c11098a64b9ffa3be
@@ -70,7 +80,11 @@ INIT_BUSYBOX=${INIT_BUSYBOX:-$ROOT/kernel/work/rocknix-official-initramfs-202607
 SYSTEM_BUSYBOX=${SYSTEM_BUSYBOX:-$SYSTEM_TREE/usr/bin/busybox}
 PORTMASTER_ARCHIVE=${PORTMASTER_ARCHIVE:-$SYSTEM_TREE/usr/config/PortMaster/release/PortMaster.zip}
 SOURCE_KERNEL_AUTHORITY_RECORD=${SOURCE_KERNEL_AUTHORITY_RECORD:-$ROOT/kernel/rocknix/source-kernel-parity.tsv}
-SOURCE_KERNEL_AUTHORITY_SHA=74ea672573dd80f368314bdef6a9481b2af9cf54b321cfd6e165179cc3185ffc
+case "$KERNEL_AUTHORITY" in
+	source-parity) SOURCE_KERNEL_AUTHORITY_SHA=74ea672573dd80f368314bdef6a9481b2af9cf54b321cfd6e165179cc3185ffc ;;
+	source-builtin-input) SOURCE_KERNEL_AUTHORITY_SHA=53116bb1df39e4520699dc481f4155a2a93bcedb81695fa1c15b2bd562bd94cd ;;
+	*) SOURCE_KERNEL_AUTHORITY_SHA= ;;
+esac
 
 case "$OUTPUT" in
 	/*) ;;
@@ -225,12 +239,12 @@ is_regular_file "$SYSTEM_BUSYBOX" || fail 'extracted exact SYSTEM BusyBox missin
 is_regular_file "$SYSTEM_MASK_POLICY" || fail 'hermetic SYSTEM mask policy missing or not regular'
 is_regular_file "$SYSTEM_OVERRIDE_POLICY" || fail 'hermetic SYSTEM fixed-file policy missing or not regular'
 is_regular_file "$PORTMASTER_ARCHIVE" || fail 'exact PortMaster archive missing or not regular'
-if [ "$KERNEL_AUTHORITY" = source-parity ]; then
+if [ "$KERNEL_AUTHORITY" != stock ]; then
 	is_regular_file "$SOURCE_KERNEL_AUTHORITY_RECORD" || \
-		fail 'source-kernel parity authority missing or unsafe'
+		fail 'source-kernel authority missing or unsafe'
 	[ "$(sha256 "$SOURCE_KERNEL_AUTHORITY_RECORD")" = \
 		"$SOURCE_KERNEL_AUTHORITY_SHA" ] || \
-		fail 'source-kernel parity authority changed'
+		fail 'source-kernel authority changed'
 fi
 [ "$(sha256 "$SOURCE/KERNEL")" = "$KERNEL_SHA" ] || fail 'release KERNEL changed'
 [ "$(sha256 "$SOURCE/dtb.img")" = "$DTB_SHA" ] || fail 'release DTB changed'
@@ -1274,12 +1288,14 @@ fi
 	printf 'input\trocknix-singleadc-joypad.ko\t%s\t%s\t%s\t%s\n' \
 		"$(file_mode "$JOYPAD")" "$(file_bytes "$JOYPAD")" "$JOYPAD_SHA" \
 		"$JOYPAD_PROVIDER"
-	if [ "$KERNEL_AUTHORITY" = source-parity ]; then
-		printf 'input\tsource-kernel-parity.tsv\t%s\t%s\t%s\t%s\n' \
+	if [ "$KERNEL_AUTHORITY" != stock ]; then
+		SOURCE_KERNEL_AUTHORITY_NAME=$(basename "$SOURCE_KERNEL_AUTHORITY_RECORD")
+		printf 'input\t%s\t%s\t%s\t%s\t%s\n' \
+			"$SOURCE_KERNEL_AUTHORITY_NAME" \
 			"$(file_mode "$SOURCE_KERNEL_AUTHORITY_RECORD")" \
 			"$(file_bytes "$SOURCE_KERNEL_AUTHORITY_RECORD")" \
 			"$SOURCE_KERNEL_AUTHORITY_SHA" \
-			'birdOS:kernel/rocknix/source-kernel-parity.tsv'
+			"birdOS:kernel/rocknix/$SOURCE_KERNEL_AUTHORITY_NAME"
 	fi
 	printf 'input\tinitramfs/busybox\t%s\t%s\t%s\t%s\n' \
 		"$(file_mode "$INIT_BUSYBOX")" "$(file_bytes "$INIT_BUSYBOX")" \

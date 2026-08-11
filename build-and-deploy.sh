@@ -31,7 +31,7 @@ ROTATION_SELECTOR_TEMP=
 usage() {
 	cat <<'EOF'
 Usage:
-  ./build-and-deploy.sh --release [--source-kernel-parity] [--release-id ID] [--dry-run]
+  ./build-and-deploy.sh --release [--source-kernel-parity|--builtin-input-kernel] [--release-id ID] [--dry-run]
   ./build-and-deploy.sh --profile [--release-id ID] [--dry-run]
   ./build-and-deploy.sh --help
 
@@ -47,6 +47,9 @@ Options:
                   Build the pinned Stage 8 source kernel, source modules,
                   shipping-identical DTB and accepted current userspace.
                   Valid only with --release.
+  --builtin-input-kernel
+                  Build the pinned Stage 9 kernel with the exact RG34XX-SP
+                  joypad driver linked into the Image. Valid only with --release.
   --dry-run       Perform read-only preflight and print the selected commands.
   --help          Show this help text.
 
@@ -105,6 +108,11 @@ while [ "$#" -gt 0 ]; do
 				fail '--source-kernel-parity was supplied more than once'
 			KERNEL_AUTHORITY=source-parity
 			;;
+		--builtin-input-kernel)
+			[ "$KERNEL_AUTHORITY" = stock ] || \
+				fail 'choose only one source-kernel authority'
+			KERNEL_AUTHORITY=source-builtin-input
+			;;
 		--release-id)
 			[ "$#" -ge 2 ] || fail '--release-id requires a value'
 			[ -z "$REQUESTED_RELEASE_ID" ] || fail '--release-id was supplied more than once'
@@ -126,7 +134,7 @@ done
 
 [ -n "$MODE" ] || fail 'choose exactly one of --profile or --release'
 [ "$KERNEL_AUTHORITY" = stock ] || [ "$MODE" = release ] || \
-	fail '--source-kernel-parity requires --release'
+	fail 'source-kernel authorities require --release'
 [ -n "$REQUESTED_RELEASE_ID" ] || REQUESTED_RELEASE_ID=$BASE_RELEASE_ID
 case "$REQUESTED_RELEASE_ID" in
 	''|[![:alnum:]]*|*[![:alnum:]._-]*) fail "unsafe Bird release ID: $REQUESTED_RELEASE_ID" ;;
@@ -231,6 +239,11 @@ JOYPAD=${JOYPAD:-$ROOT/kernel/work/rocknix-system-exact-20260701/usr/lib/kernel-
 SOURCE_KERNEL_BUILD=$ROOT/kernel/work/rocknix-source-reference/build
 SOURCE_KERNEL_SYSTEM=$ROOT/kernel/work/rocknix-source-kernel-system/SYSTEM
 SOURCE_KERNEL_AUTHORITY_RECORD=$ROOT/kernel/rocknix/source-kernel-parity.tsv
+if [ "$KERNEL_AUTHORITY" = source-builtin-input ]; then
+	SOURCE_KERNEL_BUILD=$ROOT/kernel/work/rocknix-source-builtin-joypad/build
+	SOURCE_KERNEL_SYSTEM=$ROOT/kernel/work/rocknix-source-builtin-joypad-system/SYSTEM
+	SOURCE_KERNEL_AUTHORITY_RECORD=$ROOT/kernel/rocknix/source-kernel-builtin-input.tsv
+fi
 INIT_BUSYBOX=${INIT_BUSYBOX:-$ROOT/kernel/work/rocknix-official-initramfs-20260701/ramdisk/usr/bin/busybox}
 PORTMASTER_ARCHIVE=${PORTMASTER_ARCHIVE:-$SYSTEM_TREE/usr/config/PortMaster/release/PortMaster.zip}
 KOREADER_CATALOG_HEADER=$ROOT/launcher/catalog.generated.h
@@ -617,7 +630,7 @@ prepare_versioned_build_source() {
 
 prepare_versioned_build_source
 
-if [ "$KERNEL_AUTHORITY" = source-parity ]; then
+if [ "$KERNEL_AUTHORITY" != stock ]; then
 	for SOURCE_PARITY_INPUT in \
 		"$SOURCE_KERNEL_BUILD/Image" \
 		"$SOURCE_KERNEL_BUILD/sun50i-h700-anbernic-rg34xx-sp.dtb" \
@@ -626,23 +639,34 @@ if [ "$KERNEL_AUTHORITY" = source-parity ]; then
 		"$SOURCE_KERNEL_BUILD/parity.tsv" \
 		"$SOURCE_KERNEL_SYSTEM" "$SOURCE_KERNEL_AUTHORITY_RECORD"; do
 		is_regular_file "$SOURCE_PARITY_INPUT" || \
-			fail "source-kernel parity input missing or unsafe: $SOURCE_PARITY_INPUT"
+			fail "source-kernel input missing or unsafe: $SOURCE_PARITY_INPUT"
 	done
-	[ "$(sha256 "$SOURCE_KERNEL_BUILD/Image")" = \
-		1d1e950eac7af564dfb3d439d3029989ea0e1ff5bd036cc19bda820f4d1cc9cd ] && \
+	case "$KERNEL_AUTHORITY" in
+	source-parity)
+		EXPECTED_SOURCE_KERNEL_SHA=1d1e950eac7af564dfb3d439d3029989ea0e1ff5bd036cc19bda820f4d1cc9cd
+		EXPECTED_SOURCE_MODULES_SHA=7267770aecb39069bbd5275b4538a9bb666e906cdabc844b275652603e1ad52e
+		EXPECTED_SOURCE_PARITY_SHA=897fffdba2f20fd62cd55175884132a7e47fe662f6d59964622989f3c71a19ed
+		EXPECTED_SOURCE_SYSTEM_SHA=bf8cb00a57f749483a986183e5aca396bf1f3f196996b20e703b43f26214ad11
+		EXPECTED_SOURCE_AUTHORITY_SHA=74ea672573dd80f368314bdef6a9481b2af9cf54b321cfd6e165179cc3185ffc
+		;;
+	source-builtin-input)
+		EXPECTED_SOURCE_KERNEL_SHA=2c5c2a69b4ce4d16ec9a77e7fca4c14e2b8f537d7877cc8d52315277a0b69404
+		EXPECTED_SOURCE_MODULES_SHA=56bd291210ef47a020c3c6dfcac6f6987135ef4bf20f22435138acafb6107211
+		EXPECTED_SOURCE_PARITY_SHA=015a0ab31cf82079972d276275034f8a7953cb306ed961511ac5b7daad4ac179
+		EXPECTED_SOURCE_SYSTEM_SHA=57210b5cb6072bf1e2b81dea31df76f9b5d4aab5534d7d3b668fdfdc51a1c527
+		EXPECTED_SOURCE_AUTHORITY_SHA=53116bb1df39e4520699dc481f4155a2a93bcedb81695fa1c15b2bd562bd94cd
+		;;
+	esac
+	[ "$(sha256 "$SOURCE_KERNEL_BUILD/Image")" = "$EXPECTED_SOURCE_KERNEL_SHA" ] && \
 	[ "$(sha256 "$SOURCE_KERNEL_BUILD/sun50i-h700-anbernic-rg34xx-sp.dtb")" = \
 		f3a4273986d6e4f431b110cead8aa19e8da52ff08c64c4b204ef9664d28b5c31 ] && \
-	[ "$(sha256 "$SOURCE_KERNEL_BUILD/modules.tar.xz")" = \
-		7267770aecb39069bbd5275b4538a9bb666e906cdabc844b275652603e1ad52e ] && \
+	[ "$(sha256 "$SOURCE_KERNEL_BUILD/modules.tar.xz")" = "$EXPECTED_SOURCE_MODULES_SHA" ] && \
 	[ "$(sha256 "$SOURCE_KERNEL_BUILD/rocknix-singleadc-joypad.ko")" = \
 		fd2ceb95f0b3bdc1d68e7182a8ac5239b5286cc277a04980e53f65e0f73d3a05 ] && \
-	[ "$(sha256 "$SOURCE_KERNEL_BUILD/parity.tsv")" = \
-		897fffdba2f20fd62cd55175884132a7e47fe662f6d59964622989f3c71a19ed ] && \
-	[ "$(sha256 "$SOURCE_KERNEL_SYSTEM")" = \
-		bf8cb00a57f749483a986183e5aca396bf1f3f196996b20e703b43f26214ad11 ] && \
-	[ "$(sha256 "$SOURCE_KERNEL_AUTHORITY_RECORD")" = \
-		74ea672573dd80f368314bdef6a9481b2af9cf54b321cfd6e165179cc3185ffc ] || \
-		fail 'source-kernel parity input digest changed'
+	[ "$(sha256 "$SOURCE_KERNEL_BUILD/parity.tsv")" = "$EXPECTED_SOURCE_PARITY_SHA" ] && \
+	[ "$(sha256 "$SOURCE_KERNEL_SYSTEM")" = "$EXPECTED_SOURCE_SYSTEM_SHA" ] && \
+	[ "$(sha256 "$SOURCE_KERNEL_AUTHORITY_RECORD")" = "$EXPECTED_SOURCE_AUTHORITY_SHA" ] || \
+		fail 'source-kernel input digest changed'
 	SOURCE=$RUN_TEMP/source-kernel-input
 	mkdir "$SOURCE"
 	COPYFILE_DISABLE=1 cp -p "$SOURCE_KERNEL_BUILD/Image" "$SOURCE/KERNEL"
@@ -1773,8 +1797,8 @@ validate_manifest() {
 		ROCKNIX-SYSTEM dtb.img initramfs/busybox initramfs/init \
 		rocknix-singleadc-joypad.ko usr/bin/autostart | LC_ALL=C sort \
 		>"$RUN_TEMP/expected-inputs"
-	if [ "$KERNEL_AUTHORITY" = source-parity ]; then
-		printf '%s\n' source-kernel-parity.tsv >>"$RUN_TEMP/expected-inputs"
+	if [ "$KERNEL_AUTHORITY" != stock ]; then
+		basename "$SOURCE_KERNEL_AUTHORITY_RECORD" >>"$RUN_TEMP/expected-inputs"
 		LC_ALL=C sort -o "$RUN_TEMP/expected-inputs" "$RUN_TEMP/expected-inputs"
 	fi
 	cmp "$RUN_TEMP/expected-inputs" "$RUN_TEMP/manifest-inputs" >/dev/null || \

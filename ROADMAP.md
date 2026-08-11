@@ -2,13 +2,13 @@
 
 This is the governing constitution for the active stock-root implementation.
 The current human promotion record binds clean source
-`af83ca945815676d6dabc030ad568c1e5fbb62d2`, immutable release
-`v6.23-20260808-214626`, deploy manifest
-`2a8d51a52e9277e599f6e7a8401513c6c8a2e8edf1e75118360c44a3c5d3eed8`,
+`fda363beb0b31528ece90f915d543395816ed6d7`, immutable release
+`v6.23-20260811-011242`, deploy manifest
+`1061994b2d14bfa32af876493307ef9c02e9b08947e81a35d65b32fd4cc10c23`,
 device contract
 `1664a3778abcd3687865a82fd28bba5b468f6c3c7e9a46bf90f7c3acb1e08162`
 and catalogue
-`6ecb9512dfdcb4c62483cc13fb315e5e39fd7556b29f54e7a9f82ac1b730283d`.
+`9795aae6baddc292f5d9954a444656e303db305c639284f16eb10288c41f1f93`.
 Immutable release `v6.23-20260731-054816` remains the previously accepted,
 privately archived binary reference. Its canonical manifest digest is
 `5f95153bf46239a5e178fde28924f01c7fe586be182562f9bd9f33cf13da02ba`.
@@ -1647,6 +1647,11 @@ and give that exact release its final physical gate before promotion.
 
 ## Stage 9 — Fixed-device kernel optimization
 
+Stage 8 is accepted in immutable release `v6.23-20260811-011242`. The broad
+device gate passed and the accepted boot logged input/usable at 1233/1235 ms,
+storage at 3452 ms and a sub-three-second stopwatch result. Stage 9 may now
+change one attributable fixed-device kernel group at a time.
+
 The kernel owns panel initialization and cold brightness. Test standard DRM,
 vblank and backlight readiness before adding a clean read-only driver
 attribute. A/B direct cold brightness against the wake strike; keep the strike
@@ -1655,9 +1660,28 @@ brightness. Prevent blanking, flashing and generic high brightness. Define
 firmware-frame adoption experimentally but leave it disabled until Stage 10
 provides the producer.
 
+The upper bi-colour LED is split across boot authorities. Linux's accepted DTB
+already declares green/power on and red/status off; the observed red-from-power
+interval is selected by U-Boot before Linux executes. Do not add a later Linux
+write to disguise it or delay the usable menu. Stage 10 must switch the fixed
+U-Boot status GPIO from PI11 red to PI12 green and measure power-key acceptance
+to green assertion and power-to-usable together, minimizing both without
+lengthening either.
+
 Measure live H700 polling and electrical topology. Use IRQ-backed GPIO input
 where possible and minimal polling only where necessary while preserving exact
 identity, capabilities, SDL GUID, rumble, reconnect and provider behavior.
+
+The first bounded Stage 9 input candidate links the exact pinned
+`rocknix-singleadc-joypad` driver into the Image. This removes the early
+initramfs `insmod` and duplicate module payload without changing driver source,
+DTB, identity or capabilities. Its reproducible host authority is
+`source-kernel-builtin-input.tsv`; promotion still requires input-registration,
+usable-menu, reconnect, rumble, suspend/resume and complete provider testing on
+the RG34XX-SP. Host construction is byte-reproducible across two kernel builds
+and two SYSTEM repacks. The kernel Image remains 30,926,856 bytes; omitting the
+duplicate early module reduced the gzip-9 external overlay from the accepted
+615,201 bytes to 603,518 bytes (11,683 bytes).
 Subtract drivers, modules, probes, buses, protocols and subsystems one
 attributable group at a time only after complete consumer closure. Neutral
 kernel measurement/readiness infrastructure may promote without regression;

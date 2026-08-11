@@ -58,7 +58,9 @@ case "${1:-}" in
 			if [ "$STORAGE_FIFO" != ready ]; then
 				printf '%s\n' 'early_storage_fifo=failed'
 			fi
-			if $BUSYBOX insmod "$JOYPAD" 2>&1; then
+			if [ -d /sys/bus/platform/drivers/rocknix-singleadc-joypad ]; then
+				:
+			elif [ -f "$JOYPAD" ] && $BUSYBOX insmod "$JOYPAD" 2>&1; then
 				:
 			else
 				printf '%s\n' 'early_input_module=failed'

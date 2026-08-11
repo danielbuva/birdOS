@@ -541,7 +541,19 @@ if "$COMMAND" --profile --source-kernel-parity \
 	>"$TMP/source-profile.out" 2>"$TMP/source-profile.err"; then
 	fail 'source-kernel parity was accepted in profile mode'
 fi
-grep -q -- '--source-kernel-parity requires --release' "$TMP/source-profile.err"
+grep -q -- 'source-kernel authorities require --release' "$TMP/source-profile.err"
+if "$COMMAND" --profile --builtin-input-kernel \
+	>"$TMP/builtin-profile.out" 2>"$TMP/builtin-profile.err"; then
+	printf '%s\n' 'builtin-input kernel unexpectedly accepted profile mode' >&2
+	exit 1
+fi
+grep -q -- 'source-kernel authorities require --release' "$TMP/builtin-profile.err"
+if "$COMMAND" --release --source-kernel-parity --builtin-input-kernel \
+	>"$TMP/kernel-authority.out" 2>"$TMP/kernel-authority.err"; then
+	printf '%s\n' 'multiple source-kernel authorities unexpectedly accepted' >&2
+	exit 1
+fi
+grep -q -- 'choose only one source-kernel authority' "$TMP/kernel-authority.err"
 if "$COMMAND" --release --release-id '../unsafe' >"$TMP/id.out" 2>"$TMP/id.err"; then
 	fail 'unsafe release ID was accepted'
 fi

@@ -115,12 +115,20 @@ write_runtime_manifest() {
 				printf 'input\tsource-kernel-parity.tsv\t644\t1\t%s\tfixture\n' \
 					'0000000000000000000000000000000000000000000000000000000000000000'
 				;;
+			builtin|mixed)
+				printf 'input\tsource-kernel-builtin-input.tsv\t644\t1\t%s\tfixture\n' \
+					'0000000000000000000000000000000000000000000000000000000000000000'
+				;;
 			unknown)
 				printf 'input\tunknown-authority.tsv\t644\t1\t%s\tfixture\n' \
 					'0000000000000000000000000000000000000000000000000000000000000000'
 				;;
 		esac
 		if [ "$MODE" = duplicate ]; then
+			printf 'input\tsource-kernel-parity.tsv\t644\t1\t%s\tfixture\n' \
+				'0000000000000000000000000000000000000000000000000000000000000000'
+		fi
+		if [ "$MODE" = mixed ]; then
 			printf 'input\tsource-kernel-parity.tsv\t644\t1\t%s\tfixture\n' \
 				'0000000000000000000000000000000000000000000000000000000000000000'
 		fi
@@ -158,14 +166,14 @@ run_runtime_verifier() (
 	. "$FLASH/bird-releases/dev-current/post-flash.sh"
 )
 
-for MODE in stock source; do
+for MODE in stock source builtin; do
 	write_runtime_manifest "$MODE"
 	run_runtime_verifier || {
 		printf 'valid %s manifest failed initramfs runtime verification\n' "$MODE" >&2
 		exit 1
 	}
 done
-for MODE in unknown duplicate missing; do
+for MODE in unknown duplicate mixed missing; do
 	write_runtime_manifest "$MODE"
 	if run_runtime_verifier; then
 		printf 'invalid %s input manifest passed runtime verification\n' "$MODE" >&2

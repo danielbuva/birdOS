@@ -4,13 +4,13 @@ This is the build contract for the target console. Values here are deliberate
 product decisions, not runtime options.
 
 The operator-accepted source and behavior binding is clean commit
-`af83ca945815676d6dabc030ad568c1e5fbb62d2`, immutable release
-`v6.23-20260808-214626`, deploy-manifest digest
-`2a8d51a52e9277e599f6e7a8401513c6c8a2e8edf1e75118360c44a3c5d3eed8`,
+`fda363beb0b31528ece90f915d543395816ed6d7`, immutable release
+`v6.23-20260811-011242`, deploy-manifest digest
+`1061994b2d14bfa32af876493307ef9c02e9b08947e81a35d65b32fd4cc10c23`,
 device-contract digest
 `1664a3778abcd3687865a82fd28bba5b468f6c3c7e9a46bf90f7c3acb1e08162`
 and catalog digest
-`6ecb9512dfdcb4c62483cc13fb315e5e39fd7556b29f54e7a9f82ac1b730283d`.
+`9795aae6baddc292f5d9954a444656e303db305c639284f16eb10288c41f1f93`.
 The previously accepted immutable binary reference remains archived as
 `v6.23-20260731-054816` with manifest digest
 `5f95153bf46239a5e178fde28924f01c7fe586be182562f9bd9f33cf13da02ba`.

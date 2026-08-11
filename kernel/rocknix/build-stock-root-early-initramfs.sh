@@ -37,8 +37,9 @@ fail() {
 }
 
 case "${BIRD_KERNEL_AUTHORITY:-stock}" in
-	stock) JOYPAD_SHA=a8ac6cacfa89672fa08dec7fa02179bb108a4a2303fd5c1eb5834f916089b79b ;;
-	source-parity) JOYPAD_SHA=fd2ceb95f0b3bdc1d68e7182a8ac5239b5286cc277a04980e53f65e0f73d3a05 ;;
+	stock) JOYPAD_SHA=a8ac6cacfa89672fa08dec7fa02179bb108a4a2303fd5c1eb5834f916089b79b; EMBED_JOYPAD=1 ;;
+	source-parity) JOYPAD_SHA=fd2ceb95f0b3bdc1d68e7182a8ac5239b5286cc277a04980e53f65e0f73d3a05; EMBED_JOYPAD=1 ;;
+	source-builtin-input) JOYPAD_SHA=fd2ceb95f0b3bdc1d68e7182a8ac5239b5286cc277a04980e53f65e0f73d3a05; EMBED_JOYPAD=0 ;;
 	*) fail "unknown kernel authority: ${BIRD_KERNEL_AUTHORITY}" ;;
 esac
 
@@ -282,10 +283,14 @@ cp -fp "$ROOT/kernel/rocknix/stock-root/bird-release-loader.sh" \
 sed "s#BIRD_LOADER_RELEASE=v6\.23\$#BIRD_LOADER_RELEASE=$RELEASE_ID#" \
 	"$ROOT/kernel/rocknix/stock-root/bird-release-loader.sh" \
 	>"$PAYLOAD/bird-release-loader.sh"
-cp -fp "$JOYPAD" "$PAYLOAD/opt/bird/rocknix-singleadc-joypad.ko"
+if [ "$EMBED_JOYPAD" -eq 1 ]; then
+	cp -fp "$JOYPAD" "$PAYLOAD/opt/bird/rocknix-singleadc-joypad.ko"
+fi
 chmod 0755 "$PAYLOAD/init" "$PAYLOAD/bird-early.sh" \
 	"$PAYLOAD/bird-release-loader.sh"
-chmod 0644 "$PAYLOAD/opt/bird/rocknix-singleadc-joypad.ko"
+if [ "$EMBED_JOYPAD" -eq 1 ]; then
+	chmod 0644 "$PAYLOAD/opt/bird/rocknix-singleadc-joypad.ko"
+fi
 bash -n "$PAYLOAD/init" || fail 'overlaid ROCKNIX init syntax failed'
 bash -n "$PAYLOAD/bird-early.sh" || fail 'Bird early hook syntax failed'
 bash -n "$PAYLOAD/bird-release-loader.sh" || fail 'release loader syntax failed'
@@ -324,8 +329,12 @@ if [ "$EARLY_STATIC_ASSET_BYTES" -eq 1382400 ]; then
 elif [ -e "$VERIFY/opt/bird/launcher-base.xrgb" ]; then
 	fail 'verified U-Boot reuse unpacked a duplicate early wallpaper'
 fi
-cmp "$JOYPAD" "$VERIFY/opt/bird/rocknix-singleadc-joypad.ko" || \
-	fail 'verified H700 input module changed'
+if [ "$EMBED_JOYPAD" -eq 1 ]; then
+	cmp "$JOYPAD" "$VERIFY/opt/bird/rocknix-singleadc-joypad.ko" || \
+		fail 'verified H700 input module changed'
+elif [ -e "$VERIFY/opt/bird/rocknix-singleadc-joypad.ko" ]; then
+	fail 'built-in H700 input build retained a duplicate early module'
+fi
 
 {
 	printf '%s  bird-initramfs.cpio\n' "$(sha256 "$CPIO")"

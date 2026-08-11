@@ -3,16 +3,20 @@
 This document is the authority for the code that builds, installs and runs the
 current birdOS system. The active implementation path is **stock-root v6.23**.
 The current human promotion record binds clean public source
-`af83ca945815676d6dabc030ad568c1e5fbb62d2`, immutable release
-`v6.23-20260808-214626`, deploy-manifest digest
-`2a8d51a52e9277e599f6e7a8401513c6c8a2e8edf1e75118360c44a3c5d3eed8`,
+`fda363beb0b31528ece90f915d543395816ed6d7`, immutable release
+`v6.23-20260811-011242`, deploy-manifest digest
+`1061994b2d14bfa32af876493307ef9c02e9b08947e81a35d65b32fd4cc10c23`,
 device-contract digest
 `1664a3778abcd3687865a82fd28bba5b468f6c3c7e9a46bf90f7c3acb1e08162`
 and generated-catalog digest
-`6ecb9512dfdcb4c62483cc13fb315e5e39fd7556b29f54e7a9f82ac1b730283d`.
-The complete host gate and broad RG34XX-SP behavior gate passed on 2026-08-08.
-That broad functional result does not establish a new boot-time or power
-distribution. The previously accepted immutable binary reference is release
+`9795aae6baddc292f5d9954a444656e303db305c639284f16eb10288c41f1f93`.
+The complete host gate, Stage 8 structural comparison and broad RG34XX-SP
+behavior gate passed on 2026-08-10. This promotes the reproducible unmodified
+ROCKNIX 7.0.11 source kernel, complete source module tree and shipping-identical
+DTB as the accepted kernel baseline. The physical boot logged input/usable at
+1233/1235 ms and storage at 3452 ms while the stopwatch remained below three
+seconds. This is functional and descriptive timing acceptance, not a new
+calibrated energy distribution. The previously accepted immutable binary reference is release
 `v6.23-20260731-054816`, published as `stable-v6.23-20260731-054816`; its
 canonical manifest digest is
 `5f95153bf46239a5e178fde28924f01c7fe586be182562f9bd9f33cf13da02ba`.
@@ -116,14 +120,24 @@ birdOS currently changes the external initramfs overlay, launcher, fixed
 services, integration scripts and activation metadata. It does not claim to
 rebuild or trim the release kernel yet.
 
-Stage 8 now has one explicit production-only parity candidate. Its authority is
+Stage 8 promoted its production-only parity candidate. Its authority is
 [`kernel/rocknix/source-kernel-parity.tsv`](kernel/rocknix/source-kernel-parity.tsv):
 unmodified ROCKNIX 7.0.11 source and all modules, a shipping-identical DTB, the
 source-built H700 joypad module, the exact official embedded initramfs and the
 accepted current SYSTEM with only its module subtree replaced. The ordinary
 canonical path remains `stock`; the candidate requires
-`--source-kernel-parity` and cannot become the source-built baseline before the
-separate RG34XX-SP gate.
+`--source-kernel-parity`; release `v6.23-20260811-011242` passed its separate
+RG34XX-SP gate and is now the source-built baseline for Stage 9.
+
+The first Stage 9 candidate is separately bound by
+[`kernel/rocknix/source-kernel-builtin-input.tsv`](kernel/rocknix/source-kernel-builtin-input.tsv).
+It links the exact pinned RG34XX-SP joypad driver into the kernel Image, retains
+the unchanged external module only as a build oracle, and omits that duplicate
+module from the early overlay. The explicit production flag is
+`--builtin-input-kernel`; it does not alter the accepted Stage 8 authority.
+The candidate kernel and SYSTEM reproduced byte-for-byte in independent builds;
+the Image size is unchanged and the external early overlay is 11,683 compressed
+bytes smaller. These are host artifact results, not a hardware timing claim.
 
 The corrected source-kernel package reached Bird's early usable menu but not
 application readiness. A temporary early watchdog proved that release-runtime

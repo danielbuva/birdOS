@@ -204,6 +204,17 @@ full build twice. Exactly 99 module-tree nodes change; the resulting
 `bf8cb00a57f749483a986183e5aca396bf1f3f196996b20e703b43f26214ad11`.
 The committed candidate binding is `source-kernel-parity.tsv`.
 
+## Stage 9 built-in input candidate
+
+`BUILTIN_JOYPAD=1 ./kernel/rocknix/build-source-reference.sh --build`
+copies the exact pinned H700 single-ADC driver into the fixed kernel tree and
+links it built-in. It still produces and verifies the unchanged external module
+as an oracle. The canonical deployment flag is `--builtin-input-kernel`, and
+`source-kernel-builtin-input.tsv` binds the reproducible Image, module tree,
+shipping-identical DTB and deterministic SYSTEM. The external early overlay
+omits the now-duplicate module and the retained hook recognizes the built-in
+platform driver before launching Bird.
+
 ## First Bird substitution candidate
 
 `build-bird-initramfs.sh` reconstructs the accepted direct-handoff archive

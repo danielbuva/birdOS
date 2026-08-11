@@ -7,15 +7,18 @@ closure from the later application-compatibility closure and replaces generic
 discovery only after its consumers are proven.
 
 The current accepted stock-root binding is clean source
-`af83ca945815676d6dabc030ad568c1e5fbb62d2`, immutable release
-`v6.23-20260808-214626`, deploy-manifest digest
-`2a8d51a52e9277e599f6e7a8401513c6c8a2e8edf1e75118360c44a3c5d3eed8`,
+`fda363beb0b31528ece90f915d543395816ed6d7`, immutable release
+`v6.23-20260811-011242`, deploy-manifest digest
+`1061994b2d14bfa32af876493307ef9c02e9b08947e81a35d65b32fd4cc10c23`,
 device-contract digest
 `1664a3778abcd3687865a82fd28bba5b468f6c3c7e9a46bf90f7c3acb1e08162`
 and catalog digest
-`6ecb9512dfdcb4c62483cc13fb315e5e39fd7556b29f54e7a9f82ac1b730283d`.
-Its broad RG34XX-SP functional gate passed on 2026-08-08. This acceptance does
-not establish a new boot-time, latency or power distribution.
+`9795aae6baddc292f5d9954a444656e303db305c639284f16eb10288c41f1f93`.
+Its source-kernel broad RG34XX-SP gate passed on 2026-08-10. The accepted boot
+logged input/usable at 1233/1235 ms and storage at 3452 ms while the stopwatch
+remained below three seconds. Together with the preceding host, functional and
+structural-idle gates, this promotes the reproducible source kernel as the
+Stage 9 baseline without claiming a calibrated energy distribution.
 
 ## Measured boundaries
 
@@ -1068,7 +1071,7 @@ The v6.15 audit found the following generic work and defects. Only items marked
 
 ## Next active order
 
-1. Complete the Stage 8 physical parity gate for the reproducible unmodified
+1. **Closed:** complete the Stage 8 physical parity gate for the reproducible unmodified
    source kernel, complete source module tree, shipping-identical DTB and
    accepted current userspace. The first Stage 8 package omitted the required
    embedded official initramfs and rebooted before persistent logs; the
@@ -1092,7 +1095,9 @@ The v6.15 audit found the following generic work and defects. Only items marked
    20,600/20,898 KiB and seatd remained 263 KiB. Structural idle and memory
    screening pass without a calibrated energy claim. Complete the all-local
    host gate and canonical immutable source build, then physically accept that
-   exact release before kernel subtraction.
+   exact release before kernel subtraction. Immutable release
+   `v6.23-20260811-011242` passed that final broad gate at input/usable
+   1233/1235 ms and storage 3452 ms; Stage 9 may proceed.
 2. Stabilize the mutable fast-development path through real `--changed` and
    `--all-local` use. Record duration, rebuild scope, output clarity and actual
    cleanup/rollback failures; add safety states only from observed evidence or
