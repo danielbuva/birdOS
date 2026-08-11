@@ -1074,10 +1074,11 @@ The v6.15 audit found the following generic work and defects. Only items marked
    embedded official initramfs and rebooted before persistent logs; the
    corrected host gate embeds and verifies it exactly. Do not begin kernel
    subtraction until this exact tuple is promoted as the source-built baseline.
-   The corrected package now reaches the early menu but not a working content
-   or system-control handoff. Acquire one bounded boot with the temporary
-   early-initramfs 30-second watchdog so storage, readiness, process and kernel
-   evidence is synced before automatic poweroff; then remove that diagnostic.
+   The corrected package reached the early menu but the initramfs manifest
+   parser rejected source parity's fifteenth authority input before final-root
+   handoff. The temporary watchdog captured that boundary and was removed. The
+   parser now accepts the exact fourteen stock inputs plus only the optional
+   unique source-kernel authority; repeat the physical application gate.
 2. Stabilize the mutable fast-development path through real `--changed` and
    `--all-local` use. Record duration, rebuild scope, output clarity and actual
    cleanup/rollback failures; add safety states only from observed evidence or

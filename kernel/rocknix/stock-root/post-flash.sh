@@ -118,6 +118,22 @@ verify_release_runtime() {
 	# authenticity signature.  Parse its complete inventory and re-hash every
 	# file the initramfs will source or expose through the two release binds.
 	awk -F '\t' -v expected="$BIRD_RELEASE" '
+		BEGIN {
+			required_input["KERNEL"] = 1
+			required_input["dtb.img"] = 1
+			required_input["ROCKNIX-SYSTEM"] = 1
+			required_input["ROCKNIX-STORAGE"] = 1
+			required_input["usr/bin/autostart"] = 1
+			required_input["initramfs/init"] = 1
+			required_input["rocknix-singleadc-joypad.ko"] = 1
+			required_input["initramfs/busybox"] = 1
+			required_input["PortMaster.zip"] = 1
+			required_input["PortMaster/pugwash"] = 1
+			required_input["PortMaster/PortMaster.sh"] = 1
+			required_input["PortMaster/mod_ROCKNIX.txt"] = 1
+			required_input["PortMaster/funcs.txt"] = 1
+			required_input["PortMaster/harbourmaster"] = 1
+		}
 		$1 == "schema" {
 			if (NF != 2 || $2 != "bird-deploy-v1" || schema++) exit 1
 			next
@@ -151,6 +167,9 @@ verify_release_runtime() {
 			    $2 ~ /(^|\/)\.\.?($|\/)/ ||
 			    $3 !~ /^[0-7][0-7][0-7]$/ || $4 !~ /^[0-9]+$/ ||
 			    length($5) != 64 || $5 ~ /[^0-9a-f]/ || $6 == "") exit 1
+			if (!($2 in required_input) && $2 != "source-kernel-parity.tsv")
+				exit 1
+			if (input_seen[$2]++) exit 1
 			inputs++
 			next
 		}
@@ -183,13 +202,16 @@ verify_release_runtime() {
 		}
 		{ exit 1 }
 		END {
+			for (input_name in required_input)
+				if (input_seen[input_name] != 1) exit 1
 			if (schema != 1 || release != 1 || policy != 1 || source != 1 ||
 			    artifacts != 2 || device_contract != 1 || catalog != 1 ||
 			    device_contract_path != "bird/bird-device-contract.tsv" ||
 			    catalog_path != "launcher/catalog.generated.h" ||
 			    device_contract_file != 1 ||
 			    device_contract_digest != device_contract_file_digest ||
-			    inputs != 14 || files < 1 || runtime < 1 || hook != 1 ||
+			    inputs != 14 + (input_seen["source-kernel-parity.tsv"] == 1) ||
+			    files < 1 || runtime < 1 || hook != 1 ||
 			    storage_hook != 1 || bird < 1) exit 1
 		}
 	' "$RELEASE_MANIFEST" >"$RUNTIME_RECORDS" || {

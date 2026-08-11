@@ -291,15 +291,6 @@ bash -n "$PAYLOAD/bird-early.sh" || fail 'Bird early hook syntax failed'
 bash -n "$PAYLOAD/bird-release-loader.sh" || fail 'release loader syntax failed'
 grep -Fq "BIRD_LOADER_RELEASE=$RELEASE_ID" \
 	"$PAYLOAD/bird-release-loader.sh" || fail 'release loader identity generation failed'
-[ "$(grep -c '^[[:space:]]*/bird-early.sh watchdog >/dev/null 2>&1 &$' \
-	"$PAYLOAD/bird-early.sh")" = 1 ] || \
-	fail 'temporary early watchdog is not launched exactly once'
-[ "$(grep -c '^[[:space:]]*COUNT=30$' "$PAYLOAD/bird-early.sh")" = 1 ] || \
-	fail 'temporary early watchdog timeout changed'
-grep -Fq 'exec 5>/birddata/Bird/log/boot-watchdog-latest.log' \
-	"$PAYLOAD/bird-early.sh" || fail 'temporary watchdog lacks retained log descriptor'
-[ "$(grep -c '^[[:space:]]*\$BUSYBOX poweroff -f$' "$PAYLOAD/bird-early.sh")" = 2 ] || \
-	fail 'bounded diagnostic/storage-failure shutdown contract changed'
 
 find "$PAYLOAD" -type d -exec chmod 0755 {} +
 find "$PAYLOAD" -exec touch -t 202601010000.00 {} +

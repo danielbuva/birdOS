@@ -1614,13 +1614,14 @@ images are byte-identical and retain the accepted 1,211,060,224-byte size.
 This closes the host gate only. The source kernel is not the source-built
 baseline until the complete physical matrix and metric comparison pass.
 
-The corrected package subsequently reached the early Bird menu, while all
-launch and system-control actions remained unavailable and no new final-root
-logs survived a forced reset. A temporary early-initramfs watchdog now provides
-a guaranteed 30-second evidence-and-poweroff boundary outside Bird and systemd.
-It holds the persistent log open across mount movement, snapshots readiness,
-processes, mounts and `dmesg`, syncs, and powers off. This diagnostic cannot be
-promoted and must be removed after the Stage 8 handoff failure is resolved.
+The corrected package subsequently reached the early Bird menu while every
+launch and system-control action remained pending. A temporary early-initramfs
+watchdog captured the exact stop: release verification still hardcoded the
+fourteen-input stock manifest, while source parity intentionally adds a unique
+fifteenth `source-kernel-parity.tsv` authority record. The parser now verifies
+the complete named stock set and permits only that optional authority; unknown,
+missing and duplicate inputs remain fatal. The watchdog was removed after this
+evidence was acquired. Physical application-handoff verification remains open.
 
 ## Stage 9 — Fixed-device kernel optimization
 

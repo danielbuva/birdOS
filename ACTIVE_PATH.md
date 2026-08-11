@@ -125,14 +125,14 @@ canonical path remains `stock`; the candidate requires
 `--source-kernel-parity` and cannot become the source-built baseline before the
 separate RG34XX-SP gate.
 
-The corrected source-kernel package reaches Bird's early usable menu, but its
-first physical run did not reach a working application/content handoff and
-produced no new persistent final-root logs before forced reset. The next bounded
-diagnostic therefore adds a temporary 30-second watchdog to `bird-early.sh`.
-It starts beside the launcher from the early initramfs, independently retains a
-descriptor to the storage log, records readiness/process/mount/kernel evidence,
-syncs, and powers off. This is failure acquisition only, not a promoted runtime
-or timing candidate; remove it after the handoff fault is identified.
+The corrected source-kernel package reached Bird's early usable menu but not
+application readiness. A temporary early watchdog proved that release-runtime
+verification rejected the otherwise valid source-parity manifest because the
+initramfs parser required exactly fourteen external inputs while source parity
+adds its fifteenth authority record. The verifier now accepts only the exact
+fourteen stock inputs plus that one optional, unique source-kernel authority;
+unknown, missing and duplicate inputs still fail closed. The diagnostic
+watchdog was removed after acquiring this evidence.
 
 ## Build and deployment
 

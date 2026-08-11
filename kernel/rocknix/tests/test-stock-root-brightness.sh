@@ -82,26 +82,12 @@ grep -Fq 'storage-failed)' "$EARLY_SOURCE"
 grep -Fq 'shutdown_countdown_s=3' "$EARLY_SOURCE"
 grep -Fq '$BUSYBOX poweroff -f' "$EARLY_SOURCE"
 grep -Fq '$BUSYBOX sync' "$EARLY_SOURCE"
-[ "$(grep -c '\$BUSYBOX poweroff -f' "$EARLY_SOURCE")" = 2 ]
-# The temporary Stage 8 recorder starts before the launcher from the early
-# initramfs, keeps a persistent descriptor before switch_root, and powers off
-# on its own fixed deadline. It must not depend on launcher exit or systemd.
-[ "$(grep -c '^[[:space:]]*/bird-early.sh watchdog >/dev/null 2>&1 &$' \
-	"$EARLY_SOURCE")" = 1 ]
-WATCHDOG_LINE=$(grep -n '/bird-early.sh watchdog >/dev/null' "$EARLY_SOURCE" | cut -d: -f1)
-LAUNCHER_LINE=$(grep -n '"$LAUNCHER" >>"$LOG"' "$EARLY_SOURCE" | cut -d: -f1)
-[ "$WATCHDOG_LINE" -lt "$LAUNCHER_LINE" ]
-grep -Fq 'WATCHDOG_PID_FILE=$RUN/boot-watchdog.pid' "$EARLY_SOURCE"
-grep -Fq 'exec 5>/birddata/Bird/log/boot-watchdog-latest.log' "$EARLY_SOURCE"
-grep -Fq "'countdown complete action=forced-poweroff'" "$EARLY_SOURCE"
-grep -Fq "'section=kernel'" "$EARLY_SOURCE"
-grep -Fq '$BUSYBOX sync' "$EARLY_SOURCE"
-grep -Fq '$BUSYBOX poweroff -f' "$EARLY_SOURCE"
+[ "$(grep -c '\$BUSYBOX poweroff -f' "$EARLY_SOURCE")" = 1 ]
 ! grep -q 'final-root storage signalled' "$EARLY_SOURCE"
 ! grep -q 'storage anchor acknowledged' "$EARLY_SOURCE"
 ! grep -q 'persistent-owner uptime' "$EARLY_SOURCE"
-# Additional reads exist only inside the two bounded failure recorders.
-[ "$(grep -c '/proc/uptime' "$EARLY_SOURCE")" = 5 ]
+# Additional reads exist only inside the storage-failure shutdown recorder.
+[ "$(grep -c '/proc/uptime' "$EARLY_SOURCE")" = 4 ]
 
 printf '0\n' >"$BACKLIGHT/bl_power"
 
