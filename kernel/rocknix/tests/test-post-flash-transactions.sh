@@ -119,6 +119,10 @@ write_runtime_manifest() {
 				printf 'input\tsource-kernel-builtin-input.tsv\t644\t1\t%s\tfixture\n' \
 					'0000000000000000000000000000000000000000000000000000000000000000'
 				;;
+			single)
+				printf 'input\tsource-kernel-single-gpio-read.tsv\t644\t1\t%s\tfixture\n' \
+					'0000000000000000000000000000000000000000000000000000000000000000'
+				;;
 			unknown)
 				printf 'input\tunknown-authority.tsv\t644\t1\t%s\tfixture\n' \
 					'0000000000000000000000000000000000000000000000000000000000000000'
@@ -166,7 +170,7 @@ run_runtime_verifier() (
 	. "$FLASH/bird-releases/dev-current/post-flash.sh"
 )
 
-for MODE in stock source builtin fixed; do
+for MODE in stock source builtin single; do
 	write_runtime_manifest "$MODE"
 	run_runtime_verifier || {
 		printf 'valid %s manifest failed initramfs runtime verification\n' "$MODE" >&2

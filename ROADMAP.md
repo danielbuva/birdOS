@@ -2,9 +2,9 @@
 
 This is the governing constitution for the active stock-root implementation.
 The current human promotion record binds clean source
-`e280a6ea178994b086a0557f83ee1a812693ec80`, immutable release
-`v6.23-20260811-030650`, deploy manifest
-`7bc552d98fecb3a8b0b067ac79c6cd8ae8a728f81272e23342c3158088ce3e5d`,
+`cc1e3d77600d4e934f9db66ed55e40fb52c7d7ec`, immutable release
+`v6.23-20260811-050010`, deploy manifest
+`45ac4cc0f99309a25d0d68a034f9ae80e601786601b9869f7c4ae8a82d770a15`,
 device contract
 `1664a3778abcd3687865a82fd28bba5b468f6c3c7e9a46bf90f7c3acb1e08162`
 and catalogue
@@ -1690,6 +1690,11 @@ the advertised ABS bitmap intact. It is rejected: physical testing established
 that RG34XX-SP has working left and right analog sticks. Future input work must
 preserve `ABS_X`, `ABS_Y`, `ABS_RX`, `ABS_RY`, their live sampling, dead zones,
 reconnect behavior and provider mappings.
+Corrective release `v6.23-20260811-050010` restored that accepted input path
+and passed the broad hardware gate. The next candidate stores one
+`gpio_get_value_cansleep()` result per button and uses it for both error
+handling and state reporting, instead of reading the same GPIO twice. All four
+stick ADC reads remain intact.
 Subtract drivers, modules, probes, buses, protocols and subsystems one
 attributable group at a time only after complete consumer closure. Neutral
 kernel measurement/readiness infrastructure may promote without regression;

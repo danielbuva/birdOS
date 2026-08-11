@@ -64,11 +64,13 @@ EXPECTED_INPUTS = {
 OPTIONAL_SOURCE_KERNEL_INPUTS = {
     "source-kernel-parity.tsv",
     "source-kernel-builtin-input.tsv",
+    "source-kernel-single-gpio-read.tsv",
 }
 STOCK_JOYPAD_SHA256 = "a8ac6cacfa89672fa08dec7fa02179bb108a4a2303fd5c1eb5834f916089b79b"
 SOURCE_PARITY_JOYPAD_SHA256 = "fd2ceb95f0b3bdc1d68e7182a8ac5239b5286cc277a04980e53f65e0f73d3a05"
 SOURCE_PARITY_AUTHORITY_SHA256 = "74ea672573dd80f368314bdef6a9481b2af9cf54b321cfd6e165179cc3185ffc"
 SOURCE_BUILTIN_INPUT_AUTHORITY_SHA256 = "53116bb1df39e4520699dc481f4155a2a93bcedb81695fa1c15b2bd562bd94cd"
+SOURCE_SINGLE_GPIO_READ_AUTHORITY_SHA256 = "d4d3977294603f15085e38972370795d7932cb503110f7eddec104dfecab0194"
 EARLY_INPUT_DIGESTS = {
     "initramfs/init": "3473415af0cf5df44e70259c3392817b1df421a12a617ec083ec018ff51dbc48",
     "initramfs/busybox": "5ee3d20d8ea5fd9b3ba5109da80599eaf46a5a337d9e40d4c67d28eef44d5dc8",
@@ -890,6 +892,12 @@ def early_kernel_authority(manifest: Manifest) -> str:
         == SOURCE_BUILTIN_INPUT_AUTHORITY_SHA256
     ):
         return "source-builtin-input"
+    if (
+        joypad_digest == SOURCE_PARITY_JOYPAD_SHA256
+        and source_authorities.get("source-kernel-single-gpio-read.tsv")
+        == SOURCE_SINGLE_GPIO_READ_AUTHORITY_SHA256
+    ):
+        return "source-single-gpio-read"
     fail("base release kernel authority and early joypad input do not agree")
 
 

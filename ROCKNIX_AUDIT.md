@@ -7,9 +7,9 @@ closure from the later application-compatibility closure and replaces generic
 discovery only after its consumers are proven.
 
 The current accepted stock-root binding is clean source
-`e280a6ea178994b086a0557f83ee1a812693ec80`, immutable release
-`v6.23-20260811-030650`, deploy-manifest digest
-`7bc552d98fecb3a8b0b067ac79c6cd8ae8a728f81272e23342c3158088ce3e5d`,
+`cc1e3d77600d4e934f9db66ed55e40fb52c7d7ec`, immutable release
+`v6.23-20260811-050010`, deploy-manifest digest
+`45ac4cc0f99309a25d0d68a034f9ae80e601786601b9869f7c4ae8a82d770a15`,
 device-contract digest
 `1664a3778abcd3687865a82fd28bba5b468f6c3c7e9a46bf90f7c3acb1e08162`
 and catalog digest
@@ -24,6 +24,10 @@ A later button-only kernel candidate was rejected after immutable release
 input closure includes live `ABS_X`, `ABS_Y`, `ABS_RX` and `ABS_RY` sampling;
 these reads are consumers, not removable idle polling. The accepted built-in
 driver release remains the input baseline.
+
+Corrective release `v6.23-20260811-050010` passed the broad hardware gate. The
+next input candidate keeps the full ADC path and removes only the redundant
+second GPIO read for each button in every polling cycle.
 
 ## Measured boundaries
 

@@ -221,6 +221,15 @@ and `ABS_RY`; retaining only the capability bitmap with neutral values disables
 real controls. The no-analog build mode and authority were removed. The
 accepted `--builtin-input-kernel` recipe retains the complete pinned driver.
 
+`SINGLE_GPIO_READ=1` is the next bounded built-in-input candidate. The original
+poll loop called `gpio_get_value_cansleep()` once to test for an error and then
+again immediately to obtain the value. The candidate stores the first result
+and uses it for both decisions, reducing two GPIO reads to one per button per
+10 ms poll. It does not alter analog ADC sampling, input identity, capabilities,
+dead zones, rumble or reconnect behavior. The canonical candidate flag is
+`--single-gpio-read-kernel`, bound by
+`source-kernel-single-gpio-read.tsv`.
+
 ## First Bird substitution candidate
 
 `build-bird-initramfs.sh` reconstructs the accepted direct-handoff archive

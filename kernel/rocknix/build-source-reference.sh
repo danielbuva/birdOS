@@ -17,6 +17,7 @@ SHIPPING_KERNEL=${SHIPPING_KERNEL:-$OUTPUT/shipping-KERNEL}
 INITRAMFS_ARCHIVE=${INITRAMFS_ARCHIVE:-$ROOT/kernel/work/rocknix-official-initramfs-20260701/rocknix-initramfs.cpio}
 DEFER_PANFROST=${DEFER_PANFROST:-0}
 BUILTIN_JOYPAD=${BUILTIN_JOYPAD:-0}
+SINGLE_GPIO_READ=${SINGLE_GPIO_READ:-0}
 JOBS=${JOBS:-4}
 
 ROCKNIX_COMMIT=3e4ee5852e6ca5ea73a38369d2639fad2262648b
@@ -45,6 +46,12 @@ case "$BUILTIN_JOYPAD" in
 	0 | 1) ;;
 	*) fail 'BUILTIN_JOYPAD must be 0 or 1' ;;
 esac
+case "$SINGLE_GPIO_READ" in
+	0 | 1) ;;
+	*) fail 'SINGLE_GPIO_READ must be 0 or 1' ;;
+esac
+[ "$SINGLE_GPIO_READ" -eq 0 ] || [ "$BUILTIN_JOYPAD" -eq 1 ] || \
+	fail 'SINGLE_GPIO_READ requires BUILTIN_JOYPAD=1'
 [ -d "$ROCKNIX_SOURCE/.git" ] || fail "ROCKNIX source missing: $ROCKNIX_SOURCE"
 [ "$(git -C "$ROCKNIX_SOURCE" rev-parse HEAD)" = "$ROCKNIX_COMMIT" ] || \
 	fail 'ROCKNIX source commit mismatch'
@@ -106,6 +113,7 @@ set -- docker run --rm --platform linux/arm64 \
 	-e INITRAMFS_CONFIG="$INITRAMFS_CONFIG" \
 	-e DEFER_PANFROST="$DEFER_PANFROST" \
 	-e BUILTIN_JOYPAD="$BUILTIN_JOYPAD" \
+	-e SINGLE_GPIO_READ="$SINGLE_GPIO_READ" \
 	-e LOCALVERSION= \
 	-v "$ROCKNIX_SOURCE:/rocknix:ro" \
 	-v "$JOYPAD_SOURCE:/rocknix-joypad:ro" \
@@ -157,6 +165,34 @@ set -- "$@" "$IMAGE" sh -eu -c '
 				drivers/input/joystick/rocknix-joypad.h
 			printf "%s\n" "obj-y += rocknix-singleadc-joypad.o" \
 				>> drivers/input/joystick/Makefile
+			if [ "$SINGLE_GPIO_READ" = 1 ]; then
+				python3 - drivers/input/joystick/rocknix-singleadc-joypad.c <<"PY"
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+source = path.read_text(encoding="utf-8")
+old = """\t\tif (gpio_get_value_cansleep(gpio->num) < 0) {
+\t\t\tdev_err(joypad->dev, "failed to get gpio state\\n");
+\t\t\tcontinue;
+\t\t}
+\t\tvalue = gpio_get_value_cansleep(gpio->num);
+"""
+new = """\t\tvalue = gpio_get_value_cansleep(gpio->num);
+\t\tif (value < 0) {
+\t\t\tdev_err(joypad->dev, "failed to get gpio state\\n");
+\t\t\tcontinue;
+\t\t}
+"""
+if source.count(old) != 1:
+    raise SystemExit("joypad GPIO poll authority changed")
+path.write_text(source.replace(old, new), encoding="utf-8")
+PY
+				[ "$(grep -Fc "gpio_get_value_cansleep(gpio->num)" \
+					drivers/input/joystick/rocknix-singleadc-joypad.c)" -eq 2 ]
+				[ "$(grep -Fc "joypad_adc_check(poll_dev);" \
+					drivers/input/joystick/rocknix-singleadc-joypad.c)" -eq 2 ]
+			fi
 		fi
 
 		mkdir -p external-firmware/panels external-firmware/rtl_bt \
@@ -405,6 +441,9 @@ fi
 	printf 'joypad-commit\t%s\n' "$JOYPAD_COMMIT"
 	if [ "$BUILTIN_JOYPAD" = 1 ]; then
 		printf 'joypad-linkage\tbuiltin\n'
+	fi
+	if [ "$SINGLE_GPIO_READ" = 1 ]; then
+		printf 'joypad-policy\tsingle-gpio-read\n'
 	fi
 	printf 'shipping-kernel-sha256\t%s\n' "$SHIPPING_KERNEL_SHA"
 	printf 'shipping-dtb-sha256\t%s\n' "$SHIPPING_DTB_SHA"

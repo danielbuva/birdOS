@@ -60,6 +60,12 @@ fi
 if grep -Fq 'RG34XX-SP has buttons only' "$SOURCE_BUILDER"; then
 	fail 'rejected button-only hardware assumption remains'
 fi
+grep -Fq 'SINGLE_GPIO_READ requires BUILTIN_JOYPAD=1' "$SOURCE_BUILDER" || \
+	fail 'single GPIO read dependency gate missing'
+grep -Fq 'joypad GPIO poll authority changed' "$SOURCE_BUILDER" || \
+	fail 'single GPIO read source authority gate missing'
+grep -Fq 'joypad_adc_check(poll_dev);' "$SOURCE_BUILDER" || \
+	fail 'analog stick polling preservation gate missing'
 grep -Fq 'source module archive digest changed' "$BUILDER" || \
 	fail 'module archive digest gate missing'
 grep -Fq 'isolated source SYSTEM $FILE differs' "$BUILDER" || \

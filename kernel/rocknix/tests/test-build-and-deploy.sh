@@ -548,6 +548,11 @@ if "$COMMAND" --profile --builtin-input-kernel \
 	exit 1
 fi
 grep -q -- 'source-kernel authorities require --release' "$TMP/builtin-profile.err"
+if "$COMMAND" --profile --single-gpio-read-kernel \
+	>"$TMP/single-profile.out" 2>"$TMP/single-profile.err"; then
+	fail 'single-GPIO-read kernel unexpectedly accepted profile mode'
+fi
+grep -q -- 'source-kernel authorities require --release' "$TMP/single-profile.err"
 if "$COMMAND" --release --fixed-input-kernel \
 	>"$TMP/fixed-input.out" 2>"$TMP/fixed-input.err"; then
 	fail 'rejected fixed-input kernel option remains accepted'
@@ -559,6 +564,11 @@ if "$COMMAND" --release --source-kernel-parity --builtin-input-kernel \
 	exit 1
 fi
 grep -q -- 'choose only one source-kernel authority' "$TMP/kernel-authority.err"
+if "$COMMAND" --release --builtin-input-kernel --single-gpio-read-kernel \
+	>"$TMP/single-authority.out" 2>"$TMP/single-authority.err"; then
+	fail 'multiple built-in input authorities unexpectedly accepted'
+fi
+grep -q -- 'choose only one source-kernel authority' "$TMP/single-authority.err"
 if "$COMMAND" --release --release-id '../unsafe' >"$TMP/id.out" 2>"$TMP/id.err"; then
 	fail 'unsafe release ID was accepted'
 fi

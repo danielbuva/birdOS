@@ -3,9 +3,9 @@
 This document is the authority for the code that builds, installs and runs the
 current birdOS system. The active implementation path is **stock-root v6.23**.
 The current human promotion record binds clean public source
-`e280a6ea178994b086a0557f83ee1a812693ec80`, immutable release
-`v6.23-20260811-030650`, deploy-manifest digest
-`7bc552d98fecb3a8b0b067ac79c6cd8ae8a728f81272e23342c3158088ce3e5d`,
+`cc1e3d77600d4e934f9db66ed55e40fb52c7d7ec`, immutable release
+`v6.23-20260811-050010`, deploy-manifest digest
+`45ac4cc0f99309a25d0d68a034f9ae80e601786601b9869f7c4ae8a82d770a15`,
 device-contract digest
 `1664a3778abcd3687865a82fd28bba5b468f6c3c7e9a46bf90f7c3acb1e08162`
 and generated-catalog digest
@@ -143,8 +143,10 @@ now the accepted built-in-input baseline. A subsequent button-only candidate,
 immutable release `v6.23-20260811-034244`, incorrectly treated the four analog
 axes as unpopulated and stopped sampling them. Physical testing proved the
 RG34XX-SP has two working sticks; that candidate is rejected and its build mode
-has been removed. The accepted built-in driver, axis capabilities and ADC
-sampling remain the authority.
+has been removed. Corrective release `v6.23-20260811-050010` restored the
+accepted built-in driver, axis capabilities and ADC sampling and passed the
+broad hardware gate. The next candidate preserves every ADC path and collapses
+each GPIO button's immediate error-check/value double read to one read.
 
 The corrected source-kernel package reached Bird's early usable menu but not
 application readiness. A temporary early watchdog proved that release-runtime

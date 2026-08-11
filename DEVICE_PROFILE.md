@@ -4,9 +4,9 @@ This is the build contract for the target console. Values here are deliberate
 product decisions, not runtime options.
 
 The operator-accepted source and behavior binding is clean commit
-`e280a6ea178994b086a0557f83ee1a812693ec80`, immutable release
-`v6.23-20260811-030650`, deploy-manifest digest
-`7bc552d98fecb3a8b0b067ac79c6cd8ae8a728f81272e23342c3158088ce3e5d`,
+`cc1e3d77600d4e934f9db66ed55e40fb52c7d7ec`, immutable release
+`v6.23-20260811-050010`, deploy-manifest digest
+`45ac4cc0f99309a25d0d68a034f9ae80e601786601b9869f7c4ae8a82d770a15`,
 device-contract digest
 `1664a3778abcd3687865a82fd28bba5b468f6c3c7e9a46bf90f7c3acb1e08162`
 and catalog digest
