@@ -7,18 +7,17 @@ closure from the later application-compatibility closure and replaces generic
 discovery only after its consumers are proven.
 
 The current accepted stock-root binding is clean source
-`fda363beb0b31528ece90f915d543395816ed6d7`, immutable release
-`v6.23-20260811-011242`, deploy-manifest digest
-`1061994b2d14bfa32af876493307ef9c02e9b08947e81a35d65b32fd4cc10c23`,
+`e280a6ea178994b086a0557f83ee1a812693ec80`, immutable release
+`v6.23-20260811-030650`, deploy-manifest digest
+`7bc552d98fecb3a8b0b067ac79c6cd8ae8a728f81272e23342c3158088ce3e5d`,
 device-contract digest
 `1664a3778abcd3687865a82fd28bba5b468f6c3c7e9a46bf90f7c3acb1e08162`
 and catalog digest
 `9795aae6baddc292f5d9954a444656e303db305c639284f16eb10288c41f1f93`.
-Its source-kernel broad RG34XX-SP gate passed on 2026-08-10. The accepted boot
-logged input/usable at 1233/1235 ms and storage at 3452 ms while the stopwatch
-remained below three seconds. Together with the preceding host, functional and
-structural-idle gates, this promotes the reproducible source kernel as the
-Stage 9 baseline without claiming a calibrated energy distribution.
+Its built-in-input RG34XX-SP gate passed on 2026-08-10. Accepted boots logged
+input at 1223–1229 ms and usable frame at 1226–1233 ms while the stopwatch
+remained below three seconds. This promotes the reproducible fixed-device input
+kernel without claiming a calibrated energy distribution.
 
 ## Measured boundaries
 

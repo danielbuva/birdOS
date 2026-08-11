@@ -3,19 +3,19 @@
 This document is the authority for the code that builds, installs and runs the
 current birdOS system. The active implementation path is **stock-root v6.23**.
 The current human promotion record binds clean public source
-`fda363beb0b31528ece90f915d543395816ed6d7`, immutable release
-`v6.23-20260811-011242`, deploy-manifest digest
-`1061994b2d14bfa32af876493307ef9c02e9b08947e81a35d65b32fd4cc10c23`,
+`e280a6ea178994b086a0557f83ee1a812693ec80`, immutable release
+`v6.23-20260811-030650`, deploy-manifest digest
+`7bc552d98fecb3a8b0b067ac79c6cd8ae8a728f81272e23342c3158088ce3e5d`,
 device-contract digest
 `1664a3778abcd3687865a82fd28bba5b468f6c3c7e9a46bf90f7c3acb1e08162`
 and generated-catalog digest
 `9795aae6baddc292f5d9954a444656e303db305c639284f16eb10288c41f1f93`.
-The complete host gate, Stage 8 structural comparison and broad RG34XX-SP
-behavior gate passed on 2026-08-10. This promotes the reproducible unmodified
-ROCKNIX 7.0.11 source kernel, complete source module tree and shipping-identical
-DTB as the accepted kernel baseline. The physical boot logged input/usable at
-1233/1235 ms and storage at 3452 ms while the stopwatch remained below three
-seconds. This is functional and descriptive timing acceptance, not a new
+The complete host gate and broad RG34XX-SP behavior gate passed on 2026-08-10.
+This promotes the first Stage 9 fixed-device change: the exact H700 controls
+driver is linked into the reproducible kernel and omitted from the early
+overlay. Accepted boots logged input at 1223–1229 ms and usable frame at
+1226–1233 ms while the stopwatch remained below three seconds. This is
+functional and descriptive timing acceptance, not a new
 calibrated energy distribution. The previously accepted immutable binary reference is release
 `v6.23-20260731-054816`, published as `stable-v6.23-20260731-054816`; its
 canonical manifest digest is
@@ -138,6 +138,11 @@ module from the early overlay. The explicit production flag is
 The candidate kernel and SYSTEM reproduced byte-for-byte in independent builds;
 the Image size is unchanged and the external early overlay is 11,683 compressed
 bytes smaller. These are host artifact results, not a hardware timing claim.
+Immutable release `v6.23-20260811-030650` passed the broad device gate and is
+now the accepted built-in-input baseline. The next authority,
+`source-kernel-fixed-input.tsv`, removes only the four unpopulated analog-mux
+reads performed before GPIO buttons in each 10 ms poll while preserving the
+same ABS bitmap and neutral axis state.
 
 The corrected source-kernel package reached Bird's early usable menu but not
 application readiness. A temporary early watchdog proved that release-runtime

@@ -215,6 +215,13 @@ shipping-identical DTB and deterministic SYSTEM. The external early overlay
 omits the now-duplicate module and the retained hook recognizes the built-in
 platform driver before launching Bird.
 
+The follow-up `FIXED_NO_ANALOG_POLL=1` mode requires the built-in driver. The
+RG34XX-SP has no analog sticks, so this mode retains its existing four neutral
+ABS capabilities but skips four analog-mux ADC reads before the GPIO button
+scan every 10 ms. `--fixed-input-kernel` selects the separately bound
+`source-kernel-fixed-input.tsv` candidate; the module archive, DTB and accepted
+SYSTEM remain unchanged.
+
 ## First Bird substitution candidate
 
 `build-bird-initramfs.sh` reconstructs the accepted direct-handoff archive

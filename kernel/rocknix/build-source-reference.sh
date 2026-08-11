@@ -17,6 +17,7 @@ SHIPPING_KERNEL=${SHIPPING_KERNEL:-$OUTPUT/shipping-KERNEL}
 INITRAMFS_ARCHIVE=${INITRAMFS_ARCHIVE:-$ROOT/kernel/work/rocknix-official-initramfs-20260701/rocknix-initramfs.cpio}
 DEFER_PANFROST=${DEFER_PANFROST:-0}
 BUILTIN_JOYPAD=${BUILTIN_JOYPAD:-0}
+FIXED_NO_ANALOG_POLL=${FIXED_NO_ANALOG_POLL:-0}
 JOBS=${JOBS:-4}
 
 ROCKNIX_COMMIT=3e4ee5852e6ca5ea73a38369d2639fad2262648b
@@ -45,6 +46,12 @@ case "$BUILTIN_JOYPAD" in
 	0 | 1) ;;
 	*) fail 'BUILTIN_JOYPAD must be 0 or 1' ;;
 esac
+case "$FIXED_NO_ANALOG_POLL" in
+	0 | 1) ;;
+	*) fail 'FIXED_NO_ANALOG_POLL must be 0 or 1' ;;
+esac
+[ "$FIXED_NO_ANALOG_POLL" -eq 0 ] || [ "$BUILTIN_JOYPAD" -eq 1 ] || \
+	fail 'FIXED_NO_ANALOG_POLL requires BUILTIN_JOYPAD=1'
 [ -d "$ROCKNIX_SOURCE/.git" ] || fail "ROCKNIX source missing: $ROCKNIX_SOURCE"
 [ "$(git -C "$ROCKNIX_SOURCE" rev-parse HEAD)" = "$ROCKNIX_COMMIT" ] || \
 	fail 'ROCKNIX source commit mismatch'
@@ -106,6 +113,7 @@ set -- docker run --rm --platform linux/arm64 \
 	-e INITRAMFS_CONFIG="$INITRAMFS_CONFIG" \
 	-e DEFER_PANFROST="$DEFER_PANFROST" \
 	-e BUILTIN_JOYPAD="$BUILTIN_JOYPAD" \
+	-e FIXED_NO_ANALOG_POLL="$FIXED_NO_ANALOG_POLL" \
 	-e LOCALVERSION= \
 	-v "$ROCKNIX_SOURCE:/rocknix:ro" \
 	-v "$JOYPAD_SOURCE:/rocknix-joypad:ro" \
@@ -157,6 +165,31 @@ set -- "$@" "$IMAGE" sh -eu -c '
 				drivers/input/joystick/rocknix-joypad.h
 			printf "%s\n" "obj-y += rocknix-singleadc-joypad.o" \
 				>> drivers/input/joystick/Makefile
+			if [ "$FIXED_NO_ANALOG_POLL" = 1 ]; then
+				python3 - drivers/input/joystick/rocknix-singleadc-joypad.c <<"PY"
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+source = path.read_text(encoding="utf-8")
+old = """\t\t} else {
+\t\t\tjoypad_adc_check(poll_dev);
+\t\t\tjoypad_gpio_check(poll_dev);
+\t\t}
+"""
+new = """\t\t} else {
+\t\t\t/* RG34XX-SP has buttons only; keep neutral ABS capabilities but
+\t\t\t * do not read its unpopulated analog mux every 10 ms. */
+\t\t\tjoypad_gpio_check(poll_dev);
+\t\t}
+"""
+if source.count(old) != 1:
+    raise SystemExit("fixed-device joypad poll authority changed")
+path.write_text(source.replace(old, new), encoding="utf-8")
+PY
+				[ "$(grep -Fc "joypad_adc_check(poll_dev);" \
+					drivers/input/joystick/rocknix-singleadc-joypad.c)" -eq 1 ]
+			fi
 		fi
 
 		mkdir -p external-firmware/panels external-firmware/rtl_bt \
@@ -227,7 +260,6 @@ if [ "$BUILTIN_JOYPAD" = 1 ]; then
 	strings "$BUILD_OUTPUT/Image" | grep -Fqx 'rocknix-singleadc-joypad' || \
 		fail 'built-in H700 input identity missing from Image'
 fi
-
 [ "$(wc -l < "$BUILD_OUTPUT/applied-patches.txt" | tr -d ' ')" -eq \
 	"$PATCH_COUNT" ] || fail 'executed patch count mismatch'
 
@@ -406,6 +438,9 @@ fi
 	printf 'joypad-commit\t%s\n' "$JOYPAD_COMMIT"
 	if [ "$BUILTIN_JOYPAD" = 1 ]; then
 		printf 'joypad-linkage\tbuiltin\n'
+	fi
+	if [ "$FIXED_NO_ANALOG_POLL" = 1 ]; then
+		printf 'joypad-policy\trg34xxsp-buttons-only\n'
 	fi
 	printf 'shipping-kernel-sha256\t%s\n' "$SHIPPING_KERNEL_SHA"
 	printf 'shipping-dtb-sha256\t%s\n' "$SHIPPING_DTB_SHA"

@@ -2,9 +2,9 @@
 
 This is the governing constitution for the active stock-root implementation.
 The current human promotion record binds clean source
-`fda363beb0b31528ece90f915d543395816ed6d7`, immutable release
-`v6.23-20260811-011242`, deploy manifest
-`1061994b2d14bfa32af876493307ef9c02e9b08947e81a35d65b32fd4cc10c23`,
+`e280a6ea178994b086a0557f83ee1a812693ec80`, immutable release
+`v6.23-20260811-030650`, deploy manifest
+`7bc552d98fecb3a8b0b067ac79c6cd8ae8a728f81272e23342c3158088ce3e5d`,
 device contract
 `1664a3778abcd3687865a82fd28bba5b468f6c3c7e9a46bf90f7c3acb1e08162`
 and catalogue
@@ -1682,6 +1682,14 @@ the RG34XX-SP. Host construction is byte-reproducible across two kernel builds
 and two SYSTEM repacks. The kernel Image remains 30,926,856 bytes; omitting the
 duplicate early module reduced the gzip-9 external overlay from the accepted
 615,201 bytes to 603,518 bytes (11,683 bytes).
+
+That candidate passed its complete RG34XX-SP behavior gate as immutable release
+`v6.23-20260811-030650`. The next bounded input candidate keeps the exact input
+identity and four neutral ABS capabilities but removes four unpopulated analog
+mux reads from each 10 ms poll on this button-only device. It changes only the
+built-in driver text in the kernel Image; DTB, module archive and SYSTEM remain
+byte-identical. Interaction and idle-energy acceptance require the physical
+gate; the source-level removal is not itself a latency or battery claim.
 Subtract drivers, modules, probes, buses, protocols and subsystems one
 attributable group at a time only after complete consumer closure. Neutral
 kernel measurement/readiness infrastructure may promote without regression;
