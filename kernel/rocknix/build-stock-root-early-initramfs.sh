@@ -44,6 +44,7 @@ case "${BIRD_KERNEL_AUTHORITY:-stock}" in
 	source-single-input-sync) JOYPAD_SHA=fd2ceb95f0b3bdc1d68e7182a8ac5239b5286cc277a04980e53f65e0f73d3a05; EMBED_JOYPAD=0 ;;
 	source-changed-input-sync) JOYPAD_SHA=fd2ceb95f0b3bdc1d68e7182a8ac5239b5286cc277a04980e53f65e0f73d3a05; EMBED_JOYPAD=0 ;;
 	source-fixed-gpio-fastpath) JOYPAD_SHA=fd2ceb95f0b3bdc1d68e7182a8ac5239b5286cc277a04980e53f65e0f73d3a05; EMBED_JOYPAD=0 ;;
+	source-irq-buttons) JOYPAD_SHA=fd2ceb95f0b3bdc1d68e7182a8ac5239b5286cc277a04980e53f65e0f73d3a05; EMBED_JOYPAD=0 ;;
 	*) fail "unknown kernel authority: ${BIRD_KERNEL_AUTHORITY}" ;;
 esac
 

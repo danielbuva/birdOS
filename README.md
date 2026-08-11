@@ -36,6 +36,12 @@ verified reuse mode omits that early duplicate and retains the 262,144-byte
 budget. The full contract is documented in
 [`launcher/README.md`](launcher/README.md).
 
+The current unaccepted candidate adds a direct Input Tester under Tools for the
+fixed H700 controls: 17 digital controls, both sticks, L3/R3 and rumble are
+shown without an idle render loop. Menu triggers a short rumble test; hold B to
+return to Bird. Its visual, input and rumble behavior still needs the RG34XX-SP
+gate.
+
 Use [`ROADMAP.md`](ROADMAP.md) for planned work and
 [`ROCKNIX_AUDIT.md`](ROCKNIX_AUDIT.md) for the retained-userspace audit.
 Historical measurements and the complete version-by-version narrative live in

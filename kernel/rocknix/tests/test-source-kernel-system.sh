@@ -5,6 +5,8 @@ ROOT=$(CDPATH= cd -- "$(dirname "$0")/../../.." && pwd -P)
 VERIFY=$ROOT/kernel/rocknix/verify-source-kernel-system-delta.py
 BUILDER=$ROOT/kernel/rocknix/build-source-kernel-system.sh
 SOURCE_BUILDER=$ROOT/kernel/rocknix/build-source-reference.sh
+IRQ_TRANSFORM=$ROOT/kernel/rocknix/transform-joypad-irq.py
+IRQ_TRANSFORM_TEST=$ROOT/kernel/rocknix/tests/test-joypad-irq-transform.py
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/bird-source-system-test.XXXXXX")
 trap 'rm -rf -- "$TMP"' EXIT HUP INT TERM
 
@@ -44,6 +46,9 @@ grep -Fq 'installed source module inventory mismatch' "$TMP/missing.out" || \
 
 sh -n "$BUILDER" || fail 'source SYSTEM builder shell syntax failed'
 sh -n "$SOURCE_BUILDER" || fail 'source kernel builder shell syntax failed'
+python3 -m py_compile "$IRQ_TRANSFORM" "$IRQ_TRANSFORM_TEST" || \
+	fail 'IRQ button transform Python syntax failed'
+python3 "$IRQ_TRANSFORM_TEST" || fail 'IRQ button transform contract failed'
 grep -Fq 'rocknix-official-initramfs-20260701/rocknix-initramfs.cpio' \
 	"$SOURCE_BUILDER" || fail 'source kernel no longer requires the official embedded initramfs'
 grep -Fq '5d2b7b247bfa78db7b1fad490e0c5cdc70ec31af18cac743aee4dc1027d66045' \
@@ -84,6 +89,16 @@ grep -Fq 'joypad fixed GPIO access authority changed' "$SOURCE_BUILDER" || \
 	fail 'fixed GPIO source authority gate missing'
 grep -Fq 'joypad-open-policy' "$SOURCE_BUILDER" || \
 	fail 'single open-frame authority record missing'
+grep -Fq 'IRQ_GPIO_BUTTONS requires FIXED_GPIO_FASTPATH=1' "$SOURCE_BUILDER" || \
+	fail 'IRQ button sequencing gate missing'
+grep -Fq '/bird-transform-joypad-irq.py' "$SOURCE_BUILDER" || \
+	fail 'IRQ button transform invocation missing'
+grep -Fq 'joypad-digital-policy' "$SOURCE_BUILDER" || \
+	fail 'IRQ button authority record missing'
+grep -Fq 'joypad-poll-policy' "$SOURCE_BUILDER" || \
+	fail 'analog-only poll authority record missing'
+grep -Fq 'joypad-fixed-buttons' "$SOURCE_BUILDER" || \
+	fail 'fixed button-count authority record missing'
 grep -Fq 'source module archive digest changed' "$BUILDER" || \
 	fail 'module archive digest gate missing'
 grep -Fq 'isolated source SYSTEM $FILE differs' "$BUILDER" || \

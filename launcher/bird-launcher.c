@@ -172,6 +172,7 @@ typedef signed long s64;
 #define ACTION_PORTMASTER 12
 #define ACTION_RELOAD 13
 #define ACTION_REBOOT 14
+#define ACTION_INPUT_TESTER 15
 
 #define POLL_RESULT_READY 0
 #define POLL_RESULT_INTERRUPTED 1
@@ -551,7 +552,7 @@ static const char *menu_item[6] = {
     "PLAY", "LISTEN", "READ", "WATCH", "TOOLS", "QUIT"
 };
 static const char *play_item[2] = {"SYSTEMS", "FAVORITES"};
-static const char *tools_item[1] = {"PORTMASTER"};
+static const char *tools_item[2] = {"INPUT TESTER", "PORTMASTER"};
 static const char *quit_item[3] = {"RELOAD", "REBOOT", "SHUTDOWN"};
 
 /* Five-wide uppercase bitmap alphabet plus the exact punctuation this UI uses. */
@@ -2566,7 +2567,7 @@ static int write_handoff_action(int action) {
 #ifdef HANDOFF_ACTION_PATH
     char value[3];
     long fd;
-    if (action < ACTION_LAUNCH || action > ACTION_REBOOT) return 0;
+    if (action < ACTION_LAUNCH || action > ACTION_INPUT_TESTER) return 0;
     value[0] = (char)('0' + action / 10);
     value[1] = (char)('0' + action % 10);
     value[2] = '\n';
@@ -2607,7 +2608,7 @@ static int load_ui_resume(void) {
     } else if (state.view == VIEW_PLAY) {
         if (state.selection >= 2U) goto invalid;
     } else if (state.view == VIEW_TOOLS) {
-        if (state.selection >= 1U) goto invalid;
+        if (state.selection >= 2U) goto invalid;
     } else if (state.view == VIEW_QUIT) {
         if (state.selection >= 3U) goto invalid;
     } else if (state.view == VIEW_SYSTEMS) {
@@ -2984,7 +2985,7 @@ static int publish_frame_resume(void) {
 
 static int action_preserves_frame(int action) {
     return action == ACTION_LAUNCH || action == ACTION_PORTMASTER ||
-           action == ACTION_RELOAD;
+           action == ACTION_RELOAD || action == ACTION_INPUT_TESTER;
 }
 
 static void clear_frame_resume(void) {
@@ -3378,7 +3379,7 @@ static const char *empty_media_text(void) {
 static u32 current_count(void) {
     if (view == VIEW_MAIN) return 6U;
     if (view == VIEW_PLAY) return 2U;
-    if (view == VIEW_TOOLS) return 1U;
+    if (view == VIEW_TOOLS) return 2U;
     if (view == VIEW_QUIT) return 3U;
     if (view == VIEW_SYSTEMS) return CATALOG_SYSTEM_COUNT;
     if (view == VIEW_GAMES) return catalog_system_entry_count(active_system);
@@ -4525,11 +4526,15 @@ static int select_current(void) {
             selected_status = favorites_loaded ? "FAVORITES READY" : "FAVORITES LOAD WITH STORAGE";
         }
     } else if (view == VIEW_TOOLS) {
-        selected_status = "CONNECTING PORTMASTER";
-        if (save_ui_resume() == 0)
-            action = ACTION_PORTMASTER;
-        else
+        if (save_ui_resume() != 0) {
             selected_status = "RETURN STATE SAVE FAILED";
+        } else if (selection == 0U) {
+            selected_status = "OPENING INPUT TESTER";
+            action = ACTION_INPUT_TESTER;
+        } else {
+            selected_status = "CONNECTING PORTMASTER";
+            action = ACTION_PORTMASTER;
+        }
     } else if (view == VIEW_QUIT) {
         if (selection == 0U) {
             selected_status = "RELOADING LAUNCHER";
@@ -6071,6 +6076,8 @@ service_events:
         log_text("exit reason=user-reload boot_ms=");
     else if (exit_action == ACTION_REBOOT)
         log_text("exit reason=reboot-request boot_ms=");
+    else if (exit_action == ACTION_INPUT_TESTER)
+        log_text("exit reason=input-tester-request boot_ms=");
     else
         log_text("exit reason=runtime-recovery boot_ms=");
     log_number(boot_ms());
@@ -6089,7 +6096,8 @@ service_events:
     BIRD_PROFILE_EXIT_AND_EMIT();
     if (exit_action == ACTION_LAUNCH || exit_action == ACTION_SHUTDOWN ||
         exit_action == ACTION_PORTMASTER || exit_action == ACTION_RELOAD ||
-        exit_action == ACTION_REBOOT || exit_action == ACTION_RECOVER)
+        exit_action == ACTION_REBOOT || exit_action == ACTION_INPUT_TESTER ||
+        exit_action == ACTION_RECOVER)
         return exit_action;
     return 0;
 }

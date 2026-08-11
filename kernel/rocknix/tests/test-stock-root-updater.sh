@@ -26,6 +26,10 @@ grep -Fq 'source-kernel-fixed-gpio-fastpath.tsv' "$UPDATER" || {
 	printf '%s\n' 'fixed-GPIO kernel authority is missing from updater input verification' >&2
 	exit 1
 }
+grep -Fq 'source-kernel-irq-buttons.tsv' "$UPDATER" || {
+	printf '%s\n' 'IRQ-buttons kernel authority is missing from updater input verification' >&2
+	exit 1
+}
 
 # Exercise the real publication filesystem, not a spoofed mode field. The
 # hdiutil image is private test storage and is never mapped to the physical SD.

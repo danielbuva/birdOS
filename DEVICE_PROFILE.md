@@ -4,9 +4,9 @@ This is the build contract for the target console. Values here are deliberate
 product decisions, not runtime options.
 
 The operator-accepted source and behavior binding is clean commit
-`720958a49abe36bb669583e1928d3ff9418e8596`, immutable release
-`v6.23-20260811-093148`, deploy-manifest digest
-`429f4040f7613fd950c688af8bdff6d59065ba381b32f344110ab94d38a885bb`,
+`e7d84197ae4f0eb8647b75eef0b78f9cb460803b`, immutable release
+`v6.23-20260811-220044`, deploy-manifest digest
+`eb8d7d3c3e15cc2a98392a9c987f895180c85f7695537a7929184e45689a7f6f`,
 device-contract digest
 `1664a3778abcd3687865a82fd28bba5b468f6c3c7e9a46bf90f7c3acb1e08162`
 and catalog digest
@@ -26,7 +26,7 @@ replacing this experience contract.
 - SoC: Allwinner H700, AArch64 Cortex-A53.
 - Internal display: 720x480, landscape, 3:2.
 - Input: built-in left and right analog sticks, D-pad, A/B/X/Y, shoulders,
-  Start/Select/Menu and lid switch. Both sticks and all four axes
+  triggers, Start/Select/Menu, L3/R3 and lid switch. Both sticks and all four axes
   (`ABS_X`, `ABS_Y`, `ABS_RX`, `ABS_RY`) are required hardware; their ADC
   sampling must not be removed as presumed-unused polling.
   The primary launcher device is the exact `H700 Gamepad` identity
@@ -118,7 +118,11 @@ embedded 5,984-title, 27-system game catalogue. It is browsable before ROM
 storage mounts; storage readiness and individual ROM availability remain
 separate.
 
-Tools currently contains only PortMaster. Quit contains Reload, Reboot and
+The current unaccepted candidate adds **Input Tester** before PortMaster under
+Tools. It is a direct, event-driven visual check of all 17 digital controls,
+both analog sticks, L3/R3 and vibration. It remains idle without a frame loop;
+Menu gives a short rumble test and holding B exits. This still requires its
+RG34XX-SP visual, input and rumble gate. Quit contains Reload, Reboot and
 Shutdown. These remain explicit launcher handoffs rather than direct power or
 process-management syscalls from the UI.
 

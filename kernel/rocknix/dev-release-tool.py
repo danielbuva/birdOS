@@ -68,6 +68,7 @@ OPTIONAL_SOURCE_KERNEL_INPUTS = {
     "source-kernel-single-input-sync.tsv",
     "source-kernel-changed-input-sync.tsv",
     "source-kernel-fixed-gpio-fastpath.tsv",
+    "source-kernel-irq-buttons.tsv",
 }
 STOCK_JOYPAD_SHA256 = "a8ac6cacfa89672fa08dec7fa02179bb108a4a2303fd5c1eb5834f916089b79b"
 SOURCE_PARITY_JOYPAD_SHA256 = "fd2ceb95f0b3bdc1d68e7182a8ac5239b5286cc277a04980e53f65e0f73d3a05"
@@ -77,6 +78,7 @@ SOURCE_SINGLE_GPIO_READ_AUTHORITY_SHA256 = "d4d3977294603f15085e38972370795d7932
 SOURCE_SINGLE_INPUT_SYNC_AUTHORITY_SHA256 = "afe2693b5a632170b638eda70f27a77198ca89e2b792dfa5628f5057a8f49fa8"
 SOURCE_CHANGED_INPUT_SYNC_AUTHORITY_SHA256 = "8ae897ae79536313d1501c72ccb2c6dd9472963e7c2d0bfd6c1dbf54a51831c6"
 SOURCE_FIXED_GPIO_FASTPATH_AUTHORITY_SHA256 = "c727c365941c0957d9d56994d1cc9a5c0d16dccf315ff1d664944bac732b4820"
+SOURCE_IRQ_BUTTONS_AUTHORITY_SHA256 = "0020d161b5a2be0d8393267c3eb96794a0c2d9f82e8df5e097932216fad9e45d"
 EARLY_INPUT_DIGESTS = {
     "initramfs/init": "3473415af0cf5df44e70259c3392817b1df421a12a617ec083ec018ff51dbc48",
     "initramfs/busybox": "5ee3d20d8ea5fd9b3ba5109da80599eaf46a5a337d9e40d4c67d28eef44d5dc8",
@@ -162,6 +164,7 @@ KNOWN_STANDALONE_HOST_TESTS = {
     "test-fixed-control-exit-publication.sh",
     "test-fixed-controller-profile.py",
     "test-fixed-controls-c.sh",
+    "test-input-tester-c.sh",
     "test-launcher-boot-frame.sh",
     "test-launcher-catalog.py",
     "test-launcher-runtime-c.sh",
@@ -203,6 +206,7 @@ BROAD_PRODUCT_HOST_TESTS = frozenset(
 )
 HOST_HARNESS_RUNNERS = {
     "fixed-controls-host.c": "test-fixed-controls-c.sh",
+    "input-tester-host.c": "test-input-tester-c.sh",
     "launcher-runtime-host.c": "test-launcher-runtime-c.sh",
     "mpv-controls-host.c": "test-mpv-controls-c.sh",
 }
@@ -220,6 +224,12 @@ COMPONENT_HOST_TESTS: dict[str, tuple[str, ...]] = {
         "test-bird-local-binary.sh",
         "test-mpv-controls-c.sh",
         "test-stock-root-mpv-controls.sh",
+    ),
+    "input-tester": (
+        "test-bird-local-binary.sh",
+        "test-input-tester-c.sh",
+        "test-launcher-runtime-c.sh",
+        "test-stock-root-supervisor.sh",
     ),
     "device-contract": ("test-stage-zero-contract.py",),
     "catalog": ("test-launcher-catalog.py", "test-stock-root-rom-provider-map.sh"),
@@ -922,6 +932,12 @@ def early_kernel_authority(manifest: Manifest) -> str:
         == SOURCE_FIXED_GPIO_FASTPATH_AUTHORITY_SHA256
     ):
         return "source-fixed-gpio-fastpath"
+    if (
+        joypad_digest == SOURCE_PARITY_JOYPAD_SHA256
+        and source_authorities.get("source-kernel-irq-buttons.tsv")
+        == SOURCE_IRQ_BUTTONS_AUTHORITY_SHA256
+    ):
+        return "source-irq-buttons"
     fail("base release kernel authority and early joypad input do not agree")
 
 
@@ -1518,6 +1534,14 @@ def validate_component_sources(root: pathlib.Path, groups: set[str]) -> None:
                 "launcher/bird-device-contract.h",
             }
         )
+    if "input-tester" in groups:
+        paths.update(
+            {
+                "kernel/rocknix/build-bird-local-binary.sh",
+                "launcher/bird-input-tester.c",
+                "launcher/bird-device-contract.h",
+            }
+        )
     if "early-initramfs" in groups:
         paths.update(
             {
@@ -1577,6 +1601,10 @@ def component_fingerprints(
         "mpv-controls": source_hash(
             root,
             [helper, "kernel/rocknix/stock-root/bird-mpv-controls.c", "launcher/bird-device-contract.h"],
+        ),
+        "input-tester": source_hash(
+            root,
+            [helper, "launcher/bird-input-tester.c", "launcher/bird-device-contract.h"],
         ),
         "device-contract": source_hash(
             root,
@@ -1638,10 +1666,10 @@ def classify_path(path: str) -> tuple[str, set[str]]:
     if path in {"bird-device-contract.tsv", "generate-device-contract.py", *GENERATED_DEVICE_PATHS}:
         return (
             "supported",
-            {"device-contract", "launcher", "fixed-controls", "mpv-controls", "early-initramfs", "runtime:bird-suspend-policy.generated.sh", "runtime:bird-sleep.conf"},
+            {"device-contract", "launcher", "fixed-controls", "mpv-controls", "input-tester", "early-initramfs", "runtime:bird-suspend-policy.generated.sh", "runtime:bird-sleep.conf"},
         )
     if path == "kernel/rocknix/build-bird-local-binary.sh":
-        return ("supported", {"launcher", "pidwait", "powerstate", "fixed-controls", "mpv-controls", "early-initramfs"})
+        return ("supported", {"launcher", "pidwait", "powerstate", "fixed-controls", "mpv-controls", "input-tester", "early-initramfs"})
     if path == "launcher/bird-pidwait.c":
         return ("supported", {"pidwait"})
     if path == "launcher/bird-powerstate.c":
@@ -1650,6 +1678,8 @@ def classify_path(path: str) -> tuple[str, set[str]]:
         return ("supported", {"fixed-controls"})
     if path == "kernel/rocknix/stock-root/bird-mpv-controls.c":
         return ("supported", {"mpv-controls"})
+    if path == "launcher/bird-input-tester.c":
+        return ("supported", {"input-tester"})
     if path in {
         "kernel/rocknix/build-stock-root-early-initramfs.sh",
         "kernel/rocknix/stock-root/bird-early.sh",
@@ -1692,6 +1722,7 @@ def all_component_groups() -> set[str]:
         "powerstate",
         "fixed-controls",
         "mpv-controls",
+        "input-tester",
         "device-contract",
         "catalog",
         "boot-assets",
@@ -1711,6 +1742,7 @@ def expand_dependencies(groups: set[str]) -> set[str]:
                 "launcher",
                 "fixed-controls",
                 "mpv-controls",
+                "input-tester",
                 "early-initramfs",
                 "runtime:bird-suspend-policy.generated.sh",
                 "runtime:bird-sleep.conf",
@@ -1944,6 +1976,7 @@ def prepare_outputs(
         ("powerstate", "bird-powerstate", "bird/bird-powerstate"),
         ("fixed-controls", "bird-fixed-controls", "bird/bird-fixed-controls"),
         ("mpv-controls", "bird-mpv-controls", "bird/bird-mpv-controls"),
+        ("input-tester", "bird-input-tester", "bird/bird-input-tester"),
     ):
         if group in groups:
             build_binary(component, relative)

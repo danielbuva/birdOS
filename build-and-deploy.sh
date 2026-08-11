@@ -31,7 +31,7 @@ ROTATION_SELECTOR_TEMP=
 usage() {
 	cat <<'EOF'
 Usage:
-  ./build-and-deploy.sh --release [--source-kernel-parity|--builtin-input-kernel|--single-gpio-read-kernel|--single-input-sync-kernel|--changed-input-sync-kernel|--fixed-gpio-fastpath-kernel] [--release-id ID] [--dry-run]
+  ./build-and-deploy.sh --release [--source-kernel-parity|--builtin-input-kernel|--single-gpio-read-kernel|--single-input-sync-kernel|--changed-input-sync-kernel|--fixed-gpio-fastpath-kernel|--irq-buttons-kernel] [--release-id ID] [--dry-run]
   ./build-and-deploy.sh --profile [--release-id ID] [--dry-run]
   ./build-and-deploy.sh --help
 
@@ -62,6 +62,9 @@ Options:
   --fixed-gpio-fastpath-kernel
                   Build the Stage 9 fixed-H700 GPIO access and single-open-frame
                   kernel. Valid only with --release.
+  --irq-buttons-kernel
+                  Build the Stage 9 kernel with IRQ-backed digital controls and
+                  analog-only 10 ms polling. Valid only with --release.
   --dry-run       Perform read-only preflight and print the selected commands.
   --help          Show this help text.
 
@@ -144,6 +147,11 @@ while [ "$#" -gt 0 ]; do
 			[ "$KERNEL_AUTHORITY" = stock ] || \
 				fail 'choose only one source-kernel authority'
 			KERNEL_AUTHORITY=source-fixed-gpio-fastpath
+			;;
+		--irq-buttons-kernel)
+			[ "$KERNEL_AUTHORITY" = stock ] || \
+				fail 'choose only one source-kernel authority'
+			KERNEL_AUTHORITY=source-irq-buttons
 			;;
 		--release-id)
 			[ "$#" -ge 2 ] || fail '--release-id requires a value'
@@ -295,6 +303,11 @@ if [ "$KERNEL_AUTHORITY" = source-fixed-gpio-fastpath ]; then
 	SOURCE_KERNEL_BUILD=$ROOT/kernel/work/rocknix-source-fixed-gpio-fastpath/build
 	SOURCE_KERNEL_SYSTEM=$ROOT/kernel/work/rocknix-source-builtin-joypad-system/SYSTEM
 	SOURCE_KERNEL_AUTHORITY_RECORD=$ROOT/kernel/rocknix/source-kernel-fixed-gpio-fastpath.tsv
+fi
+if [ "$KERNEL_AUTHORITY" = source-irq-buttons ]; then
+	SOURCE_KERNEL_BUILD=$ROOT/kernel/work/rocknix-source-irq-buttons/build
+	SOURCE_KERNEL_SYSTEM=$ROOT/kernel/work/rocknix-source-builtin-joypad-system/SYSTEM
+	SOURCE_KERNEL_AUTHORITY_RECORD=$ROOT/kernel/rocknix/source-kernel-irq-buttons.tsv
 fi
 INIT_BUSYBOX=${INIT_BUSYBOX:-$ROOT/kernel/work/rocknix-official-initramfs-20260701/ramdisk/usr/bin/busybox}
 PORTMASTER_ARCHIVE=${PORTMASTER_ARCHIVE:-$SYSTEM_TREE/usr/config/PortMaster/release/PortMaster.zip}
@@ -735,6 +748,13 @@ if [ "$KERNEL_AUTHORITY" != stock ]; then
 		EXPECTED_SOURCE_PARITY_SHA=be2ab8c1f0e12d8f3350e6e8d08528ee675d45652f8bfcfc3499d30579fa77ad
 		EXPECTED_SOURCE_SYSTEM_SHA=57210b5cb6072bf1e2b81dea31df76f9b5d4aab5534d7d3b668fdfdc51a1c527
 		EXPECTED_SOURCE_AUTHORITY_SHA=c727c365941c0957d9d56994d1cc9a5c0d16dccf315ff1d664944bac732b4820
+		;;
+	source-irq-buttons)
+		EXPECTED_SOURCE_KERNEL_SHA=cad7ad8437d0a7de0d819846b12fdf83078f5878313704d0de79274431ec9d64
+		EXPECTED_SOURCE_MODULES_SHA=56bd291210ef47a020c3c6dfcac6f6987135ef4bf20f22435138acafb6107211
+		EXPECTED_SOURCE_PARITY_SHA=c32fcf16af9149c1cdbcbaed0181ce196c23444d5eda6e13fae767802da5a0aa
+		EXPECTED_SOURCE_SYSTEM_SHA=57210b5cb6072bf1e2b81dea31df76f9b5d4aab5534d7d3b668fdfdc51a1c527
+		EXPECTED_SOURCE_AUTHORITY_SHA=0020d161b5a2be0d8393267c3eb96794a0c2d9f82e8df5e097932216fad9e45d
 		;;
 	esac
 	[ "$(sha256 "$SOURCE_KERNEL_BUILD/Image")" = "$EXPECTED_SOURCE_KERNEL_SHA" ] && \

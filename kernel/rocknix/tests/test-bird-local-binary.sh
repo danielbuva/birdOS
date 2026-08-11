@@ -19,12 +19,14 @@ fail() {
 # The recorded command contract is part of release provenance. Keep the exact
 # pre-extraction spelling, ordering, modes and deliberate empty-flag spacing.
 sh "$HELPER" --contract final >"$TMP/final.actual"
+grep -Fq "input tester exceeded its binary budget" "$HELPER"
 {
 	printf '%s\n' 'final-launcher-compile\trelease\t--target=aarch64-linux-gnu -mcpu=cortex-a53 -O2 -ffreestanding -ffunction-sections -fdata-sections -fno-builtin -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-ident -fvisibility=hidden -nostdlib -Wall -Wextra -Werror -Wno-unused-function -DROM_ROOT="/storage/roms" -DLIVE_STORAGE_ROOT="/storage" -DFAVORITES_PATH="/storage/bird-data/Bird/state/favorites.txt" -DFAVORITES_TEMP="/storage/bird-data/Bird/state/favorites.tmp" -DRECENT_PATH="/storage/bird-data/Bird/state/recent.txt" -DRECENT_TEMP="/storage/bird-data/Bird/state/recent.tmp" -DBIRD_STATIC_BASE_PATH="/flash/bird/launcher-base.xrgb" -DPERSIST_UI_STATE  -c launcher/bird-launcher.c'
 	printf '%s\n' 'final-launcher-link\trelease\t-static --gc-sections --build-id=none -z noexecstack -s -e _start'
 	printf '%s\n' 'bird-pidwait-compile\trelease\t--target=aarch64-linux-gnu -mcpu=cortex-a53 -Os -ffreestanding -ffunction-sections -fdata-sections -fno-builtin -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-ident -fvisibility=hidden -nostdlib -Wall -Wextra -Werror -c launcher/bird-pidwait.c'
 	printf '%s\n' 'bird-fixed-controls-compile\trelease\t--target=aarch64-linux-gnu -mcpu=cortex-a53 -Os -ffreestanding -ffunction-sections -fdata-sections -fno-builtin -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-ident -fvisibility=hidden -nostdlib -Wall -Wextra -Werror -I launcher -c kernel/rocknix/stock-root/bird-fixed-controls.c'
 	printf '%s\n' 'bird-mpv-controls-compile\trelease\t--target=aarch64-linux-gnu -mcpu=cortex-a53 -Os -ffreestanding -ffunction-sections -fdata-sections -fno-builtin -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-ident -fvisibility=hidden -nostdlib -Wall -Wextra -Werror -I launcher -c kernel/rocknix/stock-root/bird-mpv-controls.c'
+	printf '%s\n' 'bird-input-tester-compile\trelease\t--target=aarch64-linux-gnu -mcpu=cortex-a53 -Os -ffreestanding -ffunction-sections -fdata-sections -fno-builtin -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-ident -fvisibility=hidden -nostdlib -Wall -Wextra -Werror -I launcher -c launcher/bird-input-tester.c'
 	printf '%s\n' 'bird-powerstate-compile\trelease\t--target=aarch64-linux-gnu -mcpu=cortex-a53 -Os -ffreestanding -ffunction-sections -fdata-sections -fno-builtin -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-ident -fvisibility=hidden -nostdlib -Wall -Wextra -Werror -c launcher/bird-powerstate.c'
 	printf '%s\n' 'small-worker-link\trelease\t-static --gc-sections --build-id=none -z noexecstack -s -e _start'
 } | sed 's/\\t/'"$(printf '\t')"'/g' >"$TMP/final.expected"
@@ -151,6 +153,10 @@ legacy_worker() {
 			SOURCE=$ROOT/kernel/rocknix/stock-root/bird-mpv-controls.c
 			INCLUDE=1
 			;;
+		bird-input-tester)
+			SOURCE=$ROOT/launcher/bird-input-tester.c
+			INCLUDE=1
+			;;
 	esac
 	set -- --target=aarch64-linux-gnu -mcpu=cortex-a53 -Os \
 		-ffreestanding -ffunction-sections -fdata-sections \
@@ -177,7 +183,7 @@ for COMPONENT in final-launcher early-launcher; do
 done
 
 for COMPONENT in bird-pidwait bird-powerstate bird-fixed-controls \
-	bird-mpv-controls; do
+	bird-mpv-controls bird-input-tester; do
 	legacy_worker "$COMPONENT" "$TMP/legacy/$COMPONENT.o" \
 		"$TMP/legacy/$COMPONENT"
 	CLANG="$CLANG" LLD="$LLD" READELF="$READELF" sh "$HELPER" \
@@ -212,7 +218,7 @@ grep -Fq 'override header selected' "$TMP/override-controls.err" || \
 cp "$ROOT/launcher/bird-device-contract.h" \
 	"$OVERRIDE/bird-device-contract.h"
 for COMPONENT in final-launcher early-launcher bird-fixed-controls \
-	bird-mpv-controls bird-pidwait bird-powerstate; do
+	bird-mpv-controls bird-input-tester bird-pidwait bird-powerstate; do
 	BIRD_LOCAL_LAUNCHER_DIR=$OVERRIDE CLANG="$CLANG" LLD="$LLD" \
 		READELF="$READELF" sh "$HELPER" --build "$COMPONENT" \
 		--object "$TMP/shared/override-$COMPONENT.o" \

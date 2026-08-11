@@ -27,8 +27,9 @@ and safely uses that result for both purposes.
 
 Stock code also published the stick state and button state as two separate
 input frames every 10 milliseconds. birdOS publishes them together as one
-coherent frame. This cuts 100 unnecessary frame publications per second while
-keeping the same sampling interval and every physical control read.
+coherent frame, and does not publish an empty frame when every value is
+unchanged. This removes unnecessary input-core work while keeping the same
+sampling interval and every physical control read.
 
 The practical goal is responsive controls during use and less needless input
 work between actions—not slower polling or missing controls.
@@ -51,10 +52,13 @@ and must produce byte-identical kernels, modules and device trees. The complete
 release is then tested on the RG34XX-SP before becoming the accepted kernel.
 
 The currently accepted kernel shipped in release
-`v6.23-20260811-100937`. Broad hardware testing passed, including buttons, both
-sticks, games, media, suspend, shutdown and application return. This release
-also stops publishing empty input frames while every accepted control value is
-unchanged. Stopwatch boot timing remained below three seconds.
+`v6.23-20260811-220044` (kernel SHA-256
+`e112527fac5790b4dfee8a5381224ff15dffc84a16e64202c46c981335b3b549`). Broad
+hardware testing passed, including buttons, both sticks, games, media, suspend,
+shutdown and application return. It uses direct fixed H700 GPIO reads for
+digital controls, emits one initial input frame on open/reconnect, and stops
+publishing empty frames when every accepted control value is unchanged.
+Stopwatch boot timing remained below three seconds.
 
 Exact source commits, artifact hashes and experimental authority records remain
 available under `kernel/rocknix/` for reproducibility without turning this
@@ -62,10 +66,13 @@ overview into a development log.
 
 ## Next improvements
 
-The current test candidate also uses the H700 controller's direct non-sleeping
-GPIO read for every digital button and combines input-device open/reconnect into
-one initial event frame instead of two. Both changes preserve the 10 ms analog
-stick sampling and the single `H700 Gamepad` identity.
+The next candidate moves the 17 digital controls—including L3/R3—to the H700
+GPIO controller's edge interrupts with independent 5 ms debounce. The four
+analog-stick axes remain polled every 10 ms because they are ADC values, not
+GPIO events. It retains one `H700 Gamepad` identity, rumble, reconnect and the
+stock device tree. This should remove repeated idle digital GPIO reads and can
+shorten button recognition, but neither latency nor battery improvement is
+claimed until the RG34XX-SP test.
 
 Future fixed-device work will investigate:
 

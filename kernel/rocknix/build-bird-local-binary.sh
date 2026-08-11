@@ -24,7 +24,7 @@ usage:
 
 COMPONENT is one of:
   final-launcher early-launcher bird-pidwait bird-powerstate
-  bird-fixed-controls bird-mpv-controls
+  bird-fixed-controls bird-mpv-controls bird-input-tester
 EOF
 }
 
@@ -87,6 +87,8 @@ print_contract() {
 			printf 'bird-fixed-controls-compile\trelease\t%s -I launcher -c kernel/rocknix/stock-root/bird-fixed-controls.c\n' \
 				"$SMALL_COMPILE"
 			printf 'bird-mpv-controls-compile\trelease\t%s -I launcher -c kernel/rocknix/stock-root/bird-mpv-controls.c\n' \
+				"$SMALL_COMPILE"
+			printf 'bird-input-tester-compile\trelease\t%s -I launcher -c launcher/bird-input-tester.c\n' \
 				"$SMALL_COMPILE"
 			printf 'bird-powerstate-compile\trelease\t%s -c launcher/bird-powerstate.c\n' \
 				"$SMALL_COMPILE"
@@ -208,6 +210,12 @@ compile_worker() {
 			STATIC_ERROR='MPV controls are not static AArch64'
 			INTERP_ERROR='MPV controls unexpectedly have an interpreter'
 			;;
+		bird-input-tester)
+			SOURCE_PATH=$ROOT/launcher/bird-input-tester.c
+			INCLUDE_LAUNCHER=1
+			STATIC_ERROR='input tester is not static AArch64'
+			INTERP_ERROR='input tester unexpectedly has an interpreter'
+			;;
 	esac
 	set -- --target=aarch64-linux-gnu -mcpu=cortex-a53 -Os \
 		-ffreestanding -ffunction-sections -fdata-sections \
@@ -225,6 +233,10 @@ compile_worker() {
 		-e _start -o "$OUTPUT_PATH" "$OBJECT_PATH"
 	chmod 0755 "$OUTPUT_PATH"
 	validate_binary "$OUTPUT_PATH" "$STATIC_ERROR" "$INTERP_ERROR"
+	if [ "$COMPONENT" = bird-input-tester ]; then
+		[ "$(file_bytes "$OUTPUT_PATH")" -le 32768 ] || \
+			fail 'input tester exceeded its binary budget'
+	fi
 }
 
 [ "$#" -gt 0 ] || { usage >&2; exit 2; }
@@ -250,7 +262,7 @@ case "$1" in
 esac
 
 case "$COMPONENT" in
-	final-launcher|early-launcher|bird-pidwait|bird-powerstate|bird-fixed-controls|bird-mpv-controls) ;;
+	final-launcher|early-launcher|bird-pidwait|bird-powerstate|bird-fixed-controls|bird-mpv-controls|bird-input-tester) ;;
 	*) fail "unknown Bird local binary component: $COMPONENT" ;;
 esac
 [ -n "$OBJECT" ] && [ -n "$OUTPUT" ] || fail 'empty object or output path'

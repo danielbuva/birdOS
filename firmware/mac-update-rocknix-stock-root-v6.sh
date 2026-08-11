@@ -367,6 +367,10 @@ elif grep -Fqx source-kernel-fixed-gpio-fastpath.tsv "$MANIFEST_INPUTS"; then
 	printf '%s\n' source-kernel-fixed-gpio-fastpath.tsv >>"$VERIFY_WORK/expected-inputs"
 	LC_ALL=C sort -o "$VERIFY_WORK/expected-inputs" \
 		"$VERIFY_WORK/expected-inputs"
+elif grep -Fqx source-kernel-irq-buttons.tsv "$MANIFEST_INPUTS"; then
+	printf '%s\n' source-kernel-irq-buttons.tsv >>"$VERIFY_WORK/expected-inputs"
+	LC_ALL=C sort -o "$VERIFY_WORK/expected-inputs" \
+		"$VERIFY_WORK/expected-inputs"
 fi
 cmp "$VERIFY_WORK/expected-inputs" "$MANIFEST_INPUTS" >/dev/null || \
 	fail 'canonical deploy manifest input set is incomplete or duplicated'

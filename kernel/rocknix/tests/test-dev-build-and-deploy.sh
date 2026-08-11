@@ -125,6 +125,7 @@ for SOURCE_PATH in \
 	generate-launcher-catalog.py \
 	generate-launcher-catalog.sh \
 	launcher/bird-launcher.c \
+	launcher/bird-input-tester.c \
 	launcher/bird-pidwait.c \
 	launcher/bird-powerstate.c \
 	launcher/bird-device-contract.h \
@@ -251,6 +252,23 @@ convert_manifest_to_source_parity() {
 	sha256 "$MANIFEST" >"$BIRD/bird-releases/prod-a/.complete"
 }
 
+convert_manifest_to_irq_buttons() {
+	MANIFEST=$BIRD/bird-releases/prod-a/deploy-manifest.tsv
+	SOURCE_JOYPAD=fd2ceb95f0b3bdc1d68e7182a8ac5239b5286cc277a04980e53f65e0f73d3a05
+	SOURCE_AUTHORITY=0020d161b5a2be0d8393267c3eb96794a0c2d9f82e8df5e097932216fad9e45d
+	awk -F '\t' -v OFS='\t' -v joypad="$SOURCE_JOYPAD" -v authority="$SOURCE_AUTHORITY" '
+		$1 == "input" && $2 == "rocknix-singleadc-joypad.ko" {
+			$5 = joypad
+			print
+			print "input", "source-kernel-irq-buttons.tsv", "644", "1", authority, "test:source-irq-buttons"
+			next
+		}
+		{ print }
+	' "$MANIFEST" >"$MANIFEST.new"
+	mv "$MANIFEST.new" "$MANIFEST"
+	sha256 "$MANIFEST" >"$BIRD/bird-releases/prod-a/.complete"
+}
+
 create_release() {
 	RELEASE_ID=$1
 	RELEASE_ROOT=$BIRD/bird-releases/$RELEASE_ID
@@ -285,7 +303,7 @@ path.write_text(text)
 PY
 	cp -p "$REPO/kernel/rocknix/stock-root/post-flash.sh" "$RELEASE_ROOT/post-flash.sh"
 	cp -p "$REPO/kernel/rocknix/stock-root/mount-storage.sh" "$RELEASE_ROOT/mount-storage.sh"
-	for NAME in bird-launcher bird-pidwait bird-powerstate bird-fixed-controls bird-mpv-controls; do
+	for NAME in bird-launcher bird-input-tester bird-pidwait bird-powerstate bird-fixed-controls bird-mpv-controls; do
 		printf '%s %s\n' "$NAME" "$RELEASE_ID" >"$RELEASE_ROOT/bird/$NAME"
 		chmod 0755 "$RELEASE_ROOT/bird/$NAME"
 	done
@@ -294,6 +312,7 @@ PY
 	find "$RELEASE_ROOT" -type f -exec chmod 0644 {} +
 	chmod 0755 "$RELEASE_ROOT/post-flash.sh" "$RELEASE_ROOT/mount-storage.sh" \
 		"$RELEASE_ROOT/bird/bird-launcher" "$RELEASE_ROOT/bird/bird-pidwait" \
+		"$RELEASE_ROOT/bird/bird-input-tester" \
 		"$RELEASE_ROOT/bird/bird-powerstate" "$RELEASE_ROOT/bird/bird-fixed-controls" \
 		"$RELEASE_ROOT/bird/bird-mpv-controls"
 	for NAME in $(runtime_files); do
@@ -305,7 +324,7 @@ PY
 create_build_fixture() {
 	VERSION=${1:-one}
 	mkdir -p "$BUILD_FIXTURE/bird"
-	for NAME in bird-launcher bird-pidwait bird-powerstate bird-fixed-controls bird-mpv-controls; do
+	for NAME in bird-launcher bird-input-tester bird-pidwait bird-powerstate bird-fixed-controls bird-mpv-controls; do
 		printf 'fixture %s %s\n' "$NAME" "$VERSION" >"$BUILD_FIXTURE/bird/$NAME"
 	done
 	printf 'fixture boot contract %s\n' "$VERSION" >"$BUILD_FIXTURE/bird/boot-frame.contract"
@@ -547,7 +566,7 @@ sys.modules[spec.name] = module
 assert spec.loader is not None
 spec.loader.exec_module(module)
 assert module.all_component_groups() == set(module.COMPONENT_HOST_TESTS)
-assert len(module.BROAD_PRODUCT_HOST_TESTS) == 40
+assert len(module.BROAD_PRODUCT_HOST_TESTS) == 41
 assert "test-dev-build-and-deploy.sh" in module.BROAD_PRODUCT_HOST_TESTS
 assert module.host_test_command(bash_test)[:1] == ["/bin/bash"]
 assert module.host_test_command(sh_test)[:1] == ["/bin/sh"]
@@ -742,6 +761,23 @@ grep -q 'fixture bird-powerstate two' "$DEV/bird/bird-powerstate"
 [ "$(sha256 "$DEV/bird/bird-pidwait")" = "$PIDWAIT_BEFORE" ]
 assert_base_and_fallback_unchanged
 pass 'small-helper change has a one-binary payload boundary'
+
+new_case input-tester-only
+initialize_dev
+DEV=$BIRD/bird-releases/dev-current
+LAUNCHER_BEFORE=$(sha256 "$DEV/bird/bird-launcher")
+INITRAMFS_BEFORE=$(sha256 "$DEV/bird-initramfs.cpio.gz")
+FIXED_CONTROLS_BEFORE=$(sha256 "$DEV/bird/bird-fixed-controls")
+printf '\n/* host input tester delta */\n' >>"$REPO/launcher/bird-input-tester.c"
+printf 'fixture bird-input-tester two\n' >"$BUILD_FIXTURE/bird/bird-input-tester"
+run_dev --changed >"$CASE_ROOT/input-tester.out"
+grep -q '^Rebuilt groups: input-tester$' "$CASE_ROOT/input-tester.out"
+grep -q 'fixture bird-input-tester two' "$DEV/bird/bird-input-tester"
+[ "$(sha256 "$DEV/bird/bird-launcher")" = "$LAUNCHER_BEFORE" ]
+[ "$(sha256 "$DEV/bird-initramfs.cpio.gz")" = "$INITRAMFS_BEFORE" ]
+[ "$(sha256 "$DEV/bird/bird-fixed-controls")" = "$FIXED_CONTROLS_BEFORE" ]
+assert_base_and_fallback_unchanged
+pass 'input tester changes retain a one-binary fast-development boundary'
 
 new_case mapped-test-failure
 initialize_dev
@@ -1772,5 +1808,16 @@ awk -F '\t' '$1 == "input" && $2 == "source-kernel-parity.tsv" && \
 [ "$(selector_release)" = dev-current ]
 assert_base_and_fallback_unchanged
 pass 'a verified source-kernel production base initializes dev-current'
+
+new_case source-irq-buttons-base
+convert_manifest_to_irq_buttons
+BASE_BEFORE=$(tree_digest "$BIRD/bird-releases/prod-a")
+run_dev --changed >"$CASE_ROOT/source-irq-buttons.out"
+awk -F '\t' '$1 == "input" && $2 == "source-kernel-irq-buttons.tsv" && \
+	$5 == "0020d161b5a2be0d8393267c3eb96794a0c2d9f82e8df5e097932216fad9e45d" { found = 1 } \
+	END { exit !found }' "$BIRD/bird-releases/dev-current/deploy-manifest.tsv"
+[ "$(selector_release)" = dev-current ]
+assert_base_and_fallback_unchanged
+pass 'a verified IRQ-buttons production base initializes dev-current'
 
 printf 'PASS: %s dev-current host transaction cases\n' "$PASS_COUNT"

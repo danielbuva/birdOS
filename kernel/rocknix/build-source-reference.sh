@@ -21,6 +21,8 @@ SINGLE_GPIO_READ=${SINGLE_GPIO_READ:-0}
 SINGLE_INPUT_SYNC=${SINGLE_INPUT_SYNC:-0}
 CHANGED_INPUT_SYNC=${CHANGED_INPUT_SYNC:-0}
 FIXED_GPIO_FASTPATH=${FIXED_GPIO_FASTPATH:-0}
+IRQ_GPIO_BUTTONS=${IRQ_GPIO_BUTTONS:-0}
+IRQ_GPIO_TRANSFORM=$ROOT/kernel/rocknix/transform-joypad-irq.py
 JOBS=${JOBS:-4}
 
 ROCKNIX_COMMIT=3e4ee5852e6ca5ea73a38369d2639fad2262648b
@@ -73,6 +75,13 @@ case "$FIXED_GPIO_FASTPATH" in
 esac
 [ "$FIXED_GPIO_FASTPATH" -eq 0 ] || [ "$CHANGED_INPUT_SYNC" -eq 1 ] || \
 	fail 'FIXED_GPIO_FASTPATH requires CHANGED_INPUT_SYNC=1'
+case "$IRQ_GPIO_BUTTONS" in
+	0 | 1) ;;
+	*) fail 'IRQ_GPIO_BUTTONS must be 0 or 1' ;;
+esac
+[ "$IRQ_GPIO_BUTTONS" -eq 0 ] || [ "$FIXED_GPIO_FASTPATH" -eq 1 ] || \
+	fail 'IRQ_GPIO_BUTTONS requires FIXED_GPIO_FASTPATH=1'
+[ -f "$IRQ_GPIO_TRANSFORM" ] || fail 'joypad IRQ transform helper is missing'
 [ -d "$ROCKNIX_SOURCE/.git" ] || fail "ROCKNIX source missing: $ROCKNIX_SOURCE"
 [ "$(git -C "$ROCKNIX_SOURCE" rev-parse HEAD)" = "$ROCKNIX_COMMIT" ] || \
 	fail 'ROCKNIX source commit mismatch'
@@ -138,11 +147,13 @@ set -- docker run --rm --platform linux/arm64 \
 	-e SINGLE_INPUT_SYNC="$SINGLE_INPUT_SYNC" \
 	-e CHANGED_INPUT_SYNC="$CHANGED_INPUT_SYNC" \
 	-e FIXED_GPIO_FASTPATH="$FIXED_GPIO_FASTPATH" \
+	-e IRQ_GPIO_BUTTONS="$IRQ_GPIO_BUTTONS" \
 	-e LOCALVERSION= \
 	-v "$ROCKNIX_SOURCE:/rocknix:ro" \
 	-v "$JOYPAD_SOURCE:/rocknix-joypad:ro" \
 	-v "$FIRMWARE_SOURCE:/shipping-firmware:ro" \
 	-v "$SHIPPING_KERNEL:/shipping-KERNEL:ro" \
+	-v "$IRQ_GPIO_TRANSFORM:/bird-transform-joypad-irq.py:ro" \
 	-v "$BUILD_OUTPUT:/out"
 if [ -n "$INITRAMFS_ARCHIVE" ]; then
 	set -- "$@" -v "$INITRAMFS_ARCHIVE:/bird-initramfs.cpio:ro"
@@ -436,6 +447,19 @@ PY
 				[ "$(grep -Fc "input_sync(poll_dev->input);" \
 					drivers/input/joystick/rocknix-singleadc-joypad.c)" -eq 2 ]
 			fi
+			if [ "$IRQ_GPIO_BUTTONS" = 1 ]; then
+				python3 /bird-transform-joypad-irq.py \
+					--expected-buttons 17 \
+					drivers/input/joystick/rocknix-singleadc-joypad.c
+				[ "$(grep -Fc "IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING" \
+					drivers/input/joystick/rocknix-singleadc-joypad.c)" -eq 1 ]
+				[ "$(grep -Fc "joypad_adc_check(poll_dev, true);" \
+					drivers/input/joystick/rocknix-singleadc-joypad.c)" -eq 1 ]
+				[ "$(grep -Fc "joypad_gpio_check(poll_dev)" \
+					drivers/input/joystick/rocknix-singleadc-joypad.c)" -eq 0 ]
+				[ "$(grep -Fc "BIRD_FIXED_GPIO_BUTTONS 17" \
+					drivers/input/joystick/rocknix-singleadc-joypad.c)" -eq 1 ]
+			fi
 		fi
 
 		mkdir -p external-firmware/panels external-firmware/rtl_bt \
@@ -697,6 +721,11 @@ fi
 	if [ "$FIXED_GPIO_FASTPATH" = 1 ]; then
 		printf 'joypad-gpio-access\tfixed-nonsleeping\n'
 		printf 'joypad-open-policy\tsingle-open-sync\n'
+	fi
+	if [ "$IRQ_GPIO_BUTTONS" = 1 ]; then
+		printf 'joypad-digital-policy\tboth-edge-irq-5ms-debounce\n'
+		printf 'joypad-poll-policy\tanalog-only-10ms\n'
+		printf 'joypad-fixed-buttons\t17\n'
 	fi
 	printf 'shipping-kernel-sha256\t%s\n' "$SHIPPING_KERNEL_SHA"
 	printf 'shipping-dtb-sha256\t%s\n' "$SHIPPING_DTB_SHA"

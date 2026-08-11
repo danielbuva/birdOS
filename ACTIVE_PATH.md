@@ -3,19 +3,20 @@
 This document is the authority for the code that builds, installs and runs the
 current birdOS system. The active implementation path is **stock-root v6.23**.
 The current human promotion record binds clean public source
-`97cc5305d804c7659dd52adfbd45d7dbcdb14637`, immutable release
-`v6.23-20260811-100937`, deploy-manifest digest
-`97e7688fb3d423f98912be717136cba96dc7b8ece207491e3c908ffc77a03716`,
+`e7d84197ae4f0eb8647b75eef0b78f9cb460803b`,
+immutable release `v6.23-20260811-220044`, deploy-manifest digest
+`eb8d7d3c3e15cc2a98392a9c987f895180c85f7695537a7929184e45689a7f6f`,
 device-contract digest
 `1664a3778abcd3687865a82fd28bba5b468f6c3c7e9a46bf90f7c3acb1e08162`
 and generated-catalog digest
 `9795aae6baddc292f5d9954a444656e303db305c639284f16eb10288c41f1f93`.
 The complete host gate and broad RG34XX-SP behavior gate passed on 2026-08-11.
-This promotes the Stage 9 changed-input-frame policy on top of the built-in
-H700 controls driver, single-GPIO-read policy and combined input frame. Empty
+This promotes the Stage 9 fixed-GPIO fast path on top of the built-in H700
+controls driver, combined input frame and changed-input-frame policy. Empty
 frames are no longer published while Linux accepts no changed control value.
 All buttons, both sticks and broad hardware behavior passed;
-the stopwatch remained below three seconds. This is
+the stopwatch remained below three seconds. Its kernel SHA-256 is
+`e112527fac5790b4dfee8a5381224ff15dffc84a16e64202c46c981335b3b549`. This is
 functional and descriptive timing acceptance, not a new
 calibrated energy distribution. The previously accepted immutable binary reference is release
 `v6.23-20260731-054816`, published as `stable-v6.23-20260731-054816`; its
@@ -154,10 +155,18 @@ plus buttons in one combined input frame per poll instead of two successive
 frames. Its broad gate passed with normal sub-three-second stopwatch timing.
 Release `v6.23-20260811-100937` preserved the 10 ms sampling cadence but
 suppressed the combined frame when Linux accepted no changed control value.
-Its broad gate passed with normal sub-three-second stopwatch timing. The next
-candidate uses direct non-sleeping access for the fixed H700 PIO buttons and
-combines input open/reconnect into one initial frame while retaining the same
-DTB, four stick samples, identity, capabilities and rumble.
+Its broad gate passed with normal sub-three-second stopwatch timing. Release
+`v6.23-20260811-220044` added direct non-sleeping access for fixed H700 PIO
+buttons and one initial input frame on open/reconnect; its broad physical gate
+passed while retaining the same DTB, four stick samples, identity, capabilities
+and rumble.
+
+The next unaccepted candidate moves all 17 digital controls, including L3/R3,
+to H700 GPIO edge interrupts with independent 5 ms per-key debounce. Only the
+four ADC axes remain on the 10 ms poll. Fewer idle GPIO reads and tighter,
+lower-worst-case button recognition are expected, not yet measured hardware
+claims. It requires the
+full RG34XX-SP input, rumble, reconnect, suspend/resume, provider and boot gate.
 
 The corrected source-kernel package reached Bird's early usable menu but not
 application readiness. A temporary early watchdog proved that release-runtime

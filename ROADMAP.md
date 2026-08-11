@@ -2,9 +2,9 @@
 
 This is the governing constitution for the active stock-root implementation.
 The current human promotion record binds clean source
-`720958a49abe36bb669583e1928d3ff9418e8596`, immutable release
-`v6.23-20260811-093148`, deploy manifest
-`429f4040f7613fd950c688af8bdff6d59065ba381b32f344110ab94d38a885bb`,
+`e7d84197ae4f0eb8647b75eef0b78f9cb460803b`, immutable release
+`v6.23-20260811-220044`, deploy manifest
+`eb8d7d3c3e15cc2a98392a9c987f895180c85f7695537a7929184e45689a7f6f`,
 device contract
 `1664a3778abcd3687865a82fd28bba5b468f6c3c7e9a46bf90f7c3acb1e08162`
 and catalogue
@@ -1700,12 +1700,18 @@ sample but emitted one combined axes-and-buttons input frame per polling cycle;
 its broad hardware gate passed with normal sub-three-second stopwatch timing.
 Release `v6.23-20260811-100937` kept that sampling cadence and published only
 when Linux's input core accepted a changed button or axis value. Its broad
-hardware gate passed with normal sub-three-second stopwatch timing. The next
-batched candidate uses the fixed H700 PIO controller's non-sleeping GPIO access
-for digital buttons and removes the earlier of two input-device open frames.
-It retains the exact DTB, all four stick samples, the 10 ms cadence, one input
-identity, rumble and reconnect. IRQ-backed digital delivery remains a later
-separate experiment because it changes debounce and event timing.
+hardware gate passed with normal sub-three-second stopwatch timing. Release
+`v6.23-20260811-220044` then added the fixed H700 PIO non-sleeping GPIO path
+for digital buttons and removed the earlier of two input-device open frames.
+Its broad physical gate passed, retaining the exact DTB, all four stick samples,
+the 10 ms cadence, one input identity, rumble and reconnect.
+
+The next unaccepted Stage 9 candidate moves all 17 digital controls, including
+L3/R3, to GPIO edge interrupts with independent 5 ms debounce. The four analog
+stick axes remain ADC-polled every 10 ms. Expected benefits are fewer idle GPIO
+reads and tighter, lower-worst-case digital recognition, but neither is a
+measured RG34XX-SP latency or energy result. Promotion requires the complete
+input, rumble, reconnect, suspend/resume, provider and boot gate.
 Subtract drivers, modules, probes, buses, protocols and subsystems one
 attributable group at a time only after complete consumer closure. Neutral
 kernel measurement/readiness infrastructure may promote without regression;

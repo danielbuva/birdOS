@@ -188,6 +188,7 @@ in the base manifest, including:
 
 - `bird-pidwait`;
 - `bird-powerstate`;
+- `bird-input-tester`;
 - `bird-fixed-controls`;
 - `bird-mpv-controls`.
 

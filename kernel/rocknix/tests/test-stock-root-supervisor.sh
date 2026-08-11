@@ -12,6 +12,7 @@ trap 'rm -rf "$TMP"' EXIT INT TERM HUP
 
 grep -Fq 'LAUNCHER=/flash/bird/bird-launcher' "$SUPERVISOR"
 grep -Fq 'RUNNER=/flash/bird/run-content.sh' "$SUPERVISOR"
+grep -Fq 'INPUT_TESTER=/flash/bird/bird-input-tester' "$SUPERVISOR"
 grep -Fq 'PIDWAIT=/flash/bird/bird-pidwait' "$SUPERVISOR"
 grep -Fq 'bird launcher startup failure reason=%s result=%s; stopping' \
 	"$SUPERVISOR"
@@ -56,6 +57,9 @@ grep -Fq '10) consume_handoff_action && run_content "$REQUEST" ;;' "$SUPERVISOR"
 grep -Fq '11) consume_handoff_action && request_poweroff ;;' "$SUPERVISOR"
 grep -Fq '12) consume_handoff_action && run_content --portmaster ;;' "$SUPERVISOR"
 grep -Fq '14) consume_handoff_action && request_reboot ;;' "$SUPERVISOR"
+grep -Fq '15) consume_handoff_action && run_input_tester ;;' "$SUPERVISOR"
+grep -Fq '15) run_input_tester ;;' "$SUPERVISOR"
+grep -Fq 'bird input tester result=%s class=%s uptime=' "$SUPERVISOR"
 grep -Fq 'wait_content_cleanup' "$SUPERVISOR"
 grep -Fq 'early_launcher_adoptable' "$SUPERVISOR"
 grep -Fq 'retire_early_launcher' "$SUPERVISOR"

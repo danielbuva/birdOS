@@ -7,6 +7,7 @@ set -u
 
 LAUNCHER=/flash/bird/bird-launcher
 RUNNER=/flash/bird/run-content.sh
+INPUT_TESTER=/flash/bird/bird-input-tester
 REQUEST=/run/bird/bird-launch-request
 FIRST_FRAME=/run/bird/bird-first-frame-ready
 HANDOFF_ACTION=/run/bird/bird-launch-action
@@ -195,6 +196,24 @@ run_content() {
 	return "$result"
 }
 
+run_input_tester() {
+	local result
+	printf 'bird input tester start uptime='
+	uptime_now
+	if "$INPUT_TESTER"; then
+		result=0
+	else
+		result=$?
+	fi
+	classify_exit_status "$result"
+	printf 'bird input tester result=%s class=%s uptime=' \
+		"$result" "$CONTENT_EXIT_CLASS"
+	uptime_now
+	# A diagnostic-app failure must return to the menu. It is not launcher
+	# ownership loss and does not authorize a supervisor restart loop.
+	return 0
+}
+
 consume_handoff_action() {
 	if rm -f "$HANDOFF_ACTION"; then
 		return 0
@@ -219,6 +238,7 @@ dispatch_handoff_action() {
 		12) consume_handoff_action && run_content --portmaster ;;
 		13) consume_handoff_action ;;
 		14) consume_handoff_action && request_reboot ;;
+		15) consume_handoff_action && run_input_tester ;;
 		*) rm -f "$HANDOFF_ACTION" ;;
 	esac
 }
@@ -231,7 +251,7 @@ read_completed_handoff_action() {
 	# atomic rename. The shared reader rejects partial and multi-line files; the
 	# exact enum below rejects extended single-line prefixes.
 	case "$ACTION" in
-		10|11|12|13|14) return 0 ;;
+		10|11|12|13|14|15) return 0 ;;
 		*) return 1 ;;
 	esac
 }
@@ -496,6 +516,7 @@ while :; do
 			printf 'bird launcher user-requested reload\n'
 			;;
 		14) request_reboot ;;
+		15) run_input_tester ;;
 		*)
 			printf 'bird launcher unexpected post-frame exit=%s; stopping\n' \
 				"$RESULT"

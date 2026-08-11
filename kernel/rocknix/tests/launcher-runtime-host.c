@@ -3512,6 +3512,7 @@ static int run_user_reload_handoff_tests(void) {
                     action_preserves_frame(ACTION_RELOAD) &&
                     action_preserves_frame(ACTION_LAUNCH) &&
                     action_preserves_frame(ACTION_PORTMASTER) &&
+                    action_preserves_frame(ACTION_INPUT_TESTER) &&
                     !action_preserves_frame(ACTION_SHUTDOWN) &&
                     !action_preserves_frame(ACTION_REBOOT),
                 "legacy reload compatibility lost its framebuffer contract");
@@ -3535,6 +3536,15 @@ static int run_user_reload_handoff_tests(void) {
                     memcmp(fake_write_capture, "14\n", 3U) == 0 &&
                     fake_rename_calls == 1U,
                 "reboot handoff did not publish the canonical action");
+
+    reset_fake_file(FAKE_FD, 0, 0);
+    begin_fake_file_write_capture();
+    result = write_handoff_action(ACTION_INPUT_TESTER);
+    end_fake_file_write_capture();
+    ok &= check(result == 0 && fake_write_capture_bytes == 3U &&
+                    memcmp(fake_write_capture, "15\n", 3U) == 0 &&
+                    fake_rename_calls == 1U,
+                "input tester handoff did not publish the canonical action");
 
     /* Nested B remains ordinary navigation; no current input path emits the
      * legacy action 13 compatibility value. */
@@ -3574,9 +3584,15 @@ static int run_phase9_menu_hierarchy_tests(void) {
     selection = 4U;
     action = select_current();
     ok &= check(action == ACTION_NONE && view == VIEW_TOOLS &&
-                    current_count() == 1U &&
-                    strcmp(tools_item[0], "PORTMASTER") == 0,
-                "Tools did not own the single PortMaster entry");
+                    current_count() == 2U &&
+                    strcmp(tools_item[0], "INPUT TESTER") == 0 &&
+                    strcmp(tools_item[1], "PORTMASTER") == 0,
+                "Tools did not expose Input Tester before PortMaster");
+    reset_fake_file(FAKE_FD, 0, 0);
+    action = select_current();
+    ok &= check(action == ACTION_INPUT_TESTER,
+                "Tools Input Tester selection changed its handoff action");
+    selection = 1U;
     reset_fake_file(FAKE_FD, 0, 0);
     action = select_current();
     ok &= check(action == ACTION_PORTMASTER,
