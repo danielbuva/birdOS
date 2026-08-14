@@ -426,7 +426,8 @@ for FILE in 090-ui_service 999-export bird-autostart bird-journald.conf \
 	bird-powerstate.service supervisor.sh run-content.sh bird-mpv-player.sh \
 	prepare-ports.sh verify-portmaster-provider.sh \
 	portmaster-provider.manifest.tsv fixed-storage.sh first-frame-prep.sh \
-	capture-boot-state.sh capture-requested-diagnostics.sh capture-stage5-state.sh \
+	capture-boot-state.sh capture-uboot-bootstage.sh \
+	capture-requested-diagnostics.sh capture-stage5-state.sh \
 	capture-stage5-window-counters.sh capture-stage5-window.sh \
 	bird-network.sh bird-fixed-control-exit.sh \
 	bird-emergency-recover.sh \
@@ -466,6 +467,7 @@ chmod 0755 "$OUTPUT/card/post-flash.sh" "$OUTPUT/card/mount-storage.sh" \
 	"$OUTPUT/card/bird/fixed-storage.sh" \
 	"$OUTPUT/card/bird/first-frame-prep.sh" \
 	"$OUTPUT/card/bird/capture-boot-state.sh" \
+	"$OUTPUT/card/bird/capture-uboot-bootstage.sh" \
 	"$OUTPUT/card/bird/capture-requested-diagnostics.sh" \
 	"$OUTPUT/card/bird/capture-stage5-state.sh" \
 	"$OUTPUT/card/bird/capture-stage5-window-counters.sh" \
@@ -501,6 +503,7 @@ for SCRIPT in "$OUTPUT/card/post-flash.sh" \
 	"$OUTPUT/card/bird/fixed-storage.sh" \
 	"$OUTPUT/card/bird/first-frame-prep.sh" \
 	"$OUTPUT/card/bird/capture-boot-state.sh" \
+	"$OUTPUT/card/bird/capture-uboot-bootstage.sh" \
 	"$OUTPUT/card/bird/capture-requested-diagnostics.sh" \
 	"$OUTPUT/card/bird/capture-stage5-state.sh" \
 	"$OUTPUT/card/bird/capture-stage5-window-counters.sh" \
@@ -680,6 +683,12 @@ grep -q 'timeout 2s pactl info' \
 grep -q 'stock-root-boot-state-\$BOOT_ID.log' \
 	"$OUTPUT/card/bird/capture-boot-state.sh" || \
 	fail 'boot-scoped snapshot publication missing'
+grep -Fq 'BIRD_BOOTSTAGE_ROOT=$BOOTSTAGE_ROOT "$BOOTSTAGE_CAPTURE"' \
+	"$OUTPUT/card/bird/capture-boot-state.sh" || \
+	fail 'post-frame U-Boot bootstage capture missing'
+grep -Fq 'bird_uboot_bootstage_version=1' \
+	"$OUTPUT/card/bird/capture-uboot-bootstage.sh" || \
+	fail 'U-Boot bootstage snapshot schema missing'
 grep -Fq 'STAGE5_CAPTURE=${BIRD_STAGE5_CAPTURE:-/flash/bird/capture-stage5-window.sh}' \
 	"$OUTPUT/card/bird/capture-requested-diagnostics.sh" || \
 	fail 'standalone Stage 5 acquisition missing'
@@ -1091,12 +1100,27 @@ grep -q 'bird-pre-suspend-brightness' \
 	"$OUTPUT/card/bird/bird-suspend.sh" || fail 'suspend brightness preservation missing'
 grep -q 'suspend-latest.log' \
 	"$OUTPUT/card/bird/bird-suspend.sh" || fail 'suspend brightness evidence missing'
-grep -Fq 'STRIKE=$(((MAX * 10 + 50) / 100))' \
-	"$OUTPUT/build/early-initramfs/payload/bird-early.sh" || \
-	fail 'early measured ten-percent wake strike missing'
-grep -Fq '$BUSYBOX usleep 50000' \
-	"$OUTPUT/build/early-initramfs/payload/bird-early.sh" || \
-	fail 'early bounded wake strike missing'
+python3 - "$OUTPUT/build/early-initramfs/payload/bird-early.sh" <<'PY' || \
+	fail 'early cold-brightness contract changed'
+from pathlib import Path
+import sys
+
+source = Path(sys.argv[1]).read_text()
+start = source.index("set_early_brightness() {")
+end = source.index("\n}\n\ncase ", start)
+function = source[start:end]
+formula = 'RAW=$(((10 * MAX + 50) / 100))'
+brightness = function.index('"$RAW" >"$BACKLIGHT/brightness"')
+unblank = function.index('0 >"$BACKLIGHT/bl_power"')
+if formula not in function:
+    raise SystemExit("rounded ten-percent cold target missing")
+if brightness >= unblank:
+    raise SystemExit("cold backlight unblank precedes target storage")
+if function.count('>"$BACKLIGHT/brightness"') != 1:
+    raise SystemExit("cold brightness must be written exactly once")
+if "STRIKE" in function or "usleep" in function:
+    raise SystemExit("cold path retained a timed wake strike")
+PY
 grep -Fq 'systemctl stop --no-block sway.service' \
 	"$OUTPUT/card/bird/run-content.sh" || fail 'nonblocking Sway stop missing'
 grep -Fq '"$TIMEOUT_PROGRAM" --signal=TERM --kill-after=1s 3s' \

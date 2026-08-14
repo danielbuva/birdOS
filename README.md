@@ -6,8 +6,10 @@ inputs and the engineering record that began with muOS 2601.1. The accepted
 hardware baseline is **stock-root v6.23**: it retains the exact ROCKNIX
 20260701 DDR4 compatibility base and replaces its frontend and selected generic
 policy with birdOS. Its 2026-07-26 physical gate and host fault-injection suite
-passed with canonical deploy-manifest digest
-`e441f9c2755173353a9d29969807c2a05411240b7e9d2a1d18ed099d3c91b4d2`.
+established the historical stock-root baseline. The current accepted binding is
+clean source `c07fe18769a13a3b1997e2cf1a4900cc55423d5b`, immutable release
+`v6.23-20260811-234132`, and canonical deploy-manifest digest
+`a0a38b04be25f2d09009b0677d33c0d34c65b027c0ff1b9463f71cdeec9b274b`.
 
 The governing priority is: boot latency, interaction latency, battery
 efficiency, memory efficiency, then exact user features. Generality is a cost,
@@ -36,11 +38,10 @@ verified reuse mode omits that early duplicate and retains the 262,144-byte
 budget. The full contract is documented in
 [`launcher/README.md`](launcher/README.md).
 
-The current unaccepted candidate adds a direct Input Tester under Tools for the
-fixed H700 controls: 17 digital controls, both sticks, L3/R3 and rumble are
-shown without an idle render loop. Menu triggers a short rumble test; hold B to
-return to Bird. Its visual, input and rumble behavior still needs the RG34XX-SP
-gate.
+Tools includes a direct Input Tester for all 17 gamepad buttons, both sticks,
+L3/R3, volume, power and rumble without an idle render loop. Menu triggers a
+short rumble test; hold B to return to Bird. Its 29/29 RG34XX-SP input and
+rumble gate passed.
 
 Use [`ROADMAP.md`](ROADMAP.md) for planned work and
 [`ROCKNIX_AUDIT.md`](ROCKNIX_AUDIT.md) for the retained-userspace audit.

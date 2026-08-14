@@ -3,8 +3,10 @@
  *
  * This is deliberately the same kind of program as the Bird launcher: one
  * freestanding static AArch64 process, direct access to the fixed framebuffer
- * and exact H700 evdev device, no libc, SDL, compositor, parser or allocator.
- * It never grabs the gamepad.  The display sleeps in ppoll while idle and only
+ * and exact H700, volume and power evdev devices, no libc, SDL, compositor,
+ * parser or allocator.  It never grabs the shared gamepad; it exclusively
+ * holds volume and power only while testing them so their normal actions do
+ * not interrupt the test.  The display sleeps in ppoll while idle and only
  * redraws controls whose accepted state changed.
  */
 
@@ -66,13 +68,16 @@ typedef signed long s64;
 #define BTN_DPAD_DOWN 545
 #define BTN_DPAD_LEFT 546
 #define BTN_DPAD_RIGHT 547
+#define KEY_VOLUMEDOWN 114
+#define KEY_VOLUMEUP 115
+#define KEY_POWER 116
 #define FF_RUMBLE 0x50
 
-/* H700 cardinal button names differ from the printed RG34XX-SP legends. */
+/* Raw H700 cardinal positions mapped to the printed face-button legends. */
 #define BIRD_BUTTON_A BTN_EAST
 #define BIRD_BUTTON_B BTN_SOUTH
-#define BIRD_BUTTON_X BTN_WEST
-#define BIRD_BUTTON_Y BTN_NORTH
+#define BIRD_BUTTON_X BTN_NORTH
+#define BIRD_BUTTON_Y BTN_WEST
 
 #define EVIOCGNAME_128 0x80804506UL
 #define EVIOCGID 0x80084502UL
@@ -87,12 +92,14 @@ typedef signed long s64;
 #define EVIOCGABS_RY 0x80184544UL
 #define EVIOCSFF 0x40304580UL
 #define EVIOCRMFF 0x40044581UL
+#define EVIOCGRAB 0x40044590UL
 
 #define INPUT_SCAN_COUNT ((int)BIRD_DEVICE_INPUT_SCAN_COUNT)
 #define RECONNECT_NS 250000000L
 #define EXIT_HOLD_NS 1000000000UL
 #define RUMBLE_LENGTH_MS 300U
 #define LOG_PATH "/storage/bird-data/Bird/log/input-tester-latest.log"
+#define TEST_TOTAL (BUTTON_COUNT + AUXILIARY_COUNT + 8 + 1)
 
 #define COLOR_BACKGROUND 0x0010151cU
 #define COLOR_PANEL 0x001b2530U
@@ -103,10 +110,16 @@ typedef signed long s64;
 #define COLOR_MUTED 0x0095a3b3U
 #define COLOR_DANGER 0x00ff6677U
 
-#define DIRTY_AXIS_LEFT (1U << BUTTON_COUNT)
-#define DIRTY_AXIS_RIGHT (1U << (BUTTON_COUNT + 1))
-#define DIRTY_STATUS (1U << (BUTTON_COUNT + 2))
-#define DIRTY_ALL ((1U << (BUTTON_COUNT + 3)) - 1U)
+#define AUXILIARY_COUNT 3
+#define AUX_VOLUME_DOWN 0
+#define AUX_VOLUME_UP 1
+#define AUX_POWER 2
+#define DIRTY_AUXILIARY(index) (1U << (BUTTON_COUNT + (index)))
+#define DIRTY_AXIS_LEFT (1U << (BUTTON_COUNT + AUXILIARY_COUNT))
+#define DIRTY_AXIS_RIGHT (1U << (BUTTON_COUNT + AUXILIARY_COUNT + 1))
+#define DIRTY_STATUS (1U << (BUTTON_COUNT + AUXILIARY_COUNT + 2))
+#define DIRTY_EVENT (1U << (BUTTON_COUNT + AUXILIARY_COUNT + 3))
+#define DIRTY_ALL ((1U << (BUTTON_COUNT + AUXILIARY_COUNT + 4)) - 1U)
 
 #define HANDLE_NONE 0
 #define HANDLE_CHANGED 1
@@ -214,6 +227,8 @@ struct button_layout {
 struct tester_state {
     u32 held_buttons;
     u32 seen_buttons;
+    u32 held_auxiliary;
+    u32 seen_auxiliary;
     u32 seen_axis_directions;
     u32 dirty;
     s32 axes[4];
@@ -224,6 +239,7 @@ struct tester_state {
     u32 axis_observed_valid;
     u64 b_exit_deadline_ns;
     u32 connections;
+    char last_event[40];
     int connected;
     int discard_until_report;
     int rumble_enabled;
@@ -240,6 +256,8 @@ _Static_assert(sizeof(struct ff_effect) == 48U, "force-feedback ABI changed");
 static volatile u32 *framebuffer;
 static int framebuffer_fd = -1;
 static int discovered_event_index = -1;
+static int discovered_volume_event_index = -1;
+static int discovered_power_event_index = -1;
 
 static const u16 button_codes[BUTTON_COUNT] = {
     BTN_DPAD_UP, BTN_DPAD_DOWN, BTN_DPAD_LEFT, BTN_DPAD_RIGHT,
@@ -254,16 +272,30 @@ static const char *const button_log_names[BUTTON_COUNT] = {
     "SELECT", "START", "MENU", "L3", "R3",
 };
 
+static const u16 auxiliary_codes[AUXILIARY_COUNT] = {
+    KEY_VOLUMEDOWN, KEY_VOLUMEUP, KEY_POWER,
+};
+
+static const char *const auxiliary_log_names[AUXILIARY_COUNT] = {
+    "VOLUME-DOWN", "VOLUME-UP", "POWER",
+};
+
 static const struct button_layout button_layouts[BUTTON_COUNT] = {
-    {105, 205, 48, 48, "UP", 0},       {105, 301, 48, 48, "DOWN", 0},
-    {57, 253, 48, 48, "LEFT", 0},     {153, 253, 48, 48, "RIGHT", 0},
+    {105, 205, 62, 48, "UP", 0},       {105, 301, 62, 48, "DOWN", 0},
+    {43, 253, 62, 48, "LEFT", 0},     {167, 253, 62, 48, "RIGHT", 0},
     {625, 253, 48, 48, "A", 1},       {577, 301, 48, 48, "B", 1},
     {529, 253, 48, 48, "X", 1},       {577, 205, 48, 48, "Y", 1},
-    {145, 72, 112, 38, "L1", 0},      {463, 72, 112, 38, "R1", 0},
-    {20, 72, 112, 38, "L2", 0},       {588, 72, 112, 38, "R2", 0},
+    {20, 72, 112, 38, "L1", 0},       {588, 72, 112, 38, "R1", 0},
+    {145, 72, 112, 38, "L2", 0},      {463, 72, 112, 38, "R2", 0},
     {269, 214, 76, 34, "SELECT", 0},  {375, 214, 76, 34, "START", 0},
-    {333, 263, 54, 34, "MENU", 0},    {257, 337, 86, 32, "L3", 0},
-    {377, 337, 86, 32, "R3", 0},
+    {333, 263, 54, 34, "MENU", 0},    {227, 337, 86, 32, "L3", 0},
+    {407, 337, 86, 32, "R3", 0},
+};
+
+static const struct button_layout auxiliary_layouts[AUXILIARY_COUNT] = {
+    {228, 128, 76, 34, "VOL-", 0},
+    {416, 128, 76, 34, "VOL+", 0},
+    {322, 128, 76, 34, "POWER", 0},
 };
 
 /* Five-wide uppercase font; the tester uses no runtime font service. */
@@ -475,6 +507,45 @@ static int discover_input(void) {
     return -1;
 }
 
+static int auxiliary_contract_matches(int fd, const char *expected_name,
+                                      u16 first_code, u16 second_code) {
+    char name[128];
+    u64 key_bits[12] = {0U};
+    name[0] = '\0';
+    if (sys_ioctl(fd, EVIOCGNAME_128, name) < 0 ||
+        sys_ioctl(fd, EVIOCGBIT_KEY, key_bits) < 0)
+        return 0;
+    name[sizeof(name) - 1U] = '\0';
+    return strings_equal(name, expected_name) &&
+           (key_bits[first_code / 64U] & (1UL << (first_code % 64U))) &&
+           (!second_code ||
+            (key_bits[second_code / 64U] & (1UL << (second_code % 64U))));
+}
+
+static int discover_auxiliary(const char *name, u16 first_code,
+                              u16 second_code, int *event_index) {
+    int index;
+    for (index = 0; index < INPUT_SCAN_COUNT; index++) {
+        char path[32];
+        long fd;
+        event_path(path, index);
+        fd = sys_open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+        if (fd < 0) continue;
+        if (auxiliary_contract_matches((int)fd, name, first_code,
+                                       second_code)) {
+            *event_index = index;
+            return (int)fd;
+        }
+        sys_close((int)fd);
+    }
+    return -1;
+}
+
+static int set_auxiliary_exclusive(int fd, int exclusive) {
+    int value = exclusive;
+    return sys_ioctl(fd, EVIOCGRAB, &value) >= 0;
+}
+
 static int read_rumble_enabled(void) {
     char value[8];
     long fd = sys_open(BIRD_DEVICE_RUMBLE_ENABLE_PATH, O_RDONLY | O_CLOEXEC);
@@ -498,6 +569,34 @@ static int axis_index_for_code(u16 code) {
     if (code == ABS_RX) return 2;
     if (code == ABS_RY) return 3;
     return -1;
+}
+
+static int decimal_text(char *out, s32 value);
+
+static void live_event_parts(struct tester_state *state, const char *prefix,
+                             const char *name, const char *suffix) {
+    int length = 0;
+    while (*prefix && length < (int)sizeof(state->last_event) - 1)
+        state->last_event[length++] = *prefix++;
+    while (*name && length < (int)sizeof(state->last_event) - 1)
+        state->last_event[length++] = *name++;
+    while (*suffix && length < (int)sizeof(state->last_event) - 1)
+        state->last_event[length++] = *suffix++;
+    state->last_event[length] = '\0';
+    state->dirty |= DIRTY_EVENT;
+}
+
+static void live_axis_event(struct tester_state *state, int axis, s32 value) {
+    static const char *const names[4] = {"LX", "LY", "RX", "RY"};
+    char number[16];
+    int length;
+    int index = 0;
+    (void)decimal_text(number, value);
+    live_event_parts(state, "ABS ", names[axis], " ");
+    length = string_length(state->last_event);
+    while (number[index] && length < (int)sizeof(state->last_event) - 1)
+        state->last_event[length++] = number[index++];
+    state->last_event[length] = '\0';
 }
 
 static u32 axis_direction_bits(const struct tester_state *state, int axis,
@@ -529,6 +628,7 @@ static int update_axis(struct tester_state *state, int axis, s32 value) {
         state->axis_observed_maximum[axis] = value;
     state->axis_observed_valid |= 1U << axis;
     state->seen_axis_directions |= axis_direction_bits(state, axis, value);
+    live_axis_event(state, axis, value);
     state->dirty |= axis < 2 ? DIRTY_AXIS_LEFT : DIRTY_AXIS_RIGHT;
     if (state->seen_axis_directions != old_seen) state->dirty |= DIRTY_STATUS;
     return 1;
@@ -552,11 +652,34 @@ static int update_button(struct tester_state *state, int index, int pressed,
             state->b_exit_deadline_ns = 0U;
     }
     if (state->held_buttons != old_held || state->seen_buttons != old_seen) {
+        live_event_parts(state, "KEY ", button_log_names[index],
+                         pressed ? " DOWN" : " UP");
         state->dirty |= bit;
         if (state->seen_buttons != old_seen) state->dirty |= DIRTY_STATUS;
         return 1;
     }
     return 0;
+}
+
+static int update_auxiliary(struct tester_state *state, int index,
+                            int pressed) {
+    u32 bit = 1U << index;
+    u32 old_held = state->held_auxiliary;
+    u32 old_seen = state->seen_auxiliary;
+    if (pressed) {
+        state->held_auxiliary |= bit;
+        state->seen_auxiliary |= bit;
+    } else {
+        state->held_auxiliary &= ~bit;
+    }
+    if (state->held_auxiliary == old_held &&
+        state->seen_auxiliary == old_seen)
+        return 0;
+    live_event_parts(state, "KEY ", auxiliary_log_names[index],
+                     pressed ? " DOWN" : " UP");
+    state->dirty |= DIRTY_AUXILIARY(index);
+    if (state->seen_auxiliary != old_seen) state->dirty |= DIRTY_STATUS;
+    return 1;
 }
 
 static int handle_event(struct tester_state *state,
@@ -613,6 +736,17 @@ static int resync_input(int fd, struct tester_state *state, u64 now_ns) {
     return 1;
 }
 
+static int resync_auxiliary(int fd, struct tester_state *state, int first,
+                            int count) {
+    u64 keys[12] = {0U};
+    int index;
+    if (sys_ioctl(fd, EVIOCGKEY_768, keys) < 0) return 0;
+    for (index = first; index < first + count; index++)
+        (void)update_auxiliary(state, index,
+                               key_bit_set(keys, auxiliary_codes[index]));
+    return 1;
+}
+
 static void clear_live_state(struct tester_state *state) {
     state->held_buttons = 0U;
     state->b_exit_deadline_ns = 0U;
@@ -643,6 +777,7 @@ static int upload_rumble(int fd, struct tester_state *state) {
         play.code = (u16)state->effect_id;
         play.value = 1;
         if (sys_write(fd, &play, sizeof(play)) == (long)sizeof(play)) {
+            live_event_parts(state, "FF ", "RUMBLE", "");
             state->rumble_failed = 0;
             state->rumble_sent = 1;
             state->dirty |= DIRTY_STATUS;
@@ -673,6 +808,7 @@ static int upload_rumble(int fd, struct tester_state *state) {
         return 0;
     }
     state->effect_id = effect.id;
+    live_event_parts(state, "FF ", "RUMBLE", "");
     state->rumble_failed = 0;
     if (!state->rumble_sent) {
         state->rumble_sent = 1;
@@ -694,7 +830,6 @@ static void erase_rumble(int fd, struct tester_state *state) {
     state->effect_id = -1;
 }
 
-static int decimal_text(char *out, s32 value);
 static int tested_count(const struct tester_state *state);
 
 static int buffer_text(char *buffer, int length, int limit, const char *text) {
@@ -724,6 +859,14 @@ static void write_log_snapshot(const struct tester_state *state,
                          "\ncontract\texact-h700-gamepad\nevent\t/dev/input/event");
     length = buffer_number(buffer, length, sizeof(buffer),
                            discovered_event_index);
+    length = buffer_text(buffer, length, sizeof(buffer),
+                         "\nvolume-event\t/dev/input/event");
+    length = buffer_number(buffer, length, sizeof(buffer),
+                           discovered_volume_event_index);
+    length = buffer_text(buffer, length, sizeof(buffer),
+                         "\npower-event\t/dev/input/event");
+    length = buffer_number(buffer, length, sizeof(buffer),
+                           discovered_power_event_index);
     length = buffer_text(buffer, length, sizeof(buffer), "\nconnections\t");
     length = buffer_number(buffer, length, sizeof(buffer),
                            (s32)state->connections);
@@ -735,6 +878,15 @@ static void write_log_snapshot(const struct tester_state *state,
         length = buffer_text(buffer, length, sizeof(buffer), "\t");
         length = buffer_number(buffer, length, sizeof(buffer),
                                (state->seen_buttons & (1U << index)) ? 1 : 0);
+        length = buffer_text(buffer, length, sizeof(buffer), "\n");
+    }
+    for (index = 0; index < AUXILIARY_COUNT; index++) {
+        length = buffer_text(buffer, length, sizeof(buffer), "auxiliary\t");
+        length = buffer_text(buffer, length, sizeof(buffer),
+                             auxiliary_log_names[index]);
+        length = buffer_text(buffer, length, sizeof(buffer), "\t");
+        length = buffer_number(buffer, length, sizeof(buffer),
+                               (state->seen_auxiliary & (1U << index)) ? 1 : 0);
         length = buffer_text(buffer, length, sizeof(buffer), "\n");
     }
     for (index = 0; index < 4; index++) {
@@ -757,7 +909,7 @@ static void write_log_snapshot(const struct tester_state *state,
     length = buffer_number(buffer, length, sizeof(buffer), state->rumble_failed);
     length = buffer_text(buffer, length, sizeof(buffer), "\ntested\t");
     length = buffer_number(buffer, length, sizeof(buffer), tested_count(state));
-    length = buffer_text(buffer, length, sizeof(buffer), "/26\n");
+    length = buffer_text(buffer, length, sizeof(buffer), "/29\n");
     /* Keep the opening diagnostic durable, but never put a storage flush on
      * the normal app-to-menu return path. */
     fd = sys_open_mode(LOG_PATH,
@@ -861,16 +1013,21 @@ static int tested_count(const struct tester_state *state) {
         count += (int)(value & 1U);
         value >>= 1;
     }
+    value = state->seen_auxiliary;
+    while (value) {
+        count += (int)(value & 1U);
+        value >>= 1;
+    }
     if (state->rumble_sent) count++;
     return count;
 }
 
-static void render_button(const struct tester_state *state, int index) {
-    const struct button_layout *layout = &button_layouts[index];
-    u32 bit = 1U << index;
-    u32 color = (state->held_buttons & bit) ? COLOR_ACTIVE :
-                ((state->seen_buttons & bit) ? COLOR_TESTED : COLOR_UNTESTED);
-    int text_width = 6 * string_length(layout->label) - 1;
+static void render_control(const struct button_layout *layout, int held,
+                           int seen) {
+    u32 color = held ? COLOR_ACTIVE : (seen ? COLOR_TESTED : COLOR_UNTESTED);
+    int length = string_length(layout->label);
+    int scale = 2;
+    int text_width = (6 * length - 1) * scale;
     rectangle(layout->x - 4, layout->y - 4,
               layout->width + 8, layout->height + 8, COLOR_BACKGROUND);
     if (layout->round) {
@@ -881,9 +1038,22 @@ static void render_button(const struct tester_state *state, int index) {
         rectangle(layout->x, layout->y, layout->width, layout->height, color);
     }
     draw_text(layout->x + (layout->width - text_width) / 2,
-              layout->y + (layout->height - 7) / 2,
-              layout->label, 1,
-              (state->held_buttons & bit) ? COLOR_BACKGROUND : COLOR_TEXT);
+              layout->y + (layout->height - 7 * scale) / 2,
+              layout->label, scale, held ? COLOR_BACKGROUND : COLOR_TEXT);
+}
+
+static void render_button(const struct tester_state *state, int index) {
+    u32 bit = 1U << index;
+    render_control(&button_layouts[index],
+                   (state->held_buttons & bit) != 0U,
+                   (state->seen_buttons & bit) != 0U);
+}
+
+static void render_auxiliary(const struct tester_state *state, int index) {
+    u32 bit = 1U << index;
+    render_control(&auxiliary_layouts[index],
+                   (state->held_auxiliary & bit) != 0U,
+                   (state->seen_auxiliary & bit) != 0U);
 }
 
 static int axis_pixel(const struct tester_state *state, int axis) {
@@ -894,70 +1064,101 @@ static int axis_pixel(const struct tester_state *state, int axis) {
                          : state->axis_maximum[axis] - center;
     s64 result;
     if (span <= 0) return 0;
-    result = delta * 34 / span;
-    if (result < -34) result = -34;
-    if (result > 34) result = 34;
+    result = delta * 27 / span;
+    if (result < -27) result = -27;
+    if (result > 27) result = 27;
     return (int)result;
 }
 
+static void render_axis_history(const struct tester_state *state, int axis,
+                                int center_x, int center_y) {
+    int x;
+    int y;
+    int outer = 34 * 34;
+    int inner = 31 * 31;
+    for (y = -34; y <= 34; y++) {
+        for (x = -34; x <= 34; x++) {
+            int distance = x * x + y * y;
+            int bit;
+            u32 color;
+            if (distance > outer || distance < inner) continue;
+            if (x * x >= y * y)
+                bit = axis * 2 + (x >= 0 ? 1 : 0);
+            else
+                bit = (axis + 1) * 2 + (y >= 0 ? 1 : 0);
+            color = (state->seen_axis_directions & (1U << bit))
+                        ? COLOR_ACTIVE : COLOR_UNTESTED;
+            pixel(center_x + x, center_y + y, color);
+        }
+    }
+}
+
 static void render_axis_pair(const struct tester_state *state, int right) {
-    char first[16];
-    char second[16];
+    char values[32];
     int axis = right ? 2 : 0;
-    int center_x = right ? 431 : 289;
-    int center_y = 407;
+    int center_x = right ? 450 : 270;
+    int center_y = 411;
     int dot_x = center_x + axis_pixel(state, axis);
     int dot_y = center_y + axis_pixel(state, axis + 1);
-    int first_length;
-    rectangle(center_x - 62, center_y - 34, 124, 69, COLOR_BACKGROUND);
-    circle(center_x, center_y, 34, COLOR_UNTESTED, 0);
+    int length = 0;
+    rectangle(center_x - 36, center_y - 36, 73, 73, COLOR_BACKGROUND);
+    render_axis_history(state, axis, center_x, center_y);
     rectangle(center_x - 31, center_y, 63, 1, COLOR_MUTED);
     rectangle(center_x, center_y - 31, 1, 63, COLOR_MUTED);
     circle(dot_x, dot_y, 6, COLOR_ACTIVE, 1);
-    first_length = decimal_text(first, state->axes[axis]);
-    (void)decimal_text(second, state->axes[axis + 1]);
-    rectangle(center_x - 67, 445, 134, 14, COLOR_BACKGROUND);
-    draw_text(center_x - 67, 445, right ? "R " : "L ", 1, COLOR_TEXT);
-    draw_text(center_x - 55, 445, first, 1, COLOR_MUTED);
-    draw_text(center_x - 49 + first_length * 6, 445, "/", 1, COLOR_MUTED);
-    draw_text(center_x - 37 + first_length * 6, 445, second, 1, COLOR_MUTED);
+    length = buffer_text(values, length, sizeof(values), right ? "R " : "L ");
+    length = buffer_number(values, length, sizeof(values), state->axes[axis]);
+    length = buffer_text(values, length, sizeof(values), "/");
+    length = buffer_number(values, length, sizeof(values), state->axes[axis + 1]);
+    values[length] = '\0';
+    rectangle(center_x - 84, 451, 168, 18, COLOR_BACKGROUND);
+    draw_text(center_x - (6 * length - 1), 453, values, 2, COLOR_TEXT);
 }
 
 static void render_status(const struct tester_state *state) {
     char count_text[16];
     int count = tested_count(state);
     rectangle(0, 0, (int)BIRD_DEVICE_FB_WIDTH, 66, COLOR_BACKGROUND);
-    draw_text(160, 12, "RG34XX-SP INPUT TEST", 2, COLOR_TEXT);
-    draw_text(20, 45, state->connected ? "CONNECTED" : "DISCONNECTED",
-              1, state->connected ? COLOR_TESTED : COLOR_DANGER);
-    draw_text(284, 45, "TESTED", 1, COLOR_MUTED);
+    draw_text(20, 12, "INPUT TEST", 2, COLOR_TEXT);
+    draw_text(160, 12, state->connected ? "CONNECTED" : "DISCONNECTED",
+              2, state->connected ? COLOR_TESTED : COLOR_DANGER);
+    draw_text(320, 12, "TESTED", 2, COLOR_MUTED);
     (void)decimal_text(count_text, count);
-    draw_text(332, 45, count_text, 1,
-              count == BUTTON_COUNT + 8 + 1 ? COLOR_TESTED : COLOR_TEXT);
-    draw_text(350, 45, "/26", 1, COLOR_MUTED);
-    draw_text(478, 45,
+    draw_text(400, 12, count_text, 2,
+              count == TEST_TOTAL ? COLOR_TESTED : COLOR_TEXT);
+    draw_text(430, 12, "/29", 2, COLOR_MUTED);
+    draw_text(530, 12,
               state->rumble_failed ? "RUMBLE FAILED" :
               (state->rumble_sent ? "RUMBLE OK" :
                (state->rumble_enabled ? "MENU RUMBLE" : "RUMBLE DISABLED")),
-              1, state->rumble_failed ? COLOR_DANGER :
+              2, state->rumble_failed ? COLOR_DANGER :
                  (state->rumble_sent ? COLOR_TESTED :
-                  (state->rumble_enabled ? COLOR_TEXT : COLOR_DANGER)));
+                 (state->rumble_enabled ? COLOR_TEXT : COLOR_DANGER)));
+}
+
+static void render_event(const struct tester_state *state) {
+    rectangle(0, 38, (int)BIRD_DEVICE_FB_WIDTH, 27, COLOR_BACKGROUND);
+    draw_text(20, 42, "EVENT", 2, COLOR_MUTED);
+    draw_text(92, 42,
+              state->last_event[0] ? state->last_event : "WAITING",
+              2, state->last_event[0] ? COLOR_TEXT : COLOR_MUTED);
 }
 
 static void render_static(void) {
     rectangle(0, 0, (int)BIRD_DEVICE_FB_WIDTH,
               (int)BIRD_DEVICE_FB_HEIGHT, COLOR_BACKGROUND);
     rectangle(12, 65, 696, 53, COLOR_PANEL);
-    draw_text(270, 126, "PRESS EVERY CONTROL", 1, COLOR_MUTED);
-    draw_text(268, 150, "MOVE STICKS TO EDGES", 1, COLOR_MUTED);
-    draw_text(293, 178, "HOLD B TO EXIT", 1, COLOR_TEXT);
+    draw_text(276, 177, "HOLD B TO EXIT", 2, COLOR_TEXT);
 }
 
 static void render_all(struct tester_state *state) {
     int index;
     render_static();
     render_status(state);
+    render_event(state);
     for (index = 0; index < BUTTON_COUNT; index++) render_button(state, index);
+    for (index = 0; index < AUXILIARY_COUNT; index++)
+        render_auxiliary(state, index);
     render_axis_pair(state, 0);
     render_axis_pair(state, 1);
     state->dirty = 0U;
@@ -967,9 +1168,16 @@ static void render_dirty(struct tester_state *state) {
     u32 dirty = state->dirty;
     int index;
     if (!dirty) return;
-    if (dirty & DIRTY_STATUS) render_status(state);
+    if (dirty & DIRTY_STATUS) {
+        render_status(state);
+        render_event(state);
+    } else if (dirty & DIRTY_EVENT) {
+        render_event(state);
+    }
     for (index = 0; index < BUTTON_COUNT; index++)
         if (dirty & (1U << index)) render_button(state, index);
+    for (index = 0; index < AUXILIARY_COUNT; index++)
+        if (dirty & DIRTY_AUXILIARY(index)) render_auxiliary(state, index);
     if (dirty & DIRTY_AXIS_LEFT) render_axis_pair(state, 0);
     if (dirty & DIRTY_AXIS_RIGHT) render_axis_pair(state, 1);
     state->dirty = 0U;
@@ -1002,6 +1210,35 @@ static int process_input(int fd, struct tester_state *state) {
     }
 }
 
+static int process_auxiliary(int fd, struct tester_state *state, int first,
+                             int count) {
+    struct input_event events[16];
+    for (;;) {
+        long bytes = sys_read(fd, events, sizeof(events));
+        u64 event_count;
+        u64 event_index;
+        if (bytes == -EINTR) continue;
+        if (bytes == -EAGAIN) return 1;
+        if (bytes <= 0 || (u64)bytes % sizeof(events[0])) return 0;
+        event_count = (u64)bytes / sizeof(events[0]);
+        for (event_index = 0U; event_index < event_count; event_index++) {
+            int index;
+            if (events[event_index].type == EV_KEY) {
+                for (index = first; index < first + count; index++) {
+                    if (events[event_index].code == auxiliary_codes[index]) {
+                        (void)update_auxiliary(state, index,
+                                               events[event_index].value != 0);
+                        break;
+                    }
+                }
+            }
+            if (events[event_index].type == EV_SYN &&
+                events[event_index].code == SYN_REPORT)
+                render_dirty(state);
+        }
+    }
+}
+
 #ifndef BIRD_HOST_TEST
 static int connect_input(struct tester_state *state) {
     int fd = discover_input();
@@ -1021,6 +1258,50 @@ static int connect_input(struct tester_state *state) {
     return fd;
 }
 
+static int connect_auxiliary(struct tester_state *state, int power) {
+    int fd;
+    if (power) {
+        fd = discover_auxiliary("axp20x-pek", KEY_POWER, 0,
+                                &discovered_power_event_index);
+        if (fd >= 0 &&
+            (!set_auxiliary_exclusive(fd, 1) ||
+             !resync_auxiliary(fd, state, AUX_POWER, 1))) {
+            sys_close(fd);
+            return -1;
+        }
+    } else {
+        fd = discover_auxiliary("gpio-keys-volume", KEY_VOLUMEDOWN,
+                                KEY_VOLUMEUP,
+                                &discovered_volume_event_index);
+        if (fd >= 0 &&
+            (!set_auxiliary_exclusive(fd, 1) ||
+             !resync_auxiliary(fd, state, AUX_VOLUME_DOWN, 2))) {
+            sys_close(fd);
+            return -1;
+        }
+    }
+    if (fd >= 0) render_dirty(state);
+    return fd;
+}
+
+static void disconnect_auxiliary(int *fd, struct tester_state *state,
+                                 int first, int count) {
+    int index;
+    if (*fd >= 0) {
+        (void)set_auxiliary_exclusive(*fd, 0);
+        sys_close(*fd);
+    }
+    *fd = -1;
+    for (index = first; index < first + count; index++) {
+        u32 bit = 1U << index;
+        if (state->held_auxiliary & bit) {
+            state->held_auxiliary &= ~bit;
+            state->dirty |= DIRTY_AUXILIARY(index);
+        }
+    }
+    render_dirty(state);
+}
+
 static void disconnect_input(int *fd, struct tester_state *state) {
     erase_rumble(*fd, state);
     if (*fd >= 0) sys_close(*fd);
@@ -1035,9 +1316,11 @@ static void application(void) {
         .axis_maximum = {32767, 32767, 32767, 32767},
         .effect_id = -1,
     };
-    struct pollfd poll;
+    struct pollfd polls[3];
     long mapped;
     int input_fd = -1;
+    int volume_fd = -1;
+    int power_fd = -1;
 
     framebuffer_fd = (int)sys_open(BIRD_DEVICE_FRAMEBUFFER_NODE,
                                    O_RDWR | O_CLOEXEC);
@@ -1050,6 +1333,8 @@ static void application(void) {
     framebuffer = (volatile u32 *)mapped;
     render_all(&state);
     input_fd = connect_input(&state);
+    volume_fd = connect_auxiliary(&state, 0);
+    power_fd = connect_auxiliary(&state, 1);
 
     for (;;) {
         struct timespec timeout;
@@ -1058,39 +1343,70 @@ static void application(void) {
         long ready;
 
         if (exit_hold_complete(&state, now)) break;
-        if (input_fd < 0) {
+        if (input_fd < 0 || volume_fd < 0 || power_fd < 0) {
             timeout.sec = 0;
             timeout.nsec = RECONNECT_NS;
             timeout_pointer = &timeout;
-        } else if (state.b_exit_deadline_ns) {
+        }
+        if (state.b_exit_deadline_ns) {
             u64 remaining = state.b_exit_deadline_ns > now
                                 ? state.b_exit_deadline_ns - now : 0U;
-            timeout.sec = (s64)(remaining / 1000000000UL);
-            timeout.nsec = (s64)(remaining % 1000000000UL);
+            if (!timeout_pointer || remaining < RECONNECT_NS) {
+                timeout.sec = (s64)(remaining / 1000000000UL);
+                timeout.nsec = (s64)(remaining % 1000000000UL);
+            }
             timeout_pointer = &timeout;
         }
-        poll.fd = input_fd;
-        poll.events = POLLIN;
-        poll.revents = 0;
-        ready = sys_ppoll(input_fd >= 0 ? &poll : 0,
-                          input_fd >= 0 ? 1U : 0U, timeout_pointer);
+        polls[0].fd = input_fd;
+        polls[1].fd = volume_fd;
+        polls[2].fd = power_fd;
+        for (int poll_index = 0; poll_index < 3; poll_index++) {
+            polls[poll_index].events = POLLIN;
+            polls[poll_index].revents = 0;
+        }
+        ready = sys_ppoll(polls, 3U, timeout_pointer);
         if (ready == -EINTR) continue;
         if (ready < 0) break;
         if (input_fd < 0) {
             input_fd = connect_input(&state);
-            continue;
         }
-        if (poll.revents & (POLLERR | POLLHUP | POLLNVAL)) {
+        if (volume_fd < 0) volume_fd = connect_auxiliary(&state, 0);
+        if (power_fd < 0) power_fd = connect_auxiliary(&state, 1);
+        if (input_fd >= 0 &&
+            (polls[0].revents & (POLLERR | POLLHUP | POLLNVAL))) {
             disconnect_input(&input_fd, &state);
-            continue;
+        } else if (input_fd >= 0 && (polls[0].revents & POLLIN) &&
+                   !process_input(input_fd, &state)) {
+            disconnect_input(&input_fd, &state);
         }
-        if ((poll.revents & POLLIN) && !process_input(input_fd, &state))
-            disconnect_input(&input_fd, &state);
+        if (volume_fd >= 0 &&
+            (polls[1].revents & (POLLERR | POLLHUP | POLLNVAL))) {
+            disconnect_auxiliary(&volume_fd, &state, AUX_VOLUME_DOWN, 2);
+        } else if (volume_fd >= 0 && (polls[1].revents & POLLIN) &&
+                   !process_auxiliary(volume_fd, &state,
+                                      AUX_VOLUME_DOWN, 2)) {
+            disconnect_auxiliary(&volume_fd, &state, AUX_VOLUME_DOWN, 2);
+        }
+        if (power_fd >= 0 &&
+            (polls[2].revents & (POLLERR | POLLHUP | POLLNVAL))) {
+            disconnect_auxiliary(&power_fd, &state, AUX_POWER, 1);
+        } else if (power_fd >= 0 && (polls[2].revents & POLLIN) &&
+                   !process_auxiliary(power_fd, &state, AUX_POWER, 1)) {
+            disconnect_auxiliary(&power_fd, &state, AUX_POWER, 1);
+        }
     }
 
     write_log_snapshot(&state, "exit-b-hold", 0);
     erase_rumble(input_fd, &state);
     if (input_fd >= 0) sys_close(input_fd);
+    if (volume_fd >= 0) {
+        (void)set_auxiliary_exclusive(volume_fd, 0);
+        sys_close(volume_fd);
+    }
+    if (power_fd >= 0) {
+        (void)set_auxiliary_exclusive(power_fd, 0);
+        sys_close(power_fd);
+    }
     (void)sys_munmap((void *)framebuffer, BIRD_DEVICE_FB_MAPPING_BYTES);
     sys_close(framebuffer_fd);
 }

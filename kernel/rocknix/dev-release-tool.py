@@ -113,6 +113,7 @@ RUNTIME_FILES = (
     "fixed-storage.sh",
     "first-frame-prep.sh",
     "capture-boot-state.sh",
+    "capture-uboot-bootstage.sh",
     "capture-requested-diagnostics.sh",
     "capture-stage5-state.sh",
     "capture-stage5-window-counters.sh",
@@ -158,22 +159,26 @@ GENERATED_DEVICE_PATHS = {
 
 KNOWN_STANDALONE_HOST_TESTS = {
     "test-application-contract.sh",
+    "test-bird-boot-volume-inventory.py",
     "test-build-and-deploy.sh",
     "test-canonical-namespace.sh",
     "test-emergency-recovery.sh",
     "test-fixed-control-exit-publication.sh",
     "test-fixed-controller-profile.py",
     "test-fixed-controls-c.sh",
+    "test-fit-root-timestamp-patch.py",
     "test-input-tester-c.sh",
     "test-launcher-boot-frame.sh",
     "test-launcher-catalog.py",
     "test-launcher-runtime-c.sh",
     "test-mac-removable-device.sh",
+    "test-mac-install-bird-uboot.sh",
     "test-mpv-controls-c.sh",
     "test-portmaster-provider-manifest.py",
     "test-post-flash-transactions.sh",
     "test-stage-zero-contract.py",
     "test-stock-root-brightness.sh",
+    "test-stock-root-bootstage-capture.sh",
     "test-stock-root-build-reproducibility.sh",
     "test-stock-root-content-scope.sh",
     "test-stock-root-fixed-autostart.sh",
@@ -196,6 +201,118 @@ KNOWN_STANDALONE_HOST_TESTS = {
     "test-stock-root-unit-ordering.sh",
     "test-stock-root-updater.sh",
     "test-source-kernel-system.sh",
+    "test-uboot-environment-nowhere-transform.py",
+    "test-uboot-direct-extlinux-transform.py",
+    "test-uboot-fast-init-transform.py",
+    "test-uboot-fast-init-build.py",
+    "test-uboot-inplace-handoff-build.py",
+    "test-uboot-inplace-handoff-transform.py",
+    "test-uboot-lz4-kernel-transform.py",
+    "test-uboot-no-heap-clear-transform.py",
+    "test-uboot-bootstage-fdt-build.py",
+    "test-uboot-bootstage-fdt-transform.py",
+    "test-uboot-no-heap-clear-build.py",
+    "test-lz4-kernel-candidate.py",
+    "test-uboot-early-led-transform.py",
+    "test-uboot-status-led-build.py",
+    "test-uboot-status-led-transform.py",
+}
+
+# Stage 10 remains a host-artifact workflow. These exact sources have focused
+# nonmutating host gates, but none is a dev-current payload component. In
+# particular, mapping the raw installer selects its synthetic transaction test;
+# it never makes raw installation part of --changed or --all-local.
+HOST_ONLY_SOURCE_TESTS: dict[str, tuple[str, ...]] = {
+    "firmware/mac-install-bird-uboot.sh": ("test-mac-install-bird-uboot.sh",),
+    "kernel/rocknix/build-uboot-status-led.sh": ("test-uboot-status-led-build.py",),
+    "kernel/rocknix/build-uboot-no-heap-clear.sh": (
+        "test-uboot-no-heap-clear-build.py",
+    ),
+    "kernel/rocknix/build-uboot-fast-init.sh": (
+        "test-uboot-fast-init-build.py",
+    ),
+    "kernel/rocknix/build-uboot-inplace-handoff.sh": (
+        "test-uboot-inplace-handoff-build.py",
+    ),
+    "kernel/rocknix/build-uboot-bootstage-fdt.sh": (
+        "test-uboot-bootstage-fdt-build.py",
+    ),
+    "kernel/rocknix/build-lz4-kernel-candidate.sh": (
+        "test-lz4-kernel-candidate.py",
+    ),
+    "kernel/rocknix/inventory-bird-boot-volume.py": (
+        "test-bird-boot-volume-inventory.py",
+        "test-mac-install-bird-uboot.sh",
+    ),
+    "kernel/rocknix/patch-fit-root-timestamp.py": (
+        "test-fit-root-timestamp-patch.py",
+    ),
+    "kernel/rocknix/transform-uboot-environment-nowhere.py": (
+        "test-uboot-environment-nowhere-transform.py",
+    ),
+    "kernel/rocknix/transform-uboot-direct-extlinux.py": (
+        "test-uboot-direct-extlinux-transform.py",
+    ),
+    "kernel/rocknix/transform-uboot-fast-init.py": (
+        "test-uboot-fast-init-transform.py",
+    ),
+    "kernel/rocknix/transform-uboot-inplace-handoff.py": (
+        "test-uboot-inplace-handoff-transform.py",
+    ),
+    "kernel/rocknix/transform-uboot-lz4-kernel.py": (
+        "test-uboot-lz4-kernel-transform.py",
+    ),
+    "kernel/rocknix/transform-uboot-no-heap-clear.py": (
+        "test-uboot-no-heap-clear-transform.py",
+    ),
+    "kernel/rocknix/transform-uboot-bootstage-fdt.py": (
+        "test-uboot-bootstage-fdt-transform.py",
+    ),
+    "kernel/rocknix/transform-uboot-early-led.py": (
+        "test-uboot-early-led-transform.py",
+    ),
+    "kernel/rocknix/transform-uboot-status-led.py": (
+        "test-uboot-status-led-transform.py",
+    ),
+    "kernel/rocknix/verify-selected-bird-release.py": (
+        "test-mac-install-bird-uboot.sh",
+    ),
+    "kernel/rocknix/verify-uboot-early-led-build.py": (
+        "test-uboot-early-led-transform.py",
+    ),
+    "kernel/rocknix/verify-uboot-environment-nowhere-build.py": (
+        "test-uboot-environment-nowhere-transform.py",
+        "test-mac-install-bird-uboot.sh",
+    ),
+    "kernel/rocknix/verify-uboot-direct-extlinux-build.py": (
+        "test-uboot-direct-extlinux-transform.py",
+        "test-mac-install-bird-uboot.sh",
+    ),
+    "kernel/rocknix/verify-uboot-install-authority.py": (
+        "test-mac-install-bird-uboot.sh",
+    ),
+    "kernel/rocknix/verify-uboot-status-led-build.py": (
+        "test-uboot-status-led-build.py",
+        "test-mac-install-bird-uboot.sh",
+    ),
+    "kernel/rocknix/verify-uboot-no-heap-clear-build.py": (
+        "test-uboot-no-heap-clear-build.py",
+        "test-mac-install-bird-uboot.sh",
+    ),
+    "kernel/rocknix/verify-uboot-fast-init-build.py": (
+        "test-uboot-fast-init-build.py",
+        "test-mac-install-bird-uboot.sh",
+    ),
+    "kernel/rocknix/verify-uboot-inplace-handoff-build.py": (
+        "test-uboot-inplace-handoff-build.py",
+        "test-mac-install-bird-uboot.sh",
+    ),
+    "kernel/rocknix/verify-uboot-bootstage-fdt-build.py": (
+        "test-uboot-bootstage-fdt-build.py",
+    ),
+    "kernel/rocknix/verify-lz4-kernel-candidate.py": (
+        "test-lz4-kernel-candidate.py",
+    ),
 }
 BROAD_PRODUCT_HOST_TESTS = frozenset(
     {
@@ -302,7 +419,14 @@ COMPONENT_HOST_TESTS.update(
             "test-stock-root-prepare-ports.sh",
         ),
         "runtime:first-frame-prep.sh": ("test-stock-root-unit-ordering.sh",),
-        "runtime:capture-boot-state.sh": ("test-stock-root-unit-ordering.sh",),
+        "runtime:capture-boot-state.sh": (
+            "test-stock-root-bootstage-capture.sh",
+            "test-stock-root-unit-ordering.sh",
+        ),
+        "runtime:capture-uboot-bootstage.sh": (
+            "test-stock-root-bootstage-capture.sh",
+            "test-stock-root-unit-ordering.sh",
+        ),
         "runtime:capture-requested-diagnostics.sh": (
             "test-stock-root-stage5-snapshot.sh",
             "test-stock-root-unit-ordering.sh",
@@ -1651,6 +1775,8 @@ def classify_path(path: str) -> tuple[str, set[str]]:
         return ("documentation", set())
     if path.startswith("kernel/rocknix/tests/"):
         return ("test", set())
+    if path in HOST_ONLY_SOURCE_TESTS:
+        return ("host-only", set())
     if path in {"dev-build-and-deploy.sh", "kernel/rocknix/dev-release-tool.py"}:
         return ("workflow", set())
     if path == "kernel/rocknix/build-stock-root-compat.sh":
@@ -1995,9 +2121,24 @@ def prepare_outputs(
             base_initramfs = bird / "bird-releases" / base_release / "bird-initramfs.cpio.gz"
             require_regular(base_initramfs, "base release external initramfs")
             joypad = generated / "rocknix-singleadc-joypad.ko"
-            joypad.write_bytes(
-                extract_newc_member(base_initramfs, "opt/bird/rocknix-singleadc-joypad.ko")
-            )
+            if kernel_authority in {"stock", "source-parity"}:
+                joypad.write_bytes(
+                    extract_newc_member(
+                        base_initramfs, "opt/bird/rocknix-singleadc-joypad.ko"
+                    )
+                )
+            else:
+                # Built-in kernels deliberately omit the duplicate module from
+                # the early overlay.  The unchanged source-reference module is
+                # still the manifest's build oracle and the early builder's
+                # compatibility input, so use its locally pinned bytes.
+                joypad_oracle = (
+                    root
+                    / "kernel/work/rocknix-source-reference/build"
+                    / "rocknix-singleadc-joypad.ko"
+                )
+                require_regular(joypad_oracle, "built-in joypad build oracle")
+                shutil.copyfile(joypad_oracle, joypad)
             expected_joypad = base_manifest.input_digests["rocknix-singleadc-joypad.ko"]
             if sha256_file(joypad) != expected_joypad:
                 fail("base release early joypad does not match its deployment manifest")
@@ -2194,19 +2335,28 @@ def run_host_only_checks(
     *,
     host_test: bool,
 ) -> list[str]:
-    """Run non-mutating checks for changed documentation/test/workflow inputs."""
+    """Run nonmutating checks for changed host-only repository inputs."""
     checks: list[str] = []
     requested_tests: set[str] = set()
 
     for relative in sorted(set(paths)):
         source = root / relative
         if not source.exists():
+            if relative in HOST_ONLY_SOURCE_TESTS:
+                fail(
+                    "removed mapped host-only source cannot satisfy its host gate: "
+                    + relative
+                )
             if relative.startswith("kernel/rocknix/tests/"):
                 fail(f"removed test-only source cannot satisfy its host gate: {relative}")
             checks.append(f"removed host-only source classified: {relative}")
             continue
         require_regular(source, f"host-only source {relative}")
-        if relative == "kernel/rocknix/build-stock-root-compat.sh":
+        if relative in HOST_ONLY_SOURCE_TESTS:
+            mapped = HOST_ONLY_SOURCE_TESTS[relative]
+            requested_tests.update(mapped)
+            checks.extend(f"mapped host test: {test}" for test in mapped)
+        elif relative == "kernel/rocknix/build-stock-root-compat.sh":
             if sha256_file(source) != SAFE_COMPAT_HELPER_EXTRACTION_SHA256:
                 fail("canonical compatibility builder changed beyond the reviewed compiler extraction")
             requested_tests.add("test-bird-local-binary.sh")
@@ -2934,7 +3084,7 @@ class Workflow:
                     "kernel/rocknix/build-stock-root-early-initramfs.sh",
                 }:
                     docs_tests.append("kernel/rocknix/tests/test-bird-local-binary.sh")
-            elif classification in {"documentation", "test", "workflow"}:
+            elif classification in {"documentation", "test", "workflow", "host-only"}:
                 docs_tests.append(path)
             elif classification == "reviewed-workflow-extraction":
                 source = self.root / path

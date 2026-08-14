@@ -4,10 +4,14 @@
 [`build-stock-root-compat.sh`](build-stock-root-compat.sh), deployed by
 [`firmware/mac-update-rocknix-stock-root-v6.sh`](../../firmware/mac-update-rocknix-stock-root-v6.sh),
 and defined end to end in [`ACTIVE_PATH.md`](../../ACTIVE_PATH.md). Immutable
-release `v6.23-20260810-051204` is the current broad physical acceptance result.
-The active path retains the exact ROCKNIX 20260701 release kernel, DTB,
-effective system tree and configured writable provider;
-birdOS supplies the external early overlay and fixed integration layer.
+release `v6.23-20260811-234132`, built from clean source
+`c07fe18769a13a3b1997e2cf1a4900cc55423d5b`, is the current broad physical
+acceptance result. It carries the reproducible Linux 7.0.11 IRQ-button kernel
+with SHA-256
+`cad7ad8437d0a7de0d819846b12fdf83078f5878313704d0de79274431ec9d64`.
+The active path retains the exact ROCKNIX 20260701 DTB, effective system tree
+and configured writable provider; birdOS supplies the fixed-device source
+kernel, external early overlay and fixed integration layer.
 
 The Stage 6 no-change SYSTEM parity command is:
 
@@ -30,10 +34,10 @@ not accumulate 1.2 GB SYSTEM copies.
 Release `v6.23-20260810-032646` physically accepted that no-content-change
 repack. Release `v6.23-20260810-051204` then accepted the sixteen-mask SYSTEM,
 with recent input-ready samples at 1218--1226 ms, usable-frame samples at
-1221--1236 ms and a sub-three-second stopwatch result. The next
-`--fixed-policy` build retains those masks and adds fourteen exact fixed
-service/config files. HDMI and Bluetooth-adjacent masks remain runtime policy.
-Its independently reproduced digest is
+1221--1236 ms and a sub-three-second stopwatch result. Release
+`v6.23-20260810-080340` then accepted the `--fixed-policy` build, retaining
+those masks and adding fourteen exact fixed service/config files. HDMI and
+Bluetooth-adjacent masks remain runtime policy. Its independently reproduced digest is
 `214ae075864fbe848f0fc6c31d4bec68778a111efb2ed1de78366446348d2af4`.
 
 The chronological source-kernel, clean-root and stock-root investigation below

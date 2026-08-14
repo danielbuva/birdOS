@@ -7,23 +7,23 @@ closure from the later application-compatibility closure and replaces generic
 discovery only after its consumers are proven.
 
 The current accepted stock-root binding is clean source
-`720958a49abe36bb669583e1928d3ff9418e8596`, immutable release
-`v6.23-20260811-093148`, deploy-manifest digest
-`429f4040f7613fd950c688af8bdff6d59065ba381b32f344110ab94d38a885bb`,
+`c07fe18769a13a3b1997e2cf1a4900cc55423d5b`, immutable release
+`v6.23-20260811-234132`, deploy-manifest digest
+`a0a38b04be25f2d09009b0677d33c0d34c65b027c0ff1b9463f71cdeec9b274b`,
 device-contract digest
 `1664a3778abcd3687865a82fd28bba5b468f6c3c7e9a46bf90f7c3acb1e08162`
 and catalog digest
 `9795aae6baddc292f5d9954a444656e303db305c639284f16eb10288c41f1f93`.
-Its built-in-input RG34XX-SP gate passed on 2026-08-10. Accepted boots logged
-input at 1223–1229 ms and usable frame at 1226–1233 ms while the stopwatch
-remained below three seconds. This promotes the reproducible fixed-device input
-kernel without claiming a calibrated energy distribution.
+Its IRQ-button RG34XX-SP gate passed on 2026-08-11. All 17 digital controls,
+including L3/R3, passed through independent 5 ms GPIO edge debounce while the
+four analog axes retained their 10 ms ADC poll; the broad behavior gate and
+Input Test 29/29 passed. This promotes the reproducible fixed-device input
+kernel without claiming a calibrated latency or energy distribution.
 
 A later button-only kernel candidate was rejected after immutable release
 `v6.23-20260811-034244` disabled both physical analog sticks. The RG34XX-SP
 input closure includes live `ABS_X`, `ABS_Y`, `ABS_RX` and `ABS_RY` sampling;
-these reads are consumers, not removable idle polling. The accepted built-in
-driver release remains the input baseline.
+these reads are consumers, not removable idle polling.
 
 Corrective release `v6.23-20260811-050010` passed the broad hardware gate.
 Release `v6.23-20260811-071550` then kept the full ADC path and removed only the
@@ -31,7 +31,13 @@ redundant second GPIO read for each button in every polling cycle. Its broad
 hardware gate passed and stopwatch timing remained below three seconds. Release
 `v6.23-20260811-093148` consolidated the two event publications without
 removing reads; its broad gate also passed with normal stopwatch timing. The
-next candidate suppresses only combined frames containing no accepted change.
+following `v6.23-20260811-100937` release suppressed only combined frames with
+no accepted change. Release `v6.23-20260811-220044` added direct non-sleeping
+H700 GPIO access while retaining the 10 ms combined poll. The current accepted
+`v6.23-20260811-234132` release then moved all 17 digital controls, including
+L3/R3, to independent 5 ms GPIO edge debounce while retaining the four-axis
+10 ms ADC poll. Its broad gate and Input Test 29/29 passed; latency and energy
+remain unmeasured rather than inferred from functional acceptance.
 
 ## Measured boundaries
 

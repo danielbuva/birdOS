@@ -42,6 +42,10 @@ static const void *fake_watch_payload;
 static u64 fake_watch_payload_bytes;
 static int fake_watch_consumed;
 static int fake_input_contract_mismatch;
+static int fake_trace_snapshot;
+static u64 fake_trace_clock_ns;
+static const char *fake_trace_boot_id;
+static const char *fake_trace_bl_power;
 
 static int check(int condition, const char *message) {
     if (condition) return 1;
@@ -87,6 +91,12 @@ long bird_test_syscall6(long number, long a0, long a1, long a2, long a3,
             return -ENOENT_LINUX;
         return 1000 + index;
     }
+    if (number == 56 && fake_trace_snapshot) {
+        const char *path = (const char *)a1;
+        if (!strcmp(path, BOOT_ID_PATH) && fake_trace_boot_id) return 2001;
+        if (!strcmp(path, BRIGHTNESS_POWER) && fake_trace_bl_power) return 2002;
+        return -ENOENT_LINUX;
+    }
     if (number == 59) {
         int *pipes = (int *)a0;
         if (pipe(pipes) < 0) return -1;
@@ -99,6 +109,7 @@ long bird_test_syscall6(long number, long a0, long a1, long a2, long a3,
         return 0;
     }
     if (number == 57) {
+        if (fake_trace_snapshot && (a0 == 2001 || a0 == 2002)) return 0;
         if (fake_discovery && (a0 >= 1000 || a0 == fake_watch_fd)) {
             fake_discovery_close_calls++;
             return 0;
@@ -110,6 +121,14 @@ long bird_test_syscall6(long number, long a0, long a1, long a2, long a3,
         return close((int)a0);
     }
     if (number == 63) {
+        if (fake_trace_snapshot && (a0 == 2001 || a0 == 2002)) {
+            const char *token = a0 == 2001 ? fake_trace_boot_id
+                                           : fake_trace_bl_power;
+            size_t bytes = strlen(token);
+            if (bytes > (size_t)a2) bytes = (size_t)a2;
+            memcpy((void *)a1, token, bytes);
+            return (long)bytes;
+        }
         if ((int)a0 == fake_watch_fd && fake_watch_payload) {
             u64 bytes;
             if (fake_watch_consumed) return -EAGAIN;
@@ -171,6 +190,12 @@ long bird_test_syscall6(long number, long a0, long a1, long a2, long a3,
         }
         return -EBADF_LINUX;
     }
+    if (number == 113 && fake_trace_snapshot) {
+        struct bird_timespec *value = (struct bird_timespec *)a1;
+        value->sec = (s64)(fake_trace_clock_ns / 1000000000UL);
+        value->nsec = (s64)(fake_trace_clock_ns % 1000000000UL);
+        return 0;
+    }
     if (number == 220) {
         pid_t child = fork();
         return child < 0 ? -1 : (long)child;
@@ -218,12 +243,84 @@ int main(int argc, char **argv) {
         char name[16];
     } creation_event = {0};
     struct bird_timespec discovery_timeout;
+    struct suspend_trace_snapshot trace_snapshot;
+    char trace_record[SUSPEND_TRACE_RECORD_BYTES];
+    char trace_guard[9];
+    const char *trace_decisions[] = {
+        "suspend", "resume", "queued", "cancelled"};
+    const char *expected_trace =
+        "boottime_ns\t987654321\tsequence\t41\tsource\tpower\taction\t"
+        "toggle\tphase\tdispatched\tboot_id\tboot-123\traw_clock\t"
+        "input-event-default\traw_seconds\t123\traw_microseconds\t456\t"
+        "raw_type\t1\traw_code\t116\traw_value\t-1\tdecision\tsuspend\t"
+        "provider_active\t1\tbl_power\t4\n";
+    char decision_field[48];
+    u64 trace_length;
 
     if (argc != 2) {
         fprintf(stderr, "usage: %s NONEXECUTABLE\n", argv[0]);
         return 2;
     }
     test_parent = getpid();
+
+    memset(&trace_snapshot, 0, sizeof(trace_snapshot));
+    key.seconds = 123;
+    key.microseconds = 456;
+    key.type = EV_KEY;
+    key.code = KEY_POWER;
+    key.value = -1;
+    fake_trace_snapshot = 1;
+    fake_trace_clock_ns = 987654321;
+    fake_trace_boot_id = "boot-123\n";
+    fake_trace_bl_power = "4\n";
+    capture_suspend_trace(&trace_snapshot, &key, 1);
+    key.seconds = 999;
+    key.microseconds = 999;
+    key.type = EV_SW;
+    key.code = SW_LID;
+    key.value = 99;
+    fake_trace_clock_ns = 111;
+    fake_trace_boot_id = "changed\n";
+    fake_trace_bl_power = "0\n";
+    trace_length = serialize_suspend_trace(
+        trace_record, sizeof(trace_record), 41, "power", 0, "dispatched",
+        "suspend", &trace_snapshot);
+    ok &= check(trace_length == strlen(expected_trace) &&
+                    !memcmp(trace_record, expected_trace, trace_length),
+                "suspend trace did not preserve the pre-dispatch ingress snapshot");
+    for (step = 0; step < sizeof(trace_decisions) / sizeof(trace_decisions[0]);
+         step++) {
+        trace_length = serialize_suspend_trace(
+            trace_record, sizeof(trace_record), 42U + step, "lid", "close",
+            "queued", trace_decisions[step], &trace_snapshot);
+        trace_record[trace_length] = 0;
+        snprintf(decision_field, sizeof(decision_field), "\tdecision\t%s\t",
+                 trace_decisions[step]);
+        ok &= check(trace_length &&
+                        strstr(trace_record, decision_field) != 0,
+                    "suspend trace lost an explicit coordinator decision");
+    }
+    memset(&trace_snapshot, 0, sizeof(trace_snapshot));
+    fake_trace_boot_id = 0;
+    fake_trace_bl_power = 0;
+    capture_suspend_trace(&trace_snapshot, 0, 0);
+    trace_length = serialize_suspend_trace(
+        trace_record, sizeof(trace_record), 46, "coordinator", "resume",
+        "complete", "resume", &trace_snapshot);
+    trace_record[trace_length] = 0;
+    ok &= check(trace_length &&
+                    strstr(trace_record, "\tboot_id\tunavailable\t") &&
+                    strstr(trace_record, "\traw_clock\tnone\t") &&
+                    strstr(trace_record, "\traw_seconds\tnone\t") &&
+                    strstr(trace_record, "\tbl_power\tunavailable\n"),
+                "suspend trace fallback fields are ambiguous");
+    memset(trace_guard, 'Z', sizeof(trace_guard));
+    ok &= check(!serialize_suspend_trace(
+                    trace_guard, sizeof(trace_guard) - 1U, 47, "power", 0,
+                    "dispatched", "suspend", &trace_snapshot) &&
+                    trace_guard[sizeof(trace_guard) - 1U] == 'Z',
+                "suspend trace did not fail closed at its output bound");
+    fake_trace_snapshot = 0;
 
     state.menu_held = 0;
     state.select_held = 0;

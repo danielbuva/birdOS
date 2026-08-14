@@ -161,9 +161,9 @@ descendant, run its separate RG34XX-SP physical gate, and only then use that
 accepted release as the base for the first `dev-current`. Do not bypass the
 refusal or broadly reclassify production tooling as a fast-development input.
 
-Immutable release `v6.23-20260808-214626`, built from clean source
-`af83ca945815676d6dabc030ad568c1e5fbb62d2` with deploy-manifest digest
-`2a8d51a52e9277e599f6e7a8401513c6c8a2e8edf1e75118360c44a3c5d3eed8`,
+Immutable release `v6.23-20260811-234132`, built from clean source
+`c07fe18769a13a3b1997e2cf1a4900cc55423d5b` with deploy-manifest digest
+`a0a38b04be25f2d09009b0677d33c0d34c65b027c0ff1b9463f71cdeec9b274b`,
 passed its RG34XX-SP gate and is the current eligible development base. Any
 later committed full-release-only change establishes a new transition and
 requires a newer canonical base.

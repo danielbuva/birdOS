@@ -12,19 +12,41 @@ STOCK=${BIRD_SUSPEND_PROVIDER:-/usr/bin/rocknix-fake-suspend}
 LOG=${BIRD_SUSPEND_LOG:-/storage/bird-data/Bird/log/suspend-latest.log}
 SETTLE=${BIRD_SUSPEND_SETTLE:-/usr/bin/usleep}
 RESUME_READY=${BIRD_SUSPEND_RESUME_READY:-/run/bird/bird-suspend-resume-ready}
+UPTIME=${BIRD_SUSPEND_UPTIME:-/proc/uptime}
 
 log_brightness() {
+	snapshot_brightness
+	emit_brightness "$1" "$RAW" "$POWER" "$BOOTTIME"
+}
+
+snapshot_brightness() {
 	RAW=unavailable
 	POWER=unavailable
+	BOOTTIME=unavailable
 	if [ -r "$BRIGHTNESS" ]; then
 		IFS= read -r RAW <"$BRIGHTNESS"
 	fi
 	if [ -r "$BL_POWER" ]; then
 		IFS= read -r POWER <"$BL_POWER"
 	fi
-	printf 'bird-suspend stage=%s raw=%s bl_power=%s\n' "$1" "$RAW" "$POWER"
-	printf 'bird-suspend stage=%s raw=%s bl_power=%s\n' \
-		"$1" "$RAW" "$POWER" >>"$LOG"
+	if [ -r "$UPTIME" ]; then
+		IFS=' ' read -r BOOTTIME _ <"$UPTIME" || BOOTTIME=unavailable
+		case "$BOOTTIME" in
+			''|*[!0-9.]*) BOOTTIME=unavailable ;;
+		esac
+	fi
+	# The original brightness log was deliberately limited to proving the
+	# panel wake/restore sequence.  Append CLOCK_BOOTTIME-like /proc/uptime
+	# evidence now so a delayed provider return can be separated from a late
+	# panel restore without adding a timer or an idle wakeup.
+	:
+}
+
+emit_brightness() {
+	printf 'bird-suspend stage=%s raw=%s bl_power=%s boottime_s=%s\n' \
+		"$1" "$2" "$3" "$4"
+	printf 'bird-suspend stage=%s raw=%s bl_power=%s boottime_s=%s\n' \
+		"$1" "$2" "$3" "$4" >>"$LOG"
 }
 
 normalize_saved_lit_level() {
@@ -67,6 +89,14 @@ if is_resume "${1:-}" "${2:-}"; then
 	# resume action, including this child. The wrapper survives that expected
 	# signal and restores the exact pre-suspend raw level afterward.
 	"$STOCK" "$@" || :
+	# Snapshot provider return immediately, but do not put persistent logging
+	# ahead of the panel restore or resume-ready handoff.  Emit the preserved
+	# observation only after the display is restored and the coordinator can
+	# proceed.
+	snapshot_brightness
+	PROVIDER_RAW=$RAW
+	PROVIDER_POWER=$POWER
+	PROVIDER_BOOTTIME=$BOOTTIME
 	case "$SAVED" in
 		''|*[!0-9]*) ;;
 		*)
@@ -88,6 +118,8 @@ if is_resume "${1:-}" "${2:-}"; then
 	rm -f "$STATE"
 	log_brightness restored
 	: >"$RESUME_READY"
+	emit_brightness provider-return "$PROVIDER_RAW" "$PROVIDER_POWER" \
+		"$PROVIDER_BOOTTIME"
 	exit 0
 fi
 

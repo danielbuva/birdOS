@@ -79,9 +79,11 @@ typedef signed long s64;
 #define OSD_PROGRAM "/flash/bird/bird-control-osd.sh"
 #define BRIGHTNESS_CURRENT BIRD_DEVICE_BACKLIGHT_DIRECTORY "/brightness"
 #define BRIGHTNESS_MAX BIRD_DEVICE_BACKLIGHT_DIRECTORY "/max_brightness"
+#define BRIGHTNESS_POWER BIRD_DEVICE_BACKLIGHT_DIRECTORY "/bl_power"
 #define SUSPEND_PROGRAM "/flash/bird/bird-suspend.sh"
 #define SUSPEND_RESUME_READY "/run/bird/bird-suspend-resume-ready"
 #define POWER_SUSPEND_ACTIVE "/var/run/power-fake-suspend-active.flag"
+#define BOOT_ID_PATH "/proc/sys/kernel/random/boot_id"
 #define EXIT_HELPER "/flash/bird/bird-fixed-control-exit.sh"
 #define EMERGENCY_HELPER "/flash/bird/bird-emergency-recover.sh"
 #define KMSG_DEVICE "/dev/kmsg"
@@ -165,6 +167,30 @@ struct suspend_state {
     int resume_in_flight;
     int pending_suspend;
     u64 resume_deadline_ns;
+};
+
+#define SUSPEND_TRACE_BOOT_ID_BYTES 48
+#define SUSPEND_TRACE_BL_POWER_BYTES 32
+#define SUSPEND_TRACE_RECORD_BYTES 512
+
+struct suspend_trace_snapshot {
+    u64 boottime_ns;
+    s64 raw_seconds;
+    s64 raw_microseconds;
+    u16 raw_type;
+    u16 raw_code;
+    s32 raw_value;
+    int has_edge;
+    int provider_active;
+    char boot_id[SUSPEND_TRACE_BOOT_ID_BYTES];
+    char bl_power[SUSPEND_TRACE_BL_POWER_BYTES];
+};
+
+struct trace_buffer {
+    char *start;
+    char *cursor;
+    char *limit;
+    int overflow;
 };
 
 static char *const fixed_env[] = {
@@ -361,12 +387,19 @@ static void ns_to_timespec(u64 nanoseconds, struct timespec *value) {
     value->nsec = (s64)(nanoseconds % 1000000000UL);
 }
 
-static char *append_trace_text(char *output, const char *text) {
-    while (*text) *output++ = *text++;
-    return output;
+static void append_trace_char(struct trace_buffer *output, char value) {
+    if (output->cursor == output->limit) {
+        output->overflow = 1;
+        return;
+    }
+    *output->cursor++ = value;
 }
 
-static char *append_trace_u64(char *output, u64 value) {
+static void append_trace_text(struct trace_buffer *output, const char *text) {
+    while (*text) append_trace_char(output, *text++);
+}
+
+static void append_trace_u64(struct trace_buffer *output, u64 value) {
     char digits[20];
     int count = 0;
 
@@ -374,32 +407,157 @@ static char *append_trace_u64(char *output, u64 value) {
         digits[count++] = (char)('0' + value % 10U);
         value /= 10U;
     } while (value);
-    while (count) *output++ = digits[--count];
-    return output;
+    while (count) append_trace_char(output, digits[--count]);
 }
 
+static void append_trace_s64(struct trace_buffer *output, s64 value) {
+    u64 magnitude;
+
+    if (value < 0) {
+        append_trace_char(output, '-');
+        magnitude = (u64)(-(value + 1)) + 1U;
+    } else {
+        magnitude = (u64)value;
+    }
+    append_trace_u64(output, magnitude);
+}
+
+static int read_trace_token(const char *path, char *buffer, u64 capacity) {
+    long fd;
+    long count;
+    u64 length = 0;
+
+    if (capacity < 2U) return 0;
+    fd = sys_open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+    if (fd < 0) return 0;
+    do {
+        count = sys_read((int)fd, buffer, capacity - 1U);
+    } while (count == -EINTR);
+    sys_close((int)fd);
+    if (count <= 0) return 0;
+    while (length < (u64)count && buffer[length] != '\n' &&
+           buffer[length] != '\r' && buffer[length] != ' ' &&
+           buffer[length] != '\t') {
+        if (buffer[length] < '!' || buffer[length] > '~') return 0;
+        length++;
+    }
+    if (!length) return 0;
+    buffer[length] = 0;
+    return 1;
+}
+
+static void capture_suspend_trace(struct suspend_trace_snapshot *snapshot,
+                                  const struct input_event *edge,
+                                  int provider_active) {
+    snapshot->boottime_ns = now_ns();
+    snapshot->has_edge = edge != 0;
+    snapshot->provider_active = provider_active;
+    if (edge) {
+        snapshot->raw_seconds = edge->seconds;
+        snapshot->raw_microseconds = edge->microseconds;
+        snapshot->raw_type = edge->type;
+        snapshot->raw_code = edge->code;
+        snapshot->raw_value = edge->value;
+    } else {
+        snapshot->raw_seconds = 0;
+        snapshot->raw_microseconds = 0;
+        snapshot->raw_type = 0;
+        snapshot->raw_code = 0;
+        snapshot->raw_value = 0;
+    }
+    if (!read_trace_token(BOOT_ID_PATH, snapshot->boot_id,
+                          sizeof(snapshot->boot_id)))
+        snapshot->boot_id[0] = 0;
+    if (!read_trace_token(BRIGHTNESS_POWER, snapshot->bl_power,
+                          sizeof(snapshot->bl_power)))
+        snapshot->bl_power[0] = 0;
+}
+
+static u64 serialize_suspend_trace(
+    char *record, u64 capacity, u64 sequence, const char *source,
+    const char *action, const char *phase, const char *decision,
+    const struct suspend_trace_snapshot *snapshot) {
+    struct trace_buffer output = {record, record, record + capacity, 0};
+
+    append_trace_text(&output, "boottime_ns\t");
+    append_trace_u64(&output, snapshot->boottime_ns);
+    append_trace_text(&output, "\tsequence\t");
+    append_trace_u64(&output, sequence);
+    append_trace_text(&output, "\tsource\t");
+    append_trace_text(&output, source);
+    append_trace_text(&output, "\taction\t");
+    append_trace_text(&output, action ? action : "toggle");
+    append_trace_text(&output, "\tphase\t");
+    append_trace_text(&output, phase);
+    append_trace_text(&output, "\tboot_id\t");
+    append_trace_text(&output, snapshot->boot_id[0]
+                                   ? snapshot->boot_id
+                                   : "unavailable");
+    append_trace_text(&output, "\traw_clock\t");
+    append_trace_text(&output,
+                      snapshot->has_edge ? "input-event-default" : "none");
+    append_trace_text(&output, "\traw_seconds\t");
+    if (snapshot->has_edge)
+        append_trace_s64(&output, snapshot->raw_seconds);
+    else
+        append_trace_text(&output, "none");
+    append_trace_text(&output, "\traw_microseconds\t");
+    if (snapshot->has_edge)
+        append_trace_s64(&output, snapshot->raw_microseconds);
+    else
+        append_trace_text(&output, "none");
+    append_trace_text(&output, "\traw_type\t");
+    if (snapshot->has_edge)
+        append_trace_u64(&output, snapshot->raw_type);
+    else
+        append_trace_text(&output, "none");
+    append_trace_text(&output, "\traw_code\t");
+    if (snapshot->has_edge)
+        append_trace_u64(&output, snapshot->raw_code);
+    else
+        append_trace_text(&output, "none");
+    append_trace_text(&output, "\traw_value\t");
+    if (snapshot->has_edge)
+        append_trace_s64(&output, snapshot->raw_value);
+    else
+        append_trace_text(&output, "none");
+    append_trace_text(&output, "\tdecision\t");
+    append_trace_text(&output, decision);
+    append_trace_text(&output, "\tprovider_active\t");
+    append_trace_u64(&output, snapshot->provider_active ? 1U : 0U);
+    append_trace_text(&output, "\tbl_power\t");
+    append_trace_text(&output, snapshot->bl_power[0]
+                                   ? snapshot->bl_power
+                                   : "unavailable");
+    append_trace_char(&output, '\n');
+    return output.overflow ? 0 : (u64)(output.cursor - output.start);
+}
+
+/*
+ * The original rare-event trace was intentionally generic: it proved that a
+ * suspend helper reached exec without adding work to the blocking input loop.
+ * That cannot attribute an intermittent late wake to the input edge, policy
+ * decision, provider state or panel state.  Snapshot ingress time and state
+ * before dispatch, then serialize that immutable snapshot after exec.  The
+ * two state reads are bounded and nonblocking, so ordinary idle remains one
+ * indefinite ppoll.
+ */
 static void trace_suspend(const char *source, const char *action,
-                          const char *phase) {
-    char record[192];
-    char *end = record;
+                          const char *phase, const char *decision,
+                          const struct suspend_trace_snapshot *snapshot) {
+    char record[SUSPEND_TRACE_RECORD_BYTES];
+    u64 length;
     long fd;
 
-    end = append_trace_text(end, "boottime_ns\t");
-    end = append_trace_u64(end, now_ns());
-    end = append_trace_text(end, "\tsequence\t");
-    end = append_trace_u64(end, ++suspend_trace_sequence);
-    end = append_trace_text(end, "\tsource\t");
-    end = append_trace_text(end, source);
-    end = append_trace_text(end, "\taction\t");
-    end = append_trace_text(end, action ? action : "toggle");
-    end = append_trace_text(end, "\tphase\t");
-    end = append_trace_text(end, phase);
-    *end++ = '\n';
+    length = serialize_suspend_trace(record, sizeof(record),
+                                     ++suspend_trace_sequence, source, action,
+                                     phase, decision, snapshot);
+    if (!length) return;
     fd = sys_open_mode(SUSPEND_TRACE,
                        O_WRONLY | O_CREAT | O_APPEND | O_DSYNC | O_CLOEXEC,
                        0600);
     if (fd < 0) return;
-    write_all((int)fd, record, (u64)(end - record));
+    write_all((int)fd, record, length);
     sys_close((int)fd);
 }
 
@@ -551,22 +709,24 @@ static void run_brightness(int direction) {
         log_text("bird-fixed-controls: brightness-write-failed\n");
 }
 
-static int run_suspend(const char *source, const char *action) {
+static int run_suspend(const char *source, const char *action,
+                       const char *decision,
+                       const struct suspend_trace_snapshot *snapshot) {
     int result;
 
     result = spawn_action(SUSPEND_PROGRAM, source, action);
 
     if (result == SPAWN_DISPATCHED) {
-        trace_suspend(source, action, "dispatched");
+        trace_suspend(source, action, "dispatched", decision, snapshot);
         log_text(action ? (action[0] == 'c'
                                ? "bird-fixed-controls: lid-close\n"
                                : "bird-fixed-controls: lid-open\n")
                         : "bird-fixed-controls: power\n");
     } else if (result == SPAWN_EXEC_FAILED) {
-        trace_suspend(source, action, "exec-failed");
+        trace_suspend(source, action, "exec-failed", decision, snapshot);
         log_text("bird-fixed-controls: suspend-exec-failed\n");
     } else {
-        trace_suspend(source, action, "spawn-failed");
+        trace_suspend(source, action, "spawn-failed", decision, snapshot);
         log_text("bird-fixed-controls: suspend-spawn-failed\n");
     }
     return result == SPAWN_DISPATCHED;
@@ -909,9 +1069,10 @@ static void queue_lid_suspend(struct suspend_state *suspend, int closed) {
 }
 
 static void begin_resume(struct suspend_state *suspend, const char *source,
-                         const char *action) {
+                         const char *action,
+                         const struct suspend_trace_snapshot *snapshot) {
     (void)sys_unlink(SUSPEND_RESUME_READY);
-    if (!run_suspend(source, action)) return;
+    if (!run_suspend(source, action, "resume", snapshot)) return;
     suspend->resume_in_flight = 1;
     suspend->pending_suspend = PENDING_SUSPEND_NONE;
     suspend->resume_deadline_ns = now_ns() + RESUME_READY_TIMEOUT_NS;
@@ -919,33 +1080,62 @@ static void begin_resume(struct suspend_state *suspend, const char *source,
 
 static void handle_power(const struct input_event *event,
                          struct suspend_state *suspend) {
+    int provider_active;
+    struct suspend_trace_snapshot snapshot;
+
+    if (event->type == EV_SYN && event->code == SYN_DROPPED) {
+        provider_active = path_exists(POWER_SUSPEND_ACTIVE);
+        capture_suspend_trace(&snapshot, event, provider_active);
+        trace_suspend("power", "unknown", "syn-dropped", "uncertain",
+                      &snapshot);
+        return;
+    }
     if (event->type != EV_KEY || event->code != KEY_POWER ||
         event->value != 1)
         return;
+    provider_active = path_exists(POWER_SUSPEND_ACTIVE);
+    capture_suspend_trace(&snapshot, event, provider_active);
     if (suspend->resume_in_flight) {
         queue_power_suspend(suspend);
         trace_suspend("power", 0,
                       suspend->pending_suspend == PENDING_SUSPEND_POWER
                           ? "queued"
-                          : "cancelled");
-    } else if (path_exists(POWER_SUSPEND_ACTIVE)) {
-        begin_resume(suspend, "power", 0);
+                          : "cancelled",
+                      suspend->pending_suspend == PENDING_SUSPEND_POWER
+                          ? "queued"
+                          : "cancelled",
+                      &snapshot);
+    } else if (provider_active) {
+        begin_resume(suspend, "power", 0, &snapshot);
     } else {
-        (void)run_suspend("power", 0);
+        (void)run_suspend("power", 0, "suspend", &snapshot);
     }
 }
 
 static void handle_lid(const struct input_event *event,
                        struct suspend_state *suspend) {
+    int provider_active;
+    struct suspend_trace_snapshot snapshot;
+
+    if (event->type == EV_SYN && event->code == SYN_DROPPED) {
+        provider_active = path_exists(POWER_SUSPEND_ACTIVE);
+        capture_suspend_trace(&snapshot, event, provider_active);
+        trace_suspend("lid", "unknown", "syn-dropped", "uncertain",
+                      &snapshot);
+        return;
+    }
     if (event->type != EV_SW || event->code != SW_LID) return;
+    provider_active = path_exists(POWER_SUSPEND_ACTIVE);
+    capture_suspend_trace(&snapshot, event, provider_active);
     if (suspend->resume_in_flight) {
         queue_lid_suspend(suspend, event->value == 1);
         trace_suspend("lid", event->value == 1 ? "close" : "open",
-                      event->value == 1 ? "queued" : "cancelled");
+                      event->value == 1 ? "queued" : "cancelled",
+                      event->value == 1 ? "queued" : "cancelled", &snapshot);
     } else if (event->value == 1) {
-        (void)run_suspend("lid", "close");
+        (void)run_suspend("lid", "close", "suspend", &snapshot);
     } else if (event->value == 0) {
-        begin_resume(suspend, "lid", "open");
+        begin_resume(suspend, "lid", "open", &snapshot);
     }
 }
 
@@ -989,21 +1179,33 @@ static int complete_resume_state(struct suspend_state *suspend) {
 
 static void process_resume_transition(struct suspend_state *suspend) {
     int pending;
+    int provider_active;
+    struct suspend_trace_snapshot snapshot;
 
     if (!suspend->resume_in_flight) return;
     if (!path_exists(SUSPEND_RESUME_READY)) {
         if (now_ns() < suspend->resume_deadline_ns) return;
-        trace_suspend("coordinator", "resume", "timeout");
+        provider_active = path_exists(POWER_SUSPEND_ACTIVE);
+        capture_suspend_trace(&snapshot, 0, provider_active);
+        trace_suspend("coordinator", "resume", "timeout", "resume",
+                      &snapshot);
         (void)complete_resume_state(suspend);
         return;
     }
     (void)sys_unlink(SUSPEND_RESUME_READY);
     pending = complete_resume_state(suspend);
-    trace_suspend("coordinator", "resume", "complete");
-    if (pending == PENDING_SUSPEND_POWER)
-        (void)run_suspend("power", 0);
-    else if (pending == PENDING_SUSPEND_LID_CLOSE)
-        (void)run_suspend("lid", "close");
+    provider_active = path_exists(POWER_SUSPEND_ACTIVE);
+    capture_suspend_trace(&snapshot, 0, provider_active);
+    trace_suspend("coordinator", "resume", "complete", "resume", &snapshot);
+    if (pending == PENDING_SUSPEND_POWER) {
+        capture_suspend_trace(&snapshot, 0,
+                              path_exists(POWER_SUSPEND_ACTIVE));
+        (void)run_suspend("power", 0, "suspend", &snapshot);
+    } else if (pending == PENDING_SUSPEND_LID_CLOSE) {
+        capture_suspend_trace(&snapshot, 0,
+                              path_exists(POWER_SUSPEND_ACTIVE));
+        (void)run_suspend("lid", "close", "suspend", &snapshot);
+    }
 }
 
 static int repeat_is_held(const struct control_state *state) {

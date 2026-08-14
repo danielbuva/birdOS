@@ -28,21 +28,16 @@ log_leds() {
 
 set_early_brightness() {
 	IFS= read -r MAX <"$BACKLIGHT/max_brightness"
-	RAW=$((5 * MAX / 100))
+	RAW=$(((10 * MAX + 50) / 100))
 	[ "$RAW" -lt 1 ] && RAW=1
-	# This panel cannot reliably leave a powered-off state at the retained
-	# five-percent level. Use the same measured ten-percent, 50 ms wake strike
-	# as resume, then restore the exact low boot level before the launcher draws.
-	STRIKE=$(((MAX * 10 + 50) / 100))
-	[ "$STRIKE" -lt 1 ] && STRIKE=1
+	# Linux takes ownership of the inherited U-Boot PWM. Store the proven
+	# cold-start level before unblanking so power-on cannot expose the driver's
+	# unrelated default. Unlike resume, cold boot stays at this level and needs
+	# no timed strike or second brightness write.
+	printf '%s\n' "$RAW" >"$BACKLIGHT/brightness"
 	if [ -w "$BACKLIGHT/bl_power" ]; then
 		printf '%s\n' 0 >"$BACKLIGHT/bl_power"
 	fi
-	if [ "$RAW" -lt "$STRIKE" ]; then
-		printf '%s\n' "$STRIKE" >"$BACKLIGHT/brightness"
-		$BUSYBOX usleep 50000
-	fi
-	printf '%s\n' "$RAW" >"$BACKLIGHT/brightness"
 }
 
 case "${1:-}" in

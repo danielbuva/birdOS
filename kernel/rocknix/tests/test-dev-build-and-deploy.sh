@@ -134,18 +134,66 @@ for SOURCE_PATH in \
 	launcher/catalog.revision \
 	firmware/mac-stock-root-card-identity.sh \
 	firmware/mac-bird-card-lock.sh \
+	firmware/mac-install-bird-uboot.sh \
 	firmware/normalize-newc.py \
 	firmware/generate-launcher-bootlogo.py \
 	firmware/assets/bird-launcher-backdrop.png \
 	kernel/rocknix/dev-release-tool.py \
 	kernel/rocknix/build-bird-local-binary.sh \
+	kernel/rocknix/build-uboot-status-led.sh \
+	kernel/rocknix/build-uboot-no-heap-clear.sh \
+	kernel/rocknix/build-uboot-fast-init.sh \
+	kernel/rocknix/build-uboot-inplace-handoff.sh \
+	kernel/rocknix/build-uboot-bootstage-fdt.sh \
+	kernel/rocknix/build-lz4-kernel-candidate.sh \
 	kernel/rocknix/build-stock-root-compat.sh \
-	kernel/rocknix/build-stock-root-early-initramfs.sh; do
+	kernel/rocknix/build-stock-root-early-initramfs.sh \
+	kernel/rocknix/inventory-bird-boot-volume.py \
+	kernel/rocknix/patch-fit-root-timestamp.py \
+	kernel/rocknix/transform-uboot-direct-extlinux.py \
+	kernel/rocknix/transform-uboot-fast-init.py \
+	kernel/rocknix/transform-uboot-inplace-handoff.py \
+	kernel/rocknix/transform-uboot-lz4-kernel.py \
+	kernel/rocknix/transform-uboot-no-heap-clear.py \
+	kernel/rocknix/transform-uboot-bootstage-fdt.py \
+	kernel/rocknix/transform-uboot-environment-nowhere.py \
+	kernel/rocknix/transform-uboot-early-led.py \
+	kernel/rocknix/transform-uboot-status-led.py \
+	kernel/rocknix/verify-selected-bird-release.py \
+	kernel/rocknix/verify-uboot-direct-extlinux-build.py \
+	kernel/rocknix/verify-uboot-early-led-build.py \
+	kernel/rocknix/verify-uboot-environment-nowhere-build.py \
+	kernel/rocknix/verify-uboot-install-authority.py \
+	kernel/rocknix/verify-uboot-status-led-build.py \
+	kernel/rocknix/verify-uboot-no-heap-clear-build.py \
+	kernel/rocknix/verify-uboot-fast-init-build.py \
+	kernel/rocknix/verify-uboot-inplace-handoff-build.py \
+	kernel/rocknix/verify-uboot-bootstage-fdt-build.py \
+	kernel/rocknix/verify-lz4-kernel-candidate.py; do
 	copy_source "$SOURCE_PATH"
 done
 mkdir -p "$TEMPLATE/kernel/rocknix/tests"
 cp -p "$SOURCE_ROOT/kernel/rocknix/tests/test-bird-local-binary.sh" \
+	"$SOURCE_ROOT/kernel/rocknix/tests/test-bird-boot-volume-inventory.py" \
 	"$SOURCE_ROOT/kernel/rocknix/tests/test-dev-build-and-deploy.sh" \
+	"$SOURCE_ROOT/kernel/rocknix/tests/test-fit-root-timestamp-patch.py" \
+	"$SOURCE_ROOT/kernel/rocknix/tests/test-mac-install-bird-uboot.sh" \
+	"$SOURCE_ROOT/kernel/rocknix/tests/test-stock-root-bootstage-capture.sh" \
+	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-direct-extlinux-transform.py" \
+	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-fast-init-transform.py" \
+	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-inplace-handoff-transform.py" \
+	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-lz4-kernel-transform.py" \
+	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-no-heap-clear-transform.py" \
+	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-bootstage-fdt-transform.py" \
+	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-no-heap-clear-build.py" \
+	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-fast-init-build.py" \
+	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-inplace-handoff-build.py" \
+	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-bootstage-fdt-build.py" \
+	"$SOURCE_ROOT/kernel/rocknix/tests/test-lz4-kernel-candidate.py" \
+	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-environment-nowhere-transform.py" \
+	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-early-led-transform.py" \
+	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-status-led-build.py" \
+	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-status-led-transform.py" \
 	"$TEMPLATE/kernel/rocknix/tests/"
 cp -R "$SOURCE_ROOT/kernel/rocknix/stock-root" "$TEMPLATE/kernel/rocknix/stock-root"
 chmod 0755 "$TEMPLATE/dev-build-and-deploy.sh"
@@ -566,8 +614,109 @@ sys.modules[spec.name] = module
 assert spec.loader is not None
 spec.loader.exec_module(module)
 assert module.all_component_groups() == set(module.COMPONENT_HOST_TESTS)
-assert len(module.BROAD_PRODUCT_HOST_TESTS) == 41
+assert len(module.BROAD_PRODUCT_HOST_TESTS) == 60
 assert "test-dev-build-and-deploy.sh" in module.BROAD_PRODUCT_HOST_TESTS
+assert module.COMPONENT_HOST_TESTS["runtime:capture-boot-state.sh"] == (
+    "test-stock-root-bootstage-capture.sh",
+    "test-stock-root-unit-ordering.sh",
+)
+assert module.COMPONENT_HOST_TESTS["runtime:capture-uboot-bootstage.sh"] == (
+    "test-stock-root-bootstage-capture.sh",
+    "test-stock-root-unit-ordering.sh",
+)
+expected_host_only = {
+    "firmware/mac-install-bird-uboot.sh": ("test-mac-install-bird-uboot.sh",),
+    "kernel/rocknix/build-uboot-status-led.sh": ("test-uboot-status-led-build.py",),
+    "kernel/rocknix/build-uboot-no-heap-clear.sh": (
+        "test-uboot-no-heap-clear-build.py",
+    ),
+    "kernel/rocknix/build-uboot-fast-init.sh": (
+        "test-uboot-fast-init-build.py",
+    ),
+    "kernel/rocknix/build-uboot-inplace-handoff.sh": (
+        "test-uboot-inplace-handoff-build.py",
+    ),
+    "kernel/rocknix/build-uboot-bootstage-fdt.sh": (
+        "test-uboot-bootstage-fdt-build.py",
+    ),
+    "kernel/rocknix/build-lz4-kernel-candidate.sh": (
+        "test-lz4-kernel-candidate.py",
+    ),
+    "kernel/rocknix/inventory-bird-boot-volume.py": (
+        "test-bird-boot-volume-inventory.py",
+        "test-mac-install-bird-uboot.sh",
+    ),
+    "kernel/rocknix/patch-fit-root-timestamp.py": (
+        "test-fit-root-timestamp-patch.py",
+    ),
+    "kernel/rocknix/transform-uboot-direct-extlinux.py": (
+        "test-uboot-direct-extlinux-transform.py",
+    ),
+    "kernel/rocknix/transform-uboot-fast-init.py": (
+        "test-uboot-fast-init-transform.py",
+    ),
+    "kernel/rocknix/transform-uboot-inplace-handoff.py": (
+        "test-uboot-inplace-handoff-transform.py",
+    ),
+    "kernel/rocknix/transform-uboot-lz4-kernel.py": (
+        "test-uboot-lz4-kernel-transform.py",
+    ),
+    "kernel/rocknix/transform-uboot-no-heap-clear.py": (
+        "test-uboot-no-heap-clear-transform.py",
+    ),
+    "kernel/rocknix/transform-uboot-bootstage-fdt.py": (
+        "test-uboot-bootstage-fdt-transform.py",
+    ),
+    "kernel/rocknix/transform-uboot-environment-nowhere.py": (
+        "test-uboot-environment-nowhere-transform.py",
+    ),
+    "kernel/rocknix/transform-uboot-early-led.py": (
+        "test-uboot-early-led-transform.py",
+    ),
+    "kernel/rocknix/transform-uboot-status-led.py": (
+        "test-uboot-status-led-transform.py",
+    ),
+    "kernel/rocknix/verify-selected-bird-release.py": ("test-mac-install-bird-uboot.sh",),
+    "kernel/rocknix/verify-uboot-direct-extlinux-build.py": (
+        "test-uboot-direct-extlinux-transform.py",
+        "test-mac-install-bird-uboot.sh",
+    ),
+    "kernel/rocknix/verify-uboot-early-led-build.py": (
+        "test-uboot-early-led-transform.py",
+    ),
+    "kernel/rocknix/verify-uboot-environment-nowhere-build.py": (
+        "test-uboot-environment-nowhere-transform.py",
+        "test-mac-install-bird-uboot.sh",
+    ),
+    "kernel/rocknix/verify-uboot-install-authority.py": ("test-mac-install-bird-uboot.sh",),
+    "kernel/rocknix/verify-uboot-status-led-build.py": (
+        "test-uboot-status-led-build.py",
+        "test-mac-install-bird-uboot.sh",
+    ),
+    "kernel/rocknix/verify-uboot-no-heap-clear-build.py": (
+        "test-uboot-no-heap-clear-build.py",
+        "test-mac-install-bird-uboot.sh",
+    ),
+    "kernel/rocknix/verify-uboot-fast-init-build.py": (
+        "test-uboot-fast-init-build.py",
+        "test-mac-install-bird-uboot.sh",
+    ),
+    "kernel/rocknix/verify-uboot-inplace-handoff-build.py": (
+        "test-uboot-inplace-handoff-build.py",
+        "test-mac-install-bird-uboot.sh",
+    ),
+    "kernel/rocknix/verify-uboot-bootstage-fdt-build.py": (
+        "test-uboot-bootstage-fdt-build.py",
+    ),
+    "kernel/rocknix/verify-lz4-kernel-candidate.py": (
+        "test-lz4-kernel-candidate.py",
+    ),
+}
+assert module.HOST_ONLY_SOURCE_TESTS == expected_host_only
+for source, tests in expected_host_only.items():
+    assert module.classify_path(source) == ("host-only", set())
+    assert set(tests) <= module.KNOWN_STANDALONE_HOST_TESTS
+    assert not module.classify_path(source)[1]
 assert module.host_test_command(bash_test)[:1] == ["/bin/bash"]
 assert module.host_test_command(sh_test)[:1] == ["/bin/sh"]
 PY
@@ -821,6 +970,53 @@ grep -q 'host test: test-canonical-namespace.sh' "$CASE_ROOT/host-only.out"
 [ "$(tree_digest "$BIRD")" = "$CARD_BEFORE" ]
 [ "$(stat -f '%i' "$BIRD/extlinux/extlinux.conf")" = "$SELECTOR_INODE_BEFORE" ]
 pass 'test-only source changes run host checks without card writes'
+
+new_case uboot-host-only-source-change
+initialize_dev
+CARD_BEFORE=$(tree_digest "$BIRD")
+DATA_BEFORE=$(tree_digest "$DATA")
+DEV_BEFORE=$(tree_digest "$BIRD/bird-releases/dev-current")
+SELECTOR_INODE_BEFORE=$(stat -f '%i' "$BIRD/extlinux/extlinux.conf")
+printf '\n# host-only mapping fixture\n' \
+	>>"$REPO/kernel/rocknix/inventory-bird-boot-volume.py"
+run_dev --status >"$CASE_ROOT/uboot-host-only.status"
+grep -q '^full-release-only-changes[[:space:]]*-$' \
+	"$CASE_ROOT/uboot-host-only.status"
+run_dev --changed >"$CASE_ROOT/uboot-host-only.out"
+grep -q '^No supported payload component changed; card release was not rewritten or reactivated\.$' \
+	"$CASE_ROOT/uboot-host-only.out"
+grep -q 'host fixture mapped test: test-bird-boot-volume-inventory.py' \
+	"$CASE_ROOT/uboot-host-only.out"
+grep -q 'host fixture mapped test: test-mac-install-bird-uboot.sh' \
+	"$CASE_ROOT/uboot-host-only.out"
+[ "$(tree_digest "$BIRD")" = "$CARD_BEFORE" ]
+[ "$(tree_digest "$DATA")" = "$DATA_BEFORE" ]
+[ "$(tree_digest "$BIRD/bird-releases/dev-current")" = "$DEV_BEFORE" ]
+[ "$(stat -f '%i' "$BIRD/extlinux/extlinux.conf")" = "$SELECTOR_INODE_BEFORE" ]
+pass 'Stage 10 host source changes run mapped tests without card or release mutation'
+
+new_case removed-uboot-host-only-source
+initialize_dev
+CARD_BEFORE=$(tree_digest "$BIRD")
+DATA_BEFORE=$(tree_digest "$DATA")
+DEV_BEFORE=$(tree_digest "$BIRD/bird-releases/dev-current")
+STATE_BEFORE=$(sha256 "$BIRD/bird-dev/state.tsv")
+SELECTOR_INODE_BEFORE=$(stat -f '%i' "$BIRD/extlinux/extlinux.conf")
+rm "$REPO/kernel/rocknix/inventory-bird-boot-volume.py"
+if run_dev --changed >"$CASE_ROOT/removed-host-only.out" \
+	2>"$CASE_ROOT/removed-host-only.err"; then
+	fail 'changed accepted a removed mapped Stage 10 host source'
+fi
+grep -q 'removed mapped host-only source cannot satisfy its host gate: kernel/rocknix/inventory-bird-boot-volume.py' \
+	"$CASE_ROOT/removed-host-only.err"
+[ "$(selector_release)" = dev-current ]
+[ "$(tree_digest "$BIRD")" = "$CARD_BEFORE" ]
+[ "$(tree_digest "$DATA")" = "$DATA_BEFORE" ]
+[ "$(tree_digest "$BIRD/bird-releases/dev-current")" = "$DEV_BEFORE" ]
+[ "$(sha256 "$BIRD/bird-dev/state.tsv")" = "$STATE_BEFORE" ]
+[ "$(stat -f '%i' "$BIRD/extlinux/extlinux.conf")" = "$SELECTOR_INODE_BEFORE" ]
+assert_base_and_fallback_unchanged
+pass 'removed Stage 10 host sources fail closed before card payload mutation'
 
 new_case removed-transaction-test
 initialize_dev

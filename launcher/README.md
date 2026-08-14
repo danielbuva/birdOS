@@ -244,10 +244,10 @@ it does not describe the active stock-root dispatcher.
 
 The launcher uses the same narrow exit-code handoff for its remaining system
 actions. Shutdown calls muOS's proven poweroff path directly, without entering
-the stock frontend. The current unaccepted Input Tester action 15 directly runs
-the 11.5 KB static framebuffer/evdev tester, then restores the saved launcher
-frame and exact Tools selection by contract; that visual/input/rumble path still needs its RG34XX-SP
-gate. It starts no compositor, audio graph or network service. PortMaster
+the stock frontend. Input Tester action 15 directly runs the static
+framebuffer/evdev tester, then restores the saved launcher frame and exact Tools
+selection by contract. Its 29/29 RG34XX-SP gate passed. It starts no compositor,
+audio graph or network service. PortMaster
 waits for the normal audio/controller runtime,
 loads and connects the RG34XX-SP network only when selected, runs PortMaster,
 then disconnects services, unloads the Wi-Fi device, restores launcher ownership
@@ -428,11 +428,11 @@ runtime are inspected during normal boot.
 
 The Home screen is the product structure rather than a diagnostic menu:
 `PLAY`, `LISTEN`, `READ`, `WATCH`, `TOOLS`, and `QUIT`. Play contains Systems
-and Favorites. The current unaccepted candidate adds the direct Input Tester
-before on-demand PortMaster. The tester is built to display all 17 digital
-controls, both analog sticks and rumble; Menu triggers a short vibration and
-holding B exits. It blocks in `ppoll` when idle and redraws only changed
-controls. Its device behavior remains pending the RG34XX-SP gate. Quit contains
+and Favorites. Tools contains the direct Input Tester before on-demand
+PortMaster. The tester displays all 17 gamepad controls, both analog sticks,
+volume, power and rumble; Menu triggers a short vibration and holding B exits.
+It blocks in `ppoll` when idle and redraws only changed controls. Its 29/29
+device gate passed. Quit contains
 Reload, Reboot and Shutdown. Listen, Read and Watch contain
 the first directory below their media root as a category, followed by exact
 cached files. Read accepts EPUB and PDF and routes the exact selected file to

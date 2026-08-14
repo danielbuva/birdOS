@@ -4,9 +4,9 @@ This is the build contract for the target console. Values here are deliberate
 product decisions, not runtime options.
 
 The operator-accepted source and behavior binding is clean commit
-`e7d84197ae4f0eb8647b75eef0b78f9cb460803b`, immutable release
-`v6.23-20260811-220044`, deploy-manifest digest
-`eb8d7d3c3e15cc2a98392a9c987f895180c85f7695537a7929184e45689a7f6f`,
+`c07fe18769a13a3b1997e2cf1a4900cc55423d5b`, immutable release
+`v6.23-20260811-234132`, deploy-manifest digest
+`a0a38b04be25f2d09009b0677d33c0d34c65b027c0ff1b9463f71cdeec9b274b`,
 device-contract digest
 `1664a3778abcd3687865a82fd28bba5b468f6c3c7e9a46bf90f7c3acb1e08162`
 and catalog digest
@@ -118,11 +118,11 @@ embedded 5,984-title, 27-system game catalogue. It is browsable before ROM
 storage mounts; storage readiness and individual ROM availability remain
 separate.
 
-The current unaccepted candidate adds **Input Tester** before PortMaster under
-Tools. It is a direct, event-driven visual check of all 17 digital controls,
-both analog sticks, L3/R3 and vibration. It remains idle without a frame loop;
-Menu gives a short rumble test and holding B exits. This still requires its
-RG34XX-SP visual, input and rumble gate. Quit contains Reload, Reboot and
+**Input Tester** appears before PortMaster under Tools. It is a direct,
+event-driven visual check of all 17 gamepad controls, both analog sticks,
+L3/R3, volume, power and vibration. It remains idle without a frame loop; Menu
+gives a short rumble test and holding B exits. Its 29/29 RG34XX-SP gate passed.
+Quit contains Reload, Reboot and
 Shutdown. These remain explicit launcher handoffs rather than direct power or
 process-management syscalls from the UI.
 
@@ -177,9 +177,14 @@ requests the normal ordered systemd poweroff path from the birdOS menu.
 
 The active boot path has no animation or startup sound while earliest
 interaction is being optimized. The fixed controls worker owns manual
-brightness. Its stable low-end ticks are 5, 3 and 1 percent; lid/power wake
-briefly starts the panel at the measured 10-percent threshold, then restores
-the exact saved dim level. Suspend is the retained H700 fake-suspend policy:
+brightness. Its stable low-end ticks are 5, 3 and 1 percent. The current
+`dev-current` candidate stores the rounded 10-percent cold-start level before
+unblanking, with no timed strike or restore; RG34XX-SP testing showed the Bird
+menu without a black interval or flash and was descriptively about 50--55 ms
+earlier than the preceding cold-strike boots. Canonical immutable promotion is
+still pending. Lid/power wake still briefly starts the panel at the measured
+10-percent threshold, then restores the exact saved dim level. Suspend is the
+retained H700 fake-suspend policy:
 CPU0 remains online, CPU1--CPU3 park, systemd real suspend is disabled and
 logind never owns the power key or lid switch. Missing application defaults are
 recovered individually so they cannot reset this policy. A fixed post-recovery
@@ -187,6 +192,128 @@ verifier may reassert `off` and `AllowSuspend=no`; on an accepted ordinary boot
 it performs read-only checks. A late generic brightness or suspend-policy reset
 is not part of the contract. Final effects will be designed only after the
 fixed init/kernel path is complete.
+
+Green-at-power work is deferred: the inspected mainline U-Boot candidates did
+not remove the earlier red interval. The unused FAT environment backend and
+the fixed MMC0-partition-1 extlinux command are both physically accepted; the
+latter passed the complete RG34XX-SP behavior gate at about 2.6 seconds by the
+user's stopwatch.
+Generic U-Boot zeroes its malloc arena for callers across many boards; the
+accepted intermediate Stage 10 boundary removes only that 64.125 MiB
+full-U-Boot clear while retaining its allocation capacity and SPL policy. Its
+two reproducible builds, component authority and bounded installer gate pass.
+The reviewed 620,745-byte artifact is
+`38ace6d738fed727fdd2274b510c3e18105b2c71f7b1d908dece357e31d1365c`,
+and its exact 16 MiB prefix is
+`ea1afbf3186945e562aa0844d7ab6d1b027be9cfafe225a0e4c0745ffc50b305`.
+Its bounded installation completed exact full-prefix readback, supplied the
+required predecessor for fast-init, and passed the returned broad device gate.
+Generic U-Boot also supports interactive autoboot, filesystem and target
+discovery, explicit MMC selection, networking and bootstd for variable systems.
+The reviewed fast-init boundary uses fixed FAT sysboot, removes the unneeded MMC
+wrapper and UART abort check, and builds neither network nor bootstd. Its
+reproducible 556,977-byte artifact is
+`4afc68bd2a7fdaacc212683a1a268380c07775d18cf12025285778221e986081`,
+with exact 16 MiB prefix
+`172ca1a500603ea371a17bee1b6a7632ba17e4991a400f57cee0b2231e75bdeb`.
+It is 63,768 bytes (10.27 percent) smaller than no-heap-clear while preserving
+SPL, TF-A and the control DTB exactly. The two separately asserted transaction
+boundaries passed their combined RG34XX-SP physical gate. Fast-init's installer
+reread and matched its complete pinned prefix before remount; three subsequent
+boots and the returned broad functional matrix passed. A fresh raw reread is
+unavailable because the host sudo lease expired. Fast-init therefore became the
+physically accepted predecessor on the install-time exact verification and
+post-install boot evidence. No new stopwatch result was reported, so no
+boot-time improvement is claimed. Green-at-power work remains
+deferred.
+
+Why the previous behavior existed: generic U-Boot relocates the initramfs and
+device tree because it must safely support unknown boards, load addresses and
+payload sizes. Why change it: birdOS has one fixed RG34XX-SP layout. The
+accepted extlinux path loads the exact 603,487-byte
+initramfs at `0x4ff00000` and the exact 49,010-byte DTB at `0x4fa00000`; the
+12,288-byte DTB pad and later fixed buffers have explicit non-overlap proofs.
+The physically accepted in-place-handoff boundary compiles
+`initrd_high=ffffffffffffffff` and
+`fdt_high=ffffffffffffffff` from the 55-byte board environment
+`bird-rg34xx-sp-handoff.env` at
+`335b569a6f63acab13d20bccb843b5d6d979b7141ede3a5a5a2647b59ec132ce`.
+Its only resolved change from accepted fast-init is
+`CONFIG_ENV_SOURCE_FILE=""` to `"bird-rg34xx-sp-handoff"`; the transformed
+defconfig is
+`0254301f87e2222f04c67a34e5351bce16ebaac712bd96cc096f76027d9ded13`.
+The repeated build identities are: 556,977-byte combined artifact
+`7423ffeda197645b6b774c83fcebcbefef47bd7eaa6f087c71ab339750af4e91`,
+516,017-byte FIT
+`c11d9b780c4c78940590ee17965550aa3eca7e7d0d04fdb37b4c9869b2418bf4`,
+437,168-byte full U-Boot
+`cff9a9ca1bd7db20a3a136fec655d7120481afa8a837930266a9962ab2dec578`,
+47,408-byte config
+`77f2bee66adc542e3475594c4727933607f76c2adf72e6428e0e57cadb6de762`
+and 16 MiB prefix
+`c168640be0e3b0fc3899853d71aabc0c3b3e65fdf230b19782ff40ff19f001dd`.
+Its SPL (`0bef5378bc25e4597512fc302f90fa6afe994e3eff09a7a6d16fc3e95b95f26c`),
+BL31 (`431009313966f9a6579ae5741976c15082071b387a3da82a8dee985383e97673`)
+and control DTB
+(`ba3a4f905c893dcc19bd8020990c485576f8911cef97555f04843e3423d4c589`)
+remain byte-identical. Avoiding the initramfs move and padded-DTB move models
+664,785 fewer copied bytes, not a hardware timing improvement. Its bounded
+installer completed its exact post-write authority check and two returned
+RG34XX-SP cycles passed the broad functional matrix. The user identified the
+earlier wake hesitation as likely physical-button behavior and reported no
+suspend issue in the repeated cycle. Current interactive-frame median is
+1179 ms versus 1176 ms before in-place handoff; the unchanged stopwatch result
+and these noise-scale logs establish no hardware timing improvement. In-place
+handoff is the active physically accepted U-Boot boundary. Stage 10 is roughly
+65 percent complete, with device timing, paired LZ4, deeper fixed-path pruning
+and the inherited-frame experiment still pending.
+
+The new unit's earlier delayed wake is treated as a physical-button observation,
+not an accepted software defect. Every returned wake
+that Bird actually dispatched reached resume-ready in about 0.43--0.70 seconds,
+with no timeout or helper failure. Why the previous trace existed: it proved only
+that the retained fake-suspend helper reached execution. Why change it: a
+diagnostic-only successor records the raw edge, policy decision, provider flag,
+backlight power and provider-return time on those same rare transitions, without
+adding an idle timer or changing the provider, panel threshold or ordering.
+
+Why the previous measurement boundary existed: five broad U-Boot marks avoided
+perturbing the accepted boot path, but merged kernel image work into the
+bootm-to-handoff interval. Why change it: the existing `bootm_load_os` mark
+separates that work without custom source instrumentation. The host-ready
+bootstage-FDT diagnostic preserves the accepted in-place environment and its
+post-frame capture requires one ordered mark each for `board_init_f`,
+`board_init_r`, `main_loop`, `bootm_start`, `bootm_load_os` and `start_kernel`.
+Incomplete or ambiguous evidence fails closed, capture does not enter
+first-frame work, and `start_kernel` is handoff-start rather than literal Linux
+entry. Why the first builder stopped: raw `CONFIG_BOOTSTAGE` enlarged SPL global
+data even with `SPL_BOOTSTAGE=n`, shifting `cyclic_list` and changing SPL bytes.
+Why change it: the host-reviewed measurement-only artifact combines the exact
+accepted 40,960-byte SPL with the diagnostic FIT and retains the reproducible
+different generated SPL as explicitly unused evidence. The combined image is
+561,073 bytes at
+`0b22418db35ee591870ccd652d4aaa3d0a50bd216e600f7b8ca0c4052e2e8e83`;
+the full prefix is
+`c1dadb6b43782ac25b8be6ea168cbad7c2e435da49207210213be68701f7f94b`.
+Only full-U-Boot data changes in the FIT, both passes are byte-identical, and
+deployment authority remains explicitly disabled. The pending canonical and
+device measurement gates still block use. Why the raw kernel existed: it is
+the accepted simplest handoff and
+needs neither a U-Boot decompression stage nor its temporary output buffer. Why
+consider changing it: the fixed 30,926,856-byte Image becomes a 17,565,707-byte
+LZ4 frame, leaving 13,361,149 fewer kernel payload bytes (43.2024 percent) to
+load before decompression. The host-ready frame is at
+`a7321d2a79b18e81f114aefd9bb7509ba70d5e56b562a345ea5ca66dbf11262a`,
+but is full-release-only until paired with
+`kernel_comp_size=0x10c080b` and separately measured on the RG34XX-SP. These
+host byte counts are not a device timing result.
+Two fresh isolated linked passes are byte-identical at combined SHA-256
+`9f3d96da4126a6654187a3cddb9b0c038b251882aee9938e0b258d0bac94f35b`
+and full-U-Boot SHA-256
+`35cd4f8d50568f7bdae89fe01ce851b80276c4a44c18138de553872456523f9e`.
+They retain the accepted config, SPL and control DTB, change only four compiled
+environment bytes and leave a 19,378,066-byte guard margin before the DTB. The
+pair is diagnostic-only and not deployment authority.
 
 ## Efficiency contract
 

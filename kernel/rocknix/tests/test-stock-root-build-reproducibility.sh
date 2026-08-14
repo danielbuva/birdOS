@@ -59,6 +59,15 @@ grep -Fq "grep -Fq '13) consume_handoff_action ;;'" "$BUILDER" ||
 	fail 'production builder does not validate reload dispatch'
 grep -Fq 'start_portmaster_network start' "$BUILDER" ||
 	fail 'production builder does not validate direct PortMaster networking'
+grep -Fq "fail 'early cold-brightness contract changed'" "$BUILDER" &&
+	grep -Fq 'if brightness >= unblank:' "$BUILDER" &&
+	grep -Fq 'if function.count(' "$BUILDER" &&
+	grep -Fq 'if "STRIKE" in function or "usleep" in function:' "$BUILDER" ||
+	fail 'production builder does not validate the accepted cold-brightness path'
+if grep -Fq 'early measured ten-percent wake strike missing' "$BUILDER" ||
+	grep -Fq 'early bounded wake strike missing' "$BUILDER"; then
+	fail 'production builder still requires the removed cold wake strike'
+fi
 if grep -Fq "grep -q '^#define ACTION_ROCKNIX 13$'" "$BUILDER" ||
 	grep -Fq "grep -Fq 'run_content --rocknix'" "$BUILDER" ||
 	grep -Fq "grep -Fq 'run_managed /usr/bin/start_es.sh'" "$BUILDER"; then

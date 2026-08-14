@@ -16,6 +16,8 @@
 static int fake_contract;
 static int fake_contract_mismatch;
 static int fake_rumble;
+static int fake_grab;
+static int grabbed_value = -1;
 static int rumble_uploads;
 static int rumble_plays;
 static int rumble_stops;
@@ -33,7 +35,27 @@ long bird_test_syscall6(long number, long a0, long a1, long a2, long a3,
     (void)a3;
     (void)a4;
     (void)a5;
-    if (number == 29 && fake_contract) {
+    if (number == 29 && fake_contract > 1) {
+        if ((u64)a1 == EVIOCGNAME_128) {
+            snprintf((char *)a2, 128U, "%s",
+                     fake_contract == 2 ? "gpio-keys-volume" : "axp20x-pek");
+            return 0;
+        }
+        if ((u64)a1 == EVIOCGBIT_KEY) {
+            u64 *bits = (u64 *)a2;
+            memset(bits, 0, sizeof(u64) * 12U);
+            if (fake_contract == 2) {
+                bits[KEY_VOLUMEDOWN / 64U] |=
+                    1UL << (KEY_VOLUMEDOWN % 64U);
+                bits[KEY_VOLUMEUP / 64U] |= 1UL << (KEY_VOLUMEUP % 64U);
+            } else {
+                bits[KEY_POWER / 64U] |= 1UL << (KEY_POWER % 64U);
+            }
+            return 0;
+        }
+        return -EBADF_LINUX;
+    }
+    if (number == 29 && fake_contract == 1) {
         static const u64 expected_key[BIRD_DEVICE_INPUT_KEY_BITMAP_WORD_COUNT] =
             BIRD_DEVICE_INPUT_KEY_BITMAP_WORDS;
         static const u64 expected_ff[BIRD_DEVICE_INPUT_FF_BITMAP_WORD_COUNT] =
@@ -69,6 +91,10 @@ long bird_test_syscall6(long number, long a0, long a1, long a2, long a3,
             if (*(int *)a2 == 7) rumble_erases++;
             return 0;
         }
+    }
+    if (number == 29 && fake_grab && (u64)a1 == EVIOCGRAB) {
+        grabbed_value = *(int *)a2;
+        return 0;
     }
     if (number == 64 && fake_rumble) {
         const struct input_event *event = (const struct input_event *)a1;
@@ -109,8 +135,18 @@ int main(void) {
                     button_index_for_code(BIRD_BUTTON_X) == BUTTON_X &&
                     button_index_for_code(BIRD_BUTTON_Y) == BUTTON_Y,
                 "physical face-button legends map to H700 raw codes");
-    ok &= check(BIRD_BUTTON_X == BTN_WEST && BIRD_BUTTON_Y == BTN_NORTH,
-                "printed X and Y follow the accepted controller profile");
+    ok &= check(BIRD_BUTTON_X == BTN_NORTH && BIRD_BUTTON_Y == BTN_WEST,
+                "printed X north and Y west follow physical RG34XX-SP");
+    ok &= check(button_layouts[BUTTON_L1].x < button_layouts[BUTTON_L2].x &&
+                    button_layouts[BUTTON_R1].x > button_layouts[BUTTON_R2].x,
+                "L1/R1 are outer and L2/R2 are inner");
+    ok &= check(button_layouts[BUTTON_DPAD_LEFT].width >= 62 &&
+                    button_layouts[BUTTON_DPAD_RIGHT].width >= 62,
+                "large LEFT and RIGHT labels have full-width controls");
+    ok &= check(button_layouts[BUTTON_L3].x +
+                        button_layouts[BUTTON_L3].width <
+                    button_layouts[BUTTON_R3].x,
+                "L3 and R3 regions remain separated");
     ok &= check(button_index_for_code(BTN_THUMBL) == BUTTON_L3 &&
                     button_index_for_code(BTN_THUMBR) == BUTTON_R3,
                 "both stick clicks modeled");
@@ -121,6 +157,9 @@ int main(void) {
         event.value = 1;
         ok &= check(handle_event(&state, &event, 100U) == HANDLE_CHANGED,
                     "button press changes visible state");
+        if (index == BUTTON_X)
+            ok &= check(strings_equal(state.last_event, "KEY X DOWN"),
+                        "live event line names physical button press");
         event.value = 0;
         ok &= check(handle_event(&state, &event, 200U) == HANDLE_CHANGED,
                     "button release changes visible state");
@@ -156,6 +195,8 @@ int main(void) {
     }
     ok &= check(state.seen_axis_directions == 0xffU,
                 "all eight analog directions retained in checklist");
+    ok &= check(strings_equal(state.last_event, "ABS RY 32767"),
+                "live event line reports current analog value");
     ok &= check(state.axis_observed_minimum[0] == -32768 &&
                     state.axis_observed_maximum[0] == 32767,
                 "session log retains observed analog extrema");
@@ -177,11 +218,22 @@ int main(void) {
                     !state.discard_until_report,
                 "same-batch synchronization boundary requests resync");
 
+    for (index = 0; index < AUXILIARY_COUNT; index++) {
+        ok &= check(update_auxiliary(&state, index, 1),
+                    "auxiliary press changes visible state");
+        ok &= check(update_auxiliary(&state, index, 0),
+                    "auxiliary release changes visible state");
+    }
+    ok &= check(state.seen_auxiliary == 0x7U,
+                "volume down, volume up and power retained in checklist");
+    ok &= check(strings_equal(state.last_event, "KEY POWER UP"),
+                "live event line reports auxiliary press and release");
+
     state.seen_buttons = all_buttons;
     state.seen_axis_directions = 0xffU;
     state.rumble_sent = 1;
-    ok &= check(tested_count(&state) == 26,
-                "completion count covers buttons, analog edges and rumble");
+    ok &= check(tested_count(&state) == TEST_TOTAL && TEST_TOTAL == 29,
+                "completion covers buttons, auxiliaries, analog and rumble");
     state.held_buttons = all_buttons;
     clear_live_state(&state);
     ok &= check(state.held_buttons == 0U && state.seen_buttons == all_buttons &&
@@ -197,12 +249,32 @@ int main(void) {
                 "nearby input device contract rejected");
     fake_contract = 0;
 
+    fake_grab = 1;
+    ok &= check(set_auxiliary_exclusive(100, 1) && grabbed_value == 1,
+                "auxiliary device is exclusive while tester is open");
+    ok &= check(set_auxiliary_exclusive(100, 0) && grabbed_value == 0,
+                "auxiliary device exclusivity is released on return");
+    fake_grab = 0;
+
+    fake_contract = 2;
+    ok &= check(auxiliary_contract_matches(100, "gpio-keys-volume",
+                                           KEY_VOLUMEDOWN, KEY_VOLUMEUP),
+                "exact volume-button device accepted without grabbing");
+    fake_contract = 3;
+    ok &= check(auxiliary_contract_matches(100, "axp20x-pek", KEY_POWER, 0),
+                "exact power-button device accepted without grabbing");
+    ok &= check(!auxiliary_contract_matches(100, "gpio-keys-volume",
+                                            KEY_VOLUMEDOWN, KEY_VOLUMEUP),
+                "auxiliary device name mismatch rejected");
+    fake_contract = 0;
+
     initialize_state(&state);
     fake_rumble = 1;
     state.rumble_enabled = 1;
     ok &= check(upload_rumble(100, &state) && state.effect_id == 7 &&
                     state.rumble_sent && rumble_uploads == 1 &&
-                    rumble_plays == 1,
+                    rumble_plays == 1 &&
+                    strings_equal(state.last_event, "FF RUMBLE"),
                 "bounded rumble effect uploads and plays once");
     ok &= check(upload_rumble(100, &state) && rumble_uploads == 1 &&
                     rumble_plays == 2,
@@ -225,8 +297,22 @@ int main(void) {
                     guarded_frame[(BIRD_DEVICE_FB_WIDTH *
                                    BIRD_DEVICE_FB_HEIGHT) + 1] == 0x87654321U,
                 "renderer stays inside fixed framebuffer mapping");
-    ok &= check(framebuffer[12U * BIRD_DEVICE_FB_WIDTH + 160U] != 0U,
-                "visual tester title renders");
+    ok &= check(framebuffer[12U * BIRD_DEVICE_FB_WIDTH + 22U] !=
+                    COLOR_BACKGROUND,
+                "INPUT TEST title begins at top-left");
+    state.seen_axis_directions = 1U << 0;
+    state.axes[0] = state.axis_minimum[0];
+    render_axis_pair(&state, 0);
+    ok &= check(framebuffer[411U * BIRD_DEVICE_FB_WIDTH + (270U - 34U)] ==
+                    COLOR_ACTIVE &&
+                    framebuffer[(411U - 34U) * BIRD_DEVICE_FB_WIDTH + 270U] ==
+                    COLOR_UNTESTED,
+                "stick history follows tested circular rim quadrants");
+    state.axes[0] = 0;
+    render_axis_pair(&state, 0);
+    ok &= check(framebuffer[411U * BIRD_DEVICE_FB_WIDTH + (270U - 27U)] !=
+                    COLOR_ACTIVE,
+                "moving stick dot does not leave a linear rectangular trail");
     framebuffer[0] = 0xabcdef01U;
     state.dirty = 0U;
     render_dirty(&state);

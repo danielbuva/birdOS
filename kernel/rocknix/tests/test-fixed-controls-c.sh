@@ -10,6 +10,11 @@ OSD_SOURCE=$ROOT/kernel/rocknix/stock-root/bird-control-osd.sh
 grep -Fq '#define VOLUME_PROGRAM "/flash/bird/bird-volume.sh"' "$CONTROL_SOURCE"
 grep -Fq '#define OSD_PROGRAM "/flash/bird/bird-control-osd.sh"' "$CONTROL_SOURCE"
 grep -Fq '#define SUSPEND_PROGRAM "/flash/bird/bird-suspend.sh"' "$CONTROL_SOURCE"
+grep -Fq '#define BOOT_ID_PATH "/proc/sys/kernel/random/boot_id"' "$CONTROL_SOURCE"
+grep -Fq '"\tdecision\t"' "$CONTROL_SOURCE"
+grep -Fq '"\tprovider_active\t"' "$CONTROL_SOURCE"
+grep -Fq '"\tbl_power\t"' "$CONTROL_SOURCE"
+grep -Fq 'O_RDONLY | O_NONBLOCK | O_CLOEXEC' "$CONTROL_SOURCE"
 grep -Fq '#define EXIT_HELPER "/flash/bird/bird-fixed-control-exit.sh"' \
 	"$CONTROL_SOURCE"
 

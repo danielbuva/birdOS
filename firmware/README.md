@@ -5,7 +5,7 @@ power-key and clean-root investigation. Its measurements remain hardware
 evidence, but its old deployment paths are not the active stock-root build.
 See [`ACTIVE_PATH.md`](../ACTIVE_PATH.md) for the current system.
 
-Three tools in this directory do participate in the active path:
+Four tools in this directory do participate in the active path:
 
 - [`mac-update-rocknix-stock-root-v6.sh`](mac-update-rocknix-stock-root-v6.sh)
   transactionally stages and activates the complete manifest-verified release;
@@ -17,7 +17,14 @@ Three tools in this directory do participate in the active path:
 - [`migrate-bird-namespace.py`](migrate-bird-namespace.py) owns the Stage 6
   canonical-namespace prepare, commit, status and rollback transaction. It
   creates fresh active Bird state, copies only live persistence and verified
-  BIOS data, and leaves the complete legacy tree available to the fallback.
+  BIOS data; and
+- [`mac-install-bird-uboot.sh`](mac-install-bird-uboot.sh) is the bounded
+  Stage 10 mainline U-Boot installer and host-repair command. Each install
+  action consumes a reviewed candidate and complete expected 16 MiB prefix.
+  Its separate `--restore-baseline` action can replace an
+  interrupted or unknown U-Boot slice only when doing so reconstructs the exact
+  accepted 16 MiB prefix; it does not create an on-card fallback or recovery
+  state.
 
 Card-writing operations validate the same removable p1/p6 card identity and serialize
 through one host-side atomic card lock. This protects concurrent Mac processes;
@@ -30,6 +37,228 @@ transaction authority and is still useful to the host fault-injection suite.
 
 Their contracts are defined by [`ACTIVE_PATH.md`](../ACTIVE_PATH.md); the
 firmware experiments documented below are historical evidence.
+
+The first full-U-Boot-only green gate used:
+
+```sh
+./firmware/mac-install-bird-uboot.sh /dev/diskN --install-green \
+  kernel/work/bird-uboot-green-20260701
+```
+
+The deferred early-green/red-off SPL experiment used:
+
+```sh
+./firmware/mac-install-bird-uboot.sh /dev/diskN --install-early-green \
+  kernel/work/bird-uboot-early-led-20260701
+```
+
+Green-at-power work is deferred after this candidate remained visibly
+red-then-green. The unused persistent FAT environment lookup has now passed
+the broad RG34XX-SP gate while retaining the same compiled defaults and
+extlinux path:
+
+```sh
+./firmware/mac-install-bird-uboot.sh /dev/diskN --install-env-nowhere \
+  kernel/work/bird-uboot-env-nowhere-20260701
+```
+
+The fixed extlinux candidate retains MMC initialization and U-Boot's extlinux
+parser but goes directly to the birdOS path instead of running the generic
+partition, prefix and network-target search. It has now passed the broad device
+gate at about 2.6 seconds by the user's stopwatch:
+
+```sh
+./firmware/mac-install-bird-uboot.sh /dev/diskN --install-direct-extlinux \
+  kernel/work/bird-uboot-direct-extlinux-20260701
+```
+
+The accepted intermediate boundary removes only the generic 64.125 MiB
+full-U-Boot heap clear. Its reviewed duplicate-build and transaction authority
+remains the reproducible installation boundary. The exact 620,745-byte artifact
+is
+`38ace6d738fed727fdd2274b510c3e18105b2c71f7b1d908dece357e31d1365c`,
+and its reviewed 16 MiB prefix is
+`ea1afbf3186945e562aa0844d7ab6d1b027be9cfafe225a0e4c0745ffc50b305`:
+
+```sh
+./firmware/mac-install-bird-uboot.sh /dev/diskN --install-no-heap-clear \
+  kernel/work/bird-uboot-no-heap-clear-20260701
+```
+
+For reproduction, it requires the exact accepted direct-extlinux prefix and
+restores that prefix after an ordinary transaction failure. Its physical
+installation completed exact full-prefix readback and supplied the required
+predecessor for fast-init.
+
+Why the removed generic behavior existed before: U-Boot provides interactive
+autoboot interruption, filesystem and target discovery, explicit MMC selection,
+networking and bootstd for variable systems. birdOS has one fixed FAT boot
+partition and no boot-time network or bootflow search. The physically accepted
+fast-init boundary fixes FAT, removes the unnecessary `mmc dev` wrapper and
+UART abort check, uses boot delay `-2`, and builds neither network nor bootstd.
+Its exact 556,977-byte artifact is
+`4afc68bd2a7fdaacc212683a1a268380c07775d18cf12025285778221e986081`,
+and its reviewed 16 MiB prefix is
+`172ca1a500603ea371a17bee1b6a7632ba17e4991a400f57cee0b2231e75bdeb`:
+
+```sh
+./firmware/mac-install-bird-uboot.sh /dev/diskN --install-fast-init \
+  kernel/work/bird-uboot-fast-init-20260701
+```
+
+For reproduction, fast-init requires the exact reviewed no-heap-clear prefix
+and restores that prefix after an ordinary transaction failure. Install
+no-heap-clear first and then fast-init. The two actions remain separate,
+verified rollback boundaries even though one hardware test exercised both.
+Fast-init is 63,768 bytes (10.27 percent) smaller, while SPL, TF-A and the
+control DTB remain exact. Its installer reread and matched the complete pinned
+16 MiB prefix before remount; three subsequent boots and the returned broad
+functional matrix passed. A fresh raw reread is unavailable because the host
+sudo lease expired. Fast-init became the physically accepted predecessor on
+the install-time exact verification and post-install boot evidence. No new
+stopwatch result was reported, so no timing improvement is claimed.
+Green-at-power work remains deferred.
+
+Why the previous behavior existed: generic U-Boot relocates the initramfs and
+device tree to serve variable boards, load addresses and payload sizes. Why
+change it: the fixed birdOS extlinux path already loads the exact 603,487-byte
+initramfs at
+`0x4ff00000` and the exact 49,010-byte DTB at `0x4fa00000`; the 12,288-byte DTB
+pad and later fixed buffers do not overlap. The in-place-handoff candidate
+compiles `initrd_high=ffffffffffffffff` and
+`fdt_high=ffffffffffffffff` through `bird-rg34xx-sp-handoff.env`. Its only
+resolved config delta from accepted fast-init is
+`CONFIG_ENV_SOURCE_FILE=""` to `"bird-rg34xx-sp-handoff"`. The transformed
+defconfig is
+`0254301f87e2222f04c67a34e5351bce16ebaac712bd96cc096f76027d9ded13`,
+and the exact 55-byte environment is
+`335b569a6f63acab13d20bccb843b5d6d979b7141ede3a5a5a2647b59ec132ce`.
+
+Two builds reproduce these reviewed identities:
+
+- combined artifact, 556,977 bytes:
+  `7423ffeda197645b6b774c83fcebcbefef47bd7eaa6f087c71ab339750af4e91`;
+- FIT, 516,017 bytes:
+  `c11d9b780c4c78940590ee17965550aa3eca7e7d0d04fdb37b4c9869b2418bf4`;
+- full U-Boot, 437,168 bytes:
+  `cff9a9ca1bd7db20a3a136fec655d7120481afa8a837930266a9962ab2dec578`;
+- resolved config, 47,408 bytes:
+  `77f2bee66adc542e3475594c4727933607f76c2adf72e6428e0e57cadb6de762`;
+  and
+- exact 16 MiB prefix:
+  `c168640be0e3b0fc3899853d71aabc0c3b3e65fdf230b19782ff40ff19f001dd`.
+
+The SPL (`0bef5378bc25e4597512fc302f90fa6afe994e3eff09a7a6d16fc3e95b95f26c`),
+BL31 (`431009313966f9a6579ae5741976c15082071b387a3da82a8dee985383e97673`)
+and control DTB
+(`ba3a4f905c893dcc19bd8020990c485576f8911cef97555f04843e3423d4c589`)
+remain byte-identical to fast-init. Avoiding the initramfs relocation and the
+padded-DTB relocation models 664,785 fewer copied bytes; it is not a hardware
+timing claim. Its bounded installer transaction authority passes:
+
+```sh
+./firmware/mac-install-bird-uboot.sh /dev/diskN --install-inplace-handoff \
+  kernel/work/bird-uboot-inplace-handoff-20260701
+```
+
+The installer completed its exact post-write authority check and two returned
+RG34XX-SP cycles passed the broad functional matrix. The user identified the
+earlier wake hesitation as likely physical-button behavior and reported no
+suspend issue in the repeated cycle. Current interactive-frame median is
+1179 ms versus 1176 ms before in-place handoff; input-ready moved 1170 to
+1175 ms and storage-ready moved 3403 to 3379 ms. These noise-scale changes and
+the unchanged stopwatch result establish no measured speed improvement.
+In-place handoff is the active physically accepted U-Boot boundary. Stage 10 is
+roughly 65 percent complete; device measurement, paired LZ4, deeper fixed-path
+pruning and the inherited-frame experiment remain.
+
+The new unit's earlier delayed wake is treated as physical-button behavior, not
+an accepted software defect or a U-Boot effect. Every returned wake Bird
+dispatched reached resume-ready in about
+0.43--0.70 seconds, with no timeout or helper failure. Why the previous trace
+existed: it proved helper execution without periodic input work. Why change it:
+the diagnostic-only successor records the raw edge, suspend/resume decision,
+provider flag, backlight power and provider-return time on existing transitions,
+without changing the provider, panel threshold, ordering or idle wakeups.
+
+Why the previous measurement boundary existed: five broad U-Boot marks kept
+the diagnostic off the accepted runtime path, but merged kernel image work
+into the bootm-to-handoff interval. Why change it: the existing
+`bootm_load_os` mark separates that interval without custom U-Boot timing code.
+The host-ready bootstage-FDT diagnostic preserves the accepted in-place
+environment, and its post-frame capture requires one ordered mark each for
+`board_init_f`, `board_init_r`, `main_loop`, `bootm_start`, `bootm_load_os` and
+`start_kernel`. It rejects incomplete or ambiguous evidence, never enters the
+first-frame path, and treats `start_kernel` as handoff-start. Why the first
+builder stopped: raw `CONFIG_BOOTSTAGE` enlarged SPL global data even with
+`SPL_BOOTSTAGE=n`, shifting `cyclic_list` and changing SPL bytes. Why change it:
+the host-reviewed measurement-only artifact combines the exact accepted
+40,960-byte SPL with the diagnostic FIT and retains the reproducible different
+generated SPL as explicitly unused evidence. Its 561,073-byte image is
+`0b22418db35ee591870ccd652d4aaa3d0a50bd216e600f7b8ca0c4052e2e8e83`;
+its full prefix is
+`c1dadb6b43782ac25b8be6ea168cbad7c2e435da49207210213be68701f7f94b`.
+Both passes are byte-identical, only full-U-Boot data changes in the FIT, and
+deployment authority remains disabled. The canonical and RG34XX-SP measurement
+gates remain pending. Why the raw kernel existed: it is the accepted simplest
+handoff and avoids a U-Boot decompression stage and temporary output buffer. Why
+consider changing it: the fixed 30,926,856-byte Image becomes a 17,565,707-byte
+LZ4 frame, leaving 13,361,149 fewer kernel payload bytes (43.2024 percent) to
+load before decompression. The host-ready frame is at
+`a7321d2a79b18e81f114aefd9bb7509ba70d5e56b562a345ea5ca66dbf11262a`,
+but is full-release-only until paired with
+`kernel_comp_size=0x10c080b` and passed through its own hardware timing gate.
+These host byte counts are not a measured boot improvement.
+Two fresh isolated linked passes are byte-identical at combined SHA-256
+`9f3d96da4126a6654187a3cddb9b0c038b251882aee9938e0b258d0bac94f35b`
+and full-U-Boot SHA-256
+`35cd4f8d50568f7bdae89fe01ce851b80276c4a44c18138de553872456523f9e`.
+The accepted config, SPL and control DTB remain exact; only four bytes in the
+compiled size value change, and the guard ends 19,378,066 bytes before the DTB.
+The pair is retained diagnostic evidence and cannot be installed.
+
+If a bounded raw write is externally interrupted, return the card to the same
+host and use the successor authority to restore the shipping baseline:
+
+```sh
+./firmware/mac-install-bird-uboot.sh /dev/diskN --restore-baseline \
+  kernel/work/bird-uboot-early-led-20260701
+```
+
+The commands revalidate the card, active release, canonical namespace and
+complete BIRD inventory under the shared lock. The restore command accepts
+unknown bytes only inside the exact U-Boot range and refuses any other prefix
+drift. The first logical artifact is 621,049 bytes and its successor is 621,073
+bytes, but macOS raw devices require a complete final 512-byte sector: the
+installer writes 1,213 or 1,214 complete sectors and copies every aligned tail
+byte unchanged from the verified full-prefix oracle. Recovery
+also forcibly re-unmounts the disk because Disk Arbitration may remount it
+after a failed raw write. Four host builds prove baseline A/B each reproduce shipping SHA-256
+`42c01f4524b45cba7c239cd940fc4e71eed7545901da201f27fed2193b7fdf45`
+and green A/B each reproduce candidate SHA-256
+`080ae5fde3476addb5aa74f03a021aa4fbaa5deccb0964227c0fc91fe657b584`.
+The candidate changes exactly one byte for GPIO 267/PI11 red to GPIO 268/PI12
+green; its exact expected complete-prefix SHA-256 is
+`fe363dd09e40ccef994912c01ed1c77d3285485299a40ce7ae7fc74431b5a998`.
+Independent artifact, installer and recovery host audits passed. Those host
+results did not prove RG34XX-SP LED color, boot timing, power or broad behavior.
+The later broad device pass remained visibly red-then-green, so it did not pass
+the intended constant-green gate and green-at-power work is deferred.
+
+The launcher green-off handoff remains deferred with green-start work. The
+environment-nowhere and direct-extlinux transforms are physically accepted.
+The former generic environment supported persistent user-adjustable boot
+settings; birdOS has one compiled policy and no `uboot.env`. Generic U-Boot also
+zeroes its malloc arena for callers across many boards. The accepted
+intermediate boundary removes only that executed 64.125 MiB full-U-Boot clear
+while keeping its capacity and SPL policy. The physically accepted fast-init
+boundary replaces generic interactive and variable-target discovery with fixed
+FAT sysboot, no explicit MMC-selection wrapper or serial abort poll, and no
+unused network or bootstd initialization. Its architecture-selected preboot
+facility remains with an empty compiled hook. Both physical installs completed
+their exact readback contracts and the returned broad device gate passed.
+During workflow stabilization, use bounded cycles and observed failures as the
+authority rather than adding speculative states.
 
 This directory records the exact lower-layer layout of the muOS 2601.1 image
 used for the target RG34XX-SP. Generated images stay outside Git; scripts and
@@ -135,10 +364,13 @@ that display. Turning the panel on earlier therefore means measuring and
 shortening U-Boot's fixed panel/boot-resource path, not adding launcher code.
 The upper work indicator is bi-colour: the exact DTB maps PI11 to red/status
 and PI12 to green/power. The verified 512-to-128 ms retained PMIC power-key
-setting moves power acceptance earlier, but the ROCKNIX DDR4 U-Boot defconfig
-currently selects GPIO 267/PI11 red as its status LED. A guarded U-Boot test
-must switch that policy to GPIO 268/PI12 before attributing remaining colour or
-assertion delay to the PMIC. Any such delay is below userspace.
+setting moves power acceptance earlier, while the shipping ROCKNIX DDR4 U-Boot
+defconfig selects GPIO 267/PI11 red as its status LED. The four-pass Stage 10
+candidate switches that fixed selection to GPIO 268/PI12 green and changes one
+combined-artifact byte while preserving the assertion point. Its broad device
+pass remained visibly red-then-green, so it did not pass the intended colour
+gate and establishes no assertion-delay or power improvement. Any such delay is
+below userspace.
 
 ## Early Linux findings
 
