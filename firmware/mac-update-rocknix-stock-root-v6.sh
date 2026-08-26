@@ -371,6 +371,14 @@ elif grep -Fqx source-kernel-irq-buttons.tsv "$MANIFEST_INPUTS"; then
 	printf '%s\n' source-kernel-irq-buttons.tsv >>"$VERIFY_WORK/expected-inputs"
 	LC_ALL=C sort -o "$VERIFY_WORK/expected-inputs" \
 		"$VERIFY_WORK/expected-inputs"
+elif grep -Fqx source-kernel-irq-buttons-lz4.tsv "$MANIFEST_INPUTS"; then
+	# Why before: production input validation enumerates every accepted kernel
+	# authority so an unknown or extra manifest input always fails closed.
+	# Why change: the reviewed LZ4 payload has its own exact authority record and
+	# must be admitted as the one optional source-kernel input.
+	printf '%s\n' source-kernel-irq-buttons-lz4.tsv >>"$VERIFY_WORK/expected-inputs"
+	LC_ALL=C sort -o "$VERIFY_WORK/expected-inputs" \
+		"$VERIFY_WORK/expected-inputs"
 fi
 cmp "$VERIFY_WORK/expected-inputs" "$MANIFEST_INPUTS" >/dev/null || \
 	fail 'canonical deploy manifest input set is incomplete or duplicated'
