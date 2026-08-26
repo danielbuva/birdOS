@@ -5,6 +5,12 @@ power-key and clean-root investigation. Its measurements remain hardware
 evidence, but its old deployment paths are not the active stock-root build.
 See [`ACTIVE_PATH.md`](../ACTIVE_PATH.md) for the current system.
 
+The current canonical prerequisite is clean commit
+`5373c644b9c91ac21a17e145375747a8196a3337`, immutable release
+`v6.23-20260814-201218`, and deploy-manifest digest
+`904c8da42a6ec84ccf4b291205999c3b0e25900f4bec7bb3f9e0cfefb29164dd`.
+Its complete host and returned RG34XX-SP behavior gates passed.
+
 Four tools in this directory do participate in the active path:
 
 - [`mac-update-rocknix-stock-root-v6.sh`](mac-update-rocknix-stock-root-v6.sh)
@@ -162,32 +168,36 @@ timing claim. Its bounded installer transaction authority passes:
 ```
 
 The installer completed its exact post-write authority check and two returned
-RG34XX-SP cycles passed the broad functional matrix. The user identified the
-earlier wake hesitation as likely physical-button behavior and reported no
-suspend issue in the repeated cycle. Current interactive-frame median is
-1179 ms versus 1176 ms before in-place handoff; input-ready moved 1170 to
-1175 ms and storage-ready moved 3403 to 3379 ms. These noise-scale changes and
-the unchanged stopwatch result establish no measured speed improvement.
+RG34XX-SP cycles passed the broad functional matrix. The following canonical
+release gate recorded four usable frames at 1174--1177 ms, with a midpoint
+median of about 1176 ms, and an input-ready median of 1170 ms. Three completed
+asynchronous storage records have a 3514 ms median; the fourth short boot shut
+down before storage readiness. That three-sample result is noise-scale. The
+2.8--2.9-second stopwatch result establishes no measurable speed improvement.
 In-place handoff is the active physically accepted U-Boot boundary. Stage 10 is
-roughly 65 percent complete; device measurement, paired LZ4, deeper fixed-path
-pruning and the inherited-frame experiment remain.
+roughly 80 percent complete; the raw-kernel bootstage measurement is complete.
+The uninstrumented LZ4 functional gate, deeper fixed-path pruning and the
+inherited-frame experiment remain.
 
-The new unit's earlier delayed wake is treated as physical-button behavior, not
-an accepted software defect or a U-Boot effect. Every returned wake Bird
-dispatched reached resume-ready in about
-0.43--0.70 seconds, with no timeout or helper failure. Why the previous trace
-existed: it proved helper execution without periodic input work. Why change it:
-the diagnostic-only successor records the raw edge, suspend/resume decision,
-provider flag, backlight power and provider-return time on existing transitions,
-without changing the provider, panel threshold, ordering or idle wakeups.
+Why before: the retained ROCKNIX provider owns
+the accepted audio, input, governor, core-parking and LED transaction; Bird
+restores the fixed panel, and the rare-edge trace preserves transitions without
+periodic input work. Why change: no suspend behavior is changed now because
+canonical boot `96df160e` persisted suspend and resume-dispatch edges but no
+matching resume-complete, timeout, orderly shutdown or reset cause before the
+next boot. The following
+boot completed three power/lid cycles with wake-edge-to-complete times of
+726--768 ms. The intermittent reset is nonblocking and deferred to a focused
+provider/PMIC and reset-surviving diagnostic cycle.
 
-Why the previous measurement boundary existed: five broad U-Boot marks kept
-the diagnostic off the accepted runtime path, but merged kernel image work
-into the bootm-to-handoff interval. Why change it: the existing
-`bootm_load_os` mark separates that interval without custom U-Boot timing code.
-The host-ready bootstage-FDT diagnostic preserves the accepted in-place
+Why the previous measurement boundary existed: source inspection expected
+generic bootm's `bootm_load_os` mark. The accepted trace proved that `booti`
+owns `BOOTM_STATE_LOADOS` itself and never emits it. Why change it: require the
+actually emitted `boot_jump_linux` mark with `bootm_start`, preserving an exact
+setup/decompression-to-handoff boundary without custom timing. The
+bootstage-FDT diagnostic preserves the accepted in-place
 environment, and its post-frame capture requires one ordered mark each for
-`board_init_f`, `board_init_r`, `main_loop`, `bootm_start`, `bootm_load_os` and
+`board_init_f`, `board_init_r`, `main_loop`, `bootm_start`, `boot_jump_linux` and
 `start_kernel`. It rejects incomplete or ambiguous evidence, never enters the
 first-frame path, and treats `start_kernel` as handoff-start. Why the first
 builder stopped: raw `CONFIG_BOOTSTAGE` enlarged SPL global data even with
@@ -198,16 +208,35 @@ generated SPL as explicitly unused evidence. Its 561,073-byte image is
 `0b22418db35ee591870ccd652d4aaa3d0a50bd216e600f7b8ca0c4052e2e8e83`;
 its full prefix is
 `c1dadb6b43782ac25b8be6ea168cbad7c2e435da49207210213be68701f7f94b`.
-Both passes are byte-identical, only full-U-Boot data changes in the FIT, and
-deployment authority remains disabled. The canonical and RG34XX-SP measurement
-gates remain pending. Why the raw kernel existed: it is the accepted simplest
+Both passes are byte-identical, and only full-U-Boot data changes in the FIT.
+The artifact is not a production successor. A separately pinned
+`temporary-measurement-only` transaction now accepts only the exact in-place
+prefix and canonical `v6.23-20260814-201218`, requires the zero-byte diagnostics
+request to be armed, and has a direct exact in-place restore. Its sector-tail,
+forced-unmount and injected failure-recovery host gates pass. Three returned
+traces put the median fixed FAT/extlinux load interval (`main_loop` to
+`bootm_start`) at 1,419,998 us and the following booti setup/handoff interval at
+224,968 us. Seven coarse stopwatch samples had a 2.78-second median and the
+broad behavior gate passed. This prioritizes the LZ4 functional gate without
+claiming calibrated total latency. The install half of the measurement
+transaction is complete. After retaining its logs, restore the exact accepted
+uninstrumented boundary with:
+
+```sh
+./firmware/mac-install-bird-uboot.sh /dev/diskN --restore-inplace-handoff \
+  kernel/work/bird-uboot-bootstage-fdt-20260701
+```
+
+Why
+the raw kernel existed: it is the accepted simplest
 handoff and avoids a U-Boot decompression stage and temporary output buffer. Why
 consider changing it: the fixed 30,926,856-byte Image becomes a 17,565,707-byte
 LZ4 frame, leaving 13,361,149 fewer kernel payload bytes (43.2024 percent) to
 load before decompression. The host-ready frame is at
 `a7321d2a79b18e81f114aefd9bb7509ba70d5e56b562a345ea5ca66dbf11262a`,
 but is full-release-only until paired with
-`kernel_comp_size=0x10c080b` and passed through its own hardware timing gate.
+`kernel_comp_size=0x10c080b` and passed through its own broad hardware
+functional gate.
 These host byte counts are not a measured boot improvement.
 Two fresh isolated linked passes are byte-identical at combined SHA-256
 `9f3d96da4126a6654187a3cddb9b0c038b251882aee9938e0b258d0bac94f35b`
@@ -215,7 +244,38 @@ and full-U-Boot SHA-256
 `35cd4f8d50568f7bdae89fe01ce851b80276c4a44c18138de553872456523f9e`.
 The accepted config, SPL and control DTB remain exact; only four bytes in the
 compiled size value change, and the guard ends 19,378,066 bytes before the DTB.
-The pair is retained diagnostic evidence and cannot be installed.
+The pair is reviewed production-successor authority. Install it only from the
+exact accepted in-place predecessor with:
+
+```sh
+./firmware/mac-install-bird-uboot.sh /dev/diskN --install-lz4-pair \
+  kernel/work/bird-uboot-lz4-pair-20260813
+```
+
+Direct recovery to exact accepted in-place U-Boot is:
+
+```sh
+./firmware/mac-install-bird-uboot.sh /dev/diskN --restore-inplace-from-lz4 \
+  kernel/work/bird-uboot-lz4-pair-20260813
+```
+
+Why the two authorities remained separate: the earlier linked proof isolated
+the exact four-byte bound, while the accepted bootstage image remained the
+timing authority. Why change: both retained bootstage A/B payloads now receive
+that equal-length delta independently and converge on a 561,073-byte paired
+image at
+`d386f00ee8b0db002f5de3206d4af522a33a0f26960efe0561b29e01dbf2a083`.
+The full-U-Boot payload is
+`57232f25c04da2fb8bac08f4c5f5be6af6d1da069b32e0bb50baaebff4219fe3`
+and its derived prefix is
+`cf13ad801ffc3a2c1b1e65879f72a683cebe29e476c7dfde7d0c136eeb54d2ee`.
+The accepted SPL, config and control DT remain exact. The instrumented pair is
+historical and nondeployable. Build and physically gate the immutable LZ4
+release after installing the reviewed uninstrumented pair. The formal
+instrumented comparison is now retired: the
+returned raw trace already identified loading as the dominant interval, and
+the next canonical runtime removes the capture helper. Restore the temporary
+diagnostic to exact uninstrumented in-place U-Boot before proceeding.
 
 If a bounded raw write is externally interrupted, return the card to the same
 host and use the successor authority to restore the shipping baseline:

@@ -1,6 +1,13 @@
 #!/bin/sh
 # Install the verified DDR4 birdOS U-Boot at its exact mainline raw range.
 # No partition, release, selector, fallback, or data byte is a write target.
+# Why before: every accepted installer action advanced one reviewed production
+# predecessor to its next production candidate; measurement instrumentation was
+# deliberately excluded from that chain.
+# Why change: the reviewed bootstage-FDT image is useful only as a temporary
+# measurement boot. Give it a separately named, exact in-place-to-diagnostic
+# transaction and an exact diagnostic-to-in-place restore, never successor
+# authority for any production action.
 
 set -eu
 umask 077
@@ -9,6 +16,12 @@ ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 DEVICE=${1:-}
 ACTION=${2:-}
 case "$ACTION" in
+	--install-lz4-pair|--restore-inplace-from-lz4)
+		DEFAULT_UBOOT_BUILD=$ROOT/kernel/work/bird-uboot-lz4-pair-20260813
+		;;
+	--install-bootstage-fdt|--restore-inplace-handoff)
+		DEFAULT_UBOOT_BUILD=$ROOT/kernel/work/bird-uboot-bootstage-fdt-20260701
+		;;
 	--install-inplace-handoff)
 		DEFAULT_UBOOT_BUILD=$ROOT/kernel/work/bird-uboot-inplace-handoff-20260701
 		;;
@@ -82,6 +95,26 @@ FAST_INIT_RAW_WRITE_END=565248
 INPLACE_HANDOFF_UBOOT_BYTES=556977
 INPLACE_HANDOFF_UBOOT_SHA=7423ffeda197645b6b774c83fcebcbefef47bd7eaa6f087c71ab339750af4e91
 INPLACE_HANDOFF_PREFIX_SHA=c168640be0e3b0fc3899853d71aabc0c3b3e65fdf230b19782ff40ff19f001dd
+LZ4_PAIR_UBOOT_BYTES=556977
+LZ4_PAIR_UBOOT_SHA=9f3d96da4126a6654187a3cddb9b0c038b251882aee9938e0b258d0bac94f35b
+LZ4_PAIR_PREFIX_SHA=2e6680950a885cef607a9642c0133a8794d7407c7879ccb0fe9c153b6be45f56
+LZ4_PAIR_AUTHORITY_SHA=42f416fae09116490a5dfaff13eb35a27ff2746dfb8f94e1c2e191cce5e87ff4
+LZ4_PAIR_VERIFIER_SHA=5044439c933d9274114dbf8022d148bfea336169da0d67ca1ca33b6a8e023a10
+BOOTSTAGE_FDT_UBOOT_BYTES=561073
+BOOTSTAGE_FDT_UBOOT_SHA=0b22418db35ee591870ccd652d4aaa3d0a50bd216e600f7b8ca0c4052e2e8e83
+BOOTSTAGE_FDT_PREFIX_SHA=c1dadb6b43782ac25b8be6ea168cbad7c2e435da49207210213be68701f7f94b
+BOOTSTAGE_FDT_AUTHORITY_SHA=5dd114581900b75de506121ae6e1bda9ee13fce9c01af4aab97c5307a555ead1
+BOOTSTAGE_FDT_VERIFIER_SHA=1326d1cc60d8635db9df4f790d68045b31e32537be004fc57b2c60bae89a653d
+BOOTSTAGE_FDT_INPLACE_VERIFIER_SHA=bb09b2f6cb1e88445005f93f7aac369dfd63955ddc72b468abce00beef3d4dc2
+BOOTSTAGE_FDT_STATUS_VERIFIER_SHA=a4e600e065f0456352a1d4dfdbbbcad5b7120cf749009ce6139ada1f10f47ae6
+BOOTSTAGE_FDT_RAW_WRITE_SECTORS=1096
+BOOTSTAGE_FDT_RAW_WRITE_BYTES=561152
+BOOTSTAGE_FDT_RAW_WRITE_END=569344
+BOOTSTAGE_FDT_REQUIRED_RELEASE=v6.23-20260814-201218
+BOOTSTAGE_FDT_REQUIRED_MANIFEST_SHA=904c8da42a6ec84ccf4b291205999c3b0e25900f4bec7bb3f9e0cfefb29164dd
+BOOTSTAGE_FDT_CAPTURE_BYTES=5471
+BOOTSTAGE_FDT_CAPTURE_SHA=e7fa642aa6b4a7407e7cae26bab37ae65a59036feac2d0aeb526811cecd50104
+BOOTSTAGE_FDT_CLASSIFICATION=temporary-measurement-only
 TEST_BASELINE_PREFIX_SHA=${BIRD_TEST_BASELINE_PREFIX_SHA:-}
 TEST_GREEN_PREFIX_SHA=${BIRD_TEST_GREEN_PREFIX_SHA:-}
 TEST_EARLY_PREFIX_SHA=${BIRD_TEST_EARLY_PREFIX_SHA:-}
@@ -92,6 +125,9 @@ TEST_FAST_INIT_UBOOT_SHA=${BIRD_TEST_FAST_INIT_UBOOT_SHA:-}
 TEST_FAST_INIT_PREFIX_SHA=${BIRD_TEST_FAST_INIT_PREFIX_SHA:-}
 TEST_INPLACE_HANDOFF_UBOOT_SHA=${BIRD_TEST_INPLACE_HANDOFF_UBOOT_SHA:-}
 TEST_INPLACE_HANDOFF_PREFIX_SHA=${BIRD_TEST_INPLACE_HANDOFF_PREFIX_SHA:-}
+TEST_LZ4_PAIR_UBOOT_SHA=${BIRD_TEST_LZ4_PAIR_UBOOT_SHA:-}
+TEST_LZ4_PAIR_PREFIX_SHA=${BIRD_TEST_LZ4_PAIR_PREFIX_SHA:-}
+TEST_BOOTSTAGE_FDT_MANIFEST_SHA=${BIRD_TEST_BOOTSTAGE_FDT_MANIFEST_SHA:-}
 
 case "$ACTION" in
 	--install-early-green|--restore-baseline)
@@ -115,12 +151,23 @@ case "$ACTION" in
 		RAW_WRITE_BYTES=$BASELINE_RAW_WRITE_BYTES
 		RAW_WRITE_END=$BASELINE_RAW_WRITE_END
 		;;
-	--install-fast-init|--install-inplace-handoff)
+	--install-fast-init|--install-inplace-handoff|--install-lz4-pair|--restore-inplace-from-lz4)
 		UBOOT_BYTES=$FAST_INIT_UBOOT_BYTES
 		RAW_END=$((RAW_OFFSET + FAST_INIT_UBOOT_BYTES))
 		RAW_WRITE_SECTORS=$FAST_INIT_RAW_WRITE_SECTORS
 		RAW_WRITE_BYTES=$FAST_INIT_RAW_WRITE_BYTES
 		RAW_WRITE_END=$FAST_INIT_RAW_WRITE_END
+		;;
+	--install-bootstage-fdt|--restore-inplace-handoff)
+		UBOOT_BYTES=$BOOTSTAGE_FDT_UBOOT_BYTES
+		if [ "$ACTION" = --install-bootstage-fdt ]; then
+			RAW_END=$((RAW_OFFSET + BOOTSTAGE_FDT_UBOOT_BYTES))
+		else
+			RAW_END=$((RAW_OFFSET + INPLACE_HANDOFF_UBOOT_BYTES))
+		fi
+		RAW_WRITE_SECTORS=$BOOTSTAGE_FDT_RAW_WRITE_SECTORS
+		RAW_WRITE_BYTES=$BOOTSTAGE_FDT_RAW_WRITE_BYTES
+		RAW_WRITE_END=$BOOTSTAGE_FDT_RAW_WRITE_END
 		;;
 	*)
 		UBOOT_BYTES=$BASELINE_UBOOT_BYTES
@@ -145,7 +192,7 @@ fail() {
 }
 
 usage() {
-	printf 'usage: %s /dev/diskN --install-green|--install-early-green|--install-env-nowhere|--install-direct-extlinux|--install-no-heap-clear|--install-fast-init|--install-inplace-handoff|--restore-baseline [UBOOT_BUILD_DIRECTORY]\n' "$0" >&2
+	printf 'usage: %s /dev/diskN --install-green|--install-early-green|--install-env-nowhere|--install-direct-extlinux|--install-no-heap-clear|--install-fast-init|--install-inplace-handoff|--install-lz4-pair|--restore-inplace-from-lz4|--install-bootstage-fdt|--restore-inplace-handoff|--restore-baseline [UBOOT_BUILD_DIRECTORY]\n' "$0" >&2
 	exit 2
 }
 
@@ -165,6 +212,8 @@ report_current_uboot_identity() {
 		"$NO_HEAP_CLEAR_PREFIX_SHA") CURRENT_LABEL=no-heap-clear ;;
 		"$FAST_INIT_PREFIX_SHA") CURRENT_LABEL=fast-init ;;
 		"$INPLACE_HANDOFF_PREFIX_SHA") CURRENT_LABEL=in-place-handoff ;;
+		"$LZ4_PAIR_PREFIX_SHA") CURRENT_LABEL=lz4-paired ;;
+		"$BOOTSTAGE_FDT_PREFIX_SHA") CURRENT_LABEL=bootstage-fdt-measurement ;;
 		*) CURRENT_LABEL=unknown-prefix ;;
 	esac
 	printf 'Detected raw boot state: %s\n' "$CURRENT_LABEL" >&2
@@ -219,9 +268,17 @@ unmount_card() {
 force_unmount_card() {
 	# A failed raw write can cause Disk Arbitration to rediscover and remount the
 	# card behind our in-memory MOUNTED flag. Recovery must ask macOS to unmount
-	# the whole disk again instead of trusting that stale flag.
+	# the whole disk again instead of trusting that stale flag. The same bounded
+	# force fallback used before the first write is required here: recovery must
+	# not fail merely because FilesystemKit dissents from the ordinary request.
 	if [ "$HOST_TEST_MODE" -eq 0 ]; then
-		diskutil unmountDisk "/dev/$WHOLE" >/dev/null || return 1
+		if ! diskutil unmountDisk "/dev/$WHOLE" >/dev/null; then
+			printf 'Ordinary recovery unmount was refused; forcing the exact verified card offline.\n' >&2
+			diskutil unmountDisk force "/dev/$WHOLE" >/dev/null || return 1
+		fi
+	elif [ "$TEST_FAILPOINT" = after-write-recovery-force-fallback ]; then
+		printf 'ordinary-refused\nforce-succeeded\n' \
+			>"$TEST_ROOT/recovery-unmount.tsv" || return 1
 	fi
 	MOUNTED=0
 }
@@ -276,7 +333,9 @@ write_raw_slice() {
 }
 
 restore_original_uboot() {
-	if [ "$ACTION" = --restore-baseline ]; then
+	if [ "$ACTION" = --restore-baseline ] ||
+		[ "$ACTION" = --restore-inplace-handoff ] ||
+		[ "$ACTION" = --restore-inplace-from-lz4 ]; then
 		RECOVERY_PREFIX=$VERIFY_WORK/expected-prefix.bin
 	else
 		RECOVERY_PREFIX=$VERIFY_WORK/before-prefix.bin
@@ -290,6 +349,10 @@ restore_original_uboot() {
 	WRITE_STARTED=0
 	if [ "$ACTION" = --restore-baseline ]; then
 		printf 'Exact accepted baseline 16 MiB prefix restored and verified.\n' >&2
+	elif [ "$ACTION" = --restore-inplace-handoff ]; then
+		printf 'Exact accepted in-place-handoff 16 MiB prefix restored and verified.\n' >&2
+	elif [ "$ACTION" = --restore-inplace-from-lz4 ]; then
+		printf 'Exact accepted in-place-handoff 16 MiB prefix restored from LZ4 pair and verified.\n' >&2
 	else
 		printf 'Exact pre-transaction 16 MiB prefix restored and verified.\n' >&2
 	fi
@@ -328,14 +391,14 @@ trap 'exit 1' HUP INT TERM
 [ "$#" -ge 2 ] && [ "$#" -le 3 ] || usage
 case "$DEVICE" in /dev/disk[0-9]*) ;; *) usage ;; esac
 case "$ACTION" in
-	--install-green|--install-early-green|--install-env-nowhere|--install-direct-extlinux|--install-no-heap-clear|--install-fast-init|--install-inplace-handoff|--restore-baseline) ;;
+	--install-green|--install-early-green|--install-env-nowhere|--install-direct-extlinux|--install-no-heap-clear|--install-fast-init|--install-inplace-handoff|--install-lz4-pair|--restore-inplace-from-lz4|--install-bootstage-fdt|--restore-inplace-handoff|--restore-baseline) ;;
 	*) usage ;;
 esac
 WHOLE=${DEVICE#/dev/}
 
 case "$HOST_TEST_MODE" in
 	0)
-		[ -z "${BIRD_DEVICE_INFO:-}${TEST_RAW_DISK}${TEST_FAILPOINT}${TEST_ROOT}${TEST_BASELINE_PREFIX_SHA}${TEST_GREEN_PREFIX_SHA}${TEST_EARLY_PREFIX_SHA}${TEST_ENV_PREFIX_SHA}${TEST_NO_HEAP_CLEAR_UBOOT_SHA}${TEST_NO_HEAP_CLEAR_PREFIX_SHA}${TEST_FAST_INIT_UBOOT_SHA}${TEST_FAST_INIT_PREFIX_SHA}${TEST_INPLACE_HANDOFF_UBOOT_SHA}${TEST_INPLACE_HANDOFF_PREFIX_SHA}" ] ||
+		[ -z "${BIRD_DEVICE_INFO:-}${TEST_RAW_DISK}${TEST_FAILPOINT}${TEST_ROOT}${TEST_BASELINE_PREFIX_SHA}${TEST_GREEN_PREFIX_SHA}${TEST_EARLY_PREFIX_SHA}${TEST_ENV_PREFIX_SHA}${TEST_NO_HEAP_CLEAR_UBOOT_SHA}${TEST_NO_HEAP_CLEAR_PREFIX_SHA}${TEST_FAST_INIT_UBOOT_SHA}${TEST_FAST_INIT_PREFIX_SHA}${TEST_INPLACE_HANDOFF_UBOOT_SHA}${TEST_INPLACE_HANDOFF_PREFIX_SHA}${TEST_LZ4_PAIR_UBOOT_SHA}${TEST_LZ4_PAIR_PREFIX_SHA}${TEST_BOOTSTAGE_FDT_MANIFEST_SHA}" ] ||
 			fail 'test overrides require U-Boot host-test mode'
 		RAW_DISK=/dev/r$WHOLE
 		;;
@@ -376,6 +439,20 @@ case "$HOST_TEST_MODE" in
 				fail 'host-test in-place-handoff digests are malformed'
 			INPLACE_HANDOFF_UBOOT_SHA=$TEST_INPLACE_HANDOFF_UBOOT_SHA
 			INPLACE_HANDOFF_PREFIX_SHA=$TEST_INPLACE_HANDOFF_PREFIX_SHA
+		fi
+		if [ "$ACTION" = --install-lz4-pair ] ||
+			[ "$ACTION" = --restore-inplace-from-lz4 ]; then
+			is_sha256_value "$TEST_LZ4_PAIR_UBOOT_SHA" &&
+				is_sha256_value "$TEST_LZ4_PAIR_PREFIX_SHA" ||
+				fail 'host-test LZ4-pair digests are malformed'
+			LZ4_PAIR_UBOOT_SHA=$TEST_LZ4_PAIR_UBOOT_SHA
+			LZ4_PAIR_PREFIX_SHA=$TEST_LZ4_PAIR_PREFIX_SHA
+		fi
+		if [ "$ACTION" = --install-bootstage-fdt ] ||
+			[ "$ACTION" = --restore-inplace-handoff ]; then
+			is_sha256_value "$TEST_BOOTSTAGE_FDT_MANIFEST_SHA" ||
+				fail 'host-test bootstage release-manifest digest is malformed'
+			BOOTSTAGE_FDT_REQUIRED_MANIFEST_SHA=$TEST_BOOTSTAGE_FDT_MANIFEST_SHA
 		fi
 		RAW_DISK=$TEST_RAW_DISK
 		;;
@@ -430,6 +507,9 @@ DIRECT_AUTHORITY_VERIFIER=$ROOT/kernel/rocknix/verify-uboot-direct-extlinux-buil
 NO_HEAP_CLEAR_AUTHORITY_VERIFIER=$ROOT/kernel/rocknix/verify-uboot-no-heap-clear-build.py
 FAST_INIT_AUTHORITY_VERIFIER=$ROOT/kernel/rocknix/verify-uboot-fast-init-build.py
 INPLACE_HANDOFF_AUTHORITY_VERIFIER=$ROOT/kernel/rocknix/verify-uboot-inplace-handoff-build.py
+LZ4_PAIR_AUTHORITY_VERIFIER=$ROOT/kernel/rocknix/verify-uboot-lz4-pair-build.py
+BOOTSTAGE_FDT_AUTHORITY_VERIFIER=$ROOT/kernel/rocknix/verify-uboot-bootstage-fdt-build.py
+BOOTSTAGE_FDT_STATUS_VERIFIER=$ROOT/kernel/rocknix/verify-uboot-status-led-build.py
 INVENTORY_TOOL=$ROOT/kernel/rocknix/inventory-bird-boot-volume.py
 RELEASE_VERIFIER=$ROOT/kernel/rocknix/verify-selected-bird-release.py
 is_regular_file "$AUTHORITY_VERIFIER" || fail 'U-Boot install-authority verifier is missing or unsafe'
@@ -448,9 +528,38 @@ if [ "$ACTION" = --install-inplace-handoff ]; then
 	is_regular_file "$INPLACE_HANDOFF_AUTHORITY_VERIFIER" ||
 		fail 'in-place-handoff U-Boot verifier is missing or unsafe'
 fi
+if [ "$ACTION" = --install-lz4-pair ] ||
+	[ "$ACTION" = --restore-inplace-from-lz4 ]; then
+	is_regular_file "$LZ4_PAIR_AUTHORITY_VERIFIER" &&
+		[ "$(sha256 "$LZ4_PAIR_AUTHORITY_VERIFIER")" = "$LZ4_PAIR_VERIFIER_SHA" ] ||
+		fail 'LZ4-paired U-Boot verifier identity changed'
+fi
+if [ "$ACTION" = --install-bootstage-fdt ] ||
+	[ "$ACTION" = --restore-inplace-handoff ]; then
+	is_regular_file "$BOOTSTAGE_FDT_AUTHORITY_VERIFIER" &&
+		[ "$(sha256 "$BOOTSTAGE_FDT_AUTHORITY_VERIFIER")" = \
+			"$BOOTSTAGE_FDT_VERIFIER_SHA" ] ||
+		fail 'bootstage-FDT U-Boot verifier identity changed'
+	is_regular_file "$INPLACE_HANDOFF_AUTHORITY_VERIFIER" &&
+		[ "$(sha256 "$INPLACE_HANDOFF_AUTHORITY_VERIFIER")" = \
+			"$BOOTSTAGE_FDT_INPLACE_VERIFIER_SHA" ] ||
+		fail 'bootstage-FDT in-place base verifier identity changed'
+	is_regular_file "$BOOTSTAGE_FDT_STATUS_VERIFIER" &&
+		[ "$(sha256 "$BOOTSTAGE_FDT_STATUS_VERIFIER")" = \
+			"$BOOTSTAGE_FDT_STATUS_VERIFIER_SHA" ] ||
+		fail 'bootstage-FDT FIT verifier identity changed'
+fi
 is_regular_file "$INVENTORY_TOOL" || fail 'BIRD inventory verifier is missing or unsafe'
 is_regular_file "$RELEASE_VERIFIER" || fail 'selected-release verifier is missing or unsafe'
 case "$ACTION" in
+	--install-lz4-pair|--restore-inplace-from-lz4)
+		BUILD_BASELINE=$UBOOT_BUILD/inplace-base.bin
+		BUILD_BASELINE_PREFIX=$UBOOT_BUILD/inplace-base-prefix-16m.bin
+		;;
+	--install-bootstage-fdt|--restore-inplace-handoff)
+		BUILD_BASELINE=$UBOOT_BUILD/inplace-base-combined.bin
+		BUILD_BASELINE_PREFIX=$UBOOT_BUILD/accepted-inplace-prefix-16m.bin
+		;;
 	--install-early-green|--restore-baseline)
 		BUILD_BASELINE=$UBOOT_BUILD/shipping-baseline.bin
 		BUILD_BASELINE_PREFIX=$UBOOT_BUILD/baseline-prefix-16m.bin
@@ -468,12 +577,23 @@ case "$ACTION" in
 		BUILD_BASELINE_PREFIX=
 		;;
 esac
-is_regular_file "$BUILD_BASELINE" ||
-	fail 'shipping U-Boot baseline oracle is missing or unsafe'
-[ "$(stat -f '%z' "$BUILD_BASELINE")" -eq "$BASELINE_UBOOT_BYTES" ] ||
-	fail 'shipping U-Boot baseline size changed'
-[ "$(sha256 "$BUILD_BASELINE")" = "$BASELINE_SHA" ] ||
-	fail 'shipping U-Boot baseline identity changed'
+if [ "$ACTION" = --install-lz4-pair ] ||
+	[ "$ACTION" = --restore-inplace-from-lz4 ] ||
+	[ "$ACTION" = --install-bootstage-fdt ] ||
+	[ "$ACTION" = --restore-inplace-handoff ]; then
+	is_regular_file "$BUILD_BASELINE" &&
+		[ "$(stat -f '%z' "$BUILD_BASELINE")" -eq \
+			"$INPLACE_HANDOFF_UBOOT_BYTES" ] &&
+		[ "$(sha256 "$BUILD_BASELINE")" = "$INPLACE_HANDOFF_UBOOT_SHA" ] ||
+		fail 'accepted in-place-handoff base oracle changed'
+else
+	is_regular_file "$BUILD_BASELINE" ||
+		fail 'shipping U-Boot baseline oracle is missing or unsafe'
+	[ "$(stat -f '%z' "$BUILD_BASELINE")" -eq "$BASELINE_UBOOT_BYTES" ] ||
+		fail 'shipping U-Boot baseline size changed'
+	[ "$(sha256 "$BUILD_BASELINE")" = "$BASELINE_SHA" ] ||
+		fail 'shipping U-Boot baseline identity changed'
+fi
 BUILD_CANDIDATE=
 if [ "$ACTION" = --install-green ]; then
 	if [ "$HOST_TEST_MODE" -eq 1 ]; then
@@ -550,6 +670,36 @@ elif [ "$ACTION" = --install-inplace-handoff ]; then
 		fail 'verified in-place-handoff candidate size changed'
 	[ "$(sha256 "$BUILD_CANDIDATE")" = "$INPLACE_HANDOFF_UBOOT_SHA" ] ||
 		fail 'verified in-place-handoff candidate identity changed'
+elif [ "$ACTION" = --install-lz4-pair ] ||
+	[ "$ACTION" = --restore-inplace-from-lz4 ]; then
+	python3 "$LZ4_PAIR_AUTHORITY_VERIFIER" --verify-output "$UBOOT_BUILD" >/dev/null ||
+		fail 'LZ4-paired U-Boot authority verification failed'
+	BUILD_CANDIDATE=$UBOOT_BUILD/lz4-pair.bin
+	is_regular_file "$BUILD_CANDIDATE" &&
+		[ "$(stat -f '%z' "$BUILD_CANDIDATE")" -eq "$LZ4_PAIR_UBOOT_BYTES" ] &&
+		[ "$(sha256 "$BUILD_CANDIDATE")" = "$LZ4_PAIR_UBOOT_SHA" ] ||
+		fail 'verified LZ4-paired U-Boot candidate identity changed'
+	is_regular_file "$UBOOT_BUILD/authority.tsv" &&
+		[ "$(sha256 "$UBOOT_BUILD/authority.tsv")" = "$LZ4_PAIR_AUTHORITY_SHA" ] ||
+		fail 'reviewed LZ4-paired U-Boot authority identity changed'
+elif [ "$ACTION" = --install-bootstage-fdt ] ||
+	[ "$ACTION" = --restore-inplace-handoff ]; then
+	python3 "$BOOTSTAGE_FDT_AUTHORITY_VERIFIER" --verify-output "$UBOOT_BUILD" >/dev/null ||
+		fail 'bootstage-FDT measurement authority verification failed'
+	BUILD_CANDIDATE=$UBOOT_BUILD/bird-uboot-bootstage-fdt.bin
+	is_regular_file "$BUILD_CANDIDATE" &&
+		[ "$(stat -f '%z' "$BUILD_CANDIDATE")" -eq \
+			"$BOOTSTAGE_FDT_UBOOT_BYTES" ] &&
+		[ "$(sha256 "$BUILD_CANDIDATE")" = "$BOOTSTAGE_FDT_UBOOT_SHA" ] ||
+		fail 'verified bootstage-FDT measurement candidate identity changed'
+	is_regular_file "$UBOOT_BUILD/authority.tsv" &&
+		[ "$(sha256 "$UBOOT_BUILD/authority.tsv")" = \
+			"$BOOTSTAGE_FDT_AUTHORITY_SHA" ] ||
+		fail 'reviewed bootstage-FDT authority identity changed'
+	grep -Fqx 'review-state	reviewed' "$UBOOT_BUILD/authority.tsv" &&
+		grep -Fqx 'publication	measurement-only' "$UBOOT_BUILD/authority.tsv" &&
+		grep -Fqx 'deployment-authority	no' "$UBOOT_BUILD/authority.tsv" ||
+		fail 'bootstage-FDT authority is not temporary measurement-only state'
 fi
 if [ "$ACTION" = --install-early-green ] || [ "$ACTION" = --install-env-nowhere ] ||
 	[ "$ACTION" = --install-direct-extlinux ] || [ "$ACTION" = --install-no-heap-clear ] ||
@@ -560,6 +710,16 @@ if [ "$ACTION" = --install-early-green ] || [ "$ACTION" = --install-env-nowhere 
 		[ "$(stat -f '%z' "$BUILD_BASELINE_PREFIX")" -eq "$PREFIX_BYTES" ] &&
 		[ "$(sha256 "$BUILD_BASELINE_PREFIX")" = "$BASELINE_PREFIX_SHA" ] ||
 		fail 'accepted baseline 16 MiB prefix oracle changed'
+fi
+if [ "$ACTION" = --install-lz4-pair ] ||
+	[ "$ACTION" = --restore-inplace-from-lz4 ] ||
+	[ "$ACTION" = --install-bootstage-fdt ] ||
+	[ "$ACTION" = --restore-inplace-handoff ]; then
+	is_regular_file "$BUILD_BASELINE_PREFIX" &&
+		[ "$(stat -f '%z' "$BUILD_BASELINE_PREFIX")" -eq "$PREFIX_BYTES" ] &&
+		[ "$(sha256 "$BUILD_BASELINE_PREFIX")" = \
+			"$INPLACE_HANDOFF_PREFIX_SHA" ] ||
+		fail 'accepted in-place-handoff 16 MiB prefix oracle changed'
 fi
 
 plist_value() {
@@ -608,7 +768,11 @@ VERIFY_WORK=$(mktemp -d "${TMPDIR:-/tmp}/bird-uboot-install.XXXXXX") ||
 if [ "$ACTION" = --install-green ] || [ "$ACTION" = --install-early-green ] ||
 	[ "$ACTION" = --install-env-nowhere ] || [ "$ACTION" = --install-direct-extlinux ] ||
 	[ "$ACTION" = --install-no-heap-clear ] || [ "$ACTION" = --install-fast-init ] ||
-	[ "$ACTION" = --install-inplace-handoff ]; then
+	[ "$ACTION" = --install-inplace-handoff ] ||
+	[ "$ACTION" = --install-lz4-pair ] ||
+	[ "$ACTION" = --restore-inplace-from-lz4 ] ||
+	[ "$ACTION" = --install-bootstage-fdt ] ||
+	[ "$ACTION" = --restore-inplace-handoff ]; then
 	AUTHORITY_SNAPSHOT=$VERIFY_WORK/build-authority
 	COPYFILE_DISABLE=1 cp -R "$UBOOT_BUILD" "$AUTHORITY_SNAPSHOT" ||
 		fail 'could not snapshot the complete U-Boot build authority under lock'
@@ -634,6 +798,17 @@ if [ "$ACTION" = --install-green ] || [ "$ACTION" = --install-early-green ] ||
 	elif [ "$ACTION" = --install-fast-init ]; then
 		python3 "$FAST_INIT_AUTHORITY_VERIFIER" --verify-output "$AUTHORITY_SNAPSHOT" >/dev/null ||
 			fail 'snapshotted fast-init U-Boot authority verification failed'
+	elif [ "$ACTION" = --install-lz4-pair ] ||
+		[ "$ACTION" = --restore-inplace-from-lz4 ]; then
+		python3 "$LZ4_PAIR_AUTHORITY_VERIFIER" --verify-output "$AUTHORITY_SNAPSHOT" >/dev/null ||
+			fail 'snapshotted LZ4-paired U-Boot authority verification failed'
+	elif [ "$ACTION" = --install-bootstage-fdt ] ||
+		[ "$ACTION" = --restore-inplace-handoff ]; then
+		python3 "$BOOTSTAGE_FDT_AUTHORITY_VERIFIER" --verify-output "$AUTHORITY_SNAPSHOT" >/dev/null ||
+			fail 'snapshotted bootstage-FDT measurement authority verification failed'
+		[ "$(sha256 "$AUTHORITY_SNAPSHOT/authority.tsv")" = \
+			"$BOOTSTAGE_FDT_AUTHORITY_SHA" ] ||
+			fail 'snapshotted reviewed bootstage-FDT authority identity changed'
 	else
 		python3 "$INPLACE_HANDOFF_AUTHORITY_VERIFIER" --verify-output "$AUTHORITY_SNAPSHOT" >/dev/null ||
 			fail 'snapshotted in-place-handoff U-Boot authority verification failed'
@@ -663,6 +838,20 @@ if [ "$ACTION" = --install-green ] || [ "$ACTION" = --install-early-green ] ||
 		BASELINE_PREFIX=$AUTHORITY_SNAPSHOT/baseline-prefix-16m.bin
 		CANDIDATE_BASE_PREFIX=$AUTHORITY_SNAPSHOT/base-no-heap-clear-prefix-16m.bin
 		CANDIDATE=$AUTHORITY_SNAPSHOT/fast-init.bin
+	elif [ "$ACTION" = --install-lz4-pair ] ||
+		[ "$ACTION" = --restore-inplace-from-lz4 ]; then
+		BASELINE=$AUTHORITY_SNAPSHOT/inplace-base.bin
+		BASELINE_PREFIX=$AUTHORITY_SNAPSHOT/inplace-base-prefix-16m.bin
+		CANDIDATE_BASE_PREFIX=$AUTHORITY_SNAPSHOT/inplace-base-prefix-16m.bin
+		CANDIDATE_TARGET_PREFIX=$AUTHORITY_SNAPSHOT/lz4-pair-prefix-16m.bin
+		CANDIDATE=$AUTHORITY_SNAPSHOT/lz4-pair.bin
+	elif [ "$ACTION" = --install-bootstage-fdt ] ||
+		[ "$ACTION" = --restore-inplace-handoff ]; then
+		BASELINE=$AUTHORITY_SNAPSHOT/inplace-base-combined.bin
+		BASELINE_PREFIX=$AUTHORITY_SNAPSHOT/accepted-inplace-prefix-16m.bin
+		CANDIDATE_BASE_PREFIX=$AUTHORITY_SNAPSHOT/accepted-inplace-prefix-16m.bin
+		CANDIDATE_TARGET_PREFIX=$AUTHORITY_SNAPSHOT/bootstage-fdt-prefix-16m.bin
+		CANDIDATE=$AUTHORITY_SNAPSHOT/bird-uboot-bootstage-fdt.bin
 	else
 		BASELINE=$AUTHORITY_SNAPSHOT/shipping-baseline.bin
 		BASELINE_PREFIX=$AUTHORITY_SNAPSHOT/baseline-prefix-16m.bin
@@ -678,10 +867,21 @@ else
 		fail 'could not snapshot the accepted baseline prefix under lock'
 	CANDIDATE=
 fi
-[ -f "$BASELINE" ] && [ ! -L "$BASELINE" ] &&
-	[ "$(stat -f '%z' "$BASELINE")" -eq "$BASELINE_UBOOT_BYTES" ] &&
-	[ "$(sha256 "$BASELINE")" = "$BASELINE_SHA" ] ||
-	fail 'snapshotted shipping U-Boot baseline identity changed'
+if [ "$ACTION" = --install-lz4-pair ] ||
+	[ "$ACTION" = --restore-inplace-from-lz4 ] ||
+	[ "$ACTION" = --install-bootstage-fdt ] ||
+	[ "$ACTION" = --restore-inplace-handoff ]; then
+	[ -f "$BASELINE" ] && [ ! -L "$BASELINE" ] &&
+		[ "$(stat -f '%z' "$BASELINE")" -eq \
+			"$INPLACE_HANDOFF_UBOOT_BYTES" ] &&
+		[ "$(sha256 "$BASELINE")" = "$INPLACE_HANDOFF_UBOOT_SHA" ] ||
+		fail 'snapshotted accepted in-place-handoff base identity changed'
+else
+	[ -f "$BASELINE" ] && [ ! -L "$BASELINE" ] &&
+		[ "$(stat -f '%z' "$BASELINE")" -eq "$BASELINE_UBOOT_BYTES" ] &&
+		[ "$(sha256 "$BASELINE")" = "$BASELINE_SHA" ] ||
+		fail 'snapshotted shipping U-Boot baseline identity changed'
+fi
 if [ "$ACTION" = --install-early-green ] || [ "$ACTION" = --install-env-nowhere ] ||
 	[ "$ACTION" = --install-direct-extlinux ] || [ "$ACTION" = --install-no-heap-clear ] ||
 	[ "$ACTION" = --install-fast-init ] ||
@@ -704,6 +904,31 @@ if [ "$ACTION" = --install-inplace-handoff ]; then
 		[ "$(sha256 "$CANDIDATE_BASE_PREFIX")" = "$FAST_INIT_PREFIX_SHA" ] ||
 		fail 'snapshotted fast-init predecessor prefix identity changed'
 fi
+if [ "$ACTION" = --install-lz4-pair ] ||
+	[ "$ACTION" = --restore-inplace-from-lz4 ]; then
+	[ -f "$CANDIDATE_BASE_PREFIX" ] && [ ! -L "$CANDIDATE_BASE_PREFIX" ] &&
+		[ "$(stat -f '%z' "$CANDIDATE_BASE_PREFIX")" -eq "$PREFIX_BYTES" ] &&
+		[ "$(sha256 "$CANDIDATE_BASE_PREFIX")" = "$INPLACE_HANDOFF_PREFIX_SHA" ] ||
+		fail 'snapshotted in-place predecessor prefix identity changed'
+	[ -f "$CANDIDATE_TARGET_PREFIX" ] && [ ! -L "$CANDIDATE_TARGET_PREFIX" ] &&
+		[ "$(stat -f '%z' "$CANDIDATE_TARGET_PREFIX")" -eq "$PREFIX_BYTES" ] &&
+		[ "$(sha256 "$CANDIDATE_TARGET_PREFIX")" = "$LZ4_PAIR_PREFIX_SHA" ] ||
+		fail 'snapshotted LZ4-pair target prefix identity changed'
+fi
+if [ "$ACTION" = --install-bootstage-fdt ] ||
+	[ "$ACTION" = --restore-inplace-handoff ]; then
+	[ -f "$CANDIDATE_BASE_PREFIX" ] && [ ! -L "$CANDIDATE_BASE_PREFIX" ] &&
+		[ "$(stat -f '%z' "$CANDIDATE_BASE_PREFIX")" -eq "$PREFIX_BYTES" ] &&
+		[ "$(sha256 "$CANDIDATE_BASE_PREFIX")" = \
+			"$INPLACE_HANDOFF_PREFIX_SHA" ] ||
+		fail 'snapshotted in-place-handoff predecessor prefix identity changed'
+	[ -f "$CANDIDATE_TARGET_PREFIX" ] &&
+		[ ! -L "$CANDIDATE_TARGET_PREFIX" ] &&
+		[ "$(stat -f '%z' "$CANDIDATE_TARGET_PREFIX")" -eq "$PREFIX_BYTES" ] &&
+		[ "$(sha256 "$CANDIDATE_TARGET_PREFIX")" = \
+			"$BOOTSTAGE_FDT_PREFIX_SHA" ] ||
+		fail 'snapshotted bootstage-FDT target prefix identity changed'
+fi
 if [ "$HOST_TEST_MODE" -eq 1 ]; then
 	python3 "$RELEASE_VERIFIER" --host-test "$BIRD" \
 		>"$VERIFY_WORK/selected-release.txt" ||
@@ -712,6 +937,25 @@ else
 	python3 "$RELEASE_VERIFIER" "$BIRD" \
 		>"$VERIFY_WORK/selected-release.txt" ||
 		fail 'active BIRD selector or selected release failed verification'
+fi
+if [ "$ACTION" = --install-bootstage-fdt ] ||
+	[ "$ACTION" = --restore-inplace-handoff ]; then
+	[ "$(wc -l <"$VERIFY_WORK/selected-release.txt" | tr -d ' ')" -eq 1 ] ||
+		fail 'selected release verifier returned an ambiguous result'
+	IFS= read -r BOOTSTAGE_SELECTED_RELEASE \
+		<"$VERIFY_WORK/selected-release.txt" ||
+		fail 'could not read the selected release identity'
+	[ "$BOOTSTAGE_SELECTED_RELEASE" = "$BOOTSTAGE_FDT_REQUIRED_RELEASE" ] ||
+		fail 'bootstage measurement requires the exact accepted canonical release'
+	BOOTSTAGE_SELECTED_MANIFEST=$BIRD/bird-releases/$BOOTSTAGE_FDT_REQUIRED_RELEASE/deploy-manifest.tsv
+	is_regular_file "$BOOTSTAGE_SELECTED_MANIFEST" &&
+		[ "$(sha256 "$BOOTSTAGE_SELECTED_MANIFEST")" = \
+			"$BOOTSTAGE_FDT_REQUIRED_MANIFEST_SHA" ] ||
+		fail 'bootstage measurement canonical release manifest identity changed'
+	BOOTSTAGE_CAPTURE_ROW=$(printf 'file\tbird/capture-uboot-bootstage.sh\t755\t%s\t%s' \
+		"$BOOTSTAGE_FDT_CAPTURE_BYTES" "$BOOTSTAGE_FDT_CAPTURE_SHA")
+	grep -Fqx "$BOOTSTAGE_CAPTURE_ROW" "$BOOTSTAGE_SELECTED_MANIFEST" ||
+		fail 'bootstage measurement capture helper is absent from verified inventory'
 fi
 for OBSOLETE_BOOT_PATH in \
 	"$BIRD/KERNEL.fallback" \
@@ -731,6 +975,13 @@ is_regular_file "$NAMESPACE" &&
 	fail 'canonical namespace v1 is not committed'
 NAMESPACE_BYTES=$(stat -f '%z' "$NAMESPACE")
 NAMESPACE_SHA=$(sha256 "$NAMESPACE")
+if [ "$ACTION" = --install-bootstage-fdt ]; then
+	BOOTSTAGE_CAPTURE_REQUEST=$DATA/Bird/boot-diagnostics.request
+	is_regular_file "$BOOTSTAGE_CAPTURE_REQUEST" &&
+		[ "$(stat -f '%z' "$BOOTSTAGE_CAPTURE_REQUEST")" -eq 0 ] ||
+		fail 'bootstage measurement requires a pre-armed regular zero-byte diagnostics request'
+	BOOTSTAGE_CAPTURE_REQUEST_SHA=$(sha256 "$BOOTSTAGE_CAPTURE_REQUEST")
+fi
 
 read_raw_prefix "$VERIFY_WORK/before-prefix.bin" ||
 	fail 'could not read the complete user-owned 16 MiB prefix snapshot'
@@ -933,6 +1184,120 @@ case "$ACTION" in
 		EXPECTED_PREFIX_SHA=$INPLACE_HANDOFF_PREFIX_SHA
 		TARGET_DESCRIPTION='verified in-place-handoff U-Boot'
 		;;
+	--install-lz4-pair)
+		if cmp "$VERIFY_WORK/current-uboot.bin" "$CANDIDATE" >/dev/null; then
+			[ "$CURRENT_PREFIX_SHA" = "$LZ4_PAIR_PREFIX_SHA" ] ||
+				fail 'complete current LZ4-pair prefix differs from the reviewed oracle'
+			python3 "$INVENTORY_TOOL" "$BIRD" >"$VERIFY_WORK/bird-after.tsv" ||
+				fail 'could not re-inventory BIRD for LZ4-pair no-op verification'
+			cmp "$VERIFY_WORK/bird-before.tsv" "$VERIFY_WORK/bird-after.tsv" >/dev/null ||
+				fail 'BIRD payload changed during LZ4-pair no-op verification'
+			printf 'Verified LZ4-paired U-Boot is already installed.\n'
+			COMMITTED=1
+			exit 0
+		fi
+		cmp "$VERIFY_WORK/current-uboot.bin" "$BASELINE" >/dev/null || {
+			report_current_uboot_identity
+			fail 'current raw U-Boot is not the exact accepted in-place-handoff base'
+		}
+		[ "$CURRENT_PREFIX_SHA" = "$INPLACE_HANDOFF_PREFIX_SHA" ] ||
+			fail 'complete current in-place-handoff prefix differs from the accepted oracle'
+		TARGET_UBOOT=$CANDIDATE
+		TARGET_PREFIX=$CANDIDATE_TARGET_PREFIX
+		TARGET_UBOOT_BYTES=$LZ4_PAIR_UBOOT_BYTES
+		EXPECTED_PREFIX_SHA=$LZ4_PAIR_PREFIX_SHA
+		TARGET_DESCRIPTION='verified uninstrumented LZ4-paired U-Boot'
+		;;
+	--restore-inplace-from-lz4)
+		if cmp "$VERIFY_WORK/current-uboot.bin" "$BASELINE" >/dev/null &&
+			[ "$CURRENT_PREFIX_SHA" = "$INPLACE_HANDOFF_PREFIX_SHA" ]; then
+			python3 "$INVENTORY_TOOL" "$BIRD" >"$VERIFY_WORK/bird-after.tsv" ||
+				fail 'could not re-inventory BIRD for LZ4-pair restore no-op verification'
+			cmp "$VERIFY_WORK/bird-before.tsv" "$VERIFY_WORK/bird-after.tsv" >/dev/null ||
+				fail 'BIRD payload changed during LZ4-pair restore no-op verification'
+			printf 'Verified accepted in-place-handoff U-Boot is already restored.\n'
+			COMMITTED=1
+			exit 0
+		fi
+		python3 - "$VERIFY_WORK/before-prefix.bin" "$CANDIDATE_BASE_PREFIX" \
+			"$RAW_OFFSET" "$FAST_INIT_RAW_WRITE_END" <<'PY' ||
+import pathlib
+import sys
+
+current = pathlib.Path(sys.argv[1]).read_bytes()
+accepted = pathlib.Path(sys.argv[2]).read_bytes()
+start, end = map(int, sys.argv[3:])
+if current[:start] != accepted[:start] or current[end:] != accepted[end:]:
+    raise SystemExit(1)
+PY
+			fail 'current prefix differs outside the LZ4-pair recovery span'
+		TARGET_UBOOT=$BASELINE
+		TARGET_PREFIX=$CANDIDATE_BASE_PREFIX
+		TARGET_UBOOT_BYTES=$INPLACE_HANDOFF_UBOOT_BYTES
+		EXPECTED_PREFIX_SHA=$INPLACE_HANDOFF_PREFIX_SHA
+		TARGET_DESCRIPTION='accepted in-place-handoff U-Boot recovery from LZ4 pair'
+		;;
+	--install-bootstage-fdt)
+		if cmp "$VERIFY_WORK/current-uboot.bin" "$CANDIDATE" >/dev/null; then
+			[ "$CURRENT_PREFIX_SHA" = "$BOOTSTAGE_FDT_PREFIX_SHA" ] ||
+				fail 'complete current bootstage-FDT prefix differs from the reviewed oracle'
+			python3 "$INVENTORY_TOOL" "$BIRD" >"$VERIFY_WORK/bird-after.tsv" ||
+				fail 'could not re-inventory BIRD for bootstage-FDT no-op verification'
+			cmp "$VERIFY_WORK/bird-before.tsv" "$VERIFY_WORK/bird-after.tsv" >/dev/null ||
+				fail 'BIRD payload changed during bootstage-FDT no-op verification'
+			printf 'Verified temporary measurement-only bootstage-FDT U-Boot is already installed.\n'
+			COMMITTED=1
+			exit 0
+		fi
+		"$GDD" if="$VERIFY_WORK/before-prefix.bin" \
+			of="$VERIFY_WORK/current-inplace-base-range.bin" bs=64K skip="$RAW_OFFSET" \
+			count="$INPLACE_HANDOFF_UBOOT_BYTES" \
+			iflag=skip_bytes,count_bytes,fullblock status=none
+		cmp "$VERIFY_WORK/current-inplace-base-range.bin" "$BASELINE" >/dev/null || {
+			report_current_uboot_identity
+			fail 'current raw U-Boot is not the exact accepted in-place-handoff base'
+		}
+		[ "$CURRENT_PREFIX_SHA" = "$INPLACE_HANDOFF_PREFIX_SHA" ] ||
+			fail 'complete current in-place-handoff prefix differs from the accepted oracle'
+		TARGET_UBOOT=$CANDIDATE
+		TARGET_PREFIX=$CANDIDATE_TARGET_PREFIX
+		TARGET_UBOOT_BYTES=$BOOTSTAGE_FDT_UBOOT_BYTES
+		EXPECTED_PREFIX_SHA=$BOOTSTAGE_FDT_PREFIX_SHA
+		TARGET_DESCRIPTION="$BOOTSTAGE_FDT_CLASSIFICATION bootstage-FDT U-Boot"
+		;;
+	--restore-inplace-handoff)
+		"$GDD" if="$VERIFY_WORK/before-prefix.bin" \
+			of="$VERIFY_WORK/current-inplace-base-range.bin" bs=64K skip="$RAW_OFFSET" \
+			count="$INPLACE_HANDOFF_UBOOT_BYTES" \
+			iflag=skip_bytes,count_bytes,fullblock status=none
+		if cmp "$VERIFY_WORK/current-inplace-base-range.bin" "$BASELINE" >/dev/null &&
+			[ "$CURRENT_PREFIX_SHA" = "$INPLACE_HANDOFF_PREFIX_SHA" ]; then
+			python3 "$INVENTORY_TOOL" "$BIRD" >"$VERIFY_WORK/bird-after.tsv" ||
+				fail 'could not re-inventory BIRD for in-place restore no-op verification'
+			cmp "$VERIFY_WORK/bird-before.tsv" "$VERIFY_WORK/bird-after.tsv" >/dev/null ||
+				fail 'BIRD payload changed during in-place restore no-op verification'
+			printf 'Verified accepted in-place-handoff U-Boot is already restored.\n'
+			COMMITTED=1
+			exit 0
+		fi
+		python3 - "$VERIFY_WORK/before-prefix.bin" "$CANDIDATE_BASE_PREFIX" \
+			"$RAW_OFFSET" "$BOOTSTAGE_FDT_RAW_WRITE_END" <<'PY' ||
+import pathlib
+import sys
+
+current = pathlib.Path(sys.argv[1]).read_bytes()
+accepted = pathlib.Path(sys.argv[2]).read_bytes()
+start, end = map(int, sys.argv[3:])
+if current[:start] != accepted[:start] or current[end:] != accepted[end:]:
+    raise SystemExit(1)
+PY
+			fail 'current prefix differs from accepted layout outside the in-place recovery span'
+		TARGET_UBOOT=$BASELINE
+		TARGET_PREFIX=$CANDIDATE_BASE_PREFIX
+		TARGET_UBOOT_BYTES=$INPLACE_HANDOFF_UBOOT_BYTES
+		EXPECTED_PREFIX_SHA=$INPLACE_HANDOFF_PREFIX_SHA
+		TARGET_DESCRIPTION='accepted in-place-handoff U-Boot recovery'
+		;;
 	--restore-baseline)
 		if cmp "$VERIFY_WORK/current-baseline-range.bin" "$BASELINE" >/dev/null &&
 			[ "$CURRENT_PREFIX_SHA" = "$BASELINE_PREFIX_SHA" ]; then
@@ -954,7 +1319,7 @@ esac
 
 if [ "$ACTION" = --restore-baseline ]; then
 	python3 - "$VERIFY_WORK/before-prefix.bin" "$BASELINE_PREFIX" \
-		"$RAW_OFFSET" "$EARLY_RAW_END" <<'PY' ||
+		"$RAW_OFFSET" "$EARLY_RAW_WRITE_END" <<'PY' ||
 import pathlib
 import sys
 
@@ -966,6 +1331,11 @@ if current[:start] != baseline[:start] or current[end:] != baseline[end:]:
 PY
 		fail 'current prefix differs from the accepted layout outside the recoverable U-Boot range'
 	COPYFILE_DISABLE=1 cp -f "$BASELINE_PREFIX" "$VERIFY_WORK/expected-prefix.bin"
+elif [ "$ACTION" = --install-lz4-pair ] ||
+	[ "$ACTION" = --restore-inplace-from-lz4 ] ||
+	[ "$ACTION" = --install-bootstage-fdt ] ||
+	[ "$ACTION" = --restore-inplace-handoff ]; then
+	COPYFILE_DISABLE=1 cp -f "$TARGET_PREFIX" "$VERIFY_WORK/expected-prefix.bin"
 else
 	if [ "$ACTION" = --install-env-nowhere ] || [ "$ACTION" = --install-direct-extlinux ] ||
 		[ "$ACTION" = --install-no-heap-clear ]; then
@@ -989,12 +1359,15 @@ fi
 	fail 'complete expected 16 MiB prefix is not the pinned result'
 
 # Build complete-sector write inputs from the already verified full-prefix
-# snapshots. The last seven physical bytes are therefore preserved exactly and
-# are never synthesized from the shorter 621,049-byte U-Boot artifact.
+# snapshots. Every logical-to-sector tail is therefore preserved exactly from
+# its reviewed full-prefix oracle and never synthesized from a shorter U-Boot
+# artifact.
 extract_raw_write_slice "$VERIFY_WORK/expected-prefix.bin" \
 	"$VERIFY_WORK/target-write-slice.bin" ||
 	fail 'could not prepare the sector-aligned target write slice'
-if [ "$ACTION" = --restore-baseline ]; then
+if [ "$ACTION" = --restore-baseline ] ||
+	[ "$ACTION" = --restore-inplace-handoff ] ||
+	[ "$ACTION" = --restore-inplace-from-lz4 ]; then
 	RECOVERY_WRITE_PREFIX=$VERIFY_WORK/expected-prefix.bin
 else
 	RECOVERY_WRITE_PREFIX=$VERIFY_WORK/before-prefix.bin
@@ -1022,17 +1395,23 @@ if [ "$HOST_TEST_MODE" -eq 1 ] && [ "$TEST_FAILPOINT" = after-write-corrupt ]; t
 	"$GDD" if=/dev/zero of="$RAW_DISK" bs=1 seek=$((RAW_OFFSET + 4)) \
 		count=1 conv=fsync,notrunc status=none
 fi
-	if [ "$HOST_TEST_MODE" -eq 1 ] &&
+if [ "$HOST_TEST_MODE" -eq 1 ] &&
 		{ [ "$ACTION" = --install-green ] || [ "$ACTION" = --install-early-green ] ||
 			[ "$ACTION" = --install-env-nowhere ] || [ "$ACTION" = --install-direct-extlinux ] ||
 			[ "$ACTION" = --install-no-heap-clear ] || [ "$ACTION" = --install-fast-init ] ||
-			[ "$ACTION" = --install-inplace-handoff ]; } &&
+			[ "$ACTION" = --install-inplace-handoff ] ||
+			[ "$ACTION" = --install-lz4-pair ] ||
+			[ "$ACTION" = --restore-inplace-from-lz4 ] ||
+			[ "$ACTION" = --install-bootstage-fdt ] ||
+			[ "$ACTION" = --restore-inplace-handoff ]; } &&
 	[ "$TEST_FAILPOINT" = after-write-authority-drift ]; then
 	printf 'drift\n' >>"$BUILD_BASELINE"
 	printf 'drift\n' >>"$BUILD_CANDIDATE"
 	fail 'host-only injected failure: after-write-authority-drift'
 fi
-if [ "$HOST_TEST_MODE" -eq 1 ] && [ "$TEST_FAILPOINT" = after-write ]; then
+if [ "$HOST_TEST_MODE" -eq 1 ] &&
+	{ [ "$TEST_FAILPOINT" = after-write ] ||
+		[ "$TEST_FAILPOINT" = after-write-recovery-force-fallback ]; }; then
 	fail 'host-only injected failure: after-write'
 fi
 
@@ -1043,6 +1422,11 @@ cmp "$VERIFY_WORK/expected-prefix.bin" \
 	fail 'installed 16 MiB prefix differs outside or inside the exact target range'
 
 mount_card || fail 'could not remount the Bird card after raw U-Boot verification'
+if [ "$HOST_TEST_MODE" -eq 1 ] &&
+	[ "$ACTION" = --install-bootstage-fdt ] &&
+	[ "$TEST_FAILPOINT" = after-write-diagnostics-marker-tamper ]; then
+	printf 'tamper\n' >>"$BOOTSTAGE_CAPTURE_REQUEST"
+fi
 validate_requested_card
 [ "$WHOLE" = "$LOCKED_WHOLE" ] ||
 	fail 'card identity changed after remounting the U-Boot target'
@@ -1066,10 +1450,32 @@ fi
 cmp "$VERIFY_WORK/selected-release.txt" \
 	"$VERIFY_WORK/selected-release-after.txt" >/dev/null ||
 	fail 'selected release changed across U-Boot installation'
+if [ "$ACTION" = --install-bootstage-fdt ] ||
+	[ "$ACTION" = --restore-inplace-handoff ]; then
+	[ "$(wc -l <"$VERIFY_WORK/selected-release-after.txt" | tr -d ' ')" -eq 1 ] ||
+		fail 'bootstage measurement selected release became ambiguous after raw installation'
+	IFS= read -r BOOTSTAGE_SELECTED_RELEASE_AFTER \
+		<"$VERIFY_WORK/selected-release-after.txt" ||
+		fail 'could not read the post-install selected release identity'
+	[ "$BOOTSTAGE_SELECTED_RELEASE_AFTER" = "$BOOTSTAGE_FDT_REQUIRED_RELEASE" ] ||
+		fail 'bootstage measurement canonical release changed after raw installation'
+	is_regular_file "$BOOTSTAGE_SELECTED_MANIFEST" &&
+		[ "$(sha256 "$BOOTSTAGE_SELECTED_MANIFEST")" = \
+			"$BOOTSTAGE_FDT_REQUIRED_MANIFEST_SHA" ] &&
+		grep -Fqx "$BOOTSTAGE_CAPTURE_ROW" "$BOOTSTAGE_SELECTED_MANIFEST" ||
+		fail 'bootstage measurement canonical capture inventory changed after raw installation'
+fi
 is_regular_file "$NAMESPACE" &&
 	[ "$(stat -f '%z' "$NAMESPACE")" = "$NAMESPACE_BYTES" ] &&
 	[ "$(sha256 "$NAMESPACE")" = "$NAMESPACE_SHA" ] ||
 	fail 'BIRD-DATA canonical namespace marker changed across U-Boot installation'
+if [ "$ACTION" = --install-bootstage-fdt ]; then
+	is_regular_file "$BOOTSTAGE_CAPTURE_REQUEST" &&
+		[ "$(stat -f '%z' "$BOOTSTAGE_CAPTURE_REQUEST")" -eq 0 ] &&
+		[ "$(sha256 "$BOOTSTAGE_CAPTURE_REQUEST")" = \
+			"$BOOTSTAGE_CAPTURE_REQUEST_SHA" ] ||
+		fail 'bootstage diagnostics request changed across raw installation'
+fi
 
 COMMITTED=1
 WRITE_STARTED=0
@@ -1088,6 +1494,15 @@ elif [ "$ACTION" = --install-fast-init ]; then
 	printf 'Fast-init U-Boot installed and exact full-prefix verification passed.\n'
 elif [ "$ACTION" = --install-inplace-handoff ]; then
 	printf 'In-place-handoff U-Boot installed and exact full-prefix verification passed.\n'
+elif [ "$ACTION" = --install-lz4-pair ]; then
+	printf 'Uninstrumented LZ4-paired U-Boot installed and exact full-prefix verification passed.\n'
+elif [ "$ACTION" = --restore-inplace-from-lz4 ]; then
+	printf 'Accepted in-place-handoff U-Boot restored from LZ4 pair and exact full-prefix verification passed.\n'
+elif [ "$ACTION" = --install-bootstage-fdt ]; then
+	printf 'Temporary measurement-only bootstage-FDT U-Boot installed and exact full-prefix verification passed.\n'
+	printf 'This diagnostic image is never a production successor; restore the accepted in-place handoff after capture.\n'
+elif [ "$ACTION" = --restore-inplace-handoff ]; then
+	printf 'Accepted in-place-handoff U-Boot restored and exact full-prefix verification passed.\n'
 else
 	printf 'Shipping baseline U-Boot restored and exact full-prefix verification passed.\n'
 fi

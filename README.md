@@ -7,9 +7,29 @@ hardware baseline is **stock-root v6.23**: it retains the exact ROCKNIX
 20260701 DDR4 compatibility base and replaces its frontend and selected generic
 policy with birdOS. Its 2026-07-26 physical gate and host fault-injection suite
 established the historical stock-root baseline. The current accepted binding is
-clean source `c07fe18769a13a3b1997e2cf1a4900cc55423d5b`, immutable release
-`v6.23-20260811-234132`, and canonical deploy-manifest digest
-`a0a38b04be25f2d09009b0677d33c0d34c65b027c0ff1b9463f71cdeec9b274b`.
+clean source `5373c644b9c91ac21a17e145375747a8196a3337`, immutable release
+`v6.23-20260814-201218`, and canonical deploy-manifest digest
+`904c8da42a6ec84ccf4b291205999c3b0e25900f4bec7bb3f9e0cfefb29164dd`.
+The complete returned hardware screen passed. Four cold boots recorded an
+about-1176 ms median usable frame and 1170 ms median input readiness; three
+completed asynchronous storage records had a 3514 ms median, a noise-scale
+three-sample result. The latest seven stopwatch samples span 2.64--2.90 seconds
+with a coarse 2.78-second median. They are a human reaction-time check, not a
+calibrated latency distribution, so no measurable speed improvement is claimed.
+This clean canonical gate satisfies the current Stage 10 prerequisite. Stage 10
+is roughly 80 percent complete: the raw-kernel bootstage measurement is
+complete. Its temporary instrumentation is retired from the next canonical
+runtime; the uninstrumented LZ4 functional gate is next.
+
+Why before: ROCKNIX's retained fake-suspend provider owns
+the accepted audio, input, governor, core-parking and LED transaction, while
+birdOS restores the fixed panel and records only rare edges. Why change: no
+suspend behavior is changed now because one canonical boot
+persisted suspend and resume dispatch but rebooted before resume completion or
+an orderly shutdown; the next boot completed three power/lid cycles normally,
+and no reset cause survived. This intermittent nonblocking issue is deferred to
+a focused provider/PMIC diagnostic cycle rather than changing accepted behavior
+during Stage 10.
 
 The governing priority is: boot latency, interaction latency, battery
 efficiency, memory efficiency, then exact user features. Generality is a cost,

@@ -99,15 +99,22 @@ def assert_pinned_bootstage_path() -> None:
     assert bootm.count(
         'bootstage_mark_name(BOOTSTAGE_ID_BOOTM_START, "bootm_start");'
     ) == 1
-    # Why before: bootm_start was enough to prove the general bootm boundary.
-    # Why change: the existing kernel-loaded mark names bootm_load_os and gives
-    # the measurement a distinct, source-pinned end to kernel image loading.
-    assert bootm.count("bootstage_mark(BOOTSTAGE_ID_KERNEL_LOADED);") == 1
-    load_os_start = bootm.index("static int bootm_load_os(")
-    load_os_end = bootm.index("\nulong bootm_disable_interrupts(", load_os_start)
-    assert load_os_start < bootm.index(
-        "bootstage_mark(BOOTSTAGE_ID_KERNEL_LOADED);", load_os_start
-    ) < load_os_end
+    # Why before: generic bootm owns BOOTM_STATE_LOADOS and emits its
+    # bootm_load_os mark. The accepted device trace proved that booti handles
+    # that state itself, so the generic mark is not a runtime contract here.
+    # Why change: pin booti's explicit LOADOS handling and ARM's emitted
+    # boot_jump_linux mark, bounding setup/decompression through handoff.
+    booti = (UBOOT / "cmd/booti.c").read_text()
+    assert booti.count("/* Handle BOOTM_STATE_LOADOS */") == 1
+    states_start = booti.index("states = BOOTM_STATE_MEASURE")
+    states_end = booti.index("ret = bootm_run_states", states_start)
+    assert "BOOTM_STATE_LOADOS" not in booti[states_start:states_end]
+    arm_bootm = (UBOOT / "arch/arm/lib/bootm.c").read_text()
+    jump_start = arm_bootm.index("static void boot_jump_linux(")
+    jump_end = arm_bootm.index("\n}\n", jump_start)
+    assert jump_start < arm_bootm.index(
+        "bootstage_mark(BOOTSTAGE_ID_RUN_OS);", jump_start
+    ) < jump_end
     bootstage_header = (UBOOT / "include/bootstage.h").read_text()
     assert (
         "#define bootstage_mark(id)\tbootstage_mark_name(id, __func__)"

@@ -4,14 +4,40 @@
 [`build-stock-root-compat.sh`](build-stock-root-compat.sh), deployed by
 [`firmware/mac-update-rocknix-stock-root-v6.sh`](../../firmware/mac-update-rocknix-stock-root-v6.sh),
 and defined end to end in [`ACTIVE_PATH.md`](../../ACTIVE_PATH.md). Immutable
-release `v6.23-20260811-234132`, built from clean source
-`c07fe18769a13a3b1997e2cf1a4900cc55423d5b`, is the current broad physical
-acceptance result. It carries the reproducible Linux 7.0.11 IRQ-button kernel
+release `v6.23-20260814-201218`, built from clean source
+`5373c644b9c91ac21a17e145375747a8196a3337`, is the current broad physical
+acceptance result. Its canonical deploy-manifest digest is
+`904c8da42a6ec84ccf4b291205999c3b0e25900f4bec7bb3f9e0cfefb29164dd`.
+It carries the reproducible Linux 7.0.11 IRQ-button kernel
 with SHA-256
 `cad7ad8437d0a7de0d819846b12fdf83078f5878313704d0de79274431ec9d64`.
 The active path retains the exact ROCKNIX 20260701 DTB, effective system tree
 and configured writable provider; birdOS supplies the fixed-device source
 kernel, external early overlay and fixed integration layer.
+
+The returned canonical gate passed the broad product screen. Four cold boots
+recorded usable frames at 1174--1177 ms, with a midpoint median reported as
+about 1176 ms, and input-ready median at 1170 ms. Three completed asynchronous
+storage records had a 3514 ms median; that three-sample result is noise-scale.
+The latest seven stopwatch samples span 2.64--2.90 seconds with a coarse
+2.78-second median. They are a human reaction-time check, not a calibrated
+latency result, and show no measurable improvement. The clean full-release
+prerequisite for Stage 10 is satisfied. Three returned raw-kernel bootstage
+traces put the median fixed FAT/extlinux interval at 1,419,998 us and the
+following booti setup/handoff interval at 224,968 us. Rough progress is about
+75 percent. The temporary capture path is retired from the next canonical
+runtime, and the uninstrumented LZ4 functional gate is next.
+
+Why before: the retained ROCKNIX fake-suspend
+provider owns its accepted audio, input, governor, core-parking and LED
+transaction, while Bird restores the fixed panel and logs rare transitions
+without a periodic wakeup. Why change: no suspend behavior is changed now
+because canonical boot `96df160e` persisted suspend and resume dispatch but
+ended before a matching completion, timeout or orderly shutdown; no panic,
+Oops, pstore or reset cause survived. The next boot completed three power/lid
+cycles normally. This
+intermittent reset is nonblocking and deferred to a focused provider/PMIC
+diagnostic cycle.
 
 The Stage 6 no-change SYSTEM parity command is:
 

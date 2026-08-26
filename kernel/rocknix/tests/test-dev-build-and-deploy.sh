@@ -169,7 +169,8 @@ for SOURCE_PATH in \
 	kernel/rocknix/verify-uboot-fast-init-build.py \
 	kernel/rocknix/verify-uboot-inplace-handoff-build.py \
 	kernel/rocknix/verify-uboot-bootstage-fdt-build.py \
-	kernel/rocknix/verify-lz4-kernel-candidate.py; do
+	kernel/rocknix/verify-lz4-kernel-candidate.py \
+	kernel/rocknix/verify-uboot-lz4-pair-build.py; do
 	copy_source "$SOURCE_PATH"
 done
 mkdir -p "$TEMPLATE/kernel/rocknix/tests"
@@ -178,7 +179,6 @@ cp -p "$SOURCE_ROOT/kernel/rocknix/tests/test-bird-local-binary.sh" \
 	"$SOURCE_ROOT/kernel/rocknix/tests/test-dev-build-and-deploy.sh" \
 	"$SOURCE_ROOT/kernel/rocknix/tests/test-fit-root-timestamp-patch.py" \
 	"$SOURCE_ROOT/kernel/rocknix/tests/test-mac-install-bird-uboot.sh" \
-	"$SOURCE_ROOT/kernel/rocknix/tests/test-stock-root-bootstage-capture.sh" \
 	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-direct-extlinux-transform.py" \
 	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-fast-init-transform.py" \
 	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-inplace-handoff-transform.py" \
@@ -188,6 +188,7 @@ cp -p "$SOURCE_ROOT/kernel/rocknix/tests/test-bird-local-binary.sh" \
 	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-no-heap-clear-build.py" \
 	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-fast-init-build.py" \
 	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-inplace-handoff-build.py" \
+	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-lz4-pair-build.py" \
 	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-bootstage-fdt-build.py" \
 	"$SOURCE_ROOT/kernel/rocknix/tests/test-lz4-kernel-candidate.py" \
 	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-environment-nowhere-transform.py" \
@@ -617,15 +618,13 @@ assert module.all_component_groups() == set(module.COMPONENT_HOST_TESTS)
 assert len(module.BROAD_PRODUCT_HOST_TESTS) == 60
 assert "test-dev-build-and-deploy.sh" in module.BROAD_PRODUCT_HOST_TESTS
 assert module.COMPONENT_HOST_TESTS["runtime:capture-boot-state.sh"] == (
-    "test-stock-root-bootstage-capture.sh",
-    "test-stock-root-unit-ordering.sh",
-)
-assert module.COMPONENT_HOST_TESTS["runtime:capture-uboot-bootstage.sh"] == (
-    "test-stock-root-bootstage-capture.sh",
     "test-stock-root-unit-ordering.sh",
 )
 expected_host_only = {
     "firmware/mac-install-bird-uboot.sh": ("test-mac-install-bird-uboot.sh",),
+    "kernel/rocknix/stock-root/capture-uboot-bootstage.sh": (
+        "test-mac-install-bird-uboot.sh",
+    ),
     "kernel/rocknix/build-uboot-status-led.sh": ("test-uboot-status-led-build.py",),
     "kernel/rocknix/build-uboot-no-heap-clear.sh": (
         "test-uboot-no-heap-clear-build.py",
@@ -710,6 +709,10 @@ expected_host_only = {
     ),
     "kernel/rocknix/verify-lz4-kernel-candidate.py": (
         "test-lz4-kernel-candidate.py",
+    ),
+    "kernel/rocknix/verify-uboot-lz4-pair-build.py": (
+        "test-uboot-lz4-pair-build.py",
+        "test-mac-install-bird-uboot.sh",
     ),
 }
 assert module.HOST_ONLY_SOURCE_TESTS == expected_host_only

@@ -12,8 +12,6 @@ BOOT_ID=${BOOT_ID_FULL:0:8}
 LOG=$LOG_DIR/stock-root-boot-state-$BOOT_ID.log
 LOG_TMP=$LOG.tmp.$$
 LATEST=$LOG_DIR/stock-root-boot-state-latest.log
-BOOTSTAGE_ROOT=${BIRD_BOOTSTAGE_ROOT:-/sys/firmware/devicetree/base/bootstage}
-BOOTSTAGE_CAPTURE=${BIRD_BOOTSTAGE_CAPTURE:-/flash/bird/capture-uboot-bootstage.sh}
 
 cleanup() {
 	rm -f "$LOG_TMP" 2>/dev/null || :
@@ -33,13 +31,6 @@ trap 'exit 1' HUP INT TERM
 			-p InactiveExitTimestampMonotonic \
 			-p ActiveEnterTimestampMonotonic 2>&1 || :
 	done
-	# U-Boot publishes this node only in measurement builds. Read it here,
-	# after the requested diagnostic service is ordered behind autostart, so
-	# neither a normal boot nor the interactive first frame pays this cost.
-	if [ -d "$BOOTSTAGE_ROOT" ]; then
-		printf '%s\n' '--- U-Boot bootstage marks ---'
-		BIRD_BOOTSTAGE_ROOT=$BOOTSTAGE_ROOT "$BOOTSTAGE_CAPTURE" 2>&1 || :
-	fi
 	printf '%s\n' '--- running services ---'
 	systemctl list-units --type=service --state=running --no-pager 2>&1 || :
 	printf '%s\n' '--- failed units ---'

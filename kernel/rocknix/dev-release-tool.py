@@ -69,6 +69,7 @@ OPTIONAL_SOURCE_KERNEL_INPUTS = {
     "source-kernel-changed-input-sync.tsv",
     "source-kernel-fixed-gpio-fastpath.tsv",
     "source-kernel-irq-buttons.tsv",
+    "source-kernel-irq-buttons-lz4.tsv",
 }
 STOCK_JOYPAD_SHA256 = "a8ac6cacfa89672fa08dec7fa02179bb108a4a2303fd5c1eb5834f916089b79b"
 SOURCE_PARITY_JOYPAD_SHA256 = "fd2ceb95f0b3bdc1d68e7182a8ac5239b5286cc277a04980e53f65e0f73d3a05"
@@ -79,6 +80,7 @@ SOURCE_SINGLE_INPUT_SYNC_AUTHORITY_SHA256 = "afe2693b5a632170b638eda70f27a77198c
 SOURCE_CHANGED_INPUT_SYNC_AUTHORITY_SHA256 = "8ae897ae79536313d1501c72ccb2c6dd9472963e7c2d0bfd6c1dbf54a51831c6"
 SOURCE_FIXED_GPIO_FASTPATH_AUTHORITY_SHA256 = "c727c365941c0957d9d56994d1cc9a5c0d16dccf315ff1d664944bac732b4820"
 SOURCE_IRQ_BUTTONS_AUTHORITY_SHA256 = "0020d161b5a2be0d8393267c3eb96794a0c2d9f82e8df5e097932216fad9e45d"
+SOURCE_IRQ_BUTTONS_LZ4_AUTHORITY_SHA256 = "250be0f922339e423cc7e100d785747b16686873a5bea357b69825dc29434b3c"
 EARLY_INPUT_DIGESTS = {
     "initramfs/init": "3473415af0cf5df44e70259c3392817b1df421a12a617ec083ec018ff51dbc48",
     "initramfs/busybox": "5ee3d20d8ea5fd9b3ba5109da80599eaf46a5a337d9e40d4c67d28eef44d5dc8",
@@ -113,7 +115,6 @@ RUNTIME_FILES = (
     "fixed-storage.sh",
     "first-frame-prep.sh",
     "capture-boot-state.sh",
-    "capture-uboot-bootstage.sh",
     "capture-requested-diagnostics.sh",
     "capture-stage5-state.sh",
     "capture-stage5-window-counters.sh",
@@ -178,7 +179,6 @@ KNOWN_STANDALONE_HOST_TESTS = {
     "test-post-flash-transactions.sh",
     "test-stage-zero-contract.py",
     "test-stock-root-brightness.sh",
-    "test-stock-root-bootstage-capture.sh",
     "test-stock-root-build-reproducibility.sh",
     "test-stock-root-content-scope.sh",
     "test-stock-root-fixed-autostart.sh",
@@ -207,6 +207,7 @@ KNOWN_STANDALONE_HOST_TESTS = {
     "test-uboot-fast-init-build.py",
     "test-uboot-inplace-handoff-build.py",
     "test-uboot-inplace-handoff-transform.py",
+    "test-uboot-lz4-pair-build.py",
     "test-uboot-lz4-kernel-transform.py",
     "test-uboot-no-heap-clear-transform.py",
     "test-uboot-bootstage-fdt-build.py",
@@ -224,6 +225,9 @@ KNOWN_STANDALONE_HOST_TESTS = {
 # it never makes raw installation part of --changed or --all-local.
 HOST_ONLY_SOURCE_TESTS: dict[str, tuple[str, ...]] = {
     "firmware/mac-install-bird-uboot.sh": ("test-mac-install-bird-uboot.sh",),
+    "kernel/rocknix/stock-root/capture-uboot-bootstage.sh": (
+        "test-mac-install-bird-uboot.sh",
+    ),
     "kernel/rocknix/build-uboot-status-led.sh": ("test-uboot-status-led-build.py",),
     "kernel/rocknix/build-uboot-no-heap-clear.sh": (
         "test-uboot-no-heap-clear-build.py",
@@ -312,6 +316,10 @@ HOST_ONLY_SOURCE_TESTS: dict[str, tuple[str, ...]] = {
     ),
     "kernel/rocknix/verify-lz4-kernel-candidate.py": (
         "test-lz4-kernel-candidate.py",
+    ),
+    "kernel/rocknix/verify-uboot-lz4-pair-build.py": (
+        "test-uboot-lz4-pair-build.py",
+        "test-mac-install-bird-uboot.sh",
     ),
 }
 BROAD_PRODUCT_HOST_TESTS = frozenset(
@@ -420,11 +428,6 @@ COMPONENT_HOST_TESTS.update(
         ),
         "runtime:first-frame-prep.sh": ("test-stock-root-unit-ordering.sh",),
         "runtime:capture-boot-state.sh": (
-            "test-stock-root-bootstage-capture.sh",
-            "test-stock-root-unit-ordering.sh",
-        ),
-        "runtime:capture-uboot-bootstage.sh": (
-            "test-stock-root-bootstage-capture.sh",
             "test-stock-root-unit-ordering.sh",
         ),
         "runtime:capture-requested-diagnostics.sh": (
@@ -1062,6 +1065,12 @@ def early_kernel_authority(manifest: Manifest) -> str:
         == SOURCE_IRQ_BUTTONS_AUTHORITY_SHA256
     ):
         return "source-irq-buttons"
+    if (
+        joypad_digest == SOURCE_PARITY_JOYPAD_SHA256
+        and source_authorities.get("source-kernel-irq-buttons-lz4.tsv")
+        == SOURCE_IRQ_BUTTONS_LZ4_AUTHORITY_SHA256
+    ):
+        return "source-irq-buttons-lz4"
     fail("base release kernel authority and early joypad input do not agree")
 
 
@@ -1777,6 +1786,10 @@ def classify_path(path: str) -> tuple[str, set[str]]:
         return ("test", set())
     if path in HOST_ONLY_SOURCE_TESTS:
         return ("host-only", set())
+    if path in {
+        f"kernel/rocknix/{name}" for name in OPTIONAL_SOURCE_KERNEL_INPUTS
+    }:
+        return ("full-release-only", set())
     if path in {"dev-build-and-deploy.sh", "kernel/rocknix/dev-release-tool.py"}:
         return ("workflow", set())
     if path == "kernel/rocknix/build-stock-root-compat.sh":

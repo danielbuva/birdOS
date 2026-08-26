@@ -23,7 +23,6 @@ RFKILL=$ROOT/kernel/rocknix/stock-root/systemd-rfkill.service
 FIRST_FRAME=$ROOT/kernel/rocknix/stock-root/first-frame-prep.sh
 DISPATCH=$ROOT/kernel/rocknix/stock-root/capture-requested-diagnostics.sh
 CAPTURE=$ROOT/kernel/rocknix/stock-root/capture-boot-state.sh
-BOOTSTAGE_CAPTURE=$ROOT/kernel/rocknix/stock-root/capture-uboot-bootstage.sh
 STAGE5_CAPTURE=$ROOT/kernel/rocknix/stock-root/capture-stage5-state.sh
 STAGE5_WINDOW=$ROOT/kernel/rocknix/stock-root/capture-stage5-window-counters.sh
 STAGE5_ACQUIRE=$ROOT/kernel/rocknix/stock-root/capture-stage5-window.sh
@@ -94,8 +93,6 @@ grep -Fqx 'ExecStart=/flash/bird/capture-requested-diagnostics.sh' "$REPORT"
 grep -Fqx 'RuntimeMaxSec=120s' "$REPORT"
 grep -Fq 'stock-root-boot-state-$BOOT_ID.log' "$CAPTURE"
 grep -Fq 'cp -f "$LOG" "$LATEST"' "$CAPTURE"
-grep -Fq 'BIRD_BOOTSTAGE_ROOT=$BOOTSTAGE_ROOT "$BOOTSTAGE_CAPTURE"' "$CAPTURE"
-grep -Fq 'bird_uboot_bootstage_version=1' "$BOOTSTAGE_CAPTURE"
 grep -Fq 'bird_stage5_snapshot_version=1' "$STAGE5_CAPTURE"
 grep -Fq 'BIRD_STAGE5_LABEL' "$STAGE5_CAPTURE"
 if grep -Fq 'stage5-idle-window.request' "$CAPTURE"; then

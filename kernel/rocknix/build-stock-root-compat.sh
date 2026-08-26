@@ -111,6 +111,16 @@ case "$KERNEL_AUTHORITY" in
 		SYSTEM_PROVIDER='bird-source-irq-buttons:accepted-builtin-input-SYSTEM'
 		JOYPAD_PROVIDER='bird-source-irq-buttons:build-oracle:rocknix-singleadc-joypad.ko'
 		;;
+	source-irq-buttons-lz4)
+		KERNEL_SHA=a7321d2a79b18e81f114aefd9bb7509ba70d5e56b562a345ea5ca66dbf11262a
+		DTB_SHA=f3a4273986d6e4f431b110cead8aa19e8da52ff08c64c4b204ef9664d28b5c31
+		SYSTEM_SHA=57210b5cb6072bf1e2b81dea31df76f9b5d4aab5534d7d3b668fdfdc51a1c527
+		JOYPAD_SHA=fd2ceb95f0b3bdc1d68e7182a8ac5239b5286cc277a04980e53f65e0f73d3a05
+		KERNEL_PROVIDER='bird-source-irq-buttons:linux-7.0.11:Image:lz4-v1.10.0--9-T1'
+		DTB_PROVIDER='bird-source-irq-buttons:ROCKNIX-H700:dtb.img'
+		SYSTEM_PROVIDER='bird-source-irq-buttons:accepted-builtin-input-SYSTEM'
+		JOYPAD_PROVIDER='bird-source-irq-buttons:build-oracle:rocknix-singleadc-joypad.ko'
+		;;
 	*) printf 'error: unknown kernel authority: %s\n' "$KERNEL_AUTHORITY" >&2; exit 1 ;;
 esac
 STORAGE_SHA=12affdad7bc2042cb590fea60fc015a7ee8d4374ebcc3b1c11098a64b9ffa3be
@@ -138,6 +148,7 @@ case "$KERNEL_AUTHORITY" in
 	source-changed-input-sync) SOURCE_KERNEL_AUTHORITY_SHA=8ae897ae79536313d1501c72ccb2c6dd9472963e7c2d0bfd6c1dbf54a51831c6 ;;
 	source-fixed-gpio-fastpath) SOURCE_KERNEL_AUTHORITY_SHA=c727c365941c0957d9d56994d1cc9a5c0d16dccf315ff1d664944bac732b4820 ;;
 	source-irq-buttons) SOURCE_KERNEL_AUTHORITY_SHA=0020d161b5a2be0d8393267c3eb96794a0c2d9f82e8df5e097932216fad9e45d ;;
+	source-irq-buttons-lz4) SOURCE_KERNEL_AUTHORITY_SHA=250be0f922339e423cc7e100d785747b16686873a5bea357b69825dc29434b3c ;;
 	*) SOURCE_KERNEL_AUTHORITY_SHA= ;;
 esac
 
@@ -426,7 +437,7 @@ for FILE in 090-ui_service 999-export bird-autostart bird-journald.conf \
 	bird-powerstate.service supervisor.sh run-content.sh bird-mpv-player.sh \
 	prepare-ports.sh verify-portmaster-provider.sh \
 	portmaster-provider.manifest.tsv fixed-storage.sh first-frame-prep.sh \
-	capture-boot-state.sh capture-uboot-bootstage.sh \
+	capture-boot-state.sh \
 	capture-requested-diagnostics.sh capture-stage5-state.sh \
 	capture-stage5-window-counters.sh capture-stage5-window.sh \
 	bird-network.sh bird-fixed-control-exit.sh \
@@ -467,7 +478,6 @@ chmod 0755 "$OUTPUT/card/post-flash.sh" "$OUTPUT/card/mount-storage.sh" \
 	"$OUTPUT/card/bird/fixed-storage.sh" \
 	"$OUTPUT/card/bird/first-frame-prep.sh" \
 	"$OUTPUT/card/bird/capture-boot-state.sh" \
-	"$OUTPUT/card/bird/capture-uboot-bootstage.sh" \
 	"$OUTPUT/card/bird/capture-requested-diagnostics.sh" \
 	"$OUTPUT/card/bird/capture-stage5-state.sh" \
 	"$OUTPUT/card/bird/capture-stage5-window-counters.sh" \
@@ -503,7 +513,6 @@ for SCRIPT in "$OUTPUT/card/post-flash.sh" \
 	"$OUTPUT/card/bird/fixed-storage.sh" \
 	"$OUTPUT/card/bird/first-frame-prep.sh" \
 	"$OUTPUT/card/bird/capture-boot-state.sh" \
-	"$OUTPUT/card/bird/capture-uboot-bootstage.sh" \
 	"$OUTPUT/card/bird/capture-requested-diagnostics.sh" \
 	"$OUTPUT/card/bird/capture-stage5-state.sh" \
 	"$OUTPUT/card/bird/capture-stage5-window-counters.sh" \
@@ -683,12 +692,6 @@ grep -q 'timeout 2s pactl info' \
 grep -q 'stock-root-boot-state-\$BOOT_ID.log' \
 	"$OUTPUT/card/bird/capture-boot-state.sh" || \
 	fail 'boot-scoped snapshot publication missing'
-grep -Fq 'BIRD_BOOTSTAGE_ROOT=$BOOTSTAGE_ROOT "$BOOTSTAGE_CAPTURE"' \
-	"$OUTPUT/card/bird/capture-boot-state.sh" || \
-	fail 'post-frame U-Boot bootstage capture missing'
-grep -Fq 'bird_uboot_bootstage_version=1' \
-	"$OUTPUT/card/bird/capture-uboot-bootstage.sh" || \
-	fail 'U-Boot bootstage snapshot schema missing'
 grep -Fq 'STAGE5_CAPTURE=${BIRD_STAGE5_CAPTURE:-/flash/bird/capture-stage5-window.sh}' \
 	"$OUTPUT/card/bird/capture-requested-diagnostics.sh" || \
 	fail 'standalone Stage 5 acquisition missing'

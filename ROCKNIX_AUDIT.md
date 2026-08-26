@@ -7,18 +7,42 @@ closure from the later application-compatibility closure and replaces generic
 discovery only after its consumers are proven.
 
 The current accepted stock-root binding is clean source
-`c07fe18769a13a3b1997e2cf1a4900cc55423d5b`, immutable release
-`v6.23-20260811-234132`, deploy-manifest digest
-`a0a38b04be25f2d09009b0677d33c0d34c65b027c0ff1b9463f71cdeec9b274b`,
+`5373c644b9c91ac21a17e145375747a8196a3337`, immutable release
+`v6.23-20260814-201218`, deploy-manifest digest
+`904c8da42a6ec84ccf4b291205999c3b0e25900f4bec7bb3f9e0cfefb29164dd`,
 device-contract digest
 `1664a3778abcd3687865a82fd28bba5b468f6c3c7e9a46bf90f7c3acb1e08162`
 and catalog digest
 `9795aae6baddc292f5d9954a444656e303db305c639284f16eb10288c41f1f93`.
-Its IRQ-button RG34XX-SP gate passed on 2026-08-11. All 17 digital controls,
+Its canonical RG34XX-SP gate passed on 2026-08-14. All 17 digital controls,
 including L3/R3, passed through independent 5 ms GPIO edge debounce while the
 four analog axes retained their 10 ms ADC poll; the broad behavior gate and
 Input Test 29/29 passed. This promotes the reproducible fixed-device input
 kernel without claiming a calibrated latency or energy distribution.
+
+The returned canonical sample recorded usable frames at 1174--1177 ms, with a
+midpoint median reported as about 1176 ms, and an input-ready median of
+1170 ms. Three completed asynchronous storage records had a 3514 ms median. The
+three-sample storage result is noise-scale. The latest seven stopwatch samples
+span 2.64--2.90 seconds with a coarse 2.78-second median; they are a human
+reaction-time check and do not establish a measurable improvement. This clean
+canonical gate satisfies the Stage 10 full-release prerequisite. Three returned
+raw-kernel bootstage traces put the median fixed FAT/extlinux interval at
+1,419,998 us and the following booti setup/handoff interval at 224,968 us. The
+uninstrumented LZ4 functional gate is next; the temporary measurement helper is
+retired from the next canonical runtime. Stage 10 rough planning progress is
+about 80 percent.
+
+Why before: ROCKNIX's provider owns the proven
+audio, input, governor, core-parking and LED transaction; Bird owns fixed-panel
+restoration, and its `O_DSYNC` trace persists only rare edges without adding an
+idle wakeup. Why change: no suspend behavior is changed now because canonical
+boot `96df160e` recorded suspend at 311.471 seconds and resume dispatch at
+312.632 seconds but no resume-complete, timeout, orderly shutdown, panic, Oops,
+pstore or reset cause.
+The next canonical boot completed three power/lid cycles in 726--768 ms from
+wake edge to completion. The intermittent reset is nonblocking and remains
+deferred for focused provider/PMIC and reset-surviving evidence.
 
 A later button-only kernel candidate was rejected after immutable release
 `v6.23-20260811-034244` disabled both physical analog sticks. The RG34XX-SP
@@ -33,11 +57,12 @@ hardware gate passed and stopwatch timing remained below three seconds. Release
 removing reads; its broad gate also passed with normal stopwatch timing. The
 following `v6.23-20260811-100937` release suppressed only combined frames with
 no accepted change. Release `v6.23-20260811-220044` added direct non-sleeping
-H700 GPIO access while retaining the 10 ms combined poll. The current accepted
-`v6.23-20260811-234132` release then moved all 17 digital controls, including
+H700 GPIO access while retaining the 10 ms combined poll. Stage 9 release
+`v6.23-20260811-234132` then moved all 17 digital controls, including
 L3/R3, to independent 5 ms GPIO edge debounce while retaining the four-axis
 10 ms ADC poll. Its broad gate and Input Test 29/29 passed; latency and energy
-remain unmeasured rather than inferred from functional acceptance.
+remain unmeasured rather than inferred from functional acceptance. Canonical
+release `v6.23-20260814-201218` now carries that accepted path.
 
 ## Measured boundaries
 
@@ -115,7 +140,7 @@ power indicator.
 
 The operator previously accepted public commit
 `79b6e3e03771f2787622a3e4f6f9d8f129b7281f` as a source and behavior
-checkpoint. Immutable fallback release `v6.23-20260731-054816` remains separately
+checkpoint. Historical immutable release `v6.23-20260731-054816` remains separately
 identified by its actual older dirty source in its manifest. The audit below is
 behavior evidence; it does not rewrite that binary provenance.
 

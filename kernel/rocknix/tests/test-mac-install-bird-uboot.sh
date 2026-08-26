@@ -13,6 +13,8 @@ DIRECT_UBOOT_BUILD=${DIRECT_UBOOT_BUILD:-$ROOT/kernel/work/bird-uboot-direct-ext
 NO_HEAP_CLEAR_UBOOT_BUILD=${NO_HEAP_CLEAR_UBOOT_BUILD:-$ROOT/kernel/work/bird-uboot-no-heap-clear-20260701}
 FAST_INIT_UBOOT_BUILD=${FAST_INIT_UBOOT_BUILD:-$ROOT/kernel/work/bird-uboot-fast-init-20260701}
 INPLACE_HANDOFF_UBOOT_BUILD=${INPLACE_HANDOFF_UBOOT_BUILD:-$ROOT/kernel/work/bird-uboot-inplace-handoff-20260701}
+BOOTSTAGE_FDT_UBOOT_BUILD=${BOOTSTAGE_FDT_UBOOT_BUILD:-$ROOT/kernel/work/bird-uboot-bootstage-fdt-20260701}
+LZ4_PAIR_UBOOT_BUILD=${LZ4_PAIR_UBOOT_BUILD:-$ROOT/kernel/work/bird-uboot-lz4-pair-20260813}
 GDD=${GDD:-/opt/homebrew/bin/gdd}
 GTRUNCATE=${GTRUNCATE:-/opt/homebrew/bin/gtruncate}
 PREFIX_BYTES=16777216
@@ -21,6 +23,7 @@ UBOOT_BYTES=621049
 NO_HEAP_CLEAR_UBOOT_BYTES=620745
 FAST_INIT_UBOOT_BYTES=556977
 INPLACE_HANDOFF_UBOOT_BYTES=556977
+BOOTSTAGE_FDT_UBOOT_BYTES=561073
 RAW_SECTOR_BYTES=512
 RAW_WRITE_BYTES=621056
 RAW_WRITE_SECTORS=1213
@@ -55,6 +58,8 @@ ENV_ARTIFACTS=$CASE_ROOT/env-authority
 NO_HEAP_CLEAR_ARTIFACTS=$CASE_ROOT/no-heap-clear-authority
 FAST_INIT_ARTIFACTS=$CASE_ROOT/fast-init-authority
 INPLACE_HANDOFF_ARTIFACTS=$CASE_ROOT/inplace-handoff-authority
+BOOTSTAGE_FDT_ARTIFACTS=$CASE_ROOT/bootstage-fdt-authority
+LZ4_PAIR_ARTIFACTS=$CASE_ROOT/lz4-pair-authority
 RAW=$CASE_ROOT/raw-card.img
 DEVICE_INFO=$CASE_ROOT/device.tsv
 WHOLE=disk$$
@@ -78,7 +83,8 @@ for ARG in "$@"; do
 	esac
 done
 if [ "$RAW_WRITE" -eq 1 ] && [ "$FULLBLOCK" -eq 1 ]; then
-	[ "$BS" = 512 ] && { [ "$COUNT" = 1088 ] || [ "$COUNT" = 1213 ] || [ "$COUNT" = 1214 ]; } &&
+	[ "$BS" = 512 ] && { [ "$COUNT" = 1088 ] || [ "$COUNT" = 1096 ] ||
+		[ "$COUNT" = 1213 ] || [ "$COUNT" = 1214 ]; } &&
 		[ "$SEEK" = 16 ] || {
 		printf 'gdd-sector-guard: Invalid argument: unaligned raw write\n' >&2
 		exit 1
@@ -90,13 +96,14 @@ chmod 700 "$RAW_GDD"
 export BIRD_TEST_GUARDED_RAW=$RAW
 export BIRD_TEST_REAL_GDD=$GDD
 mkdir -p "$BIRD" "$DATA/Bird"
-python3 - "$BIRD" <<'PY'
+python3 - "$BIRD" "$ROOT" <<'PY'
 import hashlib
 import pathlib
 import sys
 
 bird = pathlib.Path(sys.argv[1])
-release_id = "dev-current"
+root = pathlib.Path(sys.argv[2])
+release_id = "v6.23-20260814-201218"
 release = bird / "bird-releases" / release_id
 for relative in ("bird", "extlinux", "launcher"):
     (release / relative).mkdir(parents=True, exist_ok=True)
@@ -115,12 +122,16 @@ files = {
     "dtb.img": b"candidate dtb\n",
     "extlinux/extlinux.conf": selector,
     "bird/bird-device-contract.tsv": b"schema\tfixture-device-contract-v1\n",
+    "bird/capture-uboot-bootstage.sh": (
+        root / "kernel/rocknix/stock-root/capture-uboot-bootstage.sh"
+    ).read_bytes(),
     "launcher/catalog.generated.h": b"/* fixture catalog */\n",
 }
+file_modes = {"bird/capture-uboot-bootstage.sh": 0o755}
 for relative, data in files.items():
     target = release / relative
     target.write_bytes(data)
-    target.chmod(0o644)
+    target.chmod(file_modes.get(relative, 0o644))
 (bird / "extlinux/extlinux.conf").write_bytes(selector)
 (bird / "extlinux/extlinux.conf").chmod(0o644)
 
@@ -150,7 +161,8 @@ for name in inputs:
     lines.append(f"input\t{name}\t644\t1\t{'0' * 64}\tfixture")
 for relative, data in files.items():
     lines.append(
-        f"file\t{relative}\t644\t{len(data)}\t{hashlib.sha256(data).hexdigest()}"
+        f"file\t{relative}\t{file_modes.get(relative, 0o644):o}\t"
+        f"{len(data)}\t{hashlib.sha256(data).hexdigest()}"
     )
 lines.extend(
     (
@@ -170,6 +182,7 @@ manifest = ("\n".join(lines) + "\n").encode("utf-8")
 PY
 printf 'revision\tbird-canonical-namespace-v1\nstate\tcommitted\n' \
 	>"$DATA/Bird/namespace-v1.tsv"
+: >"$DATA/Bird/boot-diagnostics.request"
 mkdir "$BIRD/.Spotlight-V100" "$BIRD/.fseventsd"
 printf 'ignored host metadata\n' >"$BIRD/.Spotlight-V100/index"
 printf 'ignored AppleDouble\n' >"$BIRD/._extlinux"
@@ -308,6 +321,15 @@ COPYFILE_DISABLE=1 cp -R "$FAST_INIT_UBOOT_BUILD" "$FAST_INIT_ARTIFACTS"
 	fail 'verified in-place-handoff U-Boot authority is required'
 COPYFILE_DISABLE=1 cp -R "$INPLACE_HANDOFF_UBOOT_BUILD" \
 	"$INPLACE_HANDOFF_ARTIFACTS"
+[ -d "$BOOTSTAGE_FDT_UBOOT_BUILD" ] && [ ! -L "$BOOTSTAGE_FDT_UBOOT_BUILD" ] ||
+	fail 'reviewed bootstage-FDT measurement authority is required'
+COPYFILE_DISABLE=1 cp -R "$BOOTSTAGE_FDT_UBOOT_BUILD" \
+	"$BOOTSTAGE_FDT_ARTIFACTS"
+LZ4_PAIR_AVAILABLE=0
+if [ -d "$LZ4_PAIR_UBOOT_BUILD" ] && [ ! -L "$LZ4_PAIR_UBOOT_BUILD" ]; then
+	COPYFILE_DISABLE=1 cp -R "$LZ4_PAIR_UBOOT_BUILD" "$LZ4_PAIR_ARTIFACTS"
+	LZ4_PAIR_AVAILABLE=1
+fi
 BASELINE=$ARTIFACTS/rocknix-baseline.bin
 CANDIDATE=$ARTIFACTS/bird-uboot-green.bin
 
@@ -338,6 +360,22 @@ reset_raw() {
 	printf 'p1 sentinel outside the raw prefix\n' >"$CASE_ROOT/tail-sentinel"
 	"$GDD" if="$CASE_ROOT/tail-sentinel" of="$RAW" bs=1 \
 		seek="$PREFIX_BYTES" conv=notrunc status=none
+}
+
+flip_raw_byte() {
+	python3 - "$RAW" "$1" <<'PY'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+offset = int(sys.argv[2])
+with path.open("r+b") as image:
+    image.seek(offset)
+    original = image.read(1)
+    assert len(original) == 1
+    image.seek(offset)
+    image.write(bytes((original[0] ^ 1,)))
+PY
 }
 
 reset_raw
@@ -420,6 +458,21 @@ TEST_INPLACE_HANDOFF_UBOOT_SHA=$(shasum -a 256 \
 	"$INPLACE_HANDOFF_ARTIFACTS/inplace-handoff.bin" | awk '{print $1}')
 TEST_INPLACE_HANDOFF_PREFIX_SHA=$(shasum -a 256 \
 	"$CASE_ROOT/inplace-handoff-prefix-oracle" | awk '{print $1}')
+if [ "$LZ4_PAIR_AVAILABLE" -eq 1 ]; then
+	TEST_LZ4_PAIR_UBOOT_SHA=$(shasum -a 256 \
+		"$LZ4_PAIR_ARTIFACTS/lz4-pair.bin" | awk '{print $1}')
+	TEST_LZ4_PAIR_PREFIX_SHA=$(shasum -a 256 \
+		"$LZ4_PAIR_ARTIFACTS/lz4-pair-prefix-16m.bin" | awk '{print $1}')
+fi
+cp "$BOOTSTAGE_FDT_ARTIFACTS/bootstage-fdt-prefix-16m.bin" \
+	"$CASE_ROOT/bootstage-fdt-prefix-oracle"
+TEST_BOOTSTAGE_FDT_UBOOT_SHA=$(shasum -a 256 \
+	"$BOOTSTAGE_FDT_ARTIFACTS/bird-uboot-bootstage-fdt.bin" | awk '{print $1}')
+TEST_BOOTSTAGE_FDT_PREFIX_SHA=$(shasum -a 256 \
+	"$CASE_ROOT/bootstage-fdt-prefix-oracle" | awk '{print $1}')
+TEST_BOOTSTAGE_FDT_MANIFEST_SHA=$(shasum -a 256 \
+	"$BIRD/bird-releases/v6.23-20260814-201218/deploy-manifest.tsv" |
+	awk '{print $1}')
 
 run_installer() {
 	BIRD_UBOOT_HOST_TEST_MODE=1 BIRD_TEST_ROOT=$CASE_ROOT BIRD=$BIRD DATA=$DATA \
@@ -555,6 +608,84 @@ run_inplace_handoff_failpoint() {
 		"$INPLACE_HANDOFF_ARTIFACTS"
 }
 
+run_lz4_pair_installer() {
+	BIRD_UBOOT_HOST_TEST_MODE=1 BIRD_TEST_ROOT=$CASE_ROOT BIRD=$BIRD DATA=$DATA \
+		BIRD_DEVICE_INFO=$DEVICE_INFO BIRD_TEST_RAW_DISK=$RAW \
+		BIRD_TEST_BASELINE_PREFIX_SHA=$TEST_BASELINE_PREFIX_SHA \
+		BIRD_TEST_GREEN_PREFIX_SHA=$TEST_GREEN_PREFIX_SHA \
+		BIRD_TEST_LZ4_PAIR_UBOOT_SHA=$TEST_LZ4_PAIR_UBOOT_SHA \
+		BIRD_TEST_LZ4_PAIR_PREFIX_SHA=$TEST_LZ4_PAIR_PREFIX_SHA \
+		GDD=$RAW_GDD sh "$INSTALLER" "/dev/$WHOLE" --install-lz4-pair \
+		"$LZ4_PAIR_ARTIFACTS"
+}
+
+run_lz4_pair_failpoint() {
+	FAILPOINT=$1
+	BIRD_UBOOT_HOST_TEST_MODE=1 BIRD_TEST_ROOT=$CASE_ROOT BIRD=$BIRD DATA=$DATA \
+		BIRD_DEVICE_INFO=$DEVICE_INFO BIRD_TEST_RAW_DISK=$RAW \
+		BIRD_TEST_BASELINE_PREFIX_SHA=$TEST_BASELINE_PREFIX_SHA \
+		BIRD_TEST_GREEN_PREFIX_SHA=$TEST_GREEN_PREFIX_SHA \
+		BIRD_TEST_LZ4_PAIR_UBOOT_SHA=$TEST_LZ4_PAIR_UBOOT_SHA \
+		BIRD_TEST_LZ4_PAIR_PREFIX_SHA=$TEST_LZ4_PAIR_PREFIX_SHA \
+		BIRD_TEST_FAILPOINT=$FAILPOINT GDD=$RAW_GDD \
+		sh "$INSTALLER" "/dev/$WHOLE" --install-lz4-pair "$LZ4_PAIR_ARTIFACTS"
+}
+
+run_lz4_pair_restore() {
+	BIRD_UBOOT_HOST_TEST_MODE=1 BIRD_TEST_ROOT=$CASE_ROOT BIRD=$BIRD DATA=$DATA \
+		BIRD_DEVICE_INFO=$DEVICE_INFO BIRD_TEST_RAW_DISK=$RAW \
+		BIRD_TEST_BASELINE_PREFIX_SHA=$TEST_BASELINE_PREFIX_SHA \
+		BIRD_TEST_GREEN_PREFIX_SHA=$TEST_GREEN_PREFIX_SHA \
+		BIRD_TEST_LZ4_PAIR_UBOOT_SHA=$TEST_LZ4_PAIR_UBOOT_SHA \
+		BIRD_TEST_LZ4_PAIR_PREFIX_SHA=$TEST_LZ4_PAIR_PREFIX_SHA \
+		GDD=$RAW_GDD sh "$INSTALLER" "/dev/$WHOLE" --restore-inplace-from-lz4 \
+		"$LZ4_PAIR_ARTIFACTS"
+}
+
+run_bootstage_fdt_installer() {
+	BIRD_UBOOT_HOST_TEST_MODE=1 BIRD_TEST_ROOT=$CASE_ROOT BIRD=$BIRD DATA=$DATA \
+		BIRD_DEVICE_INFO=$DEVICE_INFO BIRD_TEST_RAW_DISK=$RAW \
+		BIRD_TEST_BASELINE_PREFIX_SHA=$TEST_BASELINE_PREFIX_SHA \
+		BIRD_TEST_GREEN_PREFIX_SHA=$TEST_GREEN_PREFIX_SHA \
+		BIRD_TEST_BOOTSTAGE_FDT_MANIFEST_SHA=$TEST_BOOTSTAGE_FDT_MANIFEST_SHA \
+		GDD=$RAW_GDD sh "$INSTALLER" "/dev/$WHOLE" --install-bootstage-fdt \
+		"$BOOTSTAGE_FDT_ARTIFACTS"
+}
+
+run_bootstage_fdt_failpoint() {
+	FAILPOINT=$1
+	BIRD_UBOOT_HOST_TEST_MODE=1 BIRD_TEST_ROOT=$CASE_ROOT BIRD=$BIRD DATA=$DATA \
+		BIRD_DEVICE_INFO=$DEVICE_INFO BIRD_TEST_RAW_DISK=$RAW \
+		BIRD_TEST_BASELINE_PREFIX_SHA=$TEST_BASELINE_PREFIX_SHA \
+		BIRD_TEST_GREEN_PREFIX_SHA=$TEST_GREEN_PREFIX_SHA \
+		BIRD_TEST_BOOTSTAGE_FDT_MANIFEST_SHA=$TEST_BOOTSTAGE_FDT_MANIFEST_SHA \
+		BIRD_TEST_FAILPOINT=$FAILPOINT GDD=$RAW_GDD \
+		sh "$INSTALLER" "/dev/$WHOLE" --install-bootstage-fdt \
+		"$BOOTSTAGE_FDT_ARTIFACTS"
+}
+
+run_inplace_handoff_restore() {
+	BIRD_UBOOT_HOST_TEST_MODE=1 BIRD_TEST_ROOT=$CASE_ROOT BIRD=$BIRD DATA=$DATA \
+		BIRD_DEVICE_INFO=$DEVICE_INFO BIRD_TEST_RAW_DISK=$RAW \
+		BIRD_TEST_BASELINE_PREFIX_SHA=$TEST_BASELINE_PREFIX_SHA \
+		BIRD_TEST_GREEN_PREFIX_SHA=$TEST_GREEN_PREFIX_SHA \
+		BIRD_TEST_BOOTSTAGE_FDT_MANIFEST_SHA=$TEST_BOOTSTAGE_FDT_MANIFEST_SHA \
+		GDD=$RAW_GDD sh "$INSTALLER" "/dev/$WHOLE" --restore-inplace-handoff \
+		"$BOOTSTAGE_FDT_ARTIFACTS"
+}
+
+run_inplace_handoff_restore_failpoint() {
+	FAILPOINT=$1
+	BIRD_UBOOT_HOST_TEST_MODE=1 BIRD_TEST_ROOT=$CASE_ROOT BIRD=$BIRD DATA=$DATA \
+		BIRD_DEVICE_INFO=$DEVICE_INFO BIRD_TEST_RAW_DISK=$RAW \
+		BIRD_TEST_BASELINE_PREFIX_SHA=$TEST_BASELINE_PREFIX_SHA \
+		BIRD_TEST_GREEN_PREFIX_SHA=$TEST_GREEN_PREFIX_SHA \
+		BIRD_TEST_BOOTSTAGE_FDT_MANIFEST_SHA=$TEST_BOOTSTAGE_FDT_MANIFEST_SHA \
+		BIRD_TEST_FAILPOINT=$FAILPOINT GDD=$RAW_GDD \
+		sh "$INSTALLER" "/dev/$WHOLE" --restore-inplace-handoff \
+		"$BOOTSTAGE_FDT_ARTIFACTS"
+}
+
 run_restore() {
 	RESTORE_BUILD=${1:-$RESTORE_ARTIFACTS}
 	BIRD_UBOOT_HOST_TEST_MODE=1 BIRD_TEST_ROOT=$CASE_ROOT BIRD=$BIRD DATA=$DATA \
@@ -686,6 +817,30 @@ printf '%s\n' "$INPLACE_HANDOFF_INSTALLER_SHA" |
 	[ "$INPLACE_HANDOFF_INSTALLER_PREFIX_SHA" = \
 		"$TEST_INPLACE_HANDOFF_PREFIX_SHA" ] ||
 	fail 'promoted in-place-handoff installer identities differ from authority'
+BOOTSTAGE_FDT_INSTALLER_SHA=$(sed -n \
+	's/^BOOTSTAGE_FDT_UBOOT_SHA=//p' "$INSTALLER")
+BOOTSTAGE_FDT_INSTALLER_PREFIX_SHA=$(sed -n \
+	's/^BOOTSTAGE_FDT_PREFIX_SHA=//p' "$INSTALLER")
+[ "$BOOTSTAGE_FDT_INSTALLER_SHA" = "$TEST_BOOTSTAGE_FDT_UBOOT_SHA" ] &&
+	[ "$BOOTSTAGE_FDT_INSTALLER_PREFIX_SHA" = \
+		"$TEST_BOOTSTAGE_FDT_PREFIX_SHA" ] ||
+	fail 'bootstage-FDT installer identities differ from reviewed authority'
+grep -Fq 'BOOTSTAGE_FDT_CLASSIFICATION=temporary-measurement-only' \
+	"$INSTALLER" ||
+	fail 'bootstage-FDT installer does not retain its measurement-only classification'
+grep -Fq 'BOOTSTAGE_FDT_REQUIRED_RELEASE=v6.23-20260814-201218' \
+	"$INSTALLER" ||
+	fail 'bootstage-FDT installer does not pin the accepted canonical release'
+grep -Fq \
+	'BOOTSTAGE_FDT_REQUIRED_MANIFEST_SHA=904c8da42a6ec84ccf4b291205999c3b0e25900f4bec7bb3f9e0cfefb29164dd' \
+	"$INSTALLER" ||
+	fail 'bootstage-FDT installer does not pin the canonical manifest'
+grep -Fq \
+	'BOOTSTAGE_FDT_CAPTURE_SHA=e7fa642aa6b4a7407e7cae26bab37ae65a59036feac2d0aeb526811cecd50104' \
+	"$INSTALLER" ||
+	fail 'bootstage-FDT installer does not pin the capture helper inventory'
+grep -Fq 'diskutil unmountDisk force "/dev/$WHOLE"' "$INSTALLER" ||
+	fail 'recovery unmount no longer has the bounded whole-card force fallback'
 grep -Fq \
 	'080ae5fde3476addb5aa74f03a021aa4fbaa5deccb0964227c0fc91fe657b584' \
 	"$ROOT/kernel/rocknix/verify-uboot-install-authority.py" ||
@@ -770,11 +925,11 @@ grep -Fq 'external toolchain authority field changed: uboot-lto' \
 # selector and a complete, manifest-bound selected release. Every rejection
 # below must occur before even one raw fixture byte changes.
 SELECTOR=$BIRD/extlinux/extlinux.conf
-RELEASE=$BIRD/bird-releases/dev-current
+RELEASE=$BIRD/bird-releases/v6.23-20260814-201218
 SELECTED_RELEASE=$(python3 \
 	"$ROOT/kernel/rocknix/verify-selected-bird-release.py" \
 	--host-test "$BIRD") || fail 'valid selected-release fixture was rejected'
-[ "$SELECTED_RELEASE" = dev-current ] ||
+[ "$SELECTED_RELEASE" = v6.23-20260814-201218 ] ||
 	fail 'selected-release verifier returned the wrong release ID'
 
 cp "$SELECTOR" "$CASE_ROOT/selector.saved"
@@ -945,6 +1100,64 @@ cmp "$RAW" "$CASE_ROOT/recovery.expected" >/dev/null ||
 grep -Fq 'Exact accepted baseline 16 MiB prefix restored and verified' \
 	"$CASE_ROOT/restore-corrupt.err" ||
 	fail 'corrupt recovery readback did not explicitly verify its baseline repair'
+
+# The recovery authority is the complete sector span written by the action,
+# including the 495-byte physical tail after the shorter logical image. Unknown
+# bytes inside that span are repairable; the immediately following byte is not.
+reset_raw
+cp "$RAW" "$CASE_ROOT/restore-physical-tail.expected"
+flip_raw_byte 629265
+run_restore >"$CASE_ROOT/restore-physical-tail.out"
+cmp "$RAW" "$CASE_ROOT/restore-physical-tail.expected" >/dev/null ||
+	fail 'baseline recovery did not repair drift in its physical sector tail'
+
+reset_raw
+flip_raw_byte 629760
+RESTORE_OUTSIDE_SHA=$(shasum -a 256 "$RAW" | awk '{print $1}')
+if run_restore >"$CASE_ROOT/restore-outside-physical.out" \
+	2>"$CASE_ROOT/restore-outside-physical.err"; then
+	fail 'baseline recovery accepted drift immediately outside its physical span'
+fi
+[ "$(shasum -a 256 "$RAW" | awk '{print $1}')" = "$RESTORE_OUTSIDE_SHA" ] ||
+	fail 'baseline outside-physical rejection changed raw bytes'
+grep -Fq 'outside the recoverable U-Boot range' \
+	"$CASE_ROOT/restore-outside-physical.err" ||
+	fail 'baseline outside-physical rejection was not explicit'
+
+reset_raw
+cp "$RAW" "$CASE_ROOT/restore-tail-failpoint.expected"
+flip_raw_byte 629759
+if run_restore_failpoint after-write \
+	>"$CASE_ROOT/restore-tail-failpoint.out" \
+	2>"$CASE_ROOT/restore-tail-failpoint.err"; then
+	fail 'tail-repair after-write failpoint unexpectedly succeeded'
+fi
+cmp "$RAW" "$CASE_ROOT/restore-tail-failpoint.expected" >/dev/null ||
+	fail 'tail-repair after-write cleanup did not converge to the baseline'
+
+flip_raw_byte 629759
+if run_restore_failpoint after-write-corrupt \
+	>"$CASE_ROOT/restore-tail-corrupt.out" \
+	2>"$CASE_ROOT/restore-tail-corrupt.err"; then
+	fail 'tail-repair corrupt-readback failpoint unexpectedly succeeded'
+fi
+cmp "$RAW" "$CASE_ROOT/restore-tail-failpoint.expected" >/dev/null ||
+	fail 'tail-repair corrupt-readback cleanup did not converge to the baseline'
+
+flip_raw_byte 629759
+/bin/rm -f "$CASE_ROOT/recovery-unmount.tsv"
+if run_restore_failpoint after-write-recovery-force-fallback \
+	>"$CASE_ROOT/restore-force-fallback.out" \
+	2>"$CASE_ROOT/restore-force-fallback.err"; then
+	fail 'recovery force-fallback failpoint unexpectedly succeeded'
+fi
+cmp "$RAW" "$CASE_ROOT/restore-tail-failpoint.expected" >/dev/null ||
+	fail 'force-fallback recovery did not converge to the exact baseline'
+cmp "$CASE_ROOT/recovery-unmount.tsv" - <<'EOF' >/dev/null ||
+ordinary-refused
+force-succeeded
+EOF
+	fail 'host recovery did not prove ordinary-to-force unmount fallback'
 
 # A normal failure immediately after the bounded write restores the complete
 # original prefix and never touches the sentinel beyond it.
@@ -1295,6 +1508,272 @@ cmp "$RAW" "$CASE_ROOT/inplace-handoff.fast-init-before" >/dev/null ||
 grep -Fq 'Exact pre-transaction 16 MiB prefix restored and verified' \
 	"$CASE_ROOT/inplace-handoff-drift.err" ||
 	fail 'private in-place-handoff snapshot recovery was not explicit'
+
+# Bootstage timestamps were previously kept out of every production candidate,
+# because even diagnostic instrumentation changes timing and must never inherit
+# successor authority. This action is therefore a temporary, exactly reversible
+# measurement transaction from the accepted in-place handoff only.
+if [ "$LZ4_PAIR_AVAILABLE" -eq 1 ]; then
+	cp "$CASE_ROOT/inplace-handoff.expected" "$RAW"
+	cp "$RAW" "$CASE_ROOT/lz4-pair.inplace-before"
+	cp "$RAW" "$CASE_ROOT/lz4-pair.expected"
+	"$GDD" if="$LZ4_PAIR_ARTIFACTS/lz4-pair.bin" \
+		of="$CASE_ROOT/lz4-pair.expected" bs=64K seek="$RAW_OFFSET" \
+		count="$INPLACE_HANDOFF_UBOOT_BYTES" iflag=count_bytes,fullblock \
+		oflag=seek_bytes conv=notrunc status=none
+	run_lz4_pair_installer >"$CASE_ROOT/lz4-pair-install.out"
+	cmp "$RAW" "$CASE_ROOT/lz4-pair.expected" >/dev/null ||
+		fail 'LZ4-pair install changed bytes outside or missed its exact target'
+	[ "$("$GDD" if="$RAW" bs=4M count="$PREFIX_BYTES" \
+		iflag=count_bytes,fullblock status=none | shasum -a 256 | awk '{print $1}')" = \
+		"$TEST_LZ4_PAIR_PREFIX_SHA" ] ||
+		fail 'LZ4-pair install did not produce its reviewed complete prefix'
+	grep -Fq 'raw bytes [8192,565169)' "$CASE_ROOT/lz4-pair-install.out" ||
+		fail 'LZ4-pair report omits its exact logical range'
+	grep -Fq 'sector-aligned [8192,565248)' "$CASE_ROOT/lz4-pair-install.out" ||
+		fail 'LZ4-pair report omits its exact physical range'
+	grep -Fq 'Uninstrumented LZ4-paired U-Boot installed' \
+		"$CASE_ROOT/lz4-pair-install.out" ||
+		fail 'LZ4-pair completion is not explicit'
+
+	cp "$RAW" "$CASE_ROOT/lz4-pair.noop-before"
+	run_lz4_pair_installer >"$CASE_ROOT/lz4-pair-noop.out"
+	cmp "$RAW" "$CASE_ROOT/lz4-pair.noop-before" >/dev/null ||
+		fail 'LZ4-pair no-op changed raw bytes'
+	grep -Fq 'already installed' "$CASE_ROOT/lz4-pair-noop.out" ||
+		fail 'LZ4-pair no-op was not explicit'
+
+	cp "$CASE_ROOT/fast-init.expected" "$RAW"
+	cp "$RAW" "$CASE_ROOT/lz4-pair.wrong-before"
+	if run_lz4_pair_installer >"$CASE_ROOT/lz4-pair-wrong.out" \
+		2>"$CASE_ROOT/lz4-pair-wrong.err"; then
+		fail 'LZ4-pair install accepted the wrong predecessor'
+	fi
+	cmp "$RAW" "$CASE_ROOT/lz4-pair.wrong-before" >/dev/null ||
+		fail 'LZ4-pair predecessor rejection changed raw bytes'
+	grep -Fq 'not the exact accepted in-place-handoff base' \
+		"$CASE_ROOT/lz4-pair-wrong.err" ||
+		fail 'LZ4-pair predecessor rejection was not explicit'
+
+	cp "$CASE_ROOT/lz4-pair.inplace-before" "$RAW"
+	if run_lz4_pair_failpoint after-write >"$CASE_ROOT/lz4-pair-failure.out" \
+		2>"$CASE_ROOT/lz4-pair-failure.err"; then
+		fail 'LZ4-pair after-write failpoint unexpectedly succeeded'
+	fi
+	cmp "$RAW" "$CASE_ROOT/lz4-pair.inplace-before" >/dev/null ||
+		fail 'LZ4-pair failure did not restore its exact predecessor'
+
+	cp "$CASE_ROOT/lz4-pair.expected" "$RAW"
+	run_lz4_pair_restore >"$CASE_ROOT/lz4-pair-restore.out"
+	cmp "$RAW" "$CASE_ROOT/lz4-pair.inplace-before" >/dev/null ||
+		fail 'LZ4-pair restore did not reproduce exact in-place U-Boot'
+	grep -Fq 'restored from LZ4 pair' "$CASE_ROOT/lz4-pair-restore.out" ||
+		fail 'LZ4-pair restore completion is not explicit'
+
+	cp "$CASE_ROOT/lz4-pair.expected" "$RAW"
+	flip_raw_byte $((RAW_OFFSET + INPLACE_HANDOFF_UBOOT_BYTES + 8))
+	run_lz4_pair_restore >"$CASE_ROOT/lz4-pair-tail-restore.out"
+	cmp "$RAW" "$CASE_ROOT/lz4-pair.inplace-before" >/dev/null ||
+		fail 'LZ4-pair physical-tail recovery did not converge'
+
+	cp "$CASE_ROOT/lz4-pair.expected" "$RAW"
+	flip_raw_byte 565248
+	cp "$RAW" "$CASE_ROOT/lz4-pair-outside-before"
+	if run_lz4_pair_restore >"$CASE_ROOT/lz4-pair-outside.out" \
+		2>"$CASE_ROOT/lz4-pair-outside.err"; then
+		fail 'LZ4-pair restore accepted drift outside its physical span'
+	fi
+	cmp "$RAW" "$CASE_ROOT/lz4-pair-outside-before" >/dev/null ||
+		fail 'LZ4-pair outside-span rejection changed raw bytes'
+	grep -Fq 'outside the LZ4-pair recovery span' \
+		"$CASE_ROOT/lz4-pair-outside.err" ||
+		fail 'LZ4-pair outside-span rejection was not explicit'
+fi
+
+cp "$CASE_ROOT/inplace-handoff.expected" "$RAW"
+cp "$RAW" "$CASE_ROOT/bootstage-fdt.inplace-before"
+cp "$RAW" "$CASE_ROOT/bootstage-fdt.expected"
+"$GDD" if="$BOOTSTAGE_FDT_ARTIFACTS/bird-uboot-bootstage-fdt.bin" \
+	of="$CASE_ROOT/bootstage-fdt.expected" bs=64K seek="$RAW_OFFSET" \
+	count="$BOOTSTAGE_FDT_UBOOT_BYTES" iflag=count_bytes,fullblock \
+	oflag=seek_bytes conv=notrunc status=none
+run_bootstage_fdt_installer >"$CASE_ROOT/bootstage-fdt-install.out"
+cmp "$RAW" "$CASE_ROOT/bootstage-fdt.expected" >/dev/null ||
+	fail 'bootstage-FDT install changed bytes outside or missed its exact target'
+[ "$("$GDD" if="$RAW" bs=4M count="$PREFIX_BYTES" \
+	iflag=count_bytes,fullblock status=none | shasum -a 256 | awk '{print $1}')" = \
+	"$TEST_BOOTSTAGE_FDT_PREFIX_SHA" ] ||
+	fail 'bootstage-FDT install did not produce its reviewed complete prefix'
+grep -Fq 'raw bytes [8192,569265)' "$CASE_ROOT/bootstage-fdt-install.out" ||
+	fail 'bootstage-FDT report omits the exact logical range'
+grep -Fq 'sector-aligned [8192,569344)' \
+	"$CASE_ROOT/bootstage-fdt-install.out" ||
+	fail 'bootstage-FDT report omits the exact physical range'
+grep -Fq 'bytes [569265,569344) are preserved' \
+	"$CASE_ROOT/bootstage-fdt-install.out" ||
+	fail 'bootstage-FDT report omits its 79-byte preserved sector tail'
+grep -Fq 'Temporary measurement-only bootstage-FDT U-Boot installed' \
+	"$CASE_ROOT/bootstage-fdt-install.out" ||
+	fail 'bootstage-FDT completion does not retain its temporary classification'
+grep -Fq 'never a production successor' "$CASE_ROOT/bootstage-fdt-install.out" ||
+	fail 'bootstage-FDT completion does not disclaim production succession'
+
+BOOTSTAGE_FDT_SHA=$(shasum -a 256 "$RAW" | awk '{print $1}')
+run_bootstage_fdt_installer >"$CASE_ROOT/bootstage-fdt-noop.out"
+[ "$(shasum -a 256 "$RAW" | awk '{print $1}')" = "$BOOTSTAGE_FDT_SHA" ] ||
+	fail 'bootstage-FDT no-op changed the raw fixture'
+grep -Fq 'already installed' "$CASE_ROOT/bootstage-fdt-noop.out" ||
+	fail 'bootstage-FDT no-op was not explicit'
+
+cp "$CASE_ROOT/fast-init.expected" "$RAW"
+BOOTSTAGE_WRONG_BASE_SHA=$(shasum -a 256 "$RAW" | awk '{print $1}')
+if run_bootstage_fdt_installer >"$CASE_ROOT/bootstage-wrong-base.out" \
+	2>"$CASE_ROOT/bootstage-wrong-base.err"; then
+	fail 'bootstage-FDT install accepted the fast-init predecessor'
+fi
+[ "$(shasum -a 256 "$RAW" | awk '{print $1}')" = \
+	"$BOOTSTAGE_WRONG_BASE_SHA" ] ||
+	fail 'bootstage-FDT predecessor rejection changed raw bytes'
+grep -Fq 'current raw U-Boot is not the exact accepted in-place-handoff base' \
+	"$CASE_ROOT/bootstage-wrong-base.err" ||
+	fail 'bootstage-FDT predecessor rejection was not explicit'
+
+cp "$CASE_ROOT/bootstage-fdt.inplace-before" "$RAW"
+if run_bootstage_fdt_failpoint after-write \
+	>"$CASE_ROOT/bootstage-failure.out" \
+	2>"$CASE_ROOT/bootstage-failure.err"; then
+	fail 'bootstage-FDT after-write failpoint unexpectedly succeeded'
+fi
+cmp "$RAW" "$CASE_ROOT/bootstage-fdt.inplace-before" >/dev/null ||
+	fail 'bootstage-FDT after-write cleanup did not restore the in-place base'
+
+if run_bootstage_fdt_failpoint after-write-corrupt \
+	>"$CASE_ROOT/bootstage-corrupt.out" \
+	2>"$CASE_ROOT/bootstage-corrupt.err"; then
+	fail 'bootstage-FDT corrupt-readback failpoint unexpectedly succeeded'
+fi
+cmp "$RAW" "$CASE_ROOT/bootstage-fdt.inplace-before" >/dev/null ||
+	fail 'bootstage-FDT corrupt-readback cleanup did not restore the in-place base'
+
+cp "$BOOTSTAGE_FDT_ARTIFACTS/inplace-base-combined.bin" \
+	"$CASE_ROOT/bootstage-inplace-base.saved"
+cp "$BOOTSTAGE_FDT_ARTIFACTS/bird-uboot-bootstage-fdt.bin" \
+	"$CASE_ROOT/bootstage-candidate.saved"
+if run_bootstage_fdt_failpoint after-write-authority-drift \
+	>"$CASE_ROOT/bootstage-drift.out" \
+	2>"$CASE_ROOT/bootstage-drift.err"; then
+	fail 'bootstage-FDT authority-drift failpoint unexpectedly succeeded'
+fi
+cmp "$RAW" "$CASE_ROOT/bootstage-fdt.inplace-before" >/dev/null ||
+	fail 'private bootstage-FDT snapshot did not restore the in-place base'
+mv "$CASE_ROOT/bootstage-inplace-base.saved" \
+	"$BOOTSTAGE_FDT_ARTIFACTS/inplace-base-combined.bin"
+mv "$CASE_ROOT/bootstage-candidate.saved" \
+	"$BOOTSTAGE_FDT_ARTIFACTS/bird-uboot-bootstage-fdt.bin"
+
+BOOT_DIAGNOSTICS_REQUEST=$DATA/Bird/boot-diagnostics.request
+/bin/rm -f "$BOOT_DIAGNOSTICS_REQUEST"
+cp "$RAW" "$CASE_ROOT/bootstage-marker.raw-before"
+if run_bootstage_fdt_installer >"$CASE_ROOT/bootstage-marker-absent.out" \
+	2>"$CASE_ROOT/bootstage-marker-absent.err"; then
+	fail 'bootstage-FDT install accepted an absent diagnostics request'
+fi
+cmp "$RAW" "$CASE_ROOT/bootstage-marker.raw-before" >/dev/null ||
+	fail 'absent diagnostics-request rejection changed raw bytes'
+grep -Fq 'pre-armed regular zero-byte diagnostics request' \
+	"$CASE_ROOT/bootstage-marker-absent.err" ||
+	fail 'absent diagnostics-request rejection was not explicit'
+
+mkdir "$BOOT_DIAGNOSTICS_REQUEST"
+if run_bootstage_fdt_installer >"$CASE_ROOT/bootstage-marker-directory.out" \
+	2>"$CASE_ROOT/bootstage-marker-directory.err"; then
+	fail 'bootstage-FDT install accepted a nonregular diagnostics request'
+fi
+cmp "$RAW" "$CASE_ROOT/bootstage-marker.raw-before" >/dev/null ||
+	fail 'nonregular diagnostics-request rejection changed raw bytes'
+rmdir "$BOOT_DIAGNOSTICS_REQUEST"
+ln -s namespace-v1.tsv "$BOOT_DIAGNOSTICS_REQUEST"
+if run_bootstage_fdt_installer >"$CASE_ROOT/bootstage-marker-symlink.out" \
+	2>"$CASE_ROOT/bootstage-marker-symlink.err"; then
+	fail 'bootstage-FDT install accepted a symlinked diagnostics request'
+fi
+cmp "$RAW" "$CASE_ROOT/bootstage-marker.raw-before" >/dev/null ||
+	fail 'symlinked diagnostics-request rejection changed raw bytes'
+unlink "$BOOT_DIAGNOSTICS_REQUEST"
+: >"$BOOT_DIAGNOSTICS_REQUEST"
+
+if run_bootstage_fdt_failpoint after-write-diagnostics-marker-tamper \
+	>"$CASE_ROOT/bootstage-marker-tamper.out" \
+	2>"$CASE_ROOT/bootstage-marker-tamper.err"; then
+	fail 'bootstage-FDT install accepted post-write diagnostics-request tampering'
+fi
+cmp "$RAW" "$CASE_ROOT/bootstage-fdt.inplace-before" >/dev/null ||
+	fail 'diagnostics-request tampering did not roll raw bytes back exactly'
+grep -Fq 'diagnostics request changed across raw installation' \
+	"$CASE_ROOT/bootstage-marker-tamper.err" ||
+	fail 'post-write diagnostics-request tampering was not explicit'
+: >"$BOOT_DIAGNOSTICS_REQUEST"
+
+# Restoration is a direct recovery authority, not another successor. It does
+# not depend on a capture request and accepts torn bytes only within the exact
+# physical span previously written by the measurement action.
+cp "$CASE_ROOT/bootstage-fdt.expected" "$RAW"
+/bin/rm -f "$BOOT_DIAGNOSTICS_REQUEST"
+run_inplace_handoff_restore >"$CASE_ROOT/inplace-restore.out"
+cmp "$RAW" "$CASE_ROOT/bootstage-fdt.inplace-before" >/dev/null ||
+	fail 'direct in-place restore did not reproduce the accepted complete prefix'
+grep -Fq 'raw bytes [8192,565169)' "$CASE_ROOT/inplace-restore.out" ||
+	fail 'direct in-place restore omits its exact logical target range'
+grep -Fq 'sector-aligned [8192,569344)' "$CASE_ROOT/inplace-restore.out" ||
+	fail 'direct in-place restore omits its exact physical recovery span'
+grep -Fq 'Accepted in-place-handoff U-Boot restored' \
+	"$CASE_ROOT/inplace-restore.out" ||
+	fail 'direct in-place restore completion was not explicit'
+
+INPLACE_RESTORED_SHA=$(shasum -a 256 "$RAW" | awk '{print $1}')
+run_inplace_handoff_restore >"$CASE_ROOT/inplace-restore-noop.out"
+[ "$(shasum -a 256 "$RAW" | awk '{print $1}')" = "$INPLACE_RESTORED_SHA" ] ||
+	fail 'direct in-place restore no-op changed raw bytes'
+grep -Fq 'already restored' "$CASE_ROOT/inplace-restore-noop.out" ||
+	fail 'direct in-place restore no-op was not explicit'
+
+flip_raw_byte 569343
+run_inplace_handoff_restore >"$CASE_ROOT/inplace-restore-tail.out"
+cmp "$RAW" "$CASE_ROOT/bootstage-fdt.inplace-before" >/dev/null ||
+	fail 'direct in-place restore did not repair its physical sector tail'
+
+flip_raw_byte 569344
+INPLACE_RESTORE_OUTSIDE_SHA=$(shasum -a 256 "$RAW" | awk '{print $1}')
+if run_inplace_handoff_restore >"$CASE_ROOT/inplace-restore-outside.out" \
+	2>"$CASE_ROOT/inplace-restore-outside.err"; then
+	fail 'direct in-place restore accepted drift outside its physical span'
+fi
+[ "$(shasum -a 256 "$RAW" | awk '{print $1}')" = \
+	"$INPLACE_RESTORE_OUTSIDE_SHA" ] ||
+	fail 'direct in-place outside-span rejection changed raw bytes'
+grep -Fq 'outside the in-place recovery span' \
+	"$CASE_ROOT/inplace-restore-outside.err" ||
+	fail 'direct in-place outside-span rejection was not explicit'
+
+cp "$CASE_ROOT/bootstage-fdt.inplace-before" "$RAW"
+flip_raw_byte 569343
+if run_inplace_handoff_restore_failpoint after-write \
+	>"$CASE_ROOT/inplace-restore-failure.out" \
+	2>"$CASE_ROOT/inplace-restore-failure.err"; then
+	fail 'direct in-place restore after-write failpoint unexpectedly succeeded'
+fi
+cmp "$RAW" "$CASE_ROOT/bootstage-fdt.inplace-before" >/dev/null ||
+	fail 'failed direct in-place restore did not converge to its accepted prefix'
+
+flip_raw_byte 569343
+if run_inplace_handoff_restore_failpoint after-write-corrupt \
+	>"$CASE_ROOT/inplace-restore-corrupt.out" \
+	2>"$CASE_ROOT/inplace-restore-corrupt.err"; then
+	fail 'direct in-place corrupt-readback failpoint unexpectedly succeeded'
+fi
+cmp "$RAW" "$CASE_ROOT/bootstage-fdt.inplace-before" >/dev/null ||
+	fail 'corrupt direct in-place readback did not converge to its accepted prefix'
+: >"$BOOT_DIAGNOSTICS_REQUEST"
 
 cp "$CASE_ROOT/green-prefix-oracle" "$RAW"
 if run_early_failpoint after-write >"$CASE_ROOT/early-failure.out" \

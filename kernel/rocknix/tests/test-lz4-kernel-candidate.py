@@ -28,6 +28,10 @@ UBOOT_BINARY = (
     ROOT
     / "kernel/work/bird-uboot-inplace-handoff-20260701/inplace-handoff-uboot.bin"
 )
+RELEASE_BUILDER = ROOT / "build-and-deploy.sh"
+ROOT_BUILDER = ROOT / "kernel/rocknix/build-stock-root-compat.sh"
+EARLY_BUILDER = ROOT / "kernel/rocknix/build-stock-root-early-initramfs.sh"
+KERNEL_AUTHORITY = ROOT / "kernel/rocknix/source-kernel-irq-buttons-lz4.tsv"
 
 
 def load_verifier():
@@ -45,6 +49,20 @@ def main() -> None:
     assert verifier.xxh32(b"") == 0x02CC5D05
     assert verifier.xxh32(b"123456789") == 0x937BAD67
     assert verifier.xxh32(b"birdOS") == 0x2E1C919F
+    release_builder = RELEASE_BUILDER.read_text()
+    root_builder = ROOT_BUILDER.read_text()
+    early_builder = EARLY_BUILDER.read_text()
+    authority = KERNEL_AUTHORITY.read_text()
+    assert release_builder.count("--irq-buttons-lz4-kernel") == 3
+    assert release_builder.count("KERNEL_AUTHORITY=source-irq-buttons-lz4") == 1
+    assert release_builder.count(
+        "SOURCE_KERNEL_PAYLOAD=$ROOT/kernel/work/bird-kernel-lz4-irq-candidate-20260813/KERNEL.lz4"
+    ) == 1
+    assert root_builder.count("source-irq-buttons-lz4)") == 2
+    assert "source-irq-buttons|source-irq-buttons-lz4)" in early_builder
+    assert verifier.CANDIDATE_SHA256 in root_builder
+    assert f"kernel-sha256\t{verifier.CANDIDATE_SHA256}\n" in authority
+    assert "paired-kernel-comp-size\t0x10c080b\n" in authority
 
     required = (KERNEL, LZ4, UBOOT_SOURCE, UBOOT_CONFIG, UBOOT_BINARY)
     if not all(path.is_file() for path in required):

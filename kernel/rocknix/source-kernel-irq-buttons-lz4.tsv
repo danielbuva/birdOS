@@ -1,0 +1,21 @@
+schema	bird-source-kernel-lz4-measurement-v1
+candidate	stage10-irq-buttons-lz4
+why-before	raw-image-is-accepted-simplest-handoff
+why-change	bootstage-load-interval-dominates-measured-uboot-time
+base-authority-sha256	0020d161b5a2be0d8393267c3eb96794a0c2d9f82e8df5e097932216fad9e45d
+raw-kernel-sha256	cad7ad8437d0a7de0d819846b12fdf83078f5878313704d0de79274431ec9d64
+raw-kernel-bytes	30926856
+kernel-format	lz4-frame
+kernel-sha256	a7321d2a79b18e81f114aefd9bb7509ba70d5e56b562a345ea5ca66dbf11262a
+kernel-bytes	17565707
+kernel-payload-bytes-saved	13361149
+kernel-payload-percent-saved	43.2024
+compressor	lz4-v1.10.0-arm64-tahoe-bottle
+compressor-sha256	4fef8dd687478d1a8dcf4e2db25defd2daf76f7e0bb3478f023b738f9501f48c
+compressor-arguments	-9 -T1
+repeat-byte-identical	yes
+producer-roundtrip	exact
+independent-frame-decode	exact
+paired-kernel-comp-size	0x10c080b
+paired-uboot-required	yes
+measurement-purpose	bootstage-raw-vs-lz4

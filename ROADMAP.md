@@ -2,18 +2,19 @@
 
 This is the governing constitution for the active stock-root implementation.
 The current human promotion record binds clean source
-`c07fe18769a13a3b1997e2cf1a4900cc55423d5b`, immutable release
-`v6.23-20260811-234132`, deploy manifest
-`a0a38b04be25f2d09009b0677d33c0d34c65b027c0ff1b9463f71cdeec9b274b`,
+`5373c644b9c91ac21a17e145375747a8196a3337`, immutable release
+`v6.23-20260814-201218`, deploy manifest
+`904c8da42a6ec84ccf4b291205999c3b0e25900f4bec7bb3f9e0cfefb29164dd`,
 device contract
 `1664a3778abcd3687865a82fd28bba5b468f6c3c7e9a46bf90f7c3acb1e08162`
 and catalogue
 `9795aae6baddc292f5d9954a444656e303db305c639284f16eb10288c41f1f93`.
-Immutable release `v6.23-20260731-054816` remains the previously accepted,
+Immutable release `v6.23-20260811-234132` remains the previously accepted,
 privately archived binary reference. Its canonical manifest digest is
-`5f95153bf46239a5e178fde28924f01c7fe586be182562f9bd9f33cf13da02ba`.
-That manifest retains its actual older dirty source identity; it is not
-represented as a clean build of the current source.
+`a0a38b04be25f2d09009b0677d33c0d34c65b027c0ff1b9463f71cdeec9b274b`.
+It was built from clean source
+`c07fe18769a13a3b1997e2cf1a4900cc55423d5b`; it is verified history rather
+than an on-card rollback release.
 
 The historical version narrative remains in
 [`docs/history/LEGACY_ROADMAP.md`](docs/history/LEGACY_ROADMAP.md). It explains
@@ -1722,11 +1723,9 @@ cold boot; the separate suspend/resume path retains that proven strike and exact
 saved-level restoration. Returned RG34XX-SP boots reached a visible Bird menu
 without a black interval or flash. The diagnostic pair was descriptively about
 50--55 ms earlier than the preceding strike boots; this is physical evidence
-for removing that cold delay, not a broader latency distribution. Stage 9 is
-implementation-complete in `dev-current`; it still requires a clean canonical
-immutable build and that exact release's separate RG34XX-SP gate before
-production acceptance. Stage 10 preparation may proceed without weakening that
-promotion boundary.
+for removing that cold delay, not a broader latency distribution. Canonical
+release `v6.23-20260814-201218` includes this path and passed its separate broad
+RG34XX-SP gate, completing the Stage 9 production-acceptance boundary.
 
 Subtract drivers, modules, probes, buses, protocols and subsystems one
 attributable group at a time only after complete consumer closure. Neutral
@@ -1736,11 +1735,14 @@ memory or size benefit.
 
 ## Stage 10 — U-Boot performance and inherited frame
 
-Rough planning progress is about 65 percent. Environment-nowhere,
+Rough planning progress is about 80 percent. Environment-nowhere,
 direct-extlinux, no-heap-clear, fast-init and in-place handoff are physically
-accepted; bootstage and LZ4 preparation are host-reviewed. The remaining large
-boundaries are device bootstage measurement, the paired LZ4 comparison, deeper
-fixed-path/parser and subsystem subtraction, and the inherited-frame experiment.
+accepted, and canonical release `v6.23-20260814-201218` satisfies the clean
+full-release prerequisite. The raw-kernel bootstage measurement and paired LZ4
+host preparation are complete. The remaining large boundaries are the
+uninstrumented LZ4 functional gate, deeper fixed-path/parser and subsystem
+subtraction, and
+the inherited-frame experiment.
 
 The first Stage 10 candidate has passed its complete non-deploying host gate.
 The four-pass build produced two byte-identical baselines that each reproduce
@@ -1923,14 +1925,16 @@ are byte-identical to fast-init. The removed 603,487-byte initramfs move plus
 61,298-byte padded-DTB move models 664,785 fewer copied bytes; this is not a
 hardware timing claim. Its bounded installer completed the exact post-write
 authority check, and two returned RG34XX-SP hardware cycles passed the broad
-functional matrix. The user identified the earlier wake hesitation as likely
-physical-button behavior and reported no suspend issue in the repeated cycle.
-Three current interactive-frame records are 1175, 1179 and 1187 ms, versus
-1176, 1189 and 1176 ms in the three pre-in-place boots: the medians are 1179 and
-1176 ms. Input-ready medians are 1175 and 1170 ms, while storage-ready medians
-are 3379 and 3403 ms. These single-digit/low-tens-of-milliseconds shifts are
-noise-scale and agree with the unchanged stopwatch result. No measured timing
-improvement is claimed. In-place handoff is the active physically accepted
+functional matrix. Canonical release `v6.23-20260814-201218`, built from clean
+commit `5373c644b9c91ac21a17e145375747a8196a3337` with manifest digest
+`904c8da42a6ec84ccf4b291205999c3b0e25900f4bec7bb3f9e0cfefb29164dd`,
+then passed the complete returned behavior gate. Its four usable-frame records
+are 1174, 1175, 1176 and 1177 ms, a midpoint median reported as about 1176 ms;
+input-ready median is 1170 ms. The three completed asynchronous storage records
+have a 3514 ms median, with one short boot shutting down before storage became
+ready; that three-sample result is noise-scale. The 2.8--2.9-second stopwatch
+result likewise establishes no measurable improvement. In-place handoff is the
+active physically accepted
 U-Boot boundary.
 
 After userspace and kernel stability, split PMIC, SPL/DRAM, TF-A, U-Boot,
@@ -1941,25 +1945,29 @@ kernel adoption only in the joint experiment. Promote only when no blank,
 clear, flash or input delay occurs and total power-to-usable or continuity
 improves without higher-priority regression.
 
-The new unit's earlier delayed fake-suspend observation is closed as a hardware
-button observation rather than an accepted software defect. Every returned wake
-that Bird dispatched reached
-resume-ready in about 0.43--0.70 seconds, with no timeout or helper failure.
-Why the previous trace existed: it proved helper execution while keeping the
-blocking input loop free of periodic work. Why change it: the diagnostic-only
-successor records raw edge, suspend/resume decision, provider flag, backlight
-power and provider-return time only on existing transitions. It adds no idle
-timer and does not change the retained provider, panel threshold or ordering.
+Why before: the retained ROCKNIX fake-suspend
+provider owns the accepted audio, input, governor, core-parking and LED
+transaction; Bird restores the fixed panel, while the `O_DSYNC` rare-edge trace
+keeps the blocking input loop free of periodic work. Why change: no suspend
+behavior is changed now because canonical boot `96df160e` recorded suspend at
+311.471 seconds and resume dispatch at 312.632 seconds but no resume-complete,
+timeout, orderly shutdown,
+panic, Oops, pstore or reset cause. The next canonical boot completed three
+power/lid cycles with wake-edge-to-complete times of 726--768 ms. The
+intermittent reset is nonblocking for Stage 10 and remains deferred for focused
+provider/PMIC and reset-surviving diagnostics.
 
-Why the previous measurement boundary existed: five broad U-Boot marks kept
-the diagnostic source-free and off the accepted runtime path, but combined
-kernel image work with the remaining bootm handoff. Why change it: U-Boot
-already emits `bootm_load_os`, which supplies the missing boundary without a
-custom timing probe. The host-ready measurement boundary preserves the
+Why the previous measurement boundary existed: source inspection treated
+generic bootm's `bootm_load_os` mark as the kernel-load boundary. The accepted
+device trace proved that `booti` performs `BOOTM_STATE_LOADOS` itself and never
+emits that mark. Why change it: the capture contract now requires the actually
+emitted `boot_jump_linux` mark. Together with `bootm_start`, it bounds booti
+setup/decompression and the remaining handoff without custom timing. The
+measurement boundary preserves the
 accepted in-place environment and enables bootstage records in the handoff DT
 without serial reporting, an interactive command or SPL timing. Its post-frame
 capture accepts evidence only when `board_init_f`, `board_init_r`, `main_loop`,
-`bootm_start`, `bootm_load_os` and `start_kernel` each occur once as strictly
+`bootm_start`, `boot_jump_linux` and `start_kernel` each occur once as strictly
 increasing marks; missing, duplicate, non-mark and out-of-order records fail
 closed. It never enters first-frame work, and `start_kernel` is handoff-start
 before U-Boot's final cleanup. Why the first two-pass builder stopped:
@@ -1973,9 +1981,18 @@ explicitly unused evidence, and changes only full-U-Boot data in the FIT. The
 the reconstructed 16 MiB prefix is
 `c1dadb6b43782ac25b8be6ea168cbad7c2e435da49207210213be68701f7f94b`.
 Both passes are byte-identical; the 4,096-byte host size increase is not a
-timing claim. Deployment authority remains explicitly disabled, and the
-canonical full-release plus RG34XX-SP measurement gates remain pending. Why
-the raw Image existed: it is the
+timing claim. The artifact remains barred as a production successor. Why change
+the former no-write boundary: a separately pinned
+`temporary-measurement-only` installer accepts only the exact in-place prefix
+and canonical `v6.23-20260814-201218`, requires capture to be armed, and has a
+direct exact in-place restore. Its sector-tail, forced-unmount and injected
+failure-recovery gates pass. Three returned traces preserved the actual emitted
+records. Their median phase times were 602,524 us from reset to `board_init_f`,
+304,745 us to `board_init_r`, 76,759 us to `main_loop`, 1,419,998 us from
+`main_loop` to `bootm_start`, and 224,968 us from `bootm_start` to
+`boot_jump_linux`. Seven coarse stopwatch samples had a 2.78-second median and
+all behavior passed. This prioritizes the LZ4 functional gate without making
+a calibrated total-boot claim. Why the raw Image existed: it is the
 physically accepted simplest handoff and avoids both a U-Boot decompression
 stage and its temporary output buffer. Why consider changing it: the fixed
 kernel becomes a 17,565,707-byte LZ4 frame, 13,361,149 bytes (43.2024 percent)
@@ -1996,7 +2013,33 @@ the compiled `kernel_comp_size` value change, the FIT difference remains inside
 `/images/uboot:data`, and the guard ends 19,378,066 bytes before the DTB. The
 derived 16 MiB prefix is
 `2e6680950a885cef607a9642c0133a8794d7407c7879ccb0fe9c153b6be45f56`.
-This is retained diagnostic evidence, not reviewed deployment authority.
+This is now reviewed production-successor authority. The bounded installer
+accepts only exact in-place U-Boot and retains a direct exact restore action.
+
+Why the two authorities remained separate: the uninstrumented linked proof
+isolated the four-byte LZ4 bound, while the accepted bootstage artifact retained
+the exact timing path. Why change: independently applying the proven
+equal-length delta to both reviewed bootstage passes produces one 561,073-byte
+paired measurement image at
+`d386f00ee8b0db002f5de3206d4af522a33a0f26960efe0561b29e01dbf2a083`.
+The full-U-Boot payload is
+`57232f25c04da2fb8bac08f4c5f5be6af6d1da069b32e0bb50baaebff4219fe3`;
+the exact-prefix result is
+`cf13ad801ffc3a2c1b1e65879f72a683cebe29e476c7dfde7d0c136eeb54d2ee`.
+Accepted SPL, config and control DT bytes remain exact and FIT scope remains
+U-Boot data only. Focused gates and all 79 workflow cases pass. This
+instrumented combination remains historical and nondeployable. Next gate:
+install the reviewed uninstrumented pair, construct the clean immutable LZ4
+release, and run the broad device functional gate.
+
+Decision after the returned trace: retire the measurement branch rather than
+perform another formal instrumented A/B. Why before: bootstage was the smallest
+way to determine whether fixed loading or later handoff dominated. Why change:
+the 1,419,998 us median load interval already identifies the useful target, and
+the external stopwatch is reaction-limited. Remove the capture helper from the
+next canonical runtime, restore exact uninstrumented in-place U-Boot, and judge
+the uninstrumented LZ4 pair by exact host authority plus the complete RG34XX-SP
+functional screen. Do not promote bootstage instrumentation into production.
 
 ## Candidate report gate
 

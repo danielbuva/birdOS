@@ -3,32 +3,30 @@
 This document is the authority for the code that builds, installs and runs the
 current birdOS system. The active implementation path is **stock-root v6.23**.
 The current human promotion record binds clean public source
-`c07fe18769a13a3b1997e2cf1a4900cc55423d5b`,
-immutable release `v6.23-20260811-234132`, deploy-manifest digest
-`a0a38b04be25f2d09009b0677d33c0d34c65b027c0ff1b9463f71cdeec9b274b`,
+`5373c644b9c91ac21a17e145375747a8196a3337`,
+immutable release `v6.23-20260814-201218`, deploy-manifest digest
+`904c8da42a6ec84ccf4b291205999c3b0e25900f4bec7bb3f9e0cfefb29164dd`,
 device-contract digest
 `1664a3778abcd3687865a82fd28bba5b468f6c3c7e9a46bf90f7c3acb1e08162`
 and generated-catalog digest
 `9795aae6baddc292f5d9954a444656e303db305c639284f16eb10288c41f1f93`.
-The complete host gate and broad RG34XX-SP behavior gate passed on 2026-08-11.
-This promotes the Stage 9 IRQ button path on top of the built-in H700 controls
-driver. All 17 digital controls, including L3/R3, use independent 5 ms GPIO
+The complete host gate and broad RG34XX-SP behavior gate passed on 2026-08-14.
+This canonicalizes the accepted Stage 9 IRQ button path and the reviewed
+Stage 10 runtime/tooling boundary. All 17 digital controls, including L3/R3,
+use independent 5 ms GPIO
 edge debounce; only four analog axes retain the 10 ms ADC poll. Broad behavior
 passed, and Input Test completed all 29 digital, analog, auxiliary and rumble
 checks. Its kernel SHA-256 is
 `cad7ad8437d0a7de0d819846b12fdf83078f5878313704d0de79274431ec9d64`. This is
-functional acceptance, not a calibrated latency or energy claim. The previously accepted immutable binary reference is release
-`v6.23-20260731-054816`, published as `stable-v6.23-20260731-054816`; its
-canonical manifest digest is
-`5f95153bf46239a5e178fde28924f01c7fe586be182562f9bd9f33cf13da02ba`.
-That older release manifest honestly records its own source as commit
-`19ca0bbac47c037a868dac5500aa49c96feeb2f2` plus dirty-state digest
-`d0c3a1d805205cb2bb94b95e4c3d4fb89145ca9c1f693ed12079aa70860792b0`;
-it is not falsely relabelled as a clean build of the current source. It remains
-verified external history, not an on-card production rollback requirement. A
-successor becomes the optimization baseline only when its exact clean source,
-release, manifest, contract and catalogue tuple passes the host and physical
-gates.
+functional acceptance, not a calibrated latency or energy claim. The
+previously accepted immutable release `v6.23-20260811-234132` is verified in
+the private archive at manifest digest
+`a0a38b04be25f2d09009b0677d33c0d34c65b027c0ff1b9463f71cdeec9b274b`.
+That release was built from clean source
+`c07fe18769a13a3b1997e2cf1a4900cc55423d5b`; it remains verified external
+history, not an on-card production rollback requirement. A successor becomes
+the optimization baseline only when its exact clean source, release, manifest,
+contract and catalogue tuple passes the host and physical gates.
 
 birdOS targets one device: the Anbernic RG34XX-SP. Fixed paths, device names,
 display geometry and hardware policy are deliberate. Older muOS stages,
@@ -174,9 +172,10 @@ blank. Cold boot therefore has one brightness write, no timed strike and no
 restore; the proven 50 ms strike remains limited to suspend/resume. Returned
 RG34XX-SP boots showed the Bird menu without a black interval or flash. The
 instrumented pair was descriptively about 50--55 ms earlier than the preceding
-cold-strike boots; it does not establish a wider timing distribution. Stage 9
-implementation is complete in `dev-current`; immutable production promotion
-and its separate RG34XX-SP gate remain required before Stage 9 is accepted.
+cold-strike boots; it does not establish a wider timing distribution. Canonical
+release `v6.23-20260814-201218` includes this path and passed its separate broad
+RG34XX-SP gate, so Stage 9 is accepted rather than remaining mutable
+`dev-current` work.
 
 Stage 10 has completed its first candidate's non-deploying host gate. Two
 isolated baseline builds reproduce the 621,049-byte shipping DDR4 U-Boot
@@ -344,31 +343,47 @@ remain byte-identical to fast-init. This models removal of one 603,487-byte
 initramfs move plus a 61,298-byte padded-DTB move, or 664,785 bytes total; it is
 not a hardware timing claim. Its bounded installer completed the exact
 post-write authority check, and two returned RG34XX-SP cycles passed the broad
-functional matrix. The user identified the earlier wake hesitation as likely
-physical-button behavior and reported no suspend issue in the repeated cycle.
-Every returned wake that Bird dispatched reached resume-ready in about
-0.43--0.70 seconds, with no timeout or helper failure, so no provider,
-panel-threshold or ordering change is justified. The next
-diagnostic-only trace records the raw edge, suspend/resume decision, provider
-flag, backlight power and provider-return time only on existing transitions; it
-adds no idle poll or timer. Three current interactive-frame records have a
-1179 ms median, versus 1176 ms before in-place handoff; input-ready moved 1170
-to 1175 ms and storage-ready moved 3403 to 3379 ms. These noise-scale shifts
-agree with the unchanged stopwatch result, so no timing improvement is claimed.
-This candidate is the active physically accepted U-Boot boundary. Stage 10 is
-roughly 65 percent complete: five bounded U-Boot transitions are physically
-accepted and bootstage/LZ4 preparation is host-reviewed; device measurement,
-paired LZ4, deeper fixed-path pruning and the inherited-frame experiment remain.
+functional matrix. Canonical release `v6.23-20260814-201218`, built from clean
+commit `5373c644b9c91ac21a17e145375747a8196a3337` with manifest digest
+`904c8da42a6ec84ccf4b291205999c3b0e25900f4bec7bb3f9e0cfefb29164dd`,
+then passed the complete returned behavior gate. Its four cold-boot records put
+the usable frame at 1174, 1175, 1176 and 1177 ms, a midpoint median of 1175.5 ms
+reported as about 1176 ms; input-ready median is 1170 ms. Three completed
+asynchronous storage records have a 3514 ms median, while the fourth boot shut
+down before storage readiness. That three-sample storage result is noise-scale.
+The 2.8--2.9-second stopwatch result likewise shows no measurable improvement;
+storage remains outside the usable-frame contract.
 
-Why the previous measurement boundary existed: its five U-Boot marks bounded
-the boot generally without changing the accepted boot path, but merged kernel
-image work into the long bootm-to-handoff interval. Why change it: U-Boot
-already publishes `bootm_load_os`, so the host-ready bootstage-FDT diagnostic
-now preserves the accepted in-place environment and its post-frame capture
-requires exactly one increasing mark for `board_init_f`, `board_init_r`,
-`main_loop`, `bootm_start`, `bootm_load_os` and `start_kernel`. Incomplete or
-ambiguous records fail closed, and capture never enters first-frame work;
-`start_kernel` means handoff-start before U-Boot's final cleanup. Why the first
+Why before: the retained ROCKNIX fake-suspend
+provider owns the accepted audio, input, governor, core-parking and LED
+transaction, while Bird restores the fixed panel and records rare transition
+edges with `O_DSYNC` without adding an idle wakeup. Why change: no suspend
+behavior is changed in this cycle because canonical boot `96df160e` preserved
+a power suspend at 311.471 seconds and resume dispatch at 312.632 seconds but no
+resume-complete, timeout,
+orderly shutdown, panic, Oops, pstore or reset-cause record before the next
+boot. Boot `a245d090` then completed three power/lid cycles with resume
+completion 726--768 ms after the wake edge. The evidence narrows a future
+focused investigation to the retained provider, PMIC/button and reset-surviving
+diagnostics, but does not justify changing the accepted suspend path during
+Stage 10.
+
+In-place handoff remains the active physically accepted U-Boot boundary. Stage
+10 is roughly 80 percent complete: five accepted U-Boot transitions, the clean
+canonical prerequisite and the raw-kernel bootstage measurement are complete.
+The uninstrumented LZ4 functional gate, deeper fixed-path pruning and the
+inherited-frame experiment remain.
+
+Why the previous measurement boundary existed: source inspection treated
+generic bootm's `bootm_load_os` mark as the kernel-load boundary. The accepted
+device trace proved that `booti` performs `BOOTM_STATE_LOADOS` itself and never
+emits that mark. Why change it: the capture contract now requires the actually
+emitted `boot_jump_linux` mark. Together with `bootm_start`, it bounds booti
+setup/decompression and the remaining handoff without custom timing. Capture
+requires one increasing mark for `board_init_f`, `board_init_r`, `main_loop`,
+`bootm_start`, `boot_jump_linux` and `start_kernel`; incomplete or ambiguous
+records fail closed and capture never enters first-frame work. `start_kernel`
+means handoff-start before U-Boot's final cleanup. Why the first
 two-pass builder stopped: `SPL_BOOTSTAGE=n` disabled SPL recording, but raw
 `CONFIG_BOOTSTAGE` still added `gd->bootstage` and shifted the following
 `cyclic_list`, so the generated SPL was no longer the accepted byte sequence.
@@ -380,9 +395,20 @@ explicitly unused evidence, and changes only full-U-Boot data in the FIT. Its
 the reconstructed 16 MiB prefix is
 `c1dadb6b43782ac25b8be6ea168cbad7c2e435da49207210213be68701f7f94b`.
 Both passes are byte-identical, and the 4,096-byte host size increase is not a
-timing claim. Its authority remains measurement-only and explicitly grants no
-deployment. The canonical full-release and RG34XX-SP measurement gates remain
-pending. Why the raw kernel existed: it is the physically accepted, simplest
+timing claim. Its artifact authority remains measurement-only and grants no
+production-successor deployment. Why change the former no-write boundary: a
+separately pinned `temporary-measurement-only` installer now accepts only the
+exact in-place prefix plus canonical `v6.23-20260814-201218`, requires the
+post-frame capture request to be armed, and has a direct exact in-place restore.
+Its full sector-tail, forced-unmount and failure-recovery host gates pass. Three
+returned traces preserved the actual emitted records. Their median phase times
+were 602,524 us from reset to `board_init_f`, 304,745 us to `board_init_r`,
+76,759 us to `main_loop`, 1,419,998 us from `main_loop` to `bootm_start`, and
+224,968 us from `bootm_start` to `boot_jump_linux`. The seven human stopwatch
+samples had a coarse 2.78-second median and all behavior passed. This is enough
+to prioritize the LZ4 functional gate; it is not a calibrated total-boot
+claim. Why the raw kernel existed:
+it is the physically accepted, simplest
 handoff and avoids
 both a U-Boot decompression stage and its temporary output buffer. Why consider
 changing it: the fixed 30,926,856-byte Image becomes a 17,565,707-byte LZ4
@@ -400,7 +426,34 @@ The config, SPL and control DTB remain accepted bytes; only four compiled
 environment bytes change, FIT scope is U-Boot data only, and the exact guard
 ends 19,378,066 bytes before the DTB. The derived prefix is
 `2e6680950a885cef607a9642c0133a8794d7407c7879ccb0fe9c153b6be45f56`.
-The pair remains diagnostic-only and grants no deployment authority.
+The two-pass pair is now sealed as reviewed production-successor authority.
+Its bounded installer accepts only the exact in-place predecessor, verifies the
+complete target prefix, and retains direct exact in-place recovery.
+
+Why the two authorities remained separate: the linked LZ4 proof isolated the
+four-byte bound while the accepted bootstage image preserved the exact timing
+instrumentation. Why change: a new paired measurement authority independently
+applies that proven equal-length delta to both reviewed bootstage A/B payloads.
+They converge on a 561,073-byte image at SHA-256
+`d386f00ee8b0db002f5de3206d4af522a33a0f26960efe0561b29e01dbf2a083`,
+with full-U-Boot SHA-256
+`57232f25c04da2fb8bac08f4c5f5be6af6d1da069b32e0bb50baaebff4219fe3`
+and derived 16 MiB prefix
+`cf13ad801ffc3a2c1b1e65879f72a683cebe29e476c7dfde7d0c136eeb54d2ee`.
+The exact accepted SPL, config and control DT remain unchanged; FIT scope is
+U-Boot data only. The 79-case workflow gate and focused release-builder gates
+pass. The temporary instrumented pair remains nondeployable historical
+evidence. The next boundary is installation of the reviewed uninstrumented
+pair followed by the clean immutable LZ4 release.
+
+Why the measurement path is now retired: bootstage existed to decide whether a
+large next optimization was worth testing, and its returned records answered
+that question. Why change: no further formal stopwatch or instrumented LZ4 A/B
+is required. The next canonical runtime removes the bootstage capture helper,
+the diagnostic U-Boot returns to exact accepted in-place handoff, and the
+uninstrumented LZ4 pair advances on its exact authority plus a broad functional
+RG34XX-SP gate. The retained raw traces remain engineering evidence; no
+measurement code becomes part of accepted U-Boot.
 
 The corrected source-kernel package reached Bird's early usable menu but not
 application readiness. A temporary early watchdog proved that release-runtime
@@ -475,9 +528,9 @@ Committed changes to the production builder or updater cannot be validated by
 deriving `dev-current` from an older production manifest: the first development
 build intentionally stops before card writes until a clean canonical release
 from the current commit or a descendant has passed its own RG34XX-SP gate.
-Release `v6.23-20260811-234132`, built from
-`c07fe18769a13a3b1997e2cf1a4900cc55423d5b` with deploy-manifest digest
-`a0a38b04be25f2d09009b0677d33c0d34c65b027c0ff1b9463f71cdeec9b274b`, passed
+Release `v6.23-20260814-201218`, built from
+`5373c644b9c91ac21a17e145375747a8196a3337` with deploy-manifest digest
+`904c8da42a6ec84ccf4b291205999c3b0e25900f4bec7bb3f9e0cfefb29164dd`, passed
 that gate and is the current eligible `dev-current` base. A later committed
 full-release-only change creates
 a new transition; the workflow does not add mandatory promotion-record

@@ -430,7 +430,7 @@ DEST_SWAP=$TMP/dest-swap.conf
 SYSTEM_BUSYBOX=$TMP/system-busybox
 MODE_EVENTS=$TMP/mode-events
 /bin/mkdir -p "$SOURCE_BIRD" "$DEST_BIRD"
-IMMUTABLE_FILES='bird-pidwait bird-fixed-controls bird-powerstate bird-fixed-control-exit.sh bird-save-config.sh prepare-ports.sh verify-portmaster-provider.sh portmaster-provider.manifest.tsv fixed-storage.sh capture-boot-state.sh capture-uboot-bootstage.sh capture-requested-diagnostics.sh capture-stage5-state.sh capture-stage5-window-counters.sh capture-stage5-window.sh bird-network.sh bird-suspend.sh bird-volume.sh bird-control-osd.sh bird-launcher run-content.sh supervisor.sh first-frame-prep.sh'
+IMMUTABLE_FILES='bird-pidwait bird-fixed-controls bird-powerstate bird-fixed-control-exit.sh bird-save-config.sh prepare-ports.sh verify-portmaster-provider.sh portmaster-provider.manifest.tsv fixed-storage.sh capture-boot-state.sh capture-requested-diagnostics.sh capture-stage5-state.sh capture-stage5-window-counters.sh capture-stage5-window.sh bird-network.sh bird-suspend.sh bird-volume.sh bird-control-osd.sh bird-launcher run-content.sh supervisor.sh first-frame-prep.sh'
 for FILE in $IMMUTABLE_FILES; do
 	printf 'immutable fixture %s\n' "$FILE" >"$SOURCE_BIRD/$FILE"
 done

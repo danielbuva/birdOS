@@ -573,6 +573,11 @@ if "$COMMAND" --profile --irq-buttons-kernel \
 	fail 'IRQ-buttons kernel unexpectedly accepted profile mode'
 fi
 grep -q -- 'source-kernel authorities require --release' "$TMP/irq-buttons-profile.err"
+if "$COMMAND" --profile --irq-buttons-lz4-kernel \
+	>"$TMP/irq-buttons-lz4-profile.out" 2>"$TMP/irq-buttons-lz4-profile.err"; then
+	fail 'IRQ-buttons LZ4 kernel unexpectedly accepted profile mode'
+fi
+grep -q -- 'source-kernel authorities require --release' "$TMP/irq-buttons-lz4-profile.err"
 if "$COMMAND" --release --fixed-input-kernel \
 	>"$TMP/fixed-input.out" 2>"$TMP/fixed-input.err"; then
 	fail 'rejected fixed-input kernel option remains accepted'
@@ -609,6 +614,11 @@ if "$COMMAND" --release --fixed-gpio-fastpath-kernel --irq-buttons-kernel \
 	fail 'multiple fixed-GPIO/IRQ-buttons authorities unexpectedly accepted'
 fi
 grep -q -- 'choose only one source-kernel authority' "$TMP/irq-buttons-authority.err"
+if "$COMMAND" --release --irq-buttons-kernel --irq-buttons-lz4-kernel \
+	>"$TMP/irq-buttons-lz4-authority.out" 2>"$TMP/irq-buttons-lz4-authority.err"; then
+	fail 'raw and LZ4 IRQ-buttons authorities were accepted together'
+fi
+grep -q -- 'choose only one source-kernel authority' "$TMP/irq-buttons-lz4-authority.err"
 if "$COMMAND" --release --release-id '../unsafe' >"$TMP/id.out" 2>"$TMP/id.err"; then
 	fail 'unsafe release ID was accepted'
 fi

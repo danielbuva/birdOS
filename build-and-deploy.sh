@@ -31,7 +31,7 @@ ROTATION_SELECTOR_TEMP=
 usage() {
 	cat <<'EOF'
 Usage:
-  ./build-and-deploy.sh --release [--source-kernel-parity|--builtin-input-kernel|--single-gpio-read-kernel|--single-input-sync-kernel|--changed-input-sync-kernel|--fixed-gpio-fastpath-kernel|--irq-buttons-kernel] [--release-id ID] [--dry-run]
+  ./build-and-deploy.sh --release [--source-kernel-parity|--builtin-input-kernel|--single-gpio-read-kernel|--single-input-sync-kernel|--changed-input-sync-kernel|--fixed-gpio-fastpath-kernel|--irq-buttons-kernel|--irq-buttons-lz4-kernel] [--release-id ID] [--dry-run]
   ./build-and-deploy.sh --profile [--release-id ID] [--dry-run]
   ./build-and-deploy.sh --help
 
@@ -65,6 +65,10 @@ Options:
   --irq-buttons-kernel
                   Build the Stage 9 kernel with IRQ-backed digital controls and
                   analog-only 10 ms polling. Valid only with --release.
+  --irq-buttons-lz4-kernel
+                  Build the same accepted IRQ kernel as the exact reviewed LZ4
+                  frame for the Stage 10 production successor. Valid only with
+                  --release.
   --dry-run       Perform read-only preflight and print the selected commands.
   --help          Show this help text.
 
@@ -152,6 +156,11 @@ while [ "$#" -gt 0 ]; do
 			[ "$KERNEL_AUTHORITY" = stock ] || \
 				fail 'choose only one source-kernel authority'
 			KERNEL_AUTHORITY=source-irq-buttons
+			;;
+		--irq-buttons-lz4-kernel)
+			[ "$KERNEL_AUTHORITY" = stock ] || \
+				fail 'choose only one source-kernel authority'
+			KERNEL_AUTHORITY=source-irq-buttons-lz4
 			;;
 		--release-id)
 			[ "$#" -ge 2 ] || fail '--release-id requires a value'
@@ -308,6 +317,15 @@ if [ "$KERNEL_AUTHORITY" = source-irq-buttons ]; then
 	SOURCE_KERNEL_BUILD=$ROOT/kernel/work/rocknix-source-irq-buttons/build
 	SOURCE_KERNEL_SYSTEM=$ROOT/kernel/work/rocknix-source-builtin-joypad-system/SYSTEM
 	SOURCE_KERNEL_AUTHORITY_RECORD=$ROOT/kernel/rocknix/source-kernel-irq-buttons.tsv
+fi
+if [ "$KERNEL_AUTHORITY" = source-irq-buttons-lz4 ]; then
+	SOURCE_KERNEL_BUILD=$ROOT/kernel/work/rocknix-source-irq-buttons/build
+	SOURCE_KERNEL_SYSTEM=$ROOT/kernel/work/rocknix-source-builtin-joypad-system/SYSTEM
+	SOURCE_KERNEL_AUTHORITY_RECORD=$ROOT/kernel/rocknix/source-kernel-irq-buttons-lz4.tsv
+fi
+SOURCE_KERNEL_PAYLOAD=$SOURCE_KERNEL_BUILD/Image
+if [ "$KERNEL_AUTHORITY" = source-irq-buttons-lz4 ]; then
+	SOURCE_KERNEL_PAYLOAD=$ROOT/kernel/work/bird-kernel-lz4-irq-candidate-20260813/KERNEL.lz4
 fi
 INIT_BUSYBOX=${INIT_BUSYBOX:-$ROOT/kernel/work/rocknix-official-initramfs-20260701/ramdisk/usr/bin/busybox}
 PORTMASTER_ARCHIVE=${PORTMASTER_ARCHIVE:-$SYSTEM_TREE/usr/config/PortMaster/release/PortMaster.zip}
@@ -698,6 +716,7 @@ prepare_versioned_build_source
 if [ "$KERNEL_AUTHORITY" != stock ]; then
 	for SOURCE_PARITY_INPUT in \
 		"$SOURCE_KERNEL_BUILD/Image" \
+		"$SOURCE_KERNEL_PAYLOAD" \
 		"$SOURCE_KERNEL_BUILD/sun50i-h700-anbernic-rg34xx-sp.dtb" \
 		"$SOURCE_KERNEL_BUILD/modules.tar.xz" \
 		"$SOURCE_KERNEL_BUILD/rocknix-singleadc-joypad.ko" \
@@ -756,8 +775,20 @@ if [ "$KERNEL_AUTHORITY" != stock ]; then
 		EXPECTED_SOURCE_SYSTEM_SHA=57210b5cb6072bf1e2b81dea31df76f9b5d4aab5534d7d3b668fdfdc51a1c527
 		EXPECTED_SOURCE_AUTHORITY_SHA=0020d161b5a2be0d8393267c3eb96794a0c2d9f82e8df5e097932216fad9e45d
 		;;
+	source-irq-buttons-lz4)
+		EXPECTED_SOURCE_KERNEL_SHA=cad7ad8437d0a7de0d819846b12fdf83078f5878313704d0de79274431ec9d64
+		EXPECTED_SOURCE_MODULES_SHA=56bd291210ef47a020c3c6dfcac6f6987135ef4bf20f22435138acafb6107211
+		EXPECTED_SOURCE_PARITY_SHA=c32fcf16af9149c1cdbcbaed0181ce196c23444d5eda6e13fae767802da5a0aa
+		EXPECTED_SOURCE_SYSTEM_SHA=57210b5cb6072bf1e2b81dea31df76f9b5d4aab5534d7d3b668fdfdc51a1c527
+		EXPECTED_SOURCE_AUTHORITY_SHA=250be0f922339e423cc7e100d785747b16686873a5bea357b69825dc29434b3c
+		;;
 	esac
+	EXPECTED_SOURCE_PAYLOAD_SHA=$EXPECTED_SOURCE_KERNEL_SHA
+	if [ "$KERNEL_AUTHORITY" = source-irq-buttons-lz4 ]; then
+		EXPECTED_SOURCE_PAYLOAD_SHA=a7321d2a79b18e81f114aefd9bb7509ba70d5e56b562a345ea5ca66dbf11262a
+	fi
 	[ "$(sha256 "$SOURCE_KERNEL_BUILD/Image")" = "$EXPECTED_SOURCE_KERNEL_SHA" ] && \
+	[ "$(sha256 "$SOURCE_KERNEL_PAYLOAD")" = "$EXPECTED_SOURCE_PAYLOAD_SHA" ] && \
 	[ "$(sha256 "$SOURCE_KERNEL_BUILD/sun50i-h700-anbernic-rg34xx-sp.dtb")" = \
 		f3a4273986d6e4f431b110cead8aa19e8da52ff08c64c4b204ef9664d28b5c31 ] && \
 	[ "$(sha256 "$SOURCE_KERNEL_BUILD/modules.tar.xz")" = "$EXPECTED_SOURCE_MODULES_SHA" ] && \
@@ -769,7 +800,7 @@ if [ "$KERNEL_AUTHORITY" != stock ]; then
 		fail 'source-kernel input digest changed'
 	SOURCE=$RUN_TEMP/source-kernel-input
 	mkdir "$SOURCE"
-	COPYFILE_DISABLE=1 cp -p "$SOURCE_KERNEL_BUILD/Image" "$SOURCE/KERNEL"
+	COPYFILE_DISABLE=1 cp -p "$SOURCE_KERNEL_PAYLOAD" "$SOURCE/KERNEL"
 	COPYFILE_DISABLE=1 cp -p \
 		"$SOURCE_KERNEL_BUILD/sun50i-h700-anbernic-rg34xx-sp.dtb" \
 		"$SOURCE/dtb.img"
