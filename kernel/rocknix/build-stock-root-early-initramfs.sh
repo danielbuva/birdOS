@@ -296,6 +296,12 @@ chmod 0755 "$PAYLOAD/init" "$PAYLOAD/bird-early.sh" \
 if [ "$EMBED_JOYPAD" -eq 1 ]; then
 	chmod 0644 "$PAYLOAD/opt/bird/rocknix-singleadc-joypad.ko"
 fi
+[ "$(grep -c '^[[:space:]]*/bird-early.sh watchdog >/dev/null 2>&1 &$' \
+	"$PAYLOAD/bird-early.sh")" = 1 ] || \
+	fail 'pre-launch storage watchdog count changed'
+[ "$(grep -c 'storage-anchor-ready >"$WATCHDOG_DISARM"' \
+	"$PAYLOAD/bird-early.sh")" = 1 ] || \
+	fail 'storage watchdog disarm authority changed'
 bash -n "$PAYLOAD/init" || fail 'overlaid ROCKNIX init syntax failed'
 bash -n "$PAYLOAD/bird-early.sh" || fail 'Bird early hook syntax failed'
 bash -n "$PAYLOAD/bird-release-loader.sh" || fail 'release loader syntax failed'

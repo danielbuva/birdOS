@@ -2041,6 +2041,19 @@ next canonical runtime, restore exact uninstrumented in-place U-Boot, and judge
 the uninstrumented LZ4 pair by exact host authority plus the complete RG34XX-SP
 functional screen. Do not promote bootstage instrumentation into production.
 
+The first immutable uninstrumented LZ4 gate reached the menu but did not acquire
+usable storage, leaving launch and orderly shutdown unavailable. No durable
+failure evidence survived, so changing storage ordering would be speculative.
+Why before: the retained `storage-failed` branch armed shutdown only after the
+launcher exited. Why change: reintroduce the proven 30-second initramfs
+watchdog placement before the launcher, but make it safe for permanent use by
+disarming only on the verified storage-anchor acknowledgement. A timeout now
+captures mounts, partitions, readiness, processes, mount-storage evidence,
+early-launcher output and dmesg before a synchronized three-second forced
+poweroff. Prefer p6 for the per-boot record and fall back to a bounded top-level
+BIRD diagnostic when p6 itself is unavailable. Do not infer an LZ4 timing race
+until this evidence names the failing boundary.
+
 ## Candidate report gate
 
 Before editing, inspect and state the active critical path. Acquire and seal a

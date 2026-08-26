@@ -769,6 +769,24 @@ grep -Fq '[ -s "$STORAGE_MARKER" ]' \
 grep -Fq "printf '%s\\n' ready >&4" \
 	"$OUTPUT/build/early-initramfs/payload/bird-early.sh" || \
 	fail 'explicit storage readiness signal missing'
+grep -Fq '/bird-early.sh watchdog >/dev/null 2>&1 &' \
+	"$OUTPUT/build/early-initramfs/payload/bird-early.sh" || \
+	fail 'pre-launch storage watchdog missing'
+grep -Fq 'storage-anchor-ready >"$WATCHDOG_DISARM"' \
+	"$OUTPUT/build/early-initramfs/payload/bird-early.sh" || \
+	fail 'verified storage-anchor watchdog disarm missing'
+grep -Fq 'status=fatal reason=storage-readiness-timeout' \
+	"$OUTPUT/build/early-initramfs/payload/bird-early.sh" || \
+	fail 'storage watchdog failure classification missing'
+grep -Fq 'section=mounts' \
+	"$OUTPUT/build/early-initramfs/payload/bird-early.sh" || \
+	fail 'storage watchdog live-state capture missing'
+grep -Fq '/flash/bird-watchdog-failure.txt' \
+	"$OUTPUT/build/early-initramfs/payload/bird-early.sh" || \
+	fail 'storage watchdog p1 fallback missing'
+grep -Fq '$BUSYBOX poweroff -f' \
+	"$OUTPUT/build/early-initramfs/payload/bird-early.sh" || \
+	fail 'storage watchdog bounded poweroff missing'
 if grep -Eq 'final-root storage signalled|storage anchor acknowledged|persistent-owner uptime|log_leds root-ready|log_leds handoff([[:space:]]|$)' \
 	"$OUTPUT/build/early-initramfs/payload/bird-early.sh"; then
 	fail 'normal-success early diagnostics remained'

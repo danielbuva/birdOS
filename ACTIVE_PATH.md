@@ -455,6 +455,24 @@ uninstrumented LZ4 pair advances on its exact authority plus a broad functional
 RG34XX-SP gate. The retained raw traces remain engineering evidence; no
 measurement code becomes part of accepted U-Boot.
 
+The reviewed uninstrumented pair and immutable LZ4 release
+`v6.23-20260826-194408` were installed from clean commit `15144a9`. Why before:
+the existing `storage-failed` recovery waited for the early launcher to exit,
+which assumed a shutdown or content action could always complete. The returned
+gate disproved that assumption: the menu remained visible without usable
+storage, content could not launch, shutdown could not reach its owner, and no
+durable root-cause record survived. Why change: a permanent 30-second
+initramfs-owned storage watchdog now starts immediately before the launcher and
+outside launcher/systemd ownership. Only the verified post-`prepare_sysroot`
+storage-anchor acknowledgement disarms it. On timeout it records uptime,
+cmdline, mounts, partitions, modules, storage paths, readiness nodes, processes,
+the mount-storage record, early-launcher output and dmesg, synchronizes through
+a three-second final countdown, and forces poweroff. It retains an open p6 log
+when available and otherwise writes one bounded top-level BIRD diagnostic.
+Healthy boots disarm before persistent logging and remove any pending record.
+This is a recovery/evidence gate, not a speculative storage fix; the next card
+boot must provide the captured boundary before changing storage sequencing.
+
 The corrected source-kernel package reached Bird's early usable menu but not
 application readiness. A temporary early watchdog proved that release-runtime
 verification rejected the otherwise valid source-parity manifest because the

@@ -17,9 +17,13 @@ three-sample result. The latest seven stopwatch samples span 2.64--2.90 seconds
 with a coarse 2.78-second median. They are a human reaction-time check, not a
 calibrated latency distribution, so no measurable speed improvement is claimed.
 This clean canonical gate satisfies the current Stage 10 prerequisite. Stage 10
-is roughly 80 percent complete: the raw-kernel bootstage measurement is
-complete. Its temporary instrumentation is retired from the next canonical
-runtime; the uninstrumented LZ4 functional gate is next.
+is roughly 85 percent complete. Immutable LZ4 release
+`v6.23-20260826-194408` reached the interactive menu, but its first returned
+hardware gate did not acquire usable storage, so content launch and orderly
+shutdown were unavailable. No root-cause evidence survived that boot. The next
+development gate adds an initramfs-owned 30-second storage watchdog that starts
+before Bird, captures the live mount/kernel/process state, and powers off only
+when the verified storage anchor never disarms it.
 
 Why before: ROCKNIX's retained fake-suspend provider owns
 the accepted audio, input, governor, core-parking and LED transaction, while

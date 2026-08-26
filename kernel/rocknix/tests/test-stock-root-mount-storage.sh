@@ -85,6 +85,18 @@ grep -Fq 'RUNNER=/flash/bird/run-content.sh' "$SUPERVISOR"
 grep -Fq 'print "  if [ \"${BOOT_STEP}\" = \"mount_storage\" ]; then"' \
 	"$EARLY_BUILDER"
 grep -Fq 'mount-storage-latest.log' "$EARLY_BUILDER"
+python3 - "$ROOT/kernel/rocknix/stock-root/bird-early.sh" <<'PY'
+import pathlib
+import sys
+
+source = pathlib.Path(sys.argv[1]).read_text()
+watchdog = source.index('/bird-early.sh watchdog >/dev/null 2>&1 &')
+launcher = source.index('"$LAUNCHER" >>"$LOG" 2>&1 &')
+assert watchdog < launcher
+assert 'storage-anchor-ready >"$WATCHDOG_DISARM"' in source
+assert 'status=fatal reason=storage-readiness-timeout' in source
+assert 'launcher_exit=detected' not in source
+PY
 if grep -Fq '/usr/lib/autostart' "$MOUNT_STORAGE"; then
 	printf '%s\n' 'per-script autostart bind replacement remained' >&2
 	exit 1
@@ -607,5 +619,85 @@ EOF
 cmp "$TMP/expected-init-success" "$INIT_EVENTS"
 [ ! -s "$KMSG" ]
 [ ! -e "$LOG_ROOT_A/Bird/log/mount-storage-latest.log" ]
+
+# Execute the real watchdog case with only fixed paths and BusyBox operations
+# redirected into a private fixture. This proves the failure capture, healthy
+# disarm and p1 fallback without addressing hardware or invoking real poweroff.
+WATCHDOG_SCRIPT=$TMP/bird-early-watchdog.sh
+WATCHDOG_RUN=$TMP/watchdog-run
+WATCHDOG_DATA=$TMP/watchdog-data
+WATCHDOG_FLASH=$TMP/watchdog-flash
+WATCHDOG_LED=$TMP/watchdog-led
+WATCHDOG_EARLY_LOG=$TMP/watchdog-early.log
+WATCHDOG_EVENTS=$TMP/watchdog-events
+WATCHDOG_BUSYBOX=$TMP/watchdog-busybox
+sed \
+	-e 's#^BUSYBOX=.*#BUSYBOX=$WATCHDOG_BUSYBOX#' \
+	-e 's#^RUN=.*#RUN=$WATCHDOG_RUN#' \
+	-e 's#^LOG=.*#LOG=$WATCHDOG_EARLY_LOG#' \
+	-e 's#^WATCHDOG_SECONDS=.*#WATCHDOG_SECONDS=0#' \
+	-e 's#^WATCHDOG_PERSIST_DELAY=.*#WATCHDOG_PERSIST_DELAY=0#' \
+	-e 's#/sysroot/storage/bird-data#$WATCHDOG_DATA#g' \
+	-e 's#/storage/bird-data#$WATCHDOG_DATA#g' \
+	-e 's#/run/bird-data#$WATCHDOG_DATA#g' \
+	-e 's#/birddata#$WATCHDOG_DATA#g' \
+	-e 's#/flash#$WATCHDOG_FLASH#g' \
+	-e 's#/sys/class/leds/red:status/brightness#$WATCHDOG_LED#g' \
+	"$ROOT/kernel/rocknix/stock-root/bird-early.sh" >"$WATCHDOG_SCRIPT"
+cat >"$WATCHDOG_BUSYBOX" <<'EOF'
+#!/bin/sh
+COMMAND=$1
+shift
+case "$COMMAND" in
+	cat) exec /bin/cat "$@" ;;
+	head) exec /usr/bin/head "$@" ;;
+	ls) exec /bin/ls "$@" ;;
+	rm) exec /bin/rm "$@" ;;
+	dmesg) printf '%s\n' 'mock kernel storage failure' ;;
+	mount) printf 'mount:%s\n' "$*" >>"$WATCHDOG_EVENTS" ;;
+	poweroff) printf 'poweroff:%s\n' "$*" >>"$WATCHDOG_EVENTS" ;;
+	sleep|sync) : ;;
+	*) printf 'unexpected busybox command: %s\n' "$COMMAND" >&2; exit 91 ;;
+esac
+EOF
+/bin/chmod 0755 "$WATCHDOG_SCRIPT" "$WATCHDOG_BUSYBOX"
+export WATCHDOG_RUN WATCHDOG_DATA WATCHDOG_FLASH WATCHDOG_LED \
+	WATCHDOG_EARLY_LOG WATCHDOG_EVENTS WATCHDOG_BUSYBOX
+/bin/mkdir -p "$WATCHDOG_RUN" "$WATCHDOG_DATA/Bird/log" "$WATCHDOG_FLASH"
+printf '%s\n' 'mock early launcher failure' >"$WATCHDOG_EARLY_LOG"
+: >"$WATCHDOG_EVENTS"
+"$WATCHDOG_SCRIPT" watchdog
+WATCHDOG_LOG=$(find "$WATCHDOG_DATA/Bird/log" -type f \
+	-name 'boot-watchdog-*.log' -print)
+[ "$(printf '%s\n' "$WATCHDOG_LOG" | wc -l | tr -d ' ')" -eq 1 ]
+grep -Fqx 'schema=bird-early-storage-watchdog-v1' "$WATCHDOG_LOG"
+grep -Fqx 'status=fatal reason=storage-readiness-timeout' "$WATCHDOG_LOG"
+grep -Fqx 'section=mounts' "$WATCHDOG_LOG"
+grep -Fqx 'section=mount-storage' "$WATCHDOG_LOG"
+grep -Fqx 'section=kernel' "$WATCHDOG_LOG"
+grep -Fqx 'mock kernel storage failure' "$WATCHDOG_LOG"
+grep -Fqx 'poweroff:-f' "$WATCHDOG_EVENTS"
+
+/bin/rm -rf "$WATCHDOG_DATA"
+/bin/mkdir -p "$WATCHDOG_DATA/Bird/log"
+printf '%s\n' storage-anchor-ready >"$WATCHDOG_RUN/boot-watchdog-disarmed"
+: >"$WATCHDOG_EVENTS"
+"$WATCHDOG_SCRIPT" watchdog
+[ ! -s "$WATCHDOG_EVENTS" ]
+if find "$WATCHDOG_DATA/Bird/log" -type f -print | grep -q .; then
+	printf '%s\n' 'healthy watchdog left a persistent record' >&2
+	exit 1
+fi
+
+/bin/rm -rf "$WATCHDOG_DATA"
+/bin/rm -f "$WATCHDOG_RUN/boot-watchdog-disarmed"
+: >"$WATCHDOG_EVENTS"
+"$WATCHDOG_SCRIPT" watchdog
+grep -Fqx 'schema=bird-early-storage-watchdog-v1' \
+	"$WATCHDOG_FLASH/bird-watchdog-failure.txt"
+grep -Fqx 'status=fatal reason=storage-readiness-timeout' \
+	"$WATCHDOG_FLASH/bird-watchdog-failure.txt"
+grep -Fqx 'section=kernel' "$WATCHDOG_FLASH/bird-watchdog-failure.txt"
+grep -Fqx 'poweroff:-f' "$WATCHDOG_EVENTS"
 
 printf '%s\n' 'stock-root mount-storage topology tests: PASS'
