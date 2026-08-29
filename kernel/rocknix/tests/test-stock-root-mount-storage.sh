@@ -650,6 +650,7 @@ COMMAND=$1
 shift
 case "$COMMAND" in
 	cat) exec /bin/cat "$@" ;;
+	dd) exec /bin/dd "$@" ;;
 	head) exec /usr/bin/head "$@" ;;
 	ls) exec /bin/ls "$@" ;;
 	rm) exec /bin/rm "$@" ;;
@@ -665,6 +666,7 @@ export WATCHDOG_RUN WATCHDOG_DATA WATCHDOG_FLASH WATCHDOG_LED \
 	WATCHDOG_EARLY_LOG WATCHDOG_EVENTS WATCHDOG_BUSYBOX
 /bin/mkdir -p "$WATCHDOG_RUN" "$WATCHDOG_DATA/Bird/log" "$WATCHDOG_FLASH"
 printf '%s\n' 'mock early launcher failure' >"$WATCHDOG_EARLY_LOG"
+printf '%s\n' 'fixture-ready' >"$WATCHDOG_RUN/readiness-fixture"
 : >"$WATCHDOG_EVENTS"
 "$WATCHDOG_SCRIPT" watchdog
 WATCHDOG_LOG=$(find "$WATCHDOG_DATA/Bird/log" -type f \
@@ -674,6 +676,7 @@ grep -Fqx 'schema=bird-early-storage-watchdog-v1' "$WATCHDOG_LOG"
 grep -Fqx 'status=fatal reason=storage-readiness-timeout' "$WATCHDOG_LOG"
 grep -Fqx 'section=mounts' "$WATCHDOG_LOG"
 grep -Fqx 'section=mount-storage' "$WATCHDOG_LOG"
+grep -Fq 'value=fixture-ready' "$WATCHDOG_LOG"
 grep -Fqx 'section=kernel' "$WATCHDOG_LOG"
 grep -Fqx 'mock kernel storage failure' "$WATCHDOG_LOG"
 grep -Fqx 'poweroff:-f' "$WATCHDOG_EVENTS"

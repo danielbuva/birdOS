@@ -139,6 +139,10 @@ write_runtime_manifest() {
 				printf 'input\tsource-kernel-irq-buttons.tsv\t644\t1\t%s\tfixture\n' \
 					'0000000000000000000000000000000000000000000000000000000000000000'
 				;;
+			irqlz4)
+				printf 'input\tsource-kernel-irq-buttons-lz4.tsv\t644\t1\t%s\tfixture\n' \
+					'0000000000000000000000000000000000000000000000000000000000000000'
+				;;
 			unknown)
 				printf 'input\tunknown-authority.tsv\t644\t1\t%s\tfixture\n' \
 					'0000000000000000000000000000000000000000000000000000000000000000'
@@ -186,7 +190,7 @@ run_runtime_verifier() (
 	. "$FLASH/bird-releases/dev-current/post-flash.sh"
 )
 
-for MODE in stock source builtin single sync changed fixed irq; do
+for MODE in stock source builtin single sync changed fixed irq irqlz4; do
 	write_runtime_manifest "$MODE"
 	run_runtime_verifier || {
 		printf 'valid %s manifest failed initramfs runtime verification\n' "$MODE" >&2

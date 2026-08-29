@@ -164,7 +164,7 @@ case "${1:-}" in
 				[ "$WATCHDOG_ITEM" != "$WATCHDOG_CAPTURE_TMP" ] || continue
 				if [ -f "$WATCHDOG_ITEM" ] && [ -r "$WATCHDOG_ITEM" ]; then
 					printf 'file=%s value=' "$WATCHDOG_ITEM"
-					$BUSYBOX head -c 256 "$WATCHDOG_ITEM" || :
+					$BUSYBOX dd if="$WATCHDOG_ITEM" bs=256 count=1 2>/dev/null || :
 					printf '\n'
 				elif [ -p "$WATCHDOG_ITEM" ]; then
 					printf 'fifo=%s\n' "$WATCHDOG_ITEM"
