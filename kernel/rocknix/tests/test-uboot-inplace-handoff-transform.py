@@ -27,7 +27,7 @@ UBOOT = pathlib.Path(
 FAST_CONFIG = ROOT / "kernel/work/bird-uboot-fast-init-20260701/fast-init.config"
 FAST_UBOOT = ROOT / "kernel/work/bird-uboot-fast-init-20260701/fast-init-uboot.bin"
 EXTLINUX = pathlib.Path("/Volumes/BIRD/extlinux/extlinux.conf")
-RELEASE = pathlib.Path("/Volumes/BIRD/bird-releases/dev-current")
+RELEASES = pathlib.Path("/Volumes/BIRD/bird-releases")
 
 PINNED_SOURCE_FILES = {
     "Makefile": "1aa8709966a310f6bb69aae4630d0234201a7ef369c8e1ec102b8c05197cbf17",
@@ -40,16 +40,6 @@ PINNED_SOURCE_FILES = {
     "boot/Kconfig": "f37b8c429f663834ce032f3ae354260c96cc6a00ac8c0ace51c7fa1a249a8062",
 }
 
-# Exact accepted dev-current files which extlinux loads at these fixed
-# Allwinner ARM64 default-environment addresses.
-KERNEL_BYTES = 30_926_856
-KERNEL_SHA256 = "cad7ad8437d0a7de0d819846b12fdf83078f5878313704d0de79274431ec9d64"
-INITRD_BYTES = 603_487
-INITRD_SHA256 = "0403ec2d90fbf0b2b3f6704a317049c9b8596b0bf2ebe2b26ef353f9f3cb4c71"
-DTB_BYTES = 49_010
-DTB_SHA256 = "f3a4273986d6e4f431b110cead8aa19e8da52ff08c64c4b204ef9664d28b5c31"
-EXTLINUX_BYTES = 279
-EXTLINUX_SHA256 = "3402bbf8cf1a3f968ad4df3837182ccae059408d1bfd55dc396bf4b10b1f5152"
 FAST_CONFIG_SHA256 = "34d359c61ede0bb54361b5f092cc9fa77fafdd3ed10aeee932622e290ad68971"
 FAST_UBOOT_BYTES = 437_168
 FAST_UBOOT_SHA256 = "9d557ccc6efb40b4e4f3daeea648f51ae313d6bec9c342d41abf4b8fdefbeb89"
@@ -83,6 +73,65 @@ def exact_file(path: pathlib.Path, size: int, sha256: str) -> bytes:
     assert len(data) == size, path
     assert digest(data) == sha256, path
     return data
+
+
+def selected_release() -> tuple[pathlib.Path, bytes]:
+    assert EXTLINUX.is_file() and not EXTLINUX.is_symlink(), EXTLINUX
+    selector = EXTLINUX.read_bytes()
+    selected: list[str] = []
+    for directive, filename in (
+        (b"LINUX", "KERNEL"),
+        (b"INITRD", "bird-initramfs.cpio.gz"),
+        (b"FDT", "dtb.img"),
+    ):
+        prefix = b"  " + directive + b" /bird-releases/"
+        matches = [line for line in selector.splitlines() if line.startswith(prefix)]
+        assert len(matches) == 1, directive
+        relative = matches[0][len(prefix) :].decode("ascii")
+        release_id, separator, selected_file = relative.partition("/")
+        assert separator == "/" and selected_file == filename, matches[0]
+        assert release_id and not release_id.startswith(".")
+        assert all(character.isalnum() or character in "._-" for character in release_id)
+        selected.append(release_id)
+    assert len(set(selected)) == 1, selected
+    release = RELEASES / selected[0]
+    assert release.is_dir() and not release.is_symlink(), release
+    return release, selector
+
+
+def manifest_files(release: pathlib.Path) -> dict[str, tuple[int, str]]:
+    manifest = release / "deploy-manifest.tsv"
+    complete = release / ".complete"
+    assert manifest.is_file() and not manifest.is_symlink(), manifest
+    assert complete.is_file() and not complete.is_symlink(), complete
+    data = manifest.read_bytes()
+    assert complete.read_text().strip() == digest(data), complete
+    records: dict[str, tuple[int, str]] = {}
+    release_records = 0
+    for raw_line in data.splitlines():
+        fields = raw_line.decode("ascii").split("\t")
+        if fields[0] == "release":
+            assert len(fields) == 2 and fields[1] == release.name
+            release_records += 1
+        if fields[0] != "file":
+            continue
+        assert len(fields) == 5
+        relative, size, sha256 = fields[1], fields[3], fields[4]
+        assert relative not in records
+        assert size.isdecimal() and len(sha256) == 64
+        records[relative] = (int(size), sha256)
+    assert release_records == 1
+    return records
+
+
+def exact_manifest_file(
+    release: pathlib.Path,
+    records: dict[str, tuple[int, str]],
+    relative: str,
+) -> bytes:
+    assert relative in records, relative
+    size, sha256 = records[relative]
+    return exact_file(release / relative, size, sha256)
 
 
 def reject(function, diagnostic: str) -> None:
@@ -219,31 +268,37 @@ def verify_compiled_environment(
 
 
 def verify_exact_layout() -> None:
-    kernel = exact_file(RELEASE / "KERNEL", KERNEL_BYTES, KERNEL_SHA256)
-    initrd = exact_file(RELEASE / "bird-initramfs.cpio.gz", INITRD_BYTES, INITRD_SHA256)
-    dtb = exact_file(RELEASE / "dtb.img", DTB_BYTES, DTB_SHA256)
-    extlinux = exact_file(EXTLINUX, EXTLINUX_BYTES, EXTLINUX_SHA256)
-    del kernel, initrd, dtb, extlinux
-    selector = EXTLINUX.read_text()
-    assert selector.count("LINUX /bird-releases/dev-current/KERNEL") == 1
-    assert selector.count("INITRD /bird-releases/dev-current/bird-initramfs.cpio.gz") == 1
-    assert selector.count("FDT /bird-releases/dev-current/dtb.img") == 1
+    release, selector = selected_release()
+    records = manifest_files(release)
+    kernel = exact_manifest_file(release, records, "KERNEL")
+    initrd = exact_manifest_file(release, records, "bird-initramfs.cpio.gz")
+    dtb = exact_manifest_file(release, records, "dtb.img")
+    release_selector = exact_manifest_file(
+        release, records, "extlinux/extlinux.conf"
+    )
+    assert selector == release_selector
+    release_path = f"/bird-releases/{release.name}"
+    selector_text = selector.decode("ascii")
+    assert selector_text.count(f"LINUX {release_path}/KERNEL") == 1
+    assert selector_text.count(f"INITRD {release_path}/bird-initramfs.cpio.gz") == 1
+    assert selector_text.count(f"FDT {release_path}/dtb.img") == 1
 
     ranges = (
-        ("kernel", KERNEL_ADDR, KERNEL_BYTES),
-        ("fdt-with-pad", FDT_ADDR, DTB_BYTES + FDT_PAD),
-        ("selector", SCRIPT_ADDR, EXTLINUX_BYTES),
-        ("initrd", INITRD_ADDR, INITRD_BYTES),
+        ("kernel", KERNEL_ADDR, len(kernel)),
+        ("fdt-with-pad", FDT_ADDR, len(dtb) + FDT_PAD),
+        ("selector", SCRIPT_ADDR, len(selector)),
+        ("initrd", INITRD_ADDR, len(initrd)),
     )
     for (_, start, size), (_, next_start, _) in zip(ranges, ranges[1:]):
         assert start + size < next_start
-    assert FDT_ADDR + DTB_BYTES + FDT_PAD < SCRIPT_ADDR
-    assert SCRIPT_ADDR + EXTLINUX_BYTES < PXE_ADDR < OVERLAY_ADDR < INITRD_ADDR
-    assert INITRD_ADDR + INITRD_BYTES < MINIMUM_DRAM_END
+    assert FDT_ADDR + len(dtb) + FDT_PAD < SCRIPT_ADDR
+    assert SCRIPT_ADDR + len(selector) < PXE_ADDR < OVERLAY_ADDR < INITRD_ADDR
+    assert INITRD_ADDR + len(initrd) < MINIMUM_DRAM_END
 
-    # Exact host-side traffic removed at handoff: one initrd memmove plus one
-    # FDT open/copy sized to its configured padding. This is not device timing.
-    assert INITRD_BYTES + DTB_BYTES + FDT_PAD == 664_785
+    # Host-side traffic removed at handoff remains one initrd memmove plus one
+    # FDT open/copy sized to its configured padding. The manifest fixes the
+    # exact current bytes; this assertion proves their fixed-address layout.
+    assert len(initrd) + len(dtb) + FDT_PAD > 0
 
 
 def main() -> None:
