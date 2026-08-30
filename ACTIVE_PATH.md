@@ -369,7 +369,7 @@ diagnostics, but does not justify changing the accepted suspend path during
 Stage 10.
 
 In-place handoff plus the reviewed LZ4 bound remains the active physically
-accepted U-Boot/kernel pair. Stage 10 is roughly 97 percent complete: five
+accepted U-Boot/kernel pair. Stage 10 is roughly 98 percent complete: six
 accepted U-Boot transitions, the clean canonical prerequisite, raw-kernel
 bootstage measurement and corrected uninstrumented LZ4 development-device gate
 are complete. The reviewed simple-parser successor and bounded installer also
@@ -379,8 +379,16 @@ generic command surface to isolate that device test. Why change: the reviewed
 fixed-command-closure successor retains `sysboot`, extlinux/PXE, `booti`, Linux
 boot, FAT/MBR MMC reads, raw initrd and LZ4 while removing 66,056 further
 combined bytes. Its repeat-build, exact-config, transaction and workflow gates
-pass without a card write. Its physical gate and the inherited-frame experiment
-follow.
+passed before its exact raw installation. The returned RG34XX-SP then passed
+29/29 controls, content and service launches, suspend/resume and orderly
+shutdown persistence. Three completed cold boots put usable-frame median at
+1185 ms, input-ready median at 1174 ms and asynchronous storage-ready median at
+3427 ms. The fastest usable frame was 1176 ms, but the medians do not establish
+a faster usable frame or faster storage than the immediately preceding 1182 ms
+and 3355 ms single sample. The roughly unchanged stopwatch result agrees: this
+is a verified size and attack-surface reduction, not a claimed device-latency
+improvement. Detailed boot, input, content, network, suspend and shutdown logs
+remained usable. The inherited-frame experiment follows.
 
 Why the previous measurement boundary existed: source inspection treated
 generic bootm's `bootm_load_os` mark as the kernel-load boundary. The accepted

@@ -25,7 +25,7 @@ latency result, and show no measurable improvement. The clean full-release
 prerequisite for Stage 10 is satisfied. Three returned raw-kernel bootstage
 traces put the median fixed FAT/extlinux interval at 1,419,998 us and the
 following booti setup/handoff interval at 224,968 us. Rough progress is about
-97 percent. The temporary capture path is retired from the next canonical
+98 percent. The temporary capture path is retired from the next canonical
 runtime, the corrected uninstrumented LZ4 development-device gate passed, the
 simple-parser successor passed its broad hardware gate, and its smaller fixed
 MBR/FAT read-path successor passed its exact installation and broad hardware
@@ -33,8 +33,12 @@ gate. Why before: fixed-read-path kept generic U-Boot commands to isolate its
 physical result. Why change: the reviewed fixed-command-closure successor keeps
 the exact `sysboot`/extlinux/`booti` path and removes 66,056 more combined
 bytes. Its repeat-build, config, corruption, exact transaction and workflow
-gates pass without a card write. Its physical gate and inherited-frame work
-follow.
+gates passed before the exact raw install, and the returned device passed the
+broad screen including 29/29 controls and persisted shutdown diagnostics. The
+three completed cold boots had usable-frame, input-ready and storage-ready
+medians of 1185, 1174 and 3427 ms. Neither those logs nor the unchanged
+stopwatch result establish faster usable-frame or storage timing. Inherited-frame
+work follows.
 
 Why before: the retained ROCKNIX fake-suspend
 provider owns its accepted audio, input, governor, core-parking and LED
