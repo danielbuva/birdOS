@@ -1735,14 +1735,15 @@ memory or size benefit.
 
 ## Stage 10 — U-Boot performance and inherited frame
 
-Rough planning progress is about 95 percent. Environment-nowhere,
+Rough planning progress is about 96 percent. Environment-nowhere,
 direct-extlinux, no-heap-clear, fast-init and in-place handoff are physically
 accepted, and canonical release `v6.23-20260814-201218` satisfies the clean
 full-release prerequisite. The raw-kernel bootstage measurement and paired LZ4
 host preparation are complete, and the corrected uninstrumented LZ4 runtime
 has passed its broad development-device gate. The remaining large boundaries
-include the fixed-read-path successor's hardware gate and the inherited-frame
-experiment. The simple-parser successor has passed its broad hardware gate.
+include remaining compiled-closure subtraction and the inherited-frame
+experiment. The simple-parser and fixed-read-path successors have passed their
+broad hardware gates.
 
 The first Stage 10 candidate has passed its complete non-deploying host gate.
 The four-pass build produced two byte-identical baselines that each reproduce
@@ -2100,7 +2101,13 @@ only the reviewed simple-parser prefix, writes 934 complete sectors, preserves
 the reviewed 175-byte sector tail, verifies all 16 MiB, rolls back on failure
 and provides explicit exact simple-parser recovery. Focused authority tests,
 the destructive-path simulator and all 79 workflow cases pass. This is a
-host-ready production successor, not yet a hardware result or timing claim.
+host size result rather than a timing claim. The exact installation and
+independent raw-prefix reread matched the reviewed identity. The returned broad
+screen passed with Input Tester 29/29, complete suspend/resume and orderly
+shutdown. Boot `e8129b34` recorded usable frame at 1,182 ms, input readiness at
+1,173 ms and storage at 3,355 ms; the user's stopwatch result was about the same
+as before. Detailed logs survived without a usability change. This physically
+accepts the fixed MBR/FAT read-path boundary without claiming acceleration.
 
 ## Candidate report gate
 

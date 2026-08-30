@@ -369,12 +369,13 @@ diagnostics, but does not justify changing the accepted suspend path during
 Stage 10.
 
 In-place handoff plus the reviewed LZ4 bound remains the active physically
-accepted U-Boot/kernel pair. Stage 10 is roughly 95 percent complete: five
+accepted U-Boot/kernel pair. Stage 10 is roughly 96 percent complete: five
 accepted U-Boot transitions, the clean canonical prerequisite, raw-kernel
 bootstage measurement and corrected uninstrumented LZ4 development-device gate
 are complete. The reviewed simple-parser successor and bounded installer also
-passed their hardware gate. The fixed-read-path subsystem successor is sealed
-and host-ready; its hardware gate and the inherited-frame experiment remain.
+passed their hardware gate. The fixed-read-path subsystem successor also passed
+its exact installation and broad hardware gate. Remaining compiled-closure
+subtraction and the inherited-frame experiment follow.
 
 Why the previous measurement boundary existed: source inspection treated
 generic bootm's `bootm_load_os` mark as the kernel-load boundary. The accepted
@@ -521,8 +522,15 @@ than simple-parser (7.78 and 10.12 percent respectively). SPL and the control
 DTB remain byte-identical, and FIT differences are confined to U-Boot data. The
 complete transaction simulator verifies the exact 934-sector write, 175-byte
 sector tail, predecessor rejection, no-op, failure rollback, whole-prefix
-readback and explicit simple-parser restore. This is a host size result; the
-candidate is not installed and makes no device timing claim.
+readback and explicit simple-parser restore. The exact card installation and
+independent prefix reread matched
+`7826608f5257f751bd05a45cfcf1d8fdedd1a6381350e1af2c437b947aa4df72`.
+The returned broad screen passed, including Input Tester 29/29 and a complete
+suspend/resume plus orderly shutdown. Boot `e8129b34` recorded a 1,182 ms usable
+frame, 1,173 ms input readiness and 3,355 ms storage readiness. Stopwatch timing
+was unchanged at human resolution. Detailed early, supervisor, content,
+suspend, input and shutdown records survived, so log usability is unchanged;
+the near-baseline single timing sample is not a hardware improvement claim.
 
 The corrected source-kernel package reached Bird's early usable menu but not
 application readiness. A temporary early watchdog proved that release-runtime

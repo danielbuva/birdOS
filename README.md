@@ -17,7 +17,7 @@ three-sample result. The latest seven stopwatch samples span 2.64--2.90 seconds
 with a coarse 2.78-second median. They are a human reaction-time check, not a
 calibrated latency distribution, so no measurable speed improvement is claimed.
 This clean canonical gate satisfies the current Stage 10 prerequisite. Stage 10
-is roughly 95 percent complete. Immutable LZ4 release
+is roughly 96 percent complete. Immutable LZ4 release
 `v6.23-20260826-194408` first reached the interactive menu without usable
 storage. The added initramfs-owned 30-second storage watchdog then localized
 the stop to strict release verification: the LZ4 source-kernel provenance was
@@ -28,10 +28,13 @@ RG34XX-SP functional screen after the test device was charged. The remaining
 work has sealed and physically accepted the fixed U-Boot simple-parser
 successor and its bounded LZ4-to-parser transaction. Returned boot `07d80b9c`
 passed the broad application, media, controls, suspend/resume and shutdown
-screen with Input Tester 29/29. The next fixed-read-path successor is sealed
-and host-verified but not installed: it removes unused filesystem commands,
-EXT support, GPT/EFI parsing and FAT writes while retaining the exact MBR/FAT
-`sysboot` closure. Its physical gate and the inherited-frame experiment remain.
+screen with Input Tester 29/29. The fixed-read-path successor then removed
+unused filesystem commands, EXT support, GPT/EFI parsing and FAT writes while
+retaining the exact MBR/FAT `sysboot` closure. Its exact installation and broad
+hardware gate passed. Returned logs recorded a 1,182 ms usable frame, 1,173 ms
+input readiness and 3,355 ms storage readiness; stopwatch timing remained
+visibly unchanged, so no speed claim is made. Remaining compiled-closure
+subtraction and the inherited-frame experiment follow.
 
 Why before: ROCKNIX's retained fake-suspend provider owns
 the accepted audio, input, governor, core-parking and LED transaction, while
