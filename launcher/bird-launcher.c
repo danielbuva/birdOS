@@ -231,6 +231,20 @@ typedef signed long s64;
 #define RG34XX_FB_STRIDE BIRD_DEVICE_FB_STRIDE
 #define RG34XX_FB_BYTES BIRD_DEVICE_FB_MAPPING_BYTES
 
+/* Build-time packed XRGB wallpaper regions. Each source row has an even pixel
+ * stride, including one unused pad pixel for the 163-pixel shadow-left strip,
+ * so the hot copy path retains aligned paired loads. */
+#define STATIC_BASE_BYTES 852848UL
+#define STATIC_BASE_0 0UL
+#define STATIC_BASE_1 103680UL
+#define STATIC_BASE_2 129280UL
+#define STATIC_BASE_3 154880UL
+#define STATIC_BASE_4 235520UL
+#define STATIC_BASE_5 419840UL
+#define STATIC_BASE_6 604160UL
+#define STATIC_BASE_7 606128UL
+#define STATIC_BASE_8 608048UL
+
 #define FRAMEBUFFER_PATH_DIAGNOSTIC 0U
 #define FRAMEBUFFER_PATH_RG34XX_XRGB8888 1U
 #define FB_MISMATCH_XRES (1UL << 0)
@@ -3439,12 +3453,12 @@ static void open_static_base(void) {
     if (framebuffer_path != FRAMEBUFFER_PATH_RG34XX_XRGB8888) return;
     static_base_fd = (int)sys_open(BIRD_STATIC_BASE_PATH, O_RDONLY);
     if (static_base_fd < 0) return;
-    if (sys_lseek(static_base_fd, 0, SEEK_END) != (long)RG34XX_FB_BYTES) {
+    if (sys_lseek(static_base_fd, 0, SEEK_END) != (long)STATIC_BASE_BYTES) {
         sys_close(static_base_fd);
         static_base_fd = -1;
         return;
     }
-    mapped = (long)sys_mmap_readonly(static_base_fd, RG34XX_FB_BYTES);
+    mapped = (long)sys_mmap_readonly(static_base_fd, STATIC_BASE_BYTES);
     if ((u64)mapped >= (u64)-4095L) {
         sys_close(static_base_fd);
         static_base_fd = -1;
@@ -3455,7 +3469,7 @@ static void open_static_base(void) {
 
 static void close_static_base(void) {
     if (static_base) {
-        sys_munmap((void *)static_base, RG34XX_FB_BYTES);
+        sys_munmap((void *)static_base, STATIC_BASE_BYTES);
         static_base = 0;
     }
     if (static_base_fd >= 0) {
@@ -3477,12 +3491,13 @@ static int static_base_is_available(void) {
 }
 
 #ifdef BIRD_STATIC_BASE_PATH
-static void copy_static_base_region(u32 x, u32 y, u32 width, u32 height) {
+static void copy_static_base_region(u32 x, u32 y, u32 width, u32 height,
+                                    u64 source_offset, u32 source_stride) {
     u32 row;
     BIRD_PROFILE_RECTANGLE(x, y, width, height);
     for (row = 0U; row < height; row++) {
-        const u32 *source = (const u32 *)(static_base +
-            (u64)(y + row) * RG34XX_FB_STRIDE + x * 4U);
+        const u32 *source = (const u32 *)(static_base + source_offset +
+                                         (u64)row * source_stride);
         volatile u32 *target = (volatile u32 *)(fb +
             (u64)(y + row) * RG34XX_FB_STRIDE + x * 4U);
         u32 pixels = width;
@@ -3511,15 +3526,24 @@ static int copy_static_base(void) {
     if (!static_base ||
         framebuffer_path != FRAMEBUFFER_PATH_RG34XX_XRGB8888)
         return 0;
-    copy_static_base_region(0U, 0U, 720U, 36U);
-    copy_static_base_region(0U, 36U, 160U, 40U);
-    copy_static_base_region(560U, 36U, 160U, 40U);
-    copy_static_base_region(0U, 76U, 720U, 28U);
-    copy_static_base_region(0U, 104U, 160U, 288U);
-    copy_static_base_region(560U, 104U, 160U, 288U);
-    copy_static_base_region(0U, 392U, 163U, 3U);
-    copy_static_base_region(560U, 392U, 160U, 3U);
-    copy_static_base_region(0U, 395U, 720U, 85U);
+    copy_static_base_region(0U, 0U, 720U, 36U,
+                            STATIC_BASE_0, 2880U);
+    copy_static_base_region(0U, 36U, 160U, 40U,
+                            STATIC_BASE_1, 640U);
+    copy_static_base_region(560U, 36U, 160U, 40U,
+                            STATIC_BASE_2, 640U);
+    copy_static_base_region(0U, 76U, 720U, 28U,
+                            STATIC_BASE_3, 2880U);
+    copy_static_base_region(0U, 104U, 160U, 288U,
+                            STATIC_BASE_4, 640U);
+    copy_static_base_region(560U, 104U, 160U, 288U,
+                            STATIC_BASE_5, 640U);
+    copy_static_base_region(0U, 392U, 163U, 3U,
+                            STATIC_BASE_6, 656U);
+    copy_static_base_region(560U, 392U, 160U, 3U,
+                            STATIC_BASE_7, 640U);
+    copy_static_base_region(0U, 395U, 720U, 85U,
+                            STATIC_BASE_8, 2880U);
     return 1;
 #else
     return 0;
@@ -3563,8 +3587,8 @@ static void restore_footer_background(int y, int height) {
         u32 pairs = MENU_TOP_BAR_WIDTH / 2U;
         if (static_base_is_available()) {
 #ifdef BIRD_STATIC_BASE_PATH
-            source = (const u64 *)(static_base +
-                (u64)(y + (int)row) * RG34XX_FB_STRIDE +
+            source = (const u64 *)(static_base + STATIC_BASE_8 +
+                (u64)(y + (int)row - 395) * 2880U +
                 MENU_FRAME_X * 4U);
 #else
             source = 0;

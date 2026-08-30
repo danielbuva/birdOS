@@ -390,6 +390,19 @@ is a verified size and attack-surface reduction, not a claimed device-latency
 improvement. Detailed boot, input, content, network, suspend and shutdown logs
 remained usable. The inherited-frame experiment follows.
 
+Why the inherited-frame consumer existed: the original proprietary firmware
+initialized the display and could show a fixed boot-resource BMP before Linux,
+so a verified matching frame could let the early launcher paint only its
+interactive overlay. Why it is not enabled: the accepted mainline H700 U-Boot
+has `CONFIG_VIDEO=n`; its pinned Sunxi video paths explicitly exclude the
+H616/H700 generation, and its selectable DE2 driver is limited to older SoCs
+and HDMI. The current card also has no proprietary boot-resource partition.
+Producing the frame would therefore require a new H700 clock/display-engine,
+TCON, RGB-panel, GPIO, PWM and handoff driver, not a bounded asset change. That
+risk is deferred. The guarded consumer and full fallback remain, while the
+safe fixed-region asset removes the fallback bytes that the launcher never
+reads.
+
 Why the previous measurement boundary existed: source inspection treated
 generic bootm's `bootm_load_os` mark as the kernel-load boundary. The accepted
 device trace proved that `booti` performs `BOOTM_STATE_LOADOS` itself and never
@@ -1990,13 +2003,14 @@ pinned 720x480 RGB PNG
 [`firmware/assets/bird-launcher-backdrop.png`](firmware/assets/bird-launcher-backdrop.png).
 The build-time generator verifies that PNG's format and SHA-256, decodes it on
 the host, and deterministically emits a fully composited bottom-up 24-bit BMP
-and a sparse one-page native XRGB8888 wallpaper image plus their digest
-contract. The native artifact is exactly 720x480, top-down, 2,880-byte stride,
-page offset 0:0 and `B,G,R,X` memory order. The opaque top bar, menu container
-and menu shadow are subtracted to zero in that artifact. The PNG is the only
+plus a full native XRGB8888 verification page, a fixed-region wallpaper asset
+and their digest contract. The verification page is exactly 720x480, top-down,
+2,880-byte stride, page offset 0:0 and `B,G,R,X` memory order. The shipped
+852,848-byte asset packs only the nine visible wallpaper regions through fixed
+offsets and even-pixel row strides. The PNG is the only
 editable wallpaper source in the repository; neither PNG nor BMP is shipped to
-or decoded by the launcher. Runtime recovery maps the native bytes, copies only
-visible wallpaper spans and composes fixed chrome before one framebuffer
+or decoded by the launcher. Runtime recovery maps those fixed native regions
+and composes fixed chrome before one framebuffer
 barrier.
 
 The home view has a narrow vertical rail labelled `HOME`; its cream top bar is
@@ -2030,9 +2044,9 @@ different boundaries:
 No later marker may be inferred from an earlier one.
 
 The final-root recovery payload always carries
-`/flash/bird/launcher-base.xrgb`, the exact 1,382,400-byte sparse native XRGB page
+`/flash/bird/launcher-base.xrgb`, the exact 852,848-byte fixed-region XRGB asset
 generated from the pinned source. Until inherited U-Boot frame reuse is proven
-on the RG34XX-SP, the early initramfs carries the same native page at
+on the RG34XX-SP, the early initramfs carries the same native asset at
 `/opt/bird/launcher-base.xrgb`; its compressed-overlay ceiling is therefore
 786,432 bytes. `BIRD_REUSE_UBOOT_FRAME=1` is accepted only with an external
 hardware-verified contract byte-identical to the generated build contract. In
@@ -2040,6 +2054,13 @@ that verified mode the early payload omits the duplicate XRGB page and returns
 to the retained 262,144-byte compressed-overlay ceiling. The final-root asset
 remains present in either mode for recovery after content. No mode introduces
 a runtime PNG or BMP decoder.
+Why before: the full 1,382,400-byte native page directly mirrored framebuffer
+coordinates and minimized the initial implementation's source-address logic.
+Why change: its opaque chrome regions were never read. Packing the same nine
+fixed copy regions removes 529,552 raw initramfs/final-root bytes and 16,616
+standalone gzip bytes while preserving every framebuffer write and the full
+fallback. This is a host-side byte and decompressor-output reduction until the
+RG34XX-SP gate supplies device timing.
 Current enforced budgets are 600,000 release / 660,000 profile bytes for the
 final launcher, 610,000 / 670,000 bytes for the early launcher, 786,432
 compressed early-overlay bytes with the native fallback or 262,144 bytes with

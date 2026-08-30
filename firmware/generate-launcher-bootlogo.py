@@ -16,6 +16,25 @@ from pathlib import Path
 WIDTH = 720
 HEIGHT = 480
 
+# Exact wallpaper regions that remain visible after the launcher paints its
+# fixed opaque chrome. Rows are padded to an even pixel count so every region
+# and every row remains naturally aligned for paired AArch64 loads.
+STATIC_BASE_REGIONS = (
+    (0, 0, 720, 36),
+    (0, 36, 160, 40),
+    (560, 36, 160, 40),
+    (0, 76, 720, 28),
+    (0, 104, 160, 288),
+    (560, 104, 160, 288),
+    (0, 392, 163, 3),
+    (560, 392, 160, 3),
+    (0, 395, 720, 85),
+)
+STATIC_BASE_BYTES = sum(
+    ((width + (width & 1)) * 4) * height
+    for _, _, width, height in STATIC_BASE_REGIONS
+)
+
 TOP_BAR_X = 160
 TOP_BAR_Y = 36
 TOP_BAR_WIDTH = 400
@@ -324,15 +343,33 @@ def framebuffer_visible_fingerprint(pixels: bytes) -> tuple[int, int]:
     return visible_a, visible_b
 
 
+def pack_static_base(xrgb: bytes) -> bytes:
+    """Pack the nine fixed XRGB wallpaper regions in screen order."""
+    packed = bytearray()
+    stride = WIDTH * 4
+    for x, y, width, height in STATIC_BASE_REGIONS:
+        row_bytes = width * 4
+        packed_stride = (width + (width & 1)) * 4
+        for row in range(height):
+            start = (y + row) * stride + x * 4
+            packed.extend(xrgb[start : start + row_bytes])
+            if packed_stride != row_bytes:
+                packed.extend(b"\0" * (packed_stride - row_bytes))
+    if len(packed) != STATIC_BASE_BYTES:
+        raise SystemExit(f"error: unexpected static base size {len(packed)}")
+    return bytes(packed)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("output", type=Path)
     parser.add_argument("--contract", type=Path)
     parser.add_argument("--xrgb-output", type=Path)
+    parser.add_argument("--static-base-output", type=Path)
     parser.add_argument(
         "--early-static-asset-bytes",
         type=int,
-        choices=(0, WIDTH * HEIGHT * 4),
+        choices=(0, STATIC_BASE_BYTES),
         default=0,
     )
     parser.add_argument(
@@ -354,6 +391,9 @@ def main() -> None:
         xrgb[target : target + 3] = raw_wallpaper[source : source + 3]
     if arguments.xrgb_output:
         atomic_write(arguments.xrgb_output, bytes(xrgb))
+    static_base = pack_static_base(bytes(xrgb))
+    if arguments.static_base_output:
+        atomic_write(arguments.static_base_output, static_base)
 
     # BMP stores positive-height images bottom-up. Each 720x24-bit row is
     # already a multiple of four bytes, so no row padding is required.
@@ -369,7 +409,7 @@ def main() -> None:
         visible_a, visible_b = framebuffer_visible_fingerprint(bytes(pixels))
         asset_sha = hashlib.sha256(output).hexdigest()
         contract = (
-            "schema\tbird-boot-frame-v3\n"
+            "schema\tbird-boot-frame-v4\n"
             f"backdrop-sha256\t{BACKDROP_SHA256}\n"
             f"asset-sha256\t{asset_sha}\n"
             f"asset-bytes\t{len(output)}\n"
@@ -384,11 +424,13 @@ def main() -> None:
             "raw-orientation\ttop-down\n"
             "raw-page-offset\t0:0\n"
             "raw-subtracted-regions\ttop-bar,menu-container,menu-shadow\n"
+            "static-base-layout\tfixed-visible-regions-v1\n"
             f"visible-hash-a\t{visible_a:016x}\n"
             f"visible-hash-b\t{visible_b:016x}\n"
             f"early-static-asset-bytes\t{arguments.early_static_asset_bytes}\n"
-            f"final-root-static-asset-bytes\t{len(xrgb)}\n"
-            f"final-root-static-asset-sha256\t{hashlib.sha256(xrgb).hexdigest()}\n"
+            f"final-root-static-asset-bytes\t{len(static_base)}\n"
+            "final-root-static-asset-sha256\t"
+            f"{hashlib.sha256(static_base).hexdigest()}\n"
         )
         atomic_write(arguments.contract, contract.encode("ascii"))
     print(f"generated {arguments.output}: {len(output)} bytes")

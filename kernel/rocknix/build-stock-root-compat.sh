@@ -166,10 +166,10 @@ validate_final_launcher_static_assets() {
 	FINAL_BASE=$OUTPUT/card/bird/launcher-base.xrgb
 	[ -f "$FINAL_BASE" ] && [ ! -L "$FINAL_BASE" ] || \
 		fail 'final-root launcher static base is missing or unsafe'
-	[ "$(file_bytes "$FINAL_BASE")" -eq 1382400 ] || \
+	[ "$(file_bytes "$FINAL_BASE")" -eq 852848 ] || \
 		fail 'final-root launcher static base size changed'
 	[ "$(sha256 "$FINAL_BASE")" = \
-		6f9daae758675bd8bb805a851b30f1d64b06ec6e8367a17749707ac61824843a ] || \
+		e6f9ca8ef4100cdf384bc2f8f3f7b902bc83cee6c4bc36e82fbc666328b382de ] || \
 		fail 'final-root launcher static base digest changed'
 	if find "$OUTPUT/card/bird" -type f ! -path "$FINAL_BASE" \
 		\( -iname '*.bmp' -o -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' \
@@ -368,7 +368,7 @@ mkdir -p "$BOOT_FRAME_WORK"
 python3 "$ROOT/firmware/generate-launcher-bootlogo.py" \
 	"$BOOT_FRAME_WORK/bird-frame-zero.bmp" \
 	--contract "$OUTPUT/card/bird/boot-frame.contract" \
-	--xrgb-output "$OUTPUT/card/bird/launcher-base.xrgb"
+	--static-base-output "$OUTPUT/card/bird/launcher-base.xrgb"
 chmod 0644 "$OUTPUT/card/bird/boot-frame.contract" \
 	"$OUTPUT/card/bird/launcher-base.xrgb"
 

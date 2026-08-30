@@ -89,6 +89,9 @@ _Alignas(8) static u8 fake_framebuffer[TEST_FB_WIDTH * TEST_FB_HEIGHT *
                                        TEST_FB_BYTES_PER_PIXEL * 2U];
 _Alignas(8) static u8 fake_framebuffer_reference[
     TEST_FB_WIDTH * TEST_FB_HEIGHT * TEST_FB_BYTES_PER_PIXEL * 2U];
+#ifdef BIRD_TEST_STATIC_BASE_XRGB
+_Alignas(8) static u8 fake_static_base[STATIC_BASE_BYTES];
+#endif
 #ifdef BIRD_PROFILE
 #define PROFILE_LOG_BYTES 16384U
 static char fake_profile_log[PROFILE_LOG_BYTES];
@@ -1466,6 +1469,18 @@ static int load_boot_frame_fixture(u8 *target) {
 }
 #endif
 
+#ifdef BIRD_TEST_STATIC_BASE_XRGB
+static int load_static_base_fixture(void) {
+    FILE *asset = fopen(BIRD_TEST_STATIC_BASE_XRGB, "rb");
+    int ok = asset != NULL &&
+             fread(fake_static_base, 1U, STATIC_BASE_BYTES, asset) ==
+                 STATIC_BASE_BYTES &&
+             fgetc(asset) == EOF;
+    if (asset) fclose(asset);
+    return ok;
+}
+#endif
+
 static int run_phase5_startup_tests(void) {
     struct frame_resume_state state;
     struct frame_resume_state fallback_state;
@@ -1606,9 +1621,12 @@ static int run_phase5_startup_tests(void) {
                     framebuffer_pixel(MENU_FRAME_X, MENU_FOOTER_Y) ==
                         color(10U, 14U, 20U),
                 "Phase 5A fallback exposed interactive menu pixels");
-#if defined(BIRD_STATIC_BASE_PATH) && defined(BIRD_TEST_BOOT_FRAME_XRGB)
+#if defined(BIRD_STATIC_BASE_PATH) && defined(BIRD_TEST_BOOT_FRAME_XRGB) && \
+    defined(BIRD_TEST_STATIC_BASE_XRGB)
     ok &= check(load_boot_frame_fixture(fake_framebuffer_reference),
-                "final-root XRGB fixture was unavailable");
+                "full-frame XRGB fixture was unavailable");
+    ok &= check(load_static_base_fixture(),
+                "packed static-base XRGB fixture was unavailable");
     ok &= check(
         buffer_region_is_color(fake_framebuffer_reference,
                                MENU_TOP_BAR_X, MENU_TOP_BAR_Y,
@@ -1623,7 +1641,7 @@ static int run_phase5_startup_tests(void) {
                                    MENU_FRAME_RIGHT - (SIDEBAR_X + 3),
                                    3U, 0U),
         "native XRGB base retained pixels hidden by opaque launcher chrome");
-    static_base = fake_framebuffer_reference;
+    static_base = fake_static_base;
     memset(fake_framebuffer, 0x5a, RG34XX_FB_BYTES);
     BIRD_PROFILE_RENDER(PROFILE_RENDER_RECOVERY);
     draw_startup_base();
@@ -1649,7 +1667,7 @@ static int run_phase5_startup_tests(void) {
                                         MENU_CONTENT_WIDTH - MENU_DIVIDER_WIDTH,
                                         MENU_CONTENT_H,
                                         color(36U, 10U, 18U)),
-        "final-root recovery did not compose sparse native base and chrome");
+        "final-root recovery did not compose packed native base and chrome");
     static_base = 0;
     memcpy(fake_framebuffer_reference, fake_framebuffer, RG34XX_FB_BYTES);
     memset(fake_framebuffer, 0x5a, RG34XX_FB_BYTES);
@@ -1684,9 +1702,15 @@ static int run_phase5_startup_tests(void) {
 #ifdef BIRD_TEST_BOOT_FRAME_XRGB
     ok &= check(load_boot_frame_fixture(fake_framebuffer_reference),
                 "generated U-Boot XRGB fixture was unavailable");
-    static_base = fake_framebuffer_reference;
+#ifdef BIRD_TEST_STATIC_BASE_XRGB
+    ok &= check(load_static_base_fixture(),
+                "generated packed static-base fixture was unavailable");
+    static_base = fake_static_base;
     draw_startup_base();
     static_base = 0;
+#else
+#error "boot-frame host test requires the packed static-base fixture"
+#endif
 #endif
     ok &= check(inherited_boot_frame_matches(),
                 "manifest-matched generated boot frame was not reusable");

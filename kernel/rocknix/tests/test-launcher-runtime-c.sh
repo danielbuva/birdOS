@@ -8,7 +8,8 @@ trap 'rm -rf "$TMP"' EXIT INT TERM HUP
 CC=${CC:-cc}
 
 python3 "$ROOT/firmware/generate-launcher-bootlogo.py" \
-	"$TMP/boot-frame.bmp" --xrgb-output "$TMP/boot-frame.xrgb" >/dev/null
+	"$TMP/boot-frame.bmp" --xrgb-output "$TMP/boot-frame.xrgb" \
+	--static-base-output "$TMP/static-base.xrgb" >/dev/null
 
 build_and_run() {
 	NAME=$1
@@ -29,7 +30,8 @@ build_and_run boot-frame -DBIRD_PROFILE \
 	-DBIRD_BOOT_FRAME_VISIBLE_HASH_A=0x849df1c7262d2e3eUL \
 	-DBIRD_BOOT_FRAME_VISIBLE_HASH_B=0x754469f5749caa71UL \
 	-DBIRD_BOOT_FRAME_ASSET_ID=0xfca1176e4247c5b3UL \
-	-DBIRD_TEST_BOOT_FRAME_XRGB=\"$TMP/boot-frame.xrgb\"
+	-DBIRD_TEST_BOOT_FRAME_XRGB=\"$TMP/boot-frame.xrgb\" \
+	-DBIRD_TEST_STATIC_BASE_XRGB=\"$TMP/static-base.xrgb\"
 
 if "$CC" -E -DBIRD_PROFILE_DEEP "$ROOT/launcher/bird-launcher.c" \
 		-o "$TMP/production-deep.i" 2>"$TMP/production-deep.err"; then

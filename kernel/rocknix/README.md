@@ -40,6 +40,17 @@ medians of 1185, 1174 and 3427 ms. Neither those logs nor the unchanged
 stopwatch result establish faster usable-frame or storage timing. Inherited-frame
 work follows.
 
+The inherited-frame consumer stays disabled. The accepted mainline H700 U-Boot
+has no video producer, and its pinned Sunxi video drivers exclude this SoC
+generation; the current card also has no proprietary splash partition. Adding
+the producer would be a new display-engine/TCON/panel/PWM handoff project, not a
+small U-Boot closure. Why before: the fallback used a full native framebuffer
+page because direct coordinates made the initial copy path simple. Why change:
+the launcher reads only nine fixed wallpaper regions. Their generated packed
+form removes 529,552 raw payload bytes while preserving the exact fallback,
+render writes and visible output. Hardware timing remains unclaimed until its
+separate RG34XX-SP gate.
+
 Why before: the retained ROCKNIX fake-suspend
 provider owns its accepted audio, input, governor, core-parking and LED
 transaction, while Bird restores the fixed panel and logs rare transitions

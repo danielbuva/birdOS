@@ -111,7 +111,8 @@ ASSET_ROOT=$TMP/static-assets
 mkdir -p "$ASSET_ROOT/final/card/bird"
 python3 "$ROOT/firmware/generate-launcher-bootlogo.py" \
 	"$ASSET_ROOT/frame.bmp" \
-	--xrgb-output "$ASSET_ROOT/final/card/bird/launcher-base.xrgb" >/dev/null
+	--static-base-output \
+	"$ASSET_ROOT/final/card/bird/launcher-base.xrgb" >/dev/null
 (
 	OUTPUT=$ASSET_ROOT/final
 	PAYLOAD=$ASSET_ROOT/early
@@ -127,7 +128,7 @@ python3 "$ROOT/firmware/generate-launcher-bootlogo.py" \
 	validate_early_launcher_static_assets
 	cp "$OUTPUT/card/bird/launcher-base.xrgb" \
 		"$PAYLOAD/opt/bird/launcher-base.xrgb"
-	EARLY_STATIC_ASSET_BYTES=1382400
+	EARLY_STATIC_ASSET_BYTES=852848
 	validate_early_launcher_static_assets
 	EARLY_STATIC_ASSET_BYTES=0
 	if (validate_early_launcher_static_assets) \

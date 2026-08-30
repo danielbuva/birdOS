@@ -11,19 +11,23 @@ trap 'rm -rf "$TMP"' EXIT INT TERM HUP
 for NAME in first second; do
 	python3 "$ROOT/firmware/generate-launcher-bootlogo.py" \
 		"$TMP/$NAME.bmp" --contract "$TMP/$NAME.contract" \
-		--xrgb-output "$TMP/$NAME.xrgb" >/dev/null
+		--xrgb-output "$TMP/$NAME.xrgb" \
+		--static-base-output "$TMP/$NAME.static.xrgb" >/dev/null
 done
 
 cmp "$TMP/first.bmp" "$TMP/second.bmp"
 cmp "$TMP/first.contract" "$TMP/second.contract"
 cmp "$TMP/first.xrgb" "$TMP/second.xrgb"
-python3 - "$TMP/first.bmp" "$TMP/first.xrgb" <<'PY'
+cmp "$TMP/first.static.xrgb" "$TMP/second.static.xrgb"
+python3 - "$TMP/first.bmp" "$TMP/first.xrgb" \
+	"$TMP/first.static.xrgb" <<'PY'
 import struct
 import sys
 from pathlib import Path
 
 bmp = Path(sys.argv[1]).read_bytes()
 xrgb = Path(sys.argv[2]).read_bytes()
+static_base = Path(sys.argv[3]).read_bytes()
 assert bmp[:2] == b"BM"
 pixel_offset = struct.unpack_from("<I", bmp, 10)[0]
 dib_size, width, height, planes, bits, compression = struct.unpack_from(
@@ -43,6 +47,26 @@ for screen_y in range(height):
         decoded.append(0)
 assert len(xrgb) == 720 * 480 * 4
 assert not any(xrgb[3::4])
+
+regions = (
+    (0, 0, 720, 36), (0, 36, 160, 40), (560, 36, 160, 40),
+    (0, 76, 720, 28), (0, 104, 160, 288), (560, 104, 160, 288),
+    (0, 392, 163, 3), (560, 392, 160, 3), (0, 395, 720, 85),
+)
+unpacked = bytearray(len(xrgb))
+packed_offset = 0
+for x, y, width, height in regions:
+    packed_stride = (width + (width & 1)) * 4
+    for row in range(height):
+        source = packed_offset + row * packed_stride
+        target = ((y + row) * 720 + x) * 4
+        unpacked[target : target + width * 4] = static_base[
+            source : source + width * 4
+        ]
+        assert not any(static_base[source + width * 4 : source + packed_stride])
+    packed_offset += packed_stride * height
+assert packed_offset == len(static_base) == 852848
+assert unpacked == xrgb
 
 def region_bytes(buffer, x, y, width, height):
     for row in range(y, y + height):
@@ -83,7 +107,10 @@ cmp "$TMP/first.bmp" "$TMP/symlink.bmp"
 [ "$(wc -c <"$TMP/first.xrgb" | tr -d ' ')" -eq 1382400 ]
 [ "$(shasum -a 256 "$TMP/first.xrgb" | awk '{print $1}')" = \
 	6f9daae758675bd8bb805a851b30f1d64b06ec6e8367a17749707ac61824843a ]
-grep -Fqx 'schema	bird-boot-frame-v3' "$TMP/first.contract"
+[ "$(wc -c <"$TMP/first.static.xrgb" | tr -d ' ')" -eq 852848 ]
+[ "$(shasum -a 256 "$TMP/first.static.xrgb" | awk '{print $1}')" = \
+	e6f9ca8ef4100cdf384bc2f8f3f7b902bc83cee6c4bc36e82fbc666328b382de ]
+grep -Fqx 'schema	bird-boot-frame-v4' "$TMP/first.contract"
 grep -Fqx 'backdrop-sha256	3fdea84fe0c149378db32d1849e55b3fede22c74a613544810be880f48fdb9d3' "$TMP/first.contract"
 grep -Fqx 'visible-hash-a	849df1c7262d2e3e' "$TMP/first.contract"
 grep -Fqx 'visible-hash-b	754469f5749caa71' "$TMP/first.contract"
@@ -98,8 +125,9 @@ grep -Fqx 'raw-stride	2880' "$TMP/first.contract"
 grep -Fqx 'raw-orientation	top-down' "$TMP/first.contract"
 grep -Fqx 'raw-page-offset	0:0' "$TMP/first.contract"
 grep -Fqx 'raw-subtracted-regions	top-bar,menu-container,menu-shadow' "$TMP/first.contract"
+grep -Fqx 'static-base-layout	fixed-visible-regions-v1' "$TMP/first.contract"
 grep -Fqx 'early-static-asset-bytes	0' "$TMP/first.contract"
-grep -Fqx 'final-root-static-asset-bytes	1382400' "$TMP/first.contract"
-grep -Fqx 'final-root-static-asset-sha256	6f9daae758675bd8bb805a851b30f1d64b06ec6e8367a17749707ac61824843a' "$TMP/first.contract"
+grep -Fqx 'final-root-static-asset-bytes	852848' "$TMP/first.contract"
+grep -Fqx 'final-root-static-asset-sha256	e6f9ca8ef4100cdf384bc2f8f3f7b902bc83cee6c4bc36e82fbc666328b382de' "$TMP/first.contract"
 
 printf '%s\n' 'launcher boot-frame contract tests: PASS'

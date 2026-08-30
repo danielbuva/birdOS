@@ -50,13 +50,13 @@ esac
 
 validate_early_launcher_static_assets() {
 	EARLY_BASE=$PAYLOAD/opt/bird/launcher-base.xrgb
-	if [ "$EARLY_STATIC_ASSET_BYTES" -eq 1382400 ]; then
+	if [ "$EARLY_STATIC_ASSET_BYTES" -eq 852848 ]; then
 		[ -f "$EARLY_BASE" ] && [ ! -L "$EARLY_BASE" ] || \
 			fail 'early launcher fallback base is missing or unsafe'
 		[ "$(stat -f %z "$EARLY_BASE" 2>/dev/null || stat -c %s "$EARLY_BASE")" \
-			-eq 1382400 ] || fail 'early launcher fallback base size changed'
+			-eq 852848 ] || fail 'early launcher fallback base size changed'
 		[ "$(sha256 "$EARLY_BASE")" = \
-			6f9daae758675bd8bb805a851b30f1d64b06ec6e8367a17749707ac61824843a ] || \
+			e6f9ca8ef4100cdf384bc2f8f3f7b902bc83cee6c4bc36e82fbc666328b382de ] || \
 			fail 'early launcher fallback base digest changed'
 	elif [ -e "$EARLY_BASE" ] || [ -L "$EARLY_BASE" ]; then
 		fail 'verified U-Boot reuse retained a duplicate early wallpaper'
@@ -93,7 +93,7 @@ case "$BIRD_INITRAMFS_GZIP_LEVEL" in
 	*) fail 'Bird initramfs gzip level must be 1 or 9' ;;
 esac
 
-EARLY_STATIC_ASSET_BYTES=1382400
+EARLY_STATIC_ASSET_BYTES=852848
 EARLY_INITRAMFS_GZIP_MAX_BYTES=786432
 case "${BIRD_REUSE_UBOOT_FRAME:-0}" in
 	0|'') ;;
@@ -117,16 +117,16 @@ sha256() {
 
 # The BMP remains a build-only verification artifact. The contract always
 # enters the early overlay. Until verified U-Boot reuse is enabled, the overlay
-# also carries the exact native XRGB fallback; final-root recovery owns its own
-# copy in either mode.
+# also carries the exact fixed-region native XRGB fallback; final-root recovery
+# owns its own copy in either mode.
 BOOT_FRAME_WORK=$OUTPUT/build/boot-frame
 BOOT_FRAME_BMP=$BOOT_FRAME_WORK/bird-frame-zero.bmp
-BOOT_FRAME_XRGB=$BOOT_FRAME_WORK/launcher-base.xrgb
+BOOT_FRAME_STATIC_BASE=$BOOT_FRAME_WORK/launcher-base.xrgb
 BOOT_FRAME_CONTRACT=$OUTPUT/card/bird/boot-frame.contract
 mkdir -p "$BOOT_FRAME_WORK" "$OUTPUT/card/bird"
 python3 "$ROOT/firmware/generate-launcher-bootlogo.py" "$BOOT_FRAME_BMP" \
 	--contract "$BOOT_FRAME_CONTRACT" \
-	--xrgb-output "$BOOT_FRAME_XRGB" \
+	--static-base-output "$BOOT_FRAME_STATIC_BASE" \
 	--early-static-asset-bytes "$EARLY_STATIC_ASSET_BYTES"
 [ "$(sha256 "$BOOT_FRAME_BMP")" = \
 	fca1176e4247c5b358df495cf062e88ff53c3aa781c54325545a02b26a9fcb15 ] || \
@@ -195,8 +195,8 @@ LAUNCHER=$PAYLOAD/opt/bird/bird-launcher
 
 [ ! -e "$WORK" ] || fail "early initramfs work already exists: $WORK"
 mkdir -p "$PAYLOAD/opt/bird" "$VERIFY"
-if [ "$EARLY_STATIC_ASSET_BYTES" -eq 1382400 ]; then
-	cp -fp "$BOOT_FRAME_XRGB" "$PAYLOAD/opt/bird/launcher-base.xrgb"
+if [ "$EARLY_STATIC_ASSET_BYTES" -eq 852848 ]; then
+	cp -fp "$BOOT_FRAME_STATIC_BASE" "$PAYLOAD/opt/bird/launcher-base.xrgb"
 chmod 0644 "$PAYLOAD/opt/bird/launcher-base.xrgb"
 fi
 
@@ -333,7 +333,7 @@ cmp "$PAYLOAD/bird-release-loader.sh" "$VERIFY/bird-release-loader.sh" || \
 	fail 'verified release loader changed'
 cmp "$LAUNCHER" "$VERIFY/opt/bird/bird-launcher" || \
 	fail 'verified early launcher changed'
-if [ "$EARLY_STATIC_ASSET_BYTES" -eq 1382400 ]; then
+if [ "$EARLY_STATIC_ASSET_BYTES" -eq 852848 ]; then
 	cmp "$PAYLOAD/opt/bird/launcher-base.xrgb" \
 		"$VERIFY/opt/bird/launcher-base.xrgb" || \
 		fail 'verified early launcher fallback base changed'

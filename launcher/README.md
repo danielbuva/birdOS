@@ -47,10 +47,12 @@ The source artwork is the pinned 720x480 RGB cat-and-stairway crop at
 [`firmware/generate-launcher-bootlogo.py`](../firmware/generate-launcher-bootlogo.py)
 validates and decodes it only at build time, composites the fixed chrome for
 U-Boot, then deterministically emits the frame-zero BMP, boot-frame digest
-contract and a sparse native XRGB8888 wallpaper page. The raw page is already
-720x480, top-down, 2,880-byte stride, one page at offset 0:0, with bytes in
-`B,G,R,X` memory order. Pixels hidden by the opaque top bar, menu container and
-three-pixel menu shadow are zero rather than duplicating invisible artwork.
+contract, a full native XRGB8888 verification page and a fixed-region native
+wallpaper asset. The verification page is 720x480, top-down, 2,880-byte stride,
+one page at offset 0:0, with bytes in `B,G,R,X` memory order. The shipped asset
+packs only the nine wallpaper regions not hidden by the opaque top bar, menu
+container and three-pixel menu shadow. It has no runtime header or parser; the
+launcher copies the generated regions through fixed offsets and strides.
 The PNG is the only editable wallpaper source in the repository. Neither it nor
 the BMP enters the handheld image or a launcher runtime decode path.
 
@@ -63,28 +65,28 @@ a periodic idle wakeup. Multiple build-time frames remain technically possible,
 but animation stays deferred until it has explicit binary, framebuffer-write
 and battery budgets.
 
-Final-root recovery always installs that native page as
-`/flash/bird/launcher-base.xrgb`: exactly 1,382,400 bytes, with SHA-256
-`6f9daae758675bd8bb805a851b30f1d64b06ec6e8367a17749707ac61824843a`.
+Final-root recovery always installs the fixed-region native asset as
+`/flash/bird/launcher-base.xrgb`: exactly 852,848 bytes, with SHA-256
+`e6f9ca8ef4100cdf384bc2f8f3f7b902bc83cee6c4bc36e82fbc666328b382de`.
 Until `BIRD_REUSE_UBOOT_FRAME` has a byte-identical hardware-verified contract,
-the early initramfs carries the same page at
+the early initramfs carries the same asset at
 `/opt/bird/launcher-base.xrgb` and has a 786,432-byte compressed-overlay
-budget. A verified reuse build omits that early duplicate and retains the
+budget. A verified reuse build would omit that early duplicate and retain the
 262,144-byte compressed-overlay budget; it does not remove the final-root
-recovery asset. At startup the launcher copies only raw-page spans that can be
-visible and draws fixed opaque chrome into the skipped regions before one
+recovery asset. At startup the launcher copies the fixed regions and draws
+opaque chrome into the skipped areas before one
 framebuffer barrier. It can do that before evdev is ready, but withholds every
 selectable row until the named input has opened, then draws the interactive
 overlay and publishes first-frame readiness.
 
-The wallpaper costs no additional framebuffer page write versus a synthesized
-full-screen black base: both paths write one 1,382,400-byte XRGB page before
-the interactive overlay. It does add the 1,382,400-byte native asset to both
-final-root recovery and, until verified reuse, the early payload. With the
-current sparse native page compresses to 404,001 bytes by itself;
-the same chrome over a black base compresses to 2,539 bytes, a controlled
-401,462-byte compressed-asset difference. The deployed profile early-overlay
-size is reported by each canonical build. Its measured cold base-plus-menu render is 1,448,860
+The wallpaper costs no additional framebuffer traffic versus the preceding
+full-page source: both paths write the same 1,448,860 physical bytes for the
+cold base-plus-menu render. Why before: a full 1,382,400-byte page made the
+source layout identical to the framebuffer and kept the first implementation
+simple. Why change: 529,552 opaque bytes were never read by the nine-region
+copy path. The fixed-region asset removes them, is 852,848 bytes raw and
+compresses to 387,374 bytes by itself versus 403,990 bytes for the preceding
+page. The deployed profile early-overlay size is reported by each build. Its measured cold base-plus-menu render remains 1,448,860
 physical framebuffer bytes. These are byte/storage measurements, not a claim
 of measured device boot latency.
 

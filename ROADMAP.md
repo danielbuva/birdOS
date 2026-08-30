@@ -1755,6 +1755,18 @@ stopwatch timing do not establish a speed improvement over fixed-read-path;
 they accept the smaller fixed command closure without making a latency claim.
 The detailed diagnostic logs remained usable.
 
+The inherited-frame consumer remains guarded but cannot yet be activated by
+the accepted producer. Why before: proprietary firmware owned an early
+boot-resource splash, making exact frame reuse appear to be an asset/contract
+change. Why change direction: the accepted mainline H700 U-Boot is built with
+video disabled, its pinned Sunxi video choices exclude the H616/H700
+generation, and the current card has no proprietary boot-resource partition.
+A producer now means porting the H700 display engine, TCON, fixed RGB panel,
+GPIO/PWM sequencing and Linux handoff. Stage 10 defers that high-risk driver
+project and retains the verified fallback. The bounded successor instead packs
+only the nine fixed wallpaper regions the launcher reads, removing 529,552 raw
+bytes without changing framebuffer traffic or the visual contract.
+
 The first Stage 10 candidate has passed its complete non-deploying host gate.
 The four-pass build produced two byte-identical baselines that each reproduce
 the 621,049-byte shipping DDR4 U-Boot at SHA-256
