@@ -1735,13 +1735,13 @@ memory or size benefit.
 
 ## Stage 10 — U-Boot performance and inherited frame
 
-Rough planning progress is about 94 percent. Environment-nowhere,
+Rough planning progress is about 95 percent. Environment-nowhere,
 direct-extlinux, no-heap-clear, fast-init and in-place handoff are physically
 accepted, and canonical release `v6.23-20260814-201218` satisfies the clean
 full-release prerequisite. The raw-kernel bootstage measurement and paired LZ4
 host preparation are complete, and the corrected uninstrumented LZ4 runtime
 has passed its broad development-device gate. The remaining large boundaries
-include further fixed-path subsystem subtraction and the inherited-frame
+include the fixed-read-path successor's hardware gate and the inherited-frame
 experiment. The simple-parser successor has passed its broad hardware gate.
 
 The first Stage 10 candidate has passed its complete non-deploying host gate.
@@ -2085,6 +2085,22 @@ Ports, PortMaster, music, books, video, controls 29/29, networking, one complete
 suspend/resume and orderly shutdown. Its detailed logs survived, but no
 comparable initial usable-frame timestamp did, so no device speed claim is
 made.
+
+Why the previous parser boundary existed: it retained generic filesystem and
+partition support so the returned hardware gate isolated only the parser
+subtraction. Why change: the fixed RG34XX-SP command reads one extlinux file
+through FAT on MBR and never invokes filesystem shell commands, EXT, GPT/EFI,
+partition UUID or FAT-write paths. The next sparse policy retains exact MMC,
+DOS/MBR, FAT-read, sysboot/PXE, raw-initramfs, LZ4 and `booti` dependencies and
+removes only that unreachable surface. Two sealed networkless builds are
+byte-identical at 478,033 combined bytes and 358,224 full-U-Boot bytes, saving
+40,336 bytes against simple-parser (7.78 and 10.12 percent). SPL and control DTB
+are exact; FIT scope remains U-Boot data only. The bounded installer accepts
+only the reviewed simple-parser prefix, writes 934 complete sectors, preserves
+the reviewed 175-byte sector tail, verifies all 16 MiB, rolls back on failure
+and provides explicit exact simple-parser recovery. Focused authority tests,
+the destructive-path simulator and all 79 workflow cases pass. This is a
+host-ready production successor, not yet a hardware result or timing claim.
 
 ## Candidate report gate
 

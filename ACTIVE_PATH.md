@@ -369,12 +369,12 @@ diagnostics, but does not justify changing the accepted suspend path during
 Stage 10.
 
 In-place handoff plus the reviewed LZ4 bound remains the active physically
-accepted U-Boot/kernel pair. Stage 10 is roughly 94 percent complete: five
+accepted U-Boot/kernel pair. Stage 10 is roughly 95 percent complete: five
 accepted U-Boot transitions, the clean canonical prerequisite, raw-kernel
 bootstage measurement and corrected uninstrumented LZ4 development-device gate
 are complete. The reviewed simple-parser successor and bounded installer also
-passed their hardware gate. Deeper subsystem pruning and the inherited-frame
-experiment remain.
+passed their hardware gate. The fixed-read-path subsystem successor is sealed
+and host-ready; its hardware gate and the inherited-frame experiment remain.
 
 Why the previous measurement boundary existed: source inspection treated
 generic bootm's `bootm_load_os` mark as the kernel-load boundary. The accepted
@@ -507,6 +507,22 @@ state, networking, a complete suspend/resume, orderly shutdown/config save and
 Input Tester 29/29. Its detailed supervisor, content, suspend, shutdown,
 network and input records survived. No comparable initial usable-frame record
 survived, so this gate makes no hardware timing claim.
+
+Why the previous fixed-parser boundary existed: it deliberately retained
+generic filesystem and partition facilities so its hardware gate isolated the
+parser removal. Why change: this RG34XX-SP always executes
+`sysboot mmc 0:1 fat ${scriptaddr} /extlinux/extlinux.conf` from an MBR card and
+does not call filesystem shell commands, EXT readers, GPT/EFI parsing, partition
+UUIDs or FAT writes. The reviewed successor removes only those unreachable
+facilities while retaining `CMD_SYSBOOT`, PXE/extlinux, FAT reads, DOS/MBR,
+MMC, raw initramfs, LZ4 and `booti`. Two fresh isolated builds are byte-identical
+at 478,033 combined bytes and 358,224 full-U-Boot bytes, 40,336 bytes smaller
+than simple-parser (7.78 and 10.12 percent respectively). SPL and the control
+DTB remain byte-identical, and FIT differences are confined to U-Boot data. The
+complete transaction simulator verifies the exact 934-sector write, 175-byte
+sector tail, predecessor rejection, no-op, failure rollback, whole-prefix
+readback and explicit simple-parser restore. This is a host size result; the
+candidate is not installed and makes no device timing claim.
 
 The corrected source-kernel package reached Bird's early usable menu but not
 application readiness. A temporary early watchdog proved that release-runtime

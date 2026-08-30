@@ -1,12 +1,12 @@
 #!/bin/sh
 # Install the verified DDR4 birdOS U-Boot at its exact mainline raw range.
 # No partition, release, selector, fallback, or data byte is a write target.
-# Why before: the accepted LZ4 pair retained U-Boot's generic interactive hush
-# parser because sunxi distro defaults selected it along with the fixed extlinux
-# boot closure.
-# Why change: the reviewed simple-parser authority preserves that closure while
-# removing only the unused parser surface. Give it an exact LZ4-to-parser
-# transaction and an exact parser-to-LZ4 recovery transaction.
+# Why before: the accepted simple-parser image retained generic filesystem,
+# partition, and write commands so its hardware gate isolated only the parser
+# boundary.
+# Why change: the RG34XX-SP boot command has one fixed MBR/FAT read path. Give
+# the reviewed fixed-read-path authority an exact simple-parser successor and
+# recovery transaction while preserving that only required path.
 
 set -eu
 umask 077
@@ -15,6 +15,9 @@ ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 DEVICE=${1:-}
 ACTION=${2:-}
 case "$ACTION" in
+	--install-fixed-read-path|--restore-simple-parser-from-fixed-read-path)
+		DEFAULT_UBOOT_BUILD=$ROOT/kernel/work/bird-uboot-fixed-read-path-20260829
+		;;
 	--install-simple-parser|--restore-lz4-from-simple-parser)
 		DEFAULT_UBOOT_BUILD=$ROOT/kernel/work/bird-uboot-simple-parser-20260829
 		;;
@@ -110,6 +113,14 @@ SIMPLE_PARSER_VERIFIER_SHA=0b63927c18213864be9162872ebba7b3def4e2d6b3d49e0eb56eb
 SIMPLE_PARSER_RAW_WRITE_SECTORS=1013
 SIMPLE_PARSER_RAW_WRITE_BYTES=518656
 SIMPLE_PARSER_RAW_WRITE_END=526848
+FIXED_READ_PATH_UBOOT_BYTES=478033
+FIXED_READ_PATH_UBOOT_SHA=bd571d050143b3643af577a006f553e7b5b25d7a97a8584c20d67d459122f914
+FIXED_READ_PATH_PREFIX_SHA=7826608f5257f751bd05a45cfcf1d8fdedd1a6381350e1af2c437b947aa4df72
+FIXED_READ_PATH_AUTHORITY_SHA=4e387e0b326fb84d9cdc04fa34dccec4d79d46b8df8b6cfff0233d0d10632a37
+FIXED_READ_PATH_VERIFIER_SHA=cd9e305e483fa898ebca49d0760e5cc3abee22c7f2acc049c1d96fd9d11c6e13
+FIXED_READ_PATH_RAW_WRITE_SECTORS=934
+FIXED_READ_PATH_RAW_WRITE_BYTES=478208
+FIXED_READ_PATH_RAW_WRITE_END=486400
 BOOTSTAGE_FDT_UBOOT_BYTES=561073
 BOOTSTAGE_FDT_UBOOT_SHA=0b22418db35ee591870ccd652d4aaa3d0a50bd216e600f7b8ca0c4052e2e8e83
 BOOTSTAGE_FDT_PREFIX_SHA=c1dadb6b43782ac25b8be6ea168cbad7c2e435da49207210213be68701f7f94b
@@ -140,6 +151,20 @@ TEST_LZ4_PAIR_PREFIX_SHA=${BIRD_TEST_LZ4_PAIR_PREFIX_SHA:-}
 TEST_BOOTSTAGE_FDT_MANIFEST_SHA=${BIRD_TEST_BOOTSTAGE_FDT_MANIFEST_SHA:-}
 
 case "$ACTION" in
+	--install-fixed-read-path)
+		UBOOT_BYTES=$FIXED_READ_PATH_UBOOT_BYTES
+		RAW_END=$((RAW_OFFSET + FIXED_READ_PATH_UBOOT_BYTES))
+		RAW_WRITE_SECTORS=$FIXED_READ_PATH_RAW_WRITE_SECTORS
+		RAW_WRITE_BYTES=$FIXED_READ_PATH_RAW_WRITE_BYTES
+		RAW_WRITE_END=$FIXED_READ_PATH_RAW_WRITE_END
+		;;
+	--restore-simple-parser-from-fixed-read-path)
+		UBOOT_BYTES=$SIMPLE_PARSER_UBOOT_BYTES
+		RAW_END=$((RAW_OFFSET + SIMPLE_PARSER_UBOOT_BYTES))
+		RAW_WRITE_SECTORS=$SIMPLE_PARSER_RAW_WRITE_SECTORS
+		RAW_WRITE_BYTES=$SIMPLE_PARSER_RAW_WRITE_BYTES
+		RAW_WRITE_END=$SIMPLE_PARSER_RAW_WRITE_END
+		;;
 	--install-simple-parser)
 		UBOOT_BYTES=$SIMPLE_PARSER_UBOOT_BYTES
 		RAW_END=$((RAW_OFFSET + SIMPLE_PARSER_UBOOT_BYTES))
@@ -216,7 +241,7 @@ fail() {
 }
 
 usage() {
-	printf 'usage: %s /dev/diskN --install-green|--install-early-green|--install-env-nowhere|--install-direct-extlinux|--install-no-heap-clear|--install-fast-init|--install-inplace-handoff|--install-lz4-pair|--restore-inplace-from-lz4|--install-simple-parser|--restore-lz4-from-simple-parser|--install-bootstage-fdt|--restore-inplace-handoff|--restore-baseline [UBOOT_BUILD_DIRECTORY]\n' "$0" >&2
+	printf 'usage: %s /dev/diskN --install-green|--install-early-green|--install-env-nowhere|--install-direct-extlinux|--install-no-heap-clear|--install-fast-init|--install-inplace-handoff|--install-lz4-pair|--restore-inplace-from-lz4|--install-simple-parser|--restore-lz4-from-simple-parser|--install-fixed-read-path|--restore-simple-parser-from-fixed-read-path|--install-bootstage-fdt|--restore-inplace-handoff|--restore-baseline [UBOOT_BUILD_DIRECTORY]\n' "$0" >&2
 	exit 2
 }
 
@@ -238,6 +263,7 @@ report_current_uboot_identity() {
 		"$INPLACE_HANDOFF_PREFIX_SHA") CURRENT_LABEL=in-place-handoff ;;
 		"$LZ4_PAIR_PREFIX_SHA") CURRENT_LABEL=lz4-paired ;;
 		"$SIMPLE_PARSER_PREFIX_SHA") CURRENT_LABEL=simple-parser ;;
+		"$FIXED_READ_PATH_PREFIX_SHA") CURRENT_LABEL=fixed-read-path ;;
 		"$BOOTSTAGE_FDT_PREFIX_SHA") CURRENT_LABEL=bootstage-fdt-measurement ;;
 		*) CURRENT_LABEL=unknown-prefix ;;
 	esac
@@ -361,7 +387,8 @@ restore_original_uboot() {
 	if [ "$ACTION" = --restore-baseline ] ||
 		[ "$ACTION" = --restore-inplace-handoff ] ||
 		[ "$ACTION" = --restore-inplace-from-lz4 ] ||
-		[ "$ACTION" = --restore-lz4-from-simple-parser ]; then
+		[ "$ACTION" = --restore-lz4-from-simple-parser ] ||
+		[ "$ACTION" = --restore-simple-parser-from-fixed-read-path ]; then
 		RECOVERY_PREFIX=$VERIFY_WORK/expected-prefix.bin
 	else
 		RECOVERY_PREFIX=$VERIFY_WORK/before-prefix.bin
@@ -381,6 +408,8 @@ restore_original_uboot() {
 		printf 'Exact accepted in-place-handoff 16 MiB prefix restored from LZ4 pair and verified.\n' >&2
 	elif [ "$ACTION" = --restore-lz4-from-simple-parser ]; then
 		printf 'Exact accepted LZ4-pair 16 MiB prefix restored from simple-parser candidate and verified.\n' >&2
+	elif [ "$ACTION" = --restore-simple-parser-from-fixed-read-path ]; then
+		printf 'Exact accepted simple-parser 16 MiB prefix restored from fixed-read-path candidate and verified.\n' >&2
 	else
 		printf 'Exact pre-transaction 16 MiB prefix restored and verified.\n' >&2
 	fi
@@ -419,7 +448,7 @@ trap 'exit 1' HUP INT TERM
 [ "$#" -ge 2 ] && [ "$#" -le 3 ] || usage
 case "$DEVICE" in /dev/disk[0-9]*) ;; *) usage ;; esac
 case "$ACTION" in
-	--install-green|--install-early-green|--install-env-nowhere|--install-direct-extlinux|--install-no-heap-clear|--install-fast-init|--install-inplace-handoff|--install-lz4-pair|--restore-inplace-from-lz4|--install-simple-parser|--restore-lz4-from-simple-parser|--install-bootstage-fdt|--restore-inplace-handoff|--restore-baseline) ;;
+	--install-green|--install-early-green|--install-env-nowhere|--install-direct-extlinux|--install-no-heap-clear|--install-fast-init|--install-inplace-handoff|--install-lz4-pair|--restore-inplace-from-lz4|--install-simple-parser|--restore-lz4-from-simple-parser|--install-fixed-read-path|--restore-simple-parser-from-fixed-read-path|--install-bootstage-fdt|--restore-inplace-handoff|--restore-baseline) ;;
 	*) usage ;;
 esac
 WHOLE=${DEVICE#/dev/}
@@ -537,6 +566,7 @@ FAST_INIT_AUTHORITY_VERIFIER=$ROOT/kernel/rocknix/verify-uboot-fast-init-build.p
 INPLACE_HANDOFF_AUTHORITY_VERIFIER=$ROOT/kernel/rocknix/verify-uboot-inplace-handoff-build.py
 LZ4_PAIR_AUTHORITY_VERIFIER=$ROOT/kernel/rocknix/verify-uboot-lz4-pair-build.py
 SIMPLE_PARSER_AUTHORITY_VERIFIER=$ROOT/kernel/rocknix/verify-uboot-simple-parser-build.py
+FIXED_READ_PATH_AUTHORITY_VERIFIER=$ROOT/kernel/rocknix/verify-uboot-fixed-read-path-build.py
 BOOTSTAGE_FDT_AUTHORITY_VERIFIER=$ROOT/kernel/rocknix/verify-uboot-bootstage-fdt-build.py
 BOOTSTAGE_FDT_STATUS_VERIFIER=$ROOT/kernel/rocknix/verify-uboot-status-led-build.py
 INVENTORY_TOOL=$ROOT/kernel/rocknix/inventory-bird-boot-volume.py
@@ -570,6 +600,13 @@ if [ "$ACTION" = --install-simple-parser ] ||
 			"$SIMPLE_PARSER_VERIFIER_SHA" ] ||
 		fail 'simple-parser U-Boot verifier identity changed'
 fi
+if [ "$ACTION" = --install-fixed-read-path ] ||
+	[ "$ACTION" = --restore-simple-parser-from-fixed-read-path ]; then
+	is_regular_file "$FIXED_READ_PATH_AUTHORITY_VERIFIER" &&
+		[ "$(sha256 "$FIXED_READ_PATH_AUTHORITY_VERIFIER")" = \
+			"$FIXED_READ_PATH_VERIFIER_SHA" ] ||
+		fail 'fixed-read-path U-Boot verifier identity changed'
+fi
 if [ "$ACTION" = --install-bootstage-fdt ] ||
 	[ "$ACTION" = --restore-inplace-handoff ]; then
 	is_regular_file "$BOOTSTAGE_FDT_AUTHORITY_VERIFIER" &&
@@ -588,6 +625,10 @@ fi
 is_regular_file "$INVENTORY_TOOL" || fail 'BIRD inventory verifier is missing or unsafe'
 is_regular_file "$RELEASE_VERIFIER" || fail 'selected-release verifier is missing or unsafe'
 case "$ACTION" in
+	--install-fixed-read-path|--restore-simple-parser-from-fixed-read-path)
+		BUILD_BASELINE=$UBOOT_BUILD/simple-parser-base.bin
+		BUILD_BASELINE_PREFIX=$UBOOT_BUILD/simple-parser-base-prefix-16m.bin
+		;;
 	--install-simple-parser|--restore-lz4-from-simple-parser)
 		BUILD_BASELINE=$UBOOT_BUILD/lz4-base.bin
 		BUILD_BASELINE_PREFIX=$UBOOT_BUILD/lz4-base-prefix-16m.bin
@@ -617,7 +658,14 @@ case "$ACTION" in
 		BUILD_BASELINE_PREFIX=
 		;;
 esac
-if [ "$ACTION" = --install-simple-parser ] ||
+if [ "$ACTION" = --install-fixed-read-path ] ||
+	[ "$ACTION" = --restore-simple-parser-from-fixed-read-path ]; then
+	is_regular_file "$BUILD_BASELINE" &&
+		[ "$(stat -f '%z' "$BUILD_BASELINE")" -eq \
+			"$SIMPLE_PARSER_UBOOT_BYTES" ] &&
+		[ "$(sha256 "$BUILD_BASELINE")" = "$SIMPLE_PARSER_UBOOT_SHA" ] ||
+		fail 'accepted simple-parser base oracle changed'
+elif [ "$ACTION" = --install-simple-parser ] ||
 	[ "$ACTION" = --restore-lz4-from-simple-parser ]; then
 	is_regular_file "$BUILD_BASELINE" &&
 		[ "$(stat -f '%z' "$BUILD_BASELINE")" -eq "$LZ4_PAIR_UBOOT_BYTES" ] &&
@@ -728,6 +776,20 @@ elif [ "$ACTION" = --install-lz4-pair ] ||
 	is_regular_file "$UBOOT_BUILD/authority.tsv" &&
 		[ "$(sha256 "$UBOOT_BUILD/authority.tsv")" = "$LZ4_PAIR_AUTHORITY_SHA" ] ||
 		fail 'reviewed LZ4-paired U-Boot authority identity changed'
+elif [ "$ACTION" = --install-fixed-read-path ] ||
+	[ "$ACTION" = --restore-simple-parser-from-fixed-read-path ]; then
+	python3 "$FIXED_READ_PATH_AUTHORITY_VERIFIER" --verify-output "$UBOOT_BUILD" >/dev/null ||
+		fail 'fixed-read-path U-Boot authority verification failed'
+	BUILD_CANDIDATE=$UBOOT_BUILD/fixed-read-path.bin
+	is_regular_file "$BUILD_CANDIDATE" &&
+		[ "$(stat -f '%z' "$BUILD_CANDIDATE")" -eq \
+			"$FIXED_READ_PATH_UBOOT_BYTES" ] &&
+		[ "$(sha256 "$BUILD_CANDIDATE")" = "$FIXED_READ_PATH_UBOOT_SHA" ] ||
+		fail 'verified fixed-read-path U-Boot candidate identity changed'
+	is_regular_file "$UBOOT_BUILD/authority.tsv" &&
+		[ "$(sha256 "$UBOOT_BUILD/authority.tsv")" = \
+			"$FIXED_READ_PATH_AUTHORITY_SHA" ] ||
+		fail 'reviewed fixed-read-path U-Boot authority identity changed'
 elif [ "$ACTION" = --install-simple-parser ] ||
 	[ "$ACTION" = --restore-lz4-from-simple-parser ]; then
 	python3 "$SIMPLE_PARSER_AUTHORITY_VERIFIER" --verify-output "$UBOOT_BUILD" >/dev/null ||
@@ -771,7 +833,13 @@ if [ "$ACTION" = --install-early-green ] || [ "$ACTION" = --install-env-nowhere 
 		[ "$(sha256 "$BUILD_BASELINE_PREFIX")" = "$BASELINE_PREFIX_SHA" ] ||
 		fail 'accepted baseline 16 MiB prefix oracle changed'
 fi
-if [ "$ACTION" = --install-simple-parser ] ||
+if [ "$ACTION" = --install-fixed-read-path ] ||
+	[ "$ACTION" = --restore-simple-parser-from-fixed-read-path ]; then
+	is_regular_file "$BUILD_BASELINE_PREFIX" &&
+		[ "$(stat -f '%z' "$BUILD_BASELINE_PREFIX")" -eq "$PREFIX_BYTES" ] &&
+		[ "$(sha256 "$BUILD_BASELINE_PREFIX")" = "$SIMPLE_PARSER_PREFIX_SHA" ] ||
+		fail 'accepted simple-parser 16 MiB prefix oracle changed'
+elif [ "$ACTION" = --install-simple-parser ] ||
 	[ "$ACTION" = --restore-lz4-from-simple-parser ]; then
 	is_regular_file "$BUILD_BASELINE_PREFIX" &&
 		[ "$(stat -f '%z' "$BUILD_BASELINE_PREFIX")" -eq "$PREFIX_BYTES" ] &&
@@ -839,6 +907,8 @@ if [ "$ACTION" = --install-green ] || [ "$ACTION" = --install-early-green ] ||
 	[ "$ACTION" = --restore-inplace-from-lz4 ] ||
 	[ "$ACTION" = --install-simple-parser ] ||
 	[ "$ACTION" = --restore-lz4-from-simple-parser ] ||
+	[ "$ACTION" = --install-fixed-read-path ] ||
+	[ "$ACTION" = --restore-simple-parser-from-fixed-read-path ] ||
 	[ "$ACTION" = --install-bootstage-fdt ] ||
 	[ "$ACTION" = --restore-inplace-handoff ]; then
 	AUTHORITY_SNAPSHOT=$VERIFY_WORK/build-authority
@@ -877,6 +947,13 @@ if [ "$ACTION" = --install-green ] || [ "$ACTION" = --install-early-green ] ||
 		[ "$(sha256 "$AUTHORITY_SNAPSHOT/authority.tsv")" = \
 			"$SIMPLE_PARSER_AUTHORITY_SHA" ] ||
 			fail 'snapshotted reviewed simple-parser authority identity changed'
+	elif [ "$ACTION" = --install-fixed-read-path ] ||
+		[ "$ACTION" = --restore-simple-parser-from-fixed-read-path ]; then
+		python3 "$FIXED_READ_PATH_AUTHORITY_VERIFIER" --verify-output "$AUTHORITY_SNAPSHOT" >/dev/null ||
+			fail 'snapshotted fixed-read-path U-Boot authority verification failed'
+		[ "$(sha256 "$AUTHORITY_SNAPSHOT/authority.tsv")" = \
+			"$FIXED_READ_PATH_AUTHORITY_SHA" ] ||
+			fail 'snapshotted reviewed fixed-read-path authority identity changed'
 	elif [ "$ACTION" = --install-bootstage-fdt ] ||
 		[ "$ACTION" = --restore-inplace-handoff ]; then
 		python3 "$BOOTSTAGE_FDT_AUTHORITY_VERIFIER" --verify-output "$AUTHORITY_SNAPSHOT" >/dev/null ||
@@ -927,6 +1004,13 @@ if [ "$ACTION" = --install-green ] || [ "$ACTION" = --install-early-green ] ||
 		CANDIDATE_BASE_PREFIX=$AUTHORITY_SNAPSHOT/lz4-base-prefix-16m.bin
 		CANDIDATE_TARGET_PREFIX=$AUTHORITY_SNAPSHOT/simple-parser-prefix-16m.bin
 		CANDIDATE=$AUTHORITY_SNAPSHOT/simple-parser.bin
+	elif [ "$ACTION" = --install-fixed-read-path ] ||
+		[ "$ACTION" = --restore-simple-parser-from-fixed-read-path ]; then
+		BASELINE=$AUTHORITY_SNAPSHOT/simple-parser-base.bin
+		BASELINE_PREFIX=$AUTHORITY_SNAPSHOT/simple-parser-base-prefix-16m.bin
+		CANDIDATE_BASE_PREFIX=$AUTHORITY_SNAPSHOT/simple-parser-base-prefix-16m.bin
+		CANDIDATE_TARGET_PREFIX=$AUTHORITY_SNAPSHOT/fixed-read-path-prefix-16m.bin
+		CANDIDATE=$AUTHORITY_SNAPSHOT/fixed-read-path.bin
 	elif [ "$ACTION" = --install-bootstage-fdt ] ||
 		[ "$ACTION" = --restore-inplace-handoff ]; then
 		BASELINE=$AUTHORITY_SNAPSHOT/inplace-base-combined.bin
@@ -949,7 +1033,13 @@ else
 		fail 'could not snapshot the accepted baseline prefix under lock'
 	CANDIDATE=
 fi
-if [ "$ACTION" = --install-simple-parser ] ||
+if [ "$ACTION" = --install-fixed-read-path ] ||
+	[ "$ACTION" = --restore-simple-parser-from-fixed-read-path ]; then
+	[ -f "$BASELINE" ] && [ ! -L "$BASELINE" ] &&
+		[ "$(stat -f '%z' "$BASELINE")" -eq "$SIMPLE_PARSER_UBOOT_BYTES" ] &&
+		[ "$(sha256 "$BASELINE")" = "$SIMPLE_PARSER_UBOOT_SHA" ] ||
+		fail 'snapshotted accepted simple-parser base identity changed'
+elif [ "$ACTION" = --install-simple-parser ] ||
 	[ "$ACTION" = --restore-lz4-from-simple-parser ]; then
 	[ -f "$BASELINE" ] && [ ! -L "$BASELINE" ] &&
 		[ "$(stat -f '%z' "$BASELINE")" -eq "$LZ4_PAIR_UBOOT_BYTES" ] &&
@@ -1014,6 +1104,18 @@ if [ "$ACTION" = --install-simple-parser ] ||
 		[ "$(stat -f '%z' "$CANDIDATE_TARGET_PREFIX")" -eq "$PREFIX_BYTES" ] &&
 		[ "$(sha256 "$CANDIDATE_TARGET_PREFIX")" = "$SIMPLE_PARSER_PREFIX_SHA" ] ||
 		fail 'snapshotted simple-parser target prefix identity changed'
+fi
+if [ "$ACTION" = --install-fixed-read-path ] ||
+	[ "$ACTION" = --restore-simple-parser-from-fixed-read-path ]; then
+	[ -f "$CANDIDATE_BASE_PREFIX" ] && [ ! -L "$CANDIDATE_BASE_PREFIX" ] &&
+		[ "$(stat -f '%z' "$CANDIDATE_BASE_PREFIX")" -eq "$PREFIX_BYTES" ] &&
+		[ "$(sha256 "$CANDIDATE_BASE_PREFIX")" = "$SIMPLE_PARSER_PREFIX_SHA" ] ||
+		fail 'snapshotted simple-parser predecessor prefix identity changed'
+	[ -f "$CANDIDATE_TARGET_PREFIX" ] &&
+		[ ! -L "$CANDIDATE_TARGET_PREFIX" ] &&
+		[ "$(stat -f '%z' "$CANDIDATE_TARGET_PREFIX")" -eq "$PREFIX_BYTES" ] &&
+		[ "$(sha256 "$CANDIDATE_TARGET_PREFIX")" = "$FIXED_READ_PATH_PREFIX_SHA" ] ||
+		fail 'snapshotted fixed-read-path target prefix identity changed'
 fi
 if [ "$ACTION" = --install-bootstage-fdt ] ||
 	[ "$ACTION" = --restore-inplace-handoff ]; then
@@ -1394,6 +1496,63 @@ PY
 		EXPECTED_PREFIX_SHA=$LZ4_PAIR_PREFIX_SHA
 		TARGET_DESCRIPTION='accepted LZ4-pair U-Boot recovery from simple parser'
 		;;
+	--install-fixed-read-path)
+		if cmp "$VERIFY_WORK/current-uboot.bin" "$CANDIDATE" >/dev/null; then
+			[ "$CURRENT_PREFIX_SHA" = "$FIXED_READ_PATH_PREFIX_SHA" ] ||
+				fail 'complete current fixed-read-path prefix differs from the reviewed oracle'
+			python3 "$INVENTORY_TOOL" "$BIRD" >"$VERIFY_WORK/bird-after.tsv" ||
+				fail 'could not re-inventory BIRD for fixed-read-path no-op verification'
+			cmp "$VERIFY_WORK/bird-before.tsv" "$VERIFY_WORK/bird-after.tsv" >/dev/null ||
+				fail 'BIRD payload changed during fixed-read-path no-op verification'
+			printf 'Verified fixed-read-path U-Boot is already installed.\n'
+			COMMITTED=1
+			exit 0
+		fi
+		"$GDD" if="$VERIFY_WORK/before-prefix.bin" \
+			of="$VERIFY_WORK/current-simple-parser-base-range.bin" bs=64K skip="$RAW_OFFSET" \
+			count="$SIMPLE_PARSER_UBOOT_BYTES" \
+			iflag=skip_bytes,count_bytes,fullblock status=none
+		cmp "$VERIFY_WORK/current-simple-parser-base-range.bin" "$BASELINE" >/dev/null || {
+			report_current_uboot_identity
+			fail 'current raw U-Boot is not the exact accepted simple-parser base'
+		}
+		[ "$CURRENT_PREFIX_SHA" = "$SIMPLE_PARSER_PREFIX_SHA" ] ||
+			fail 'complete current simple-parser prefix differs from the accepted oracle'
+		TARGET_UBOOT=$CANDIDATE
+		TARGET_PREFIX=$CANDIDATE_TARGET_PREFIX
+		TARGET_UBOOT_BYTES=$FIXED_READ_PATH_UBOOT_BYTES
+		EXPECTED_PREFIX_SHA=$FIXED_READ_PATH_PREFIX_SHA
+		TARGET_DESCRIPTION='verified fixed MBR/FAT read-path U-Boot'
+		;;
+	--restore-simple-parser-from-fixed-read-path)
+		if cmp "$VERIFY_WORK/current-uboot.bin" "$BASELINE" >/dev/null &&
+			[ "$CURRENT_PREFIX_SHA" = "$SIMPLE_PARSER_PREFIX_SHA" ]; then
+			python3 "$INVENTORY_TOOL" "$BIRD" >"$VERIFY_WORK/bird-after.tsv" ||
+				fail 'could not re-inventory BIRD for fixed-read-path restore no-op verification'
+			cmp "$VERIFY_WORK/bird-before.tsv" "$VERIFY_WORK/bird-after.tsv" >/dev/null ||
+				fail 'BIRD payload changed during fixed-read-path restore no-op verification'
+			printf 'Verified accepted simple-parser U-Boot is already restored.\n'
+			COMMITTED=1
+			exit 0
+		fi
+		python3 - "$VERIFY_WORK/before-prefix.bin" "$CANDIDATE_BASE_PREFIX" \
+			"$RAW_OFFSET" "$SIMPLE_PARSER_RAW_WRITE_END" <<'PY' ||
+import pathlib
+import sys
+
+current = pathlib.Path(sys.argv[1]).read_bytes()
+accepted = pathlib.Path(sys.argv[2]).read_bytes()
+start, end = map(int, sys.argv[3:])
+if current[:start] != accepted[:start] or current[end:] != accepted[end:]:
+    raise SystemExit(1)
+PY
+			fail 'current prefix differs outside the fixed-read-path recovery span'
+		TARGET_UBOOT=$BASELINE
+		TARGET_PREFIX=$CANDIDATE_BASE_PREFIX
+		TARGET_UBOOT_BYTES=$SIMPLE_PARSER_UBOOT_BYTES
+		EXPECTED_PREFIX_SHA=$SIMPLE_PARSER_PREFIX_SHA
+		TARGET_DESCRIPTION='accepted simple-parser U-Boot recovery from fixed read path'
+		;;
 	--install-bootstage-fdt)
 		if cmp "$VERIFY_WORK/current-uboot.bin" "$CANDIDATE" >/dev/null; then
 			[ "$CURRENT_PREFIX_SHA" = "$BOOTSTAGE_FDT_PREFIX_SHA" ] ||
@@ -1492,6 +1651,8 @@ elif [ "$ACTION" = --install-lz4-pair ] ||
 	[ "$ACTION" = --restore-inplace-from-lz4 ] ||
 	[ "$ACTION" = --install-simple-parser ] ||
 	[ "$ACTION" = --restore-lz4-from-simple-parser ] ||
+	[ "$ACTION" = --install-fixed-read-path ] ||
+	[ "$ACTION" = --restore-simple-parser-from-fixed-read-path ] ||
 	[ "$ACTION" = --install-bootstage-fdt ] ||
 	[ "$ACTION" = --restore-inplace-handoff ]; then
 	COPYFILE_DISABLE=1 cp -f "$TARGET_PREFIX" "$VERIFY_WORK/expected-prefix.bin"
@@ -1527,7 +1688,8 @@ extract_raw_write_slice "$VERIFY_WORK/expected-prefix.bin" \
 if [ "$ACTION" = --restore-baseline ] ||
 	[ "$ACTION" = --restore-inplace-handoff ] ||
 	[ "$ACTION" = --restore-inplace-from-lz4 ] ||
-	[ "$ACTION" = --restore-lz4-from-simple-parser ]; then
+	[ "$ACTION" = --restore-lz4-from-simple-parser ] ||
+	[ "$ACTION" = --restore-simple-parser-from-fixed-read-path ]; then
 	RECOVERY_WRITE_PREFIX=$VERIFY_WORK/expected-prefix.bin
 else
 	RECOVERY_WRITE_PREFIX=$VERIFY_WORK/before-prefix.bin
@@ -1564,6 +1726,8 @@ if [ "$HOST_TEST_MODE" -eq 1 ] &&
 			[ "$ACTION" = --restore-inplace-from-lz4 ] ||
 			[ "$ACTION" = --install-simple-parser ] ||
 			[ "$ACTION" = --restore-lz4-from-simple-parser ] ||
+			[ "$ACTION" = --install-fixed-read-path ] ||
+			[ "$ACTION" = --restore-simple-parser-from-fixed-read-path ] ||
 			[ "$ACTION" = --install-bootstage-fdt ] ||
 			[ "$ACTION" = --restore-inplace-handoff ]; } &&
 	[ "$TEST_FAILPOINT" = after-write-authority-drift ]; then
@@ -1664,6 +1828,10 @@ elif [ "$ACTION" = --install-simple-parser ]; then
 	printf 'Fixed-path simple-parser U-Boot installed and exact full-prefix verification passed.\n'
 elif [ "$ACTION" = --restore-lz4-from-simple-parser ]; then
 	printf 'Accepted LZ4-pair U-Boot restored from simple parser and exact full-prefix verification passed.\n'
+elif [ "$ACTION" = --install-fixed-read-path ]; then
+	printf 'Fixed MBR/FAT read-path U-Boot installed and exact full-prefix verification passed.\n'
+elif [ "$ACTION" = --restore-simple-parser-from-fixed-read-path ]; then
+	printf 'Accepted simple-parser U-Boot restored from fixed read path and exact full-prefix verification passed.\n'
 elif [ "$ACTION" = --install-bootstage-fdt ]; then
 	printf 'Temporary measurement-only bootstage-FDT U-Boot installed and exact full-prefix verification passed.\n'
 	printf 'This diagnostic image is never a production successor; restore the accepted in-place handoff after capture.\n'

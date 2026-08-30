@@ -25,9 +25,11 @@ latency result, and show no measurable improvement. The clean full-release
 prerequisite for Stage 10 is satisfied. Three returned raw-kernel bootstage
 traces put the median fixed FAT/extlinux interval at 1,419,998 us and the
 following booti setup/handoff interval at 224,968 us. Rough progress is about
-90 percent. The temporary capture path is retired from the next canonical
-runtime, and the corrected uninstrumented LZ4 development-device gate passed;
-fixed U-Boot parser/subsystem subtraction and inherited-frame work remain.
+95 percent. The temporary capture path is retired from the next canonical
+runtime, the corrected uninstrumented LZ4 development-device gate passed, the
+simple-parser successor passed its broad hardware gate, and its smaller fixed
+MBR/FAT read-path successor is sealed and host-ready. That successor's physical
+gate and inherited-frame work remain.
 
 Why before: the retained ROCKNIX fake-suspend
 provider owns its accepted audio, input, governor, core-parking and LED

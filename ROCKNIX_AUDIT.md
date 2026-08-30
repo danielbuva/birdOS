@@ -31,9 +31,11 @@ raw-kernel bootstage traces put the median fixed FAT/extlinux interval at
 1,419,998 us and the following booti setup/handoff interval at 224,968 us. The
 corrected uninstrumented LZ4 development-device gate passed; the temporary
 measurement helper is retired from the next canonical runtime. Stage 10 rough
-planning progress is about 94 percent. The fixed simple-parser successor and
-bounded recovery transaction pass their host and broad RG34XX-SP gates; further
-subsystem subtraction and inherited-frame work remain. Returned boot
+planning progress is about 95 percent. The fixed simple-parser successor and
+bounded recovery transaction pass their host and broad RG34XX-SP gates. Its
+fixed-read-path successor removes 40,336 further unreachable full-U-Boot bytes,
+is reproducible and passes its authority, transaction and 79-case workflow
+gates; it is not installed yet. Its device gate and inherited-frame work remain. Returned boot
 `07d80b9c` preserved detailed functional, suspend and shutdown logs but no
 comparable initial usable-frame timestamp, so it adds no device timing claim.
 
