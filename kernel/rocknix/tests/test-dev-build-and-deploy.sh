@@ -153,6 +153,7 @@ for SOURCE_PATH in \
 	kernel/rocknix/transform-uboot-direct-extlinux.py \
 	kernel/rocknix/transform-uboot-fast-init.py \
 	kernel/rocknix/transform-uboot-inplace-handoff.py \
+	kernel/rocknix/transform-uboot-simple-parser.py \
 	kernel/rocknix/transform-uboot-lz4-kernel.py \
 	kernel/rocknix/transform-uboot-no-heap-clear.py \
 	kernel/rocknix/transform-uboot-bootstage-fdt.py \
@@ -182,6 +183,7 @@ cp -p "$SOURCE_ROOT/kernel/rocknix/tests/test-bird-local-binary.sh" \
 	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-direct-extlinux-transform.py" \
 	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-fast-init-transform.py" \
 	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-inplace-handoff-transform.py" \
+	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-simple-parser-transform.py" \
 	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-lz4-kernel-transform.py" \
 	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-no-heap-clear-transform.py" \
 	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-bootstage-fdt-transform.py" \
@@ -615,7 +617,7 @@ sys.modules[spec.name] = module
 assert spec.loader is not None
 spec.loader.exec_module(module)
 assert module.all_component_groups() == set(module.COMPONENT_HOST_TESTS)
-assert len(module.BROAD_PRODUCT_HOST_TESTS) == 60
+assert len(module.BROAD_PRODUCT_HOST_TESTS) == 61
 assert "test-dev-build-and-deploy.sh" in module.BROAD_PRODUCT_HOST_TESTS
 assert module.COMPONENT_HOST_TESTS["runtime:capture-boot-state.sh"] == (
     "test-stock-root-unit-ordering.sh",
@@ -656,6 +658,9 @@ expected_host_only = {
     ),
     "kernel/rocknix/transform-uboot-inplace-handoff.py": (
         "test-uboot-inplace-handoff-transform.py",
+    ),
+    "kernel/rocknix/transform-uboot-simple-parser.py": (
+        "test-uboot-simple-parser-transform.py",
     ),
     "kernel/rocknix/transform-uboot-lz4-kernel.py": (
         "test-uboot-lz4-kernel-transform.py",

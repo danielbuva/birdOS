@@ -29,9 +29,10 @@ reaction-time check and do not establish a measurable improvement. This clean
 canonical gate satisfies the Stage 10 full-release prerequisite. Three returned
 raw-kernel bootstage traces put the median fixed FAT/extlinux interval at
 1,419,998 us and the following booti setup/handoff interval at 224,968 us. The
-uninstrumented LZ4 functional gate is next; the temporary measurement helper is
-retired from the next canonical runtime. Stage 10 rough planning progress is
-about 80 percent.
+corrected uninstrumented LZ4 development-device gate passed; the temporary
+measurement helper is retired from the next canonical runtime. Stage 10 rough
+planning progress is about 90 percent, with fixed U-Boot parser/subsystem
+subtraction and inherited-frame work remaining.
 
 Why before: ROCKNIX's provider owns the proven
 audio, input, governor, core-parking and LED transaction; Bird owns fixed-panel

@@ -174,10 +174,11 @@ median of about 1176 ms, and an input-ready median of 1170 ms. Three completed
 asynchronous storage records have a 3514 ms median; the fourth short boot shut
 down before storage readiness. That three-sample result is noise-scale. The
 2.8--2.9-second stopwatch result establishes no measurable speed improvement.
-In-place handoff is the active physically accepted U-Boot boundary. Stage 10 is
-roughly 80 percent complete; the raw-kernel bootstage measurement is complete.
-The uninstrumented LZ4 functional gate, deeper fixed-path pruning and the
-inherited-frame experiment remain.
+In-place handoff plus the reviewed LZ4 bound is the active physically accepted
+U-Boot/kernel pair. Stage 10 is roughly 90 percent complete; the raw-kernel
+bootstage measurement and corrected uninstrumented LZ4 development-device gate
+are complete. Deeper fixed-path pruning and the inherited-frame experiment
+remain.
 
 Why before: the retained ROCKNIX provider owns
 the accepted audio, input, governor, core-parking and LED transaction; Bird

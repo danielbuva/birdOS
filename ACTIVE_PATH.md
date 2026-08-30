@@ -368,11 +368,12 @@ focused investigation to the retained provider, PMIC/button and reset-surviving
 diagnostics, but does not justify changing the accepted suspend path during
 Stage 10.
 
-In-place handoff remains the active physically accepted U-Boot boundary. Stage
-10 is roughly 80 percent complete: five accepted U-Boot transitions, the clean
-canonical prerequisite and the raw-kernel bootstage measurement are complete.
-The uninstrumented LZ4 functional gate, deeper fixed-path pruning and the
-inherited-frame experiment remain.
+In-place handoff plus the reviewed LZ4 bound remains the active physically
+accepted U-Boot/kernel pair. Stage 10 is roughly 90 percent complete: five
+accepted U-Boot transitions, the clean canonical prerequisite, raw-kernel
+bootstage measurement and corrected uninstrumented LZ4 development-device gate
+are complete. Deeper fixed-path pruning and the inherited-frame experiment
+remain.
 
 Why the previous measurement boundary existed: source inspection treated
 generic bootm's `bootm_load_os` mark as the kernel-load boundary. The accepted
@@ -472,6 +473,25 @@ when available and otherwise writes one bounded top-level BIRD diagnostic.
 Healthy boots disarm before persistent logging and remove any pending record.
 This is a recovery/evidence gate, not a speculative storage fix; the next card
 boot must provide the captured boundary before changing storage sequencing.
+
+That boundary was strict release verification rather than an LZ4 timing race:
+the valid LZ4 source-kernel provenance was absent from the exact optional-input
+allowlist. Corrected `dev-current` source `f22e2b8` verified, published a
+1.178-second usable frame, anchored storage at 3.388 seconds, disarmed the
+watchdog and passed the broad charged-device screen. The observed 90-second
+cutoff reported battery 0 percent, discharging, left no Bird shutdown/suspend
+record and disappeared after charging.
+
+Why the next generic path existed: sunxi implies distro defaults for an
+interactive multi-command U-Boot. Why change: Bird executes one uninterruptible
+`sysboot` command. Two isolated simple-parser feasibility builds are
+byte-identical and retain the exact MMC/FAT/extlinux/LZ4/`booti` closure while
+removing hush, editing, completion, tracing and long help. Their combined
+artifact is 518,369 bytes versus the
+accepted pair's 556,977, a 38,608-byte (6.93 percent) reduction. Full U-Boot is
+398,560 versus 437,168 bytes, an 8.83 percent reduction. SPL and control DTB are
+byte-identical and FIT changes are limited to U-Boot data. No device timing or
+deployment claim is made.
 
 The corrected source-kernel package reached Bird's early usable menu but not
 application readiness. A temporary early watchdog proved that release-runtime

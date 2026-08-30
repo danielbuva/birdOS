@@ -270,9 +270,9 @@ about 1176 ms; input-ready median is 1170 ms. Three completed asynchronous
 storage records have a 3514 ms median; that three-sample result is noise-scale.
 The 2.8--2.9-second stopwatch result likewise establishes no measurable
 improvement. In-place handoff is the active physically accepted U-Boot
-boundary. Stage 10 is roughly 80 percent complete. The raw-kernel bootstage
-measurement is complete; the uninstrumented LZ4 functional gate, deeper fixed-path
-pruning and the inherited-frame experiment remain.
+boundary. Stage 10 is roughly 90 percent complete. The raw-kernel bootstage
+measurement and corrected uninstrumented LZ4 development-device gate are
+complete; deeper fixed-path pruning and the inherited-frame experiment remain.
 
 Why before: the retained fake-suspend provider
 owns the proven audio, input, governor, core-parking and LED transaction; Bird

@@ -17,13 +17,16 @@ three-sample result. The latest seven stopwatch samples span 2.64--2.90 seconds
 with a coarse 2.78-second median. They are a human reaction-time check, not a
 calibrated latency distribution, so no measurable speed improvement is claimed.
 This clean canonical gate satisfies the current Stage 10 prerequisite. Stage 10
-is roughly 85 percent complete. Immutable LZ4 release
-`v6.23-20260826-194408` reached the interactive menu, but its first returned
-hardware gate did not acquire usable storage, so content launch and orderly
-shutdown were unavailable. No root-cause evidence survived that boot. The next
-development gate adds an initramfs-owned 30-second storage watchdog that starts
-before Bird, captures the live mount/kernel/process state, and powers off only
-when the verified storage anchor never disarms it.
+is roughly 90 percent complete. Immutable LZ4 release
+`v6.23-20260826-194408` first reached the interactive menu without usable
+storage. The added initramfs-owned 30-second storage watchdog then localized
+the stop to strict release verification: the LZ4 source-kernel provenance was
+valid but absent from the exact optional-input allowlist. Corrected
+`dev-current` source `f22e2b8c7eb2119f7aabfc03f5bc7532f1de4ffe` verified,
+disarmed the watchdog, anchored storage at 3.388 seconds and passed the broad
+RG34XX-SP functional screen after the test device was charged. The remaining
+work is deeper fixed U-Boot parser/subsystem subtraction and the inherited-frame
+experiment; canonical promotion still requires its separate immutable gate.
 
 Why before: ROCKNIX's retained fake-suspend provider owns
 the accepted audio, input, governor, core-parking and LED transaction, while

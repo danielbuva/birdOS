@@ -207,6 +207,7 @@ KNOWN_STANDALONE_HOST_TESTS = {
     "test-uboot-fast-init-build.py",
     "test-uboot-inplace-handoff-build.py",
     "test-uboot-inplace-handoff-transform.py",
+    "test-uboot-simple-parser-transform.py",
     "test-uboot-lz4-pair-build.py",
     "test-uboot-lz4-kernel-transform.py",
     "test-uboot-no-heap-clear-transform.py",
@@ -262,6 +263,9 @@ HOST_ONLY_SOURCE_TESTS: dict[str, tuple[str, ...]] = {
     ),
     "kernel/rocknix/transform-uboot-inplace-handoff.py": (
         "test-uboot-inplace-handoff-transform.py",
+    ),
+    "kernel/rocknix/transform-uboot-simple-parser.py": (
+        "test-uboot-simple-parser-transform.py",
     ),
     "kernel/rocknix/transform-uboot-lz4-kernel.py": (
         "test-uboot-lz4-kernel-transform.py",

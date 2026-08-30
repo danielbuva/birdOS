@@ -1735,14 +1735,14 @@ memory or size benefit.
 
 ## Stage 10 — U-Boot performance and inherited frame
 
-Rough planning progress is about 80 percent. Environment-nowhere,
+Rough planning progress is about 90 percent. Environment-nowhere,
 direct-extlinux, no-heap-clear, fast-init and in-place handoff are physically
 accepted, and canonical release `v6.23-20260814-201218` satisfies the clean
 full-release prerequisite. The raw-kernel bootstage measurement and paired LZ4
-host preparation are complete. The remaining large boundaries are the
-uninstrumented LZ4 functional gate, deeper fixed-path/parser and subsystem
-subtraction, and
-the inherited-frame experiment.
+host preparation are complete, and the corrected uninstrumented LZ4 runtime
+has passed its broad development-device gate. The remaining large boundaries
+are deeper fixed-path/parser and subsystem subtraction and the inherited-frame
+experiment.
 
 The first Stage 10 candidate has passed its complete non-deploying host gate.
 The four-pass build produced two byte-identical baselines that each reproduce
@@ -2053,6 +2053,28 @@ early-launcher output and dmesg before a synchronized three-second forced
 poweroff. Prefer p6 for the per-boot record and fall back to a bounded top-level
 BIRD diagnostic when p6 itself is unavailable. Do not infer an LZ4 timing race
 until this evidence names the failing boundary.
+
+The watchdog named strict release verification rather than an LZ4 timing race:
+the exact valid LZ4 source-kernel provenance was not in the optional-input
+allowlist. The corrected verifier admits only that unique authority in addition
+to the stock set. Clean `dev-current` source `f22e2b8` then passed release
+verification, reached a usable frame at 1.178 seconds, anchored storage at
+3.388 seconds, disarmed the watchdog and passed the broad charged-device
+functional gate. A later abrupt cutoff had no Bird shutdown/suspend record and
+was confirmed as a depleted test device, not a boot regression.
+
+Why the next generic path existed: sunxi implies U-Boot's distro defaults,
+which retain the hush shell, editing, completion, tracing and long help for
+interactive multi-command systems. Why change: Bird's uninterruptible boot
+policy executes one fixed `sysboot` command, and U-Boot's simple parser still
+provides its required variable expansion and extlinux handoff. Two isolated
+host-only feasibility links are byte-identical while retaining MMC, FAT,
+PXE/extlinux parsing, raw initramfs, LZ4 and `booti`; SPL and the control DTB are
+byte-identical, and FIT differences remain confined to `/images/uboot:data`.
+The combined artifact shrinks from
+556,977 to 518,369 bytes, saving 38,608 bytes (6.93 percent); full U-Boot shrinks
+8.83 percent. This is a host size/load result, not a hardware latency claim or
+deployment authority.
 
 ## Candidate report gate
 
