@@ -1735,14 +1735,14 @@ memory or size benefit.
 
 ## Stage 10 — U-Boot performance and inherited frame
 
-Rough planning progress is about 90 percent. Environment-nowhere,
+Rough planning progress is about 92 percent. Environment-nowhere,
 direct-extlinux, no-heap-clear, fast-init and in-place handoff are physically
 accepted, and canonical release `v6.23-20260814-201218` satisfies the clean
 full-release prerequisite. The raw-kernel bootstage measurement and paired LZ4
 host preparation are complete, and the corrected uninstrumented LZ4 runtime
 has passed its broad development-device gate. The remaining large boundaries
-are deeper fixed-path/parser and subsystem subtraction and the inherited-frame
-experiment.
+include the simple-parser hardware gate, further fixed-path subsystem
+subtraction and the inherited-frame experiment.
 
 The first Stage 10 candidate has passed its complete non-deploying host gate.
 The four-pass build produced two byte-identical baselines that each reproduce
@@ -2071,10 +2071,16 @@ provides its required variable expansion and extlinux handoff. Two isolated
 host-only feasibility links are byte-identical while retaining MMC, FAT,
 PXE/extlinux parsing, raw initramfs, LZ4 and `booti`; SPL and the control DTB are
 byte-identical, and FIT differences remain confined to `/images/uboot:data`.
-The combined artifact shrinks from
+The formal sparse-policy builder first stopped because disabling those defaults
+also removed boot dependencies that the feasibility command had reselected.
+Those retained dependencies are now explicit, and two fresh isolated builds
+reproduce the exact feasibility bytes. The combined artifact shrinks from
 556,977 to 518,369 bytes, saving 38,608 bytes (6.93 percent); full U-Boot shrinks
-8.83 percent. This is a host size/load result, not a hardware latency claim or
-deployment authority.
+8.83 percent. A self-verifying production-successor authority and bounded
+LZ4-to-parser installer now pass the full host transaction gate, including
+predecessor rejection, sector-tail preservation, complete-prefix readback,
+failure rollback and exact LZ4 recovery. This is a host size/load result, not a
+hardware latency claim; the RG34XX-SP gate is still required.
 
 ## Candidate report gate
 

@@ -16,9 +16,28 @@ from pathlib import Path
 
 
 SOURCE_SHA256 = "0254301f87e2222f04c67a34e5351bce16ebaac712bd96cc096f76027d9ded13"
-RESULT_SHA256 = "b7ff71e0b8e40a5bbd55de96b73a8dac86279cdee58e72a54b9be0d6eee1dfc7"
+RESULT_SHA256 = "743fa795fef9bea6e20b95cf18686982a87d46806eba253dbbe0d77a6850d28e"
 POLICY = (
     b"# CONFIG_DISTRO_DEFAULTS is not set\n"
+    # Preserve the exact generic-boot closure selected by DISTRO_DEFAULTS.
+    # These are deliberately retained here; later subsystem subtraction must
+    # cross its own independently reviewable build and hardware boundary.
+    b"CONFIG_ENV_VARS_UBOOT_CONFIG=y\n"
+    b"CONFIG_PXE_UTILS=y\n"
+    b"CONFIG_SUPPORT_RAW_INITRD=y\n"
+    b"CONFIG_USE_BOOTCOMMAND=y\n"
+    b"CONFIG_MENU=y\n"
+    b"CONFIG_CMD_PART=y\n"
+    b"CONFIG_CMD_SYSBOOT=y\n"
+    b"CONFIG_CMD_EXT2=y\n"
+    b"CONFIG_CMD_EXT4=y\n"
+    b"CONFIG_CMD_FAT=y\n"
+    b"CONFIG_CMD_FS_GENERIC=y\n"
+    b"CONFIG_DOS_PARTITION=y\n"
+    b"CONFIG_ISO_PARTITION=y\n"
+    b"CONFIG_FS_EXT4=y\n"
+    b"CONFIG_FS_FAT=y\n"
+    b"CONFIG_FAT_WRITE=y\n"
     b"# CONFIG_HUSH_PARSER is not set\n"
     b"# CONFIG_CMDLINE_EDITING is not set\n"
     b"# CONFIG_AUTO_COMPLETE is not set\n"

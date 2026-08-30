@@ -369,11 +369,12 @@ diagnostics, but does not justify changing the accepted suspend path during
 Stage 10.
 
 In-place handoff plus the reviewed LZ4 bound remains the active physically
-accepted U-Boot/kernel pair. Stage 10 is roughly 90 percent complete: five
+accepted U-Boot/kernel pair. Stage 10 is roughly 92 percent complete: five
 accepted U-Boot transitions, the clean canonical prerequisite, raw-kernel
 bootstage measurement and corrected uninstrumented LZ4 development-device gate
-are complete. Deeper fixed-path pruning and the inherited-frame experiment
-remain.
+are complete. The reviewed simple-parser successor and bounded installer are
+host-ready; its hardware gate, deeper subsystem pruning and the inherited-frame
+experiment remain.
 
 Why the previous measurement boundary existed: source inspection treated
 generic bootm's `bootm_load_os` mark as the kernel-load boundary. The accepted
@@ -484,14 +485,22 @@ record and disappeared after charging.
 
 Why the next generic path existed: sunxi implies distro defaults for an
 interactive multi-command U-Boot. Why change: Bird executes one uninterruptible
-`sysboot` command. Two isolated simple-parser feasibility builds are
-byte-identical and retain the exact MMC/FAT/extlinux/LZ4/`booti` closure while
+`sysboot` command. The first formal sparse-policy build correctly stopped when
+disabling distro defaults also removed boot dependencies that the feasibility
+command had reselected transiently. The policy now records the exact retained
+MMC/FAT/extlinux/LZ4/`booti` closure explicitly. Two fresh isolated builds are
+byte-identical and reproduce the feasibility bytes while
 removing hush, editing, completion, tracing and long help. Their combined
 artifact is 518,369 bytes versus the
 accepted pair's 556,977, a 38,608-byte (6.93 percent) reduction. Full U-Boot is
 398,560 versus 437,168 bytes, an 8.83 percent reduction. SPL and control DTB are
 byte-identical and FIT changes are limited to U-Boot data. No device timing or
-deployment claim is made.
+deployment timing claim is made. The self-verifying authority pins the exact
+candidate and predecessor prefixes. Its bounded installer accepts only the
+reviewed LZ4 pair, writes 1,013 complete sectors, preserves the 287-byte final
+sector tail from the verified prefix, verifies the complete 16 MiB result and
+provides exact LZ4 recovery. The full destructive-path simulator passes; no
+card write has occurred at this boundary.
 
 The corrected source-kernel package reached Bird's early usable menu but not
 application readiness. A temporary early watchdog proved that release-runtime

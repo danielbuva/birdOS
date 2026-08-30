@@ -144,6 +144,7 @@ for SOURCE_PATH in \
 	kernel/rocknix/build-uboot-no-heap-clear.sh \
 	kernel/rocknix/build-uboot-fast-init.sh \
 	kernel/rocknix/build-uboot-inplace-handoff.sh \
+	kernel/rocknix/build-uboot-simple-parser.sh \
 	kernel/rocknix/build-uboot-bootstage-fdt.sh \
 	kernel/rocknix/build-lz4-kernel-candidate.sh \
 	kernel/rocknix/build-stock-root-compat.sh \
@@ -169,6 +170,7 @@ for SOURCE_PATH in \
 	kernel/rocknix/verify-uboot-no-heap-clear-build.py \
 	kernel/rocknix/verify-uboot-fast-init-build.py \
 	kernel/rocknix/verify-uboot-inplace-handoff-build.py \
+	kernel/rocknix/verify-uboot-simple-parser-build.py \
 	kernel/rocknix/verify-uboot-bootstage-fdt-build.py \
 	kernel/rocknix/verify-lz4-kernel-candidate.py \
 	kernel/rocknix/verify-uboot-lz4-pair-build.py; do
@@ -190,6 +192,7 @@ cp -p "$SOURCE_ROOT/kernel/rocknix/tests/test-bird-local-binary.sh" \
 	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-no-heap-clear-build.py" \
 	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-fast-init-build.py" \
 	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-inplace-handoff-build.py" \
+	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-simple-parser-build.py" \
 	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-lz4-pair-build.py" \
 	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-bootstage-fdt-build.py" \
 	"$SOURCE_ROOT/kernel/rocknix/tests/test-lz4-kernel-candidate.py" \
@@ -617,7 +620,7 @@ sys.modules[spec.name] = module
 assert spec.loader is not None
 spec.loader.exec_module(module)
 assert module.all_component_groups() == set(module.COMPONENT_HOST_TESTS)
-assert len(module.BROAD_PRODUCT_HOST_TESTS) == 61
+assert len(module.BROAD_PRODUCT_HOST_TESTS) == 62
 assert "test-dev-build-and-deploy.sh" in module.BROAD_PRODUCT_HOST_TESTS
 assert module.COMPONENT_HOST_TESTS["runtime:capture-boot-state.sh"] == (
     "test-stock-root-unit-ordering.sh",
@@ -636,6 +639,9 @@ expected_host_only = {
     ),
     "kernel/rocknix/build-uboot-inplace-handoff.sh": (
         "test-uboot-inplace-handoff-build.py",
+    ),
+    "kernel/rocknix/build-uboot-simple-parser.sh": (
+        "test-uboot-simple-parser-build.py",
     ),
     "kernel/rocknix/build-uboot-bootstage-fdt.sh": (
         "test-uboot-bootstage-fdt-build.py",
@@ -661,6 +667,7 @@ expected_host_only = {
     ),
     "kernel/rocknix/transform-uboot-simple-parser.py": (
         "test-uboot-simple-parser-transform.py",
+        "test-uboot-simple-parser-build.py",
     ),
     "kernel/rocknix/transform-uboot-lz4-kernel.py": (
         "test-uboot-lz4-kernel-transform.py",
@@ -707,6 +714,10 @@ expected_host_only = {
     ),
     "kernel/rocknix/verify-uboot-inplace-handoff-build.py": (
         "test-uboot-inplace-handoff-build.py",
+        "test-mac-install-bird-uboot.sh",
+    ),
+    "kernel/rocknix/verify-uboot-simple-parser-build.py": (
+        "test-uboot-simple-parser-build.py",
         "test-mac-install-bird-uboot.sh",
     ),
     "kernel/rocknix/verify-uboot-bootstage-fdt-build.py": (

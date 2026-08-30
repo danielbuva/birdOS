@@ -82,6 +82,11 @@ def main() -> None:
 
     for retained in (
         b'CONFIG_BOOTCOMMAND="sysboot mmc 0:1 fat ${scriptaddr} /extlinux/extlinux.conf"\n',
+        b"CONFIG_USE_BOOTCOMMAND=y\n",
+        b"CONFIG_CMD_SYSBOOT=y\n",
+        b"CONFIG_PXE_UTILS=y\n",
+        b"CONFIG_SUPPORT_RAW_INITRD=y\n",
+        b"CONFIG_FS_FAT=y\n",
         b"CONFIG_NO_NET=y\n",
         b"# CONFIG_BOOTSTD is not set\n",
         b"CONFIG_ENV_SOURCE_FILE=\"bird-rg34xx-sp-handoff\"\n",
