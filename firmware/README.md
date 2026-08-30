@@ -278,6 +278,27 @@ returned raw trace already identified loading as the dominant interval, and
 the next canonical runtime removes the capture helper. Restore the temporary
 diagnostic to exact uninstrumented in-place U-Boot before proceeding.
 
+Why the accepted fixed-command-closure bound existed: it exactly matched the
+physically accepted IRQ-kernel LZ4 frame. Why change: the Stage 11 kernel frame
+is 363 bytes shorter after disabling only its fixed-device RAID6 PQ benchmark.
+The paired successor preserves every U-Boot byte except the three ASCII bound
+bytes, and its dedicated transaction writes one 512-byte raw sector, verifies
+the full 16 MiB prefix and unchanged BIRD inventory, and restores the original
+sector on failure:
+
+```sh
+./firmware/mac-install-no-raid6-benchmark-pair.sh /dev/diskN --install \
+  kernel/work/bird-no-raid6-benchmark-pair-20260830
+```
+
+Direct restoration to the accepted fixed-command-closure prefix is:
+
+```sh
+./firmware/mac-install-no-raid6-benchmark-pair.sh /dev/diskN \
+  --restore-fixed-command-closure \
+  kernel/work/bird-no-raid6-benchmark-pair-20260830
+```
+
 If a bounded raw write is externally interrupted, return the card to the same
 host and use the successor authority to restore the shipping baseline:
 

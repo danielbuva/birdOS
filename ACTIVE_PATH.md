@@ -3,14 +3,14 @@
 This document is the authority for the code that builds, installs and runs the
 current birdOS system. The active implementation path is **stock-root v6.23**.
 The current human promotion record binds clean public source
-`5373c644b9c91ac21a17e145375747a8196a3337`,
-immutable release `v6.23-20260814-201218`, deploy-manifest digest
-`904c8da42a6ec84ccf4b291205999c3b0e25900f4bec7bb3f9e0cfefb29164dd`,
+`56ae92d94243f5759b7dee0a7d2d433701815bf7`,
+immutable release `v6.23-20260830-201239`, deploy-manifest digest
+`43beaab6860e9eea76fe534c113e8f47b8fd03ffde9b6f3eb1eded863ee83734`,
 device-contract digest
 `1664a3778abcd3687865a82fd28bba5b468f6c3c7e9a46bf90f7c3acb1e08162`
 and generated-catalog digest
 `9795aae6baddc292f5d9954a444656e303db305c639284f16eb10288c41f1f93`.
-The complete host gate and broad RG34XX-SP behavior gate passed on 2026-08-14.
+The complete host gate and broad RG34XX-SP behavior gate passed on 2026-08-30.
 This canonicalizes the accepted Stage 9 IRQ button path and the reviewed
 Stage 10 runtime/tooling boundary. All 17 digital controls, including L3/R3,
 use independent 5 ms GPIO
@@ -115,9 +115,9 @@ base:
 - the release-matched H700 joypad module used by the early overlay.
 
 The complete builder verifies these inputs before generating birdOS files.
-birdOS currently changes the external initramfs overlay, launcher, fixed
-services, integration scripts and activation metadata. It does not claim to
-rebuild or trim the release kernel yet.
+The active canonical release uses birdOS's reproducible IRQ-button Linux
+7.0.11 Image as its exact LZ4 frame while retaining the shipping-identical DTB,
+accepted module set, external initramfs overlay and fixed integration layer.
 
 Stage 8 promoted its production-only parity candidate. Its authority is
 [`kernel/rocknix/source-kernel-parity.tsv`](kernel/rocknix/source-kernel-parity.tsv):

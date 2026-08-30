@@ -34,6 +34,10 @@ grep -Fq 'source-kernel-irq-buttons-lz4.tsv' "$UPDATER" || {
 	printf '%s\n' 'IRQ-buttons LZ4 kernel authority is missing from updater input verification' >&2
 	exit 1
 }
+grep -Fq 'source-kernel-irq-buttons-no-raid6-benchmark-lz4.tsv' "$UPDATER" || {
+	printf '%s\n' 'no-RAID6-benchmark kernel authority is missing from updater input verification' >&2
+	exit 1
+}
 
 # Exercise the real publication filesystem, not a spoofed mode field. The
 # hdiutil image is private test storage and is never mapped to the physical SD.

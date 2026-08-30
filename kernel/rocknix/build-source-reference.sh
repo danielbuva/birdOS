@@ -22,6 +22,7 @@ SINGLE_INPUT_SYNC=${SINGLE_INPUT_SYNC:-0}
 CHANGED_INPUT_SYNC=${CHANGED_INPUT_SYNC:-0}
 FIXED_GPIO_FASTPATH=${FIXED_GPIO_FASTPATH:-0}
 IRQ_GPIO_BUTTONS=${IRQ_GPIO_BUTTONS:-0}
+SKIP_RAID6_BENCHMARK=${SKIP_RAID6_BENCHMARK:-0}
 IRQ_GPIO_TRANSFORM=$ROOT/kernel/rocknix/transform-joypad-irq.py
 JOBS=${JOBS:-4}
 
@@ -81,6 +82,12 @@ case "$IRQ_GPIO_BUTTONS" in
 esac
 [ "$IRQ_GPIO_BUTTONS" -eq 0 ] || [ "$FIXED_GPIO_FASTPATH" -eq 1 ] || \
 	fail 'IRQ_GPIO_BUTTONS requires FIXED_GPIO_FASTPATH=1'
+case "$SKIP_RAID6_BENCHMARK" in
+	0 | 1) ;;
+	*) fail 'SKIP_RAID6_BENCHMARK must be 0 or 1' ;;
+esac
+[ "$SKIP_RAID6_BENCHMARK" -eq 0 ] || [ "$IRQ_GPIO_BUTTONS" -eq 1 ] || \
+	fail 'SKIP_RAID6_BENCHMARK requires IRQ_GPIO_BUTTONS=1'
 [ -f "$IRQ_GPIO_TRANSFORM" ] || fail 'joypad IRQ transform helper is missing'
 [ -d "$ROCKNIX_SOURCE/.git" ] || fail "ROCKNIX source missing: $ROCKNIX_SOURCE"
 [ "$(git -C "$ROCKNIX_SOURCE" rev-parse HEAD)" = "$ROCKNIX_COMMIT" ] || \
@@ -148,6 +155,7 @@ set -- docker run --rm --platform linux/arm64 \
 	-e CHANGED_INPUT_SYNC="$CHANGED_INPUT_SYNC" \
 	-e FIXED_GPIO_FASTPATH="$FIXED_GPIO_FASTPATH" \
 	-e IRQ_GPIO_BUTTONS="$IRQ_GPIO_BUTTONS" \
+	-e SKIP_RAID6_BENCHMARK="$SKIP_RAID6_BENCHMARK" \
 	-e LOCALVERSION= \
 	-v "$ROCKNIX_SOURCE:/rocknix:ro" \
 	-v "$JOYPAD_SOURCE:/rocknix-joypad:ro" \
@@ -480,6 +488,13 @@ PY
 			"$INITRAMFS_CONFIG"
 		scripts/config --file .config --set-str CONFIG_EXTRA_FIRMWARE_DIR \
 			"external-firmware"
+		# Btrfs retains RAID6 support.  The fixed Cortex-A53 target does not
+		# need to spend roughly half a second benchmarking every parity
+		# implementation: with benchmarking disabled, upstream selects the
+		# first highest-priority valid implementation, NEONx8 on this build.
+		if [ "$SKIP_RAID6_BENCHMARK" = 1 ]; then
+			scripts/config --file .config --disable CONFIG_RAID6_PQ_BENCHMARK
+		fi
 		if [ "$DEFER_PANFROST" = 1 ]; then
 			scripts/config --file .config --module CONFIG_DRM_PANFROST
 		fi
@@ -550,12 +565,20 @@ strings "$JOYPAD_MODULE" | grep -Fqx \
 	fail 'H700 joypad module DT alias missing'
 
 python3 - "$BUILD_OUTPUT/shipping.config" "$BUILD_OUTPUT/built.config" \
-	"$BUILD_OUTPUT/config-diff.txt" "$DEFER_PANFROST" <<'PY'
+	"$BUILD_OUTPUT/config-diff.txt" "$DEFER_PANFROST" \
+	"$SKIP_RAID6_BENCHMARK" <<'PY'
 import re
 import sys
 
-oracle_path, built_path, report_path, defer_panfrost_arg = sys.argv[1:]
+(
+    oracle_path,
+    built_path,
+    report_path,
+    defer_panfrost_arg,
+    skip_raid6_benchmark_arg,
+) = sys.argv[1:]
 defer_panfrost = defer_panfrost_arg == "1"
+skip_raid6_benchmark = skip_raid6_benchmark_arg == "1"
 
 def symbols(path):
     result = {}
@@ -591,6 +614,8 @@ def is_allowed(name):
             "CONFIG_DRM_PANFROST",
             "CONFIG_DRM_SCHED",
         }
+    ) or (
+        skip_raid6_benchmark and name == "CONFIG_RAID6_PQ_BENCHMARK"
     )
 
 unexpected = [entry for entry in changed if not is_allowed(entry[0])]
@@ -605,6 +630,22 @@ if unexpected:
         print(f"unexpected config drift: {name}\n  shipping: {old}\n  rebuilt:  {new}", file=sys.stderr)
     raise SystemExit(1)
 PY
+
+if [ "$SKIP_RAID6_BENCHMARK" = 1 ]; then
+	grep -qx '# CONFIG_RAID6_PQ_BENCHMARK is not set' \
+		"$BUILD_OUTPUT/built.config" || \
+		fail 'RAID6 benchmark remains enabled'
+	grep -qx 'CONFIG_RAID6_PQ=y' "$BUILD_OUTPUT/built.config" || \
+		fail 'RAID6 parity support changed'
+	grep -qx 'CONFIG_BTRFS_FS=y' "$BUILD_OUTPUT/built.config" || \
+		fail 'Btrfs support changed'
+	grep -Eq '[[:space:]][tT][[:space:]]+raid6_select_algo$' \
+		"$BUILD_OUTPUT/System.map" || \
+		fail 'RAID6 algorithm selection disappeared'
+	strings "$BUILD_OUTPUT/Image" | \
+		grep -Fq 'raid6: skipped pq benchmark and selected %s' || \
+		fail 'non-benchmark RAID6 selection path is absent'
+fi
 
 PANFROST_ARTIFACT=
 if [ "$DEFER_PANFROST" = 1 ]; then
@@ -726,6 +767,10 @@ fi
 		printf 'joypad-digital-policy\tboth-edge-irq-5ms-debounce\n'
 		printf 'joypad-poll-policy\tanalog-only-10ms\n'
 		printf 'joypad-fixed-buttons\t17\n'
+	fi
+	if [ "$SKIP_RAID6_BENCHMARK" = 1 ]; then
+		printf 'raid6-pq-policy\tfixed-priority-no-benchmark\n'
+		printf 'raid6-pq-selected\tneonx8-first-valid\n'
 	fi
 	printf 'shipping-kernel-sha256\t%s\n' "$SHIPPING_KERNEL_SHA"
 	printf 'shipping-dtb-sha256\t%s\n' "$SHIPPING_DTB_SHA"

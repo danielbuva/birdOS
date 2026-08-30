@@ -2143,6 +2143,27 @@ shutdown. Boot `e8129b34` recorded usable frame at 1,182 ms, input readiness at
 as before. Detailed logs survived without a usability change. This physically
 accepts the fixed MBR/FAT read-path boundary without claiming acceleration.
 
+## Stage 11: fixed RAID6 PQ selection
+
+Why before: ROCKNIX's generic kernel benchmarks every available RAID6 PQ
+implementation so one image can select the fastest algorithm on different
+hardware. Why change: repeated RG34XX-SP boot logs always select `neonx8`, but
+the selection sequence occupies about 510 ms inside Linux before userspace.
+The candidate disables only `CONFIG_RAID6_PQ_BENCHMARK`; RAID6 PQ, Btrfs, the
+selected NEON implementation, DTB, module archive and joypad module remain.
+Two isolated kernel trees and two LZ4 frames are byte-identical. The Image is
+`b1d5eba80c2a9b07d4c99057fa9817403bd5de4e8f1dfc4cfcc5064443b6386e`;
+the 17,565,344-byte frame is
+`2fb550062d3fbd69b433f0aa79d892b8b3a55ee048cf861874b90289a932d77a`.
+The currently accepted fixed-command-closure U-Boot is preserved except for
+the three ASCII bytes changing its exact bound from `0x10c080b` to
+`0x10c06a0`. Its config, SPL and control DTB are byte-identical, and two formal
+links reproduce combined SHA-256
+`5352c2f635b1f741c8d1fcfb647e9ce2ea570311cbd8b476944d71338654f2f0`.
+These are host identities and trace-attributed existing cost, not a device
+timing claim. Next gate: commit, install the one-sector paired U-Boot successor,
+deploy one clean immutable canonical release, and run the broad device screen.
+
 ## Candidate report gate
 
 Before editing, inspect and state the active critical path. Acquire and seal a

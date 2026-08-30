@@ -99,6 +99,18 @@ grep -Fq 'joypad-poll-policy' "$SOURCE_BUILDER" || \
 	fail 'analog-only poll authority record missing'
 grep -Fq 'joypad-fixed-buttons' "$SOURCE_BUILDER" || \
 	fail 'fixed button-count authority record missing'
+grep -Fq 'SKIP_RAID6_BENCHMARK requires IRQ_GPIO_BUTTONS=1' \
+	"$SOURCE_BUILDER" || fail 'RAID6 benchmark candidate sequencing gate missing'
+grep -Fq 'scripts/config --file .config --disable CONFIG_RAID6_PQ_BENCHMARK' \
+	"$SOURCE_BUILDER" || fail 'RAID6 benchmark config subtraction missing'
+grep -Fq 'RAID6 parity support changed' "$SOURCE_BUILDER" || \
+	fail 'retained RAID6 support gate missing'
+grep -Fq 'Btrfs support changed' "$SOURCE_BUILDER" || \
+	fail 'retained Btrfs support gate missing'
+grep -Fq 'raid6: skipped pq benchmark and selected %s' "$SOURCE_BUILDER" || \
+	fail 'deterministic RAID6 selection-path gate missing'
+grep -Fq 'raid6-pq-selected' "$SOURCE_BUILDER" || \
+	fail 'fixed RAID6 selection authority record missing'
 grep -Fq 'source module archive digest changed' "$BUILDER" || \
 	fail 'module archive digest gate missing'
 grep -Fq 'isolated source SYSTEM $FILE differs' "$BUILDER" || \

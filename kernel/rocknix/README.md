@@ -69,6 +69,17 @@ appear in them. The user's slightly faster stopwatch impression spans U-Boot
 but remains reaction-limited. The packed fallback is accepted without a device
 latency claim.
 
+Stage 11 now targets a Linux-clock-visible cost. Why before: the generic
+kernel benchmarks all RAID6 PQ implementations to select across variable
+hardware. Why change: the fixed RG34XX-SP repeatedly selects `neonx8` only
+after about 510 ms of boot-time benchmarking. The host candidate disables only
+`CONFIG_RAID6_PQ_BENCHMARK`, retains RAID6 PQ and Btrfs, and leaves the accepted
+DTB and modules byte-identical. Two kernel builds, LZ4 frames and formal U-Boot
+links are independently byte-identical. The paired U-Boot differs from the
+accepted fixed-command-closure image in exactly three bound bytes; its SPL,
+control DTB and config are exact. Hardware acceptance and any latency claim
+remain pending.
+
 Why before: the retained ROCKNIX fake-suspend
 provider owns its accepted audio, input, governor, core-parking and LED
 transaction, while Bird restores the fixed panel and logs rare transitions

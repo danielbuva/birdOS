@@ -578,6 +578,11 @@ if "$COMMAND" --profile --irq-buttons-lz4-kernel \
 	fail 'IRQ-buttons LZ4 kernel unexpectedly accepted profile mode'
 fi
 grep -q -- 'source-kernel authorities require --release' "$TMP/irq-buttons-lz4-profile.err"
+if "$COMMAND" --profile --no-raid6-benchmark-kernel \
+	>"$TMP/no-raid6-profile.out" 2>"$TMP/no-raid6-profile.err"; then
+	fail 'no-RAID6-benchmark kernel unexpectedly accepted profile mode'
+fi
+grep -q -- 'source-kernel authorities require --release' "$TMP/no-raid6-profile.err"
 if "$COMMAND" --release --fixed-input-kernel \
 	>"$TMP/fixed-input.out" 2>"$TMP/fixed-input.err"; then
 	fail 'rejected fixed-input kernel option remains accepted'
@@ -619,6 +624,11 @@ if "$COMMAND" --release --irq-buttons-kernel --irq-buttons-lz4-kernel \
 	fail 'raw and LZ4 IRQ-buttons authorities were accepted together'
 fi
 grep -q -- 'choose only one source-kernel authority' "$TMP/irq-buttons-lz4-authority.err"
+if "$COMMAND" --release --irq-buttons-lz4-kernel --no-raid6-benchmark-kernel \
+	>"$TMP/no-raid6-authority.out" 2>"$TMP/no-raid6-authority.err"; then
+	fail 'accepted IRQ and no-RAID6-benchmark authorities were accepted together'
+fi
+grep -q -- 'choose only one source-kernel authority' "$TMP/no-raid6-authority.err"
 if "$COMMAND" --release --release-id '../unsafe' >"$TMP/id.out" 2>"$TMP/id.err"; then
 	fail 'unsafe release ID was accepted'
 fi
