@@ -130,4 +130,15 @@ grep -Fqx 'early-static-asset-bytes	0' "$TMP/first.contract"
 grep -Fqx 'final-root-static-asset-bytes	852848' "$TMP/first.contract"
 grep -Fqx 'final-root-static-asset-sha256	e6f9ca8ef4100cdf384bc2f8f3f7b902bc83cee6c4bc36e82fbc666328b382de' "$TMP/first.contract"
 
+# The mutable release producer must request the packed final-root asset.  The
+# full-page output remains a useful generator reference, but the launcher no
+# longer accepts it as launcher-base.xrgb.
+grep -Fq '"--static-base-output",' \
+	"$ROOT/kernel/rocknix/dev-release-tool.py"
+if grep -Fq '"--xrgb-output",' \
+	"$ROOT/kernel/rocknix/dev-release-tool.py"; then
+	printf '%s\n' 'mutable release producer still requests the full-page XRGB asset' >&2
+	exit 1
+fi
+
 printf '%s\n' 'launcher boot-frame contract tests: PASS'

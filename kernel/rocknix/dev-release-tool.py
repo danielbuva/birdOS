@@ -81,6 +81,8 @@ SOURCE_CHANGED_INPUT_SYNC_AUTHORITY_SHA256 = "8ae897ae79536313d1501c72ccb2c6dd94
 SOURCE_FIXED_GPIO_FASTPATH_AUTHORITY_SHA256 = "c727c365941c0957d9d56994d1cc9a5c0d16dccf315ff1d664944bac732b4820"
 SOURCE_IRQ_BUTTONS_AUTHORITY_SHA256 = "0020d161b5a2be0d8393267c3eb96794a0c2d9f82e8df5e097932216fad9e45d"
 SOURCE_IRQ_BUTTONS_LZ4_AUTHORITY_SHA256 = "250be0f922339e423cc7e100d785747b16686873a5bea357b69825dc29434b3c"
+STATIC_BASE_BYTES = 852_848
+STATIC_BASE_SHA256 = "e6f9ca8ef4100cdf384bc2f8f3f7b902bc83cee6c4bc36e82fbc666328b382de"
 EARLY_INPUT_DIGESTS = {
     "initramfs/init": "3473415af0cf5df44e70259c3392817b1df421a12a617ec083ec018ff51dbc48",
     "initramfs/busybox": "5ee3d20d8ea5fd9b3ba5109da80599eaf46a5a337d9e40d4c67d28eef44d5dc8",
@@ -661,6 +663,35 @@ def require_directory(path: pathlib.Path, description: str) -> None:
         fail(f"{description} is missing: {path}")
     if not stat.S_ISDIR(mode) or path.is_symlink():
         fail(f"{description} is not a safe directory: {path}")
+
+
+def verify_boot_frame_static_asset(contract: pathlib.Path, asset: pathlib.Path) -> None:
+    """Bind the mutable producer to the launcher's exact packed asset contract."""
+    require_regular(contract, "generated boot-frame contract")
+    require_regular(asset, "generated launcher static base")
+    fields: dict[str, str] = {}
+    try:
+        lines = contract.read_text(encoding="ascii").splitlines()
+    except (OSError, UnicodeError) as error:
+        fail(f"generated boot-frame contract is unreadable: {error}")
+    for line in lines:
+        parts = line.split("\t")
+        if len(parts) != 2 or not parts[0] or parts[0] in fields:
+            fail("generated boot-frame contract is malformed or duplicated")
+        fields[parts[0]] = parts[1]
+    expected = {
+        "schema": "bird-boot-frame-v4",
+        "static-base-layout": "fixed-visible-regions-v1",
+        "final-root-static-asset-bytes": str(STATIC_BASE_BYTES),
+        "final-root-static-asset-sha256": STATIC_BASE_SHA256,
+    }
+    for key, value in expected.items():
+        if fields.get(key) != value:
+            fail(f"generated boot-frame contract has the wrong {key}")
+    if asset.stat().st_size != STATIC_BASE_BYTES:
+        fail("generated launcher static base size differs from its packed contract")
+    if sha256_file(asset) != STATIC_BASE_SHA256:
+        fail("generated launcher static base digest differs from its packed contract")
 
 
 def fixed_directory_chain(root: pathlib.Path, parts: Sequence[str], *, create: bool) -> pathlib.Path:
@@ -2232,11 +2263,12 @@ def prepare_outputs(
                     str(work / "bird-frame-zero.bmp"),
                     "--contract",
                     str(contract),
-                    "--xrgb-output",
+                    "--static-base-output",
                     str(xrgb),
                 ],
                 cwd=root,
             )
+        verify_boot_frame_static_asset(contract, xrgb)
         tests.append("boot-frame generated asset contract")
 
     if "device-contract" in groups:

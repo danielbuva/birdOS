@@ -369,7 +369,7 @@ diagnostics, but does not justify changing the accepted suspend path during
 Stage 10.
 
 In-place handoff plus the reviewed LZ4 bound remains the active physically
-accepted U-Boot/kernel pair. Stage 10 is roughly 99 percent complete: six
+accepted U-Boot/kernel pair. Stage 10 is complete: six
 accepted U-Boot transitions, the clean canonical prerequisite, raw-kernel
 bootstage measurement and corrected uninstrumented LZ4 development-device gate
 are complete. The reviewed simple-parser successor and bounded installer also
@@ -414,6 +414,20 @@ from 604,882 to 588,520 bytes. Exact generator, reconstruction, launcher,
 static-asset, transaction and canonical deployment host gates passed. These
 are host byte reductions; usable-frame and storage timing await the returned
 RG34XX-SP log gate.
+
+The returned canonical gate passed the broad screen, including exact
+`native-base` rendering, 29/29 controls, content launches, suspend/resume and
+persisted orderly shutdowns. Five usable-frame samples were 1179, 1183, 1188,
+1192 and 1192 ms, with a 1188 ms median; input-ready median was 1176 ms. Those
+are not faster than the preceding 1185/1174 ms medians. The two boots allowed
+to reach storage recorded 3322 and 3397 ms, a 3359.5 ms midpoint versus the
+preceding 3427 ms median, but two samples do not establish a storage gain.
+Why the apparent U-Boot/frame mismatch is expected: Bird's `boot_ms` is Linux
+`CLOCK_BOOTTIME`, whose epoch starts after U-Boot hands off. U-Boot changes
+cannot reduce that number. The user's slightly faster stopwatch impression is
+compatible with a pre-kernel saving, but remains reaction-limited rather than
+calibrated evidence. This accepts the packed fallback and closes Stage 10
+without a device-latency claim.
 
 Why the previous measurement boundary existed: source inspection treated
 generic bootm's `bootm_load_os` mark as the kernel-load boundary. The accepted

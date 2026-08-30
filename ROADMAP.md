@@ -1735,7 +1735,7 @@ memory or size benefit.
 
 ## Stage 10 — U-Boot performance and inherited frame
 
-Rough planning progress is about 99 percent. Environment-nowhere,
+Stage 10 is complete. Environment-nowhere,
 direct-extlinux, no-heap-clear, fast-init and in-place handoff are physically
 accepted, and canonical release `v6.23-20260814-201218` satisfies the clean
 full-release prerequisite. The raw-kernel bootstage measurement and paired LZ4
@@ -1770,8 +1770,14 @@ candidate `v6.23-20260830-201239` is built and installed from clean commit
 `56ae92d94243f5759b7dee0a7d2d433701815bf7`; its manifest is
 `43beaab6860e9eea76fe534c113e8f47b8fd03ffde9b6f3eb1eded863ee83734`.
 The raw/compressed early overlays fell from 2,039,296/604,882 bytes to
-1,509,888/588,520 bytes. Its final remaining boundary is the broad RG34XX-SP
-gate and returned usable-frame/storage logs.
+1,509,888/588,520 bytes. Its returned broad RG34XX-SP gate passed. Five
+usable-frame samples had a 1188 ms median and input-ready had a 1176 ms median,
+neither faster than the preceding 1185/1174 ms medians. Two completed storage
+samples had a 3359.5 ms midpoint, nominally 67.5 ms below the preceding 3427 ms
+median but insufficient to claim a gain. U-Boot is outside Linux
+`CLOCK_BOOTTIME`, so its improvements are intentionally invisible to these
+logged frame/storage values. The slightly faster stopwatch impression remains
+compatible with, but does not prove, a pre-kernel improvement.
 
 The first Stage 10 candidate has passed its complete non-deploying host gate.
 The four-pass build produced two byte-identical baselines that each reproduce

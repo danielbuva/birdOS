@@ -24,8 +24,8 @@ The latest seven stopwatch samples span 2.64--2.90 seconds with a coarse
 latency result, and show no measurable improvement. The clean full-release
 prerequisite for Stage 10 is satisfied. Three returned raw-kernel bootstage
 traces put the median fixed FAT/extlinux interval at 1,419,998 us and the
-following booti setup/handoff interval at 224,968 us. Rough progress is about
-99 percent. The temporary capture path is retired from the next canonical
+following booti setup/handoff interval at 224,968 us. Stage 10 is complete.
+The temporary capture path is retired from the next canonical
 runtime, the corrected uninstrumented LZ4 development-device gate passed, the
 simple-parser successor passed its broad hardware gate, and its smaller fixed
 MBR/FAT read-path successor passed its exact installation and broad hardware
@@ -57,7 +57,17 @@ commit `56ae92d94243f5759b7dee0a7d2d433701815bf7` with manifest
 It preserves the accepted LZ4 kernel exactly. The raw early overlay is 529,408
 bytes smaller after cpio alignment and the gzip payload is 16,362 bytes
 smaller. Generator, byte reconstruction, launcher, production-builder and
-deployment transaction gates passed; the physical timing/behavior gate remains.
+deployment transaction gates passed before the separate physical gate.
+
+The returned physical gate passed exact rendering, 29/29 controls, launches,
+suspend/resume and shutdown persistence. Five usable frames had a 1188 ms
+median and input-ready had a 1176 ms median, not faster than the preceding
+1185/1174 ms medians. The two completed storage samples had a 3359.5 ms
+midpoint, but that nominal 67.5 ms reduction is not established by two samples.
+These clocks begin in Linux after U-Boot, explaining why U-Boot work cannot
+appear in them. The user's slightly faster stopwatch impression spans U-Boot
+but remains reaction-limited. The packed fallback is accepted without a device
+latency claim.
 
 Why before: the retained ROCKNIX fake-suspend
 provider owns its accepted audio, input, governor, core-parking and LED

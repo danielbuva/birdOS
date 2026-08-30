@@ -391,8 +391,11 @@ create_build_fixture() {
 	for NAME in bird-launcher bird-input-tester bird-pidwait bird-powerstate bird-fixed-controls bird-mpv-controls; do
 		printf 'fixture %s %s\n' "$NAME" "$VERSION" >"$BUILD_FIXTURE/bird/$NAME"
 	done
-	printf 'fixture boot contract %s\n' "$VERSION" >"$BUILD_FIXTURE/bird/boot-frame.contract"
-	printf 'fixture frame pixels %s\n' "$VERSION" >"$BUILD_FIXTURE/bird/launcher-base.xrgb"
+	python3 "$REPO/firmware/generate-launcher-bootlogo.py" \
+		"$BUILD_FIXTURE/bird-frame-zero.bmp" \
+		--contract "$BUILD_FIXTURE/bird/boot-frame.contract" \
+		--static-base-output "$BUILD_FIXTURE/bird/launcher-base.xrgb" \
+		>/dev/null
 	make_initramfs "$BUILD_FIXTURE/bird-initramfs.cpio.gz" dev-current "fixture early launcher $VERSION"
 }
 
@@ -943,6 +946,21 @@ gzip -dc "$DEV/bird-initramfs.cpio.gz" | grep -a -q 'fixture early launcher two'
 [ "$(sha256 "$DEV/bird/bird-powerstate")" = "$POWERSTATE_BEFORE" ]
 assert_base_and_fallback_unchanged
 pass 'launcher change rebuilds both launcher variants without kernel/DTB work'
+
+new_case boot-asset-contract-mismatch
+initialize_dev
+DEV_BEFORE=$(tree_digest "$BIRD/bird-releases/dev-current")
+printf '\n# host boot asset delta\n' >>"$REPO/firmware/generate-launcher-bootlogo.py"
+printf 'x' >>"$BUILD_FIXTURE/bird/launcher-base.xrgb"
+if run_dev --changed >"$CASE_ROOT/boot-asset.out" 2>"$CASE_ROOT/boot-asset.err"; then
+	fail 'mutable build accepted a launcher static base outside its packed contract'
+fi
+grep -q 'generated launcher static base size differs from its packed contract' \
+	"$CASE_ROOT/boot-asset.err"
+[ "$(selector_release)" = prod-a ]
+[ "$(tree_digest "$BIRD/bird-releases/dev-current")" = "$DEV_BEFORE" ]
+assert_base_and_fallback_unchanged
+pass 'packed boot-asset mismatch fails before dev payload mutation'
 
 # 4. One small helper source rebuilds only its manifest-listed helper binary.
 new_case helper-only
