@@ -2,18 +2,18 @@
 
 This is the governing constitution for the active stock-root implementation.
 The current human promotion record binds clean source
-`5373c644b9c91ac21a17e145375747a8196a3337`, immutable release
-`v6.23-20260814-201218`, deploy manifest
-`904c8da42a6ec84ccf4b291205999c3b0e25900f4bec7bb3f9e0cfefb29164dd`,
+`017a69334936228a52973c9130ddd3e19215174d`, immutable release
+`v6.23-20260830-233244`, deploy manifest
+`4e56439f170dd15507bc594ae0a3bf6272dd82738bdff85e0c2efd66d67081d6`,
 device contract
 `1664a3778abcd3687865a82fd28bba5b468f6c3c7e9a46bf90f7c3acb1e08162`
 and catalogue
 `9795aae6baddc292f5d9954a444656e303db305c639284f16eb10288c41f1f93`.
-Immutable release `v6.23-20260811-234132` remains the previously accepted,
+Immutable release `v6.23-20260830-201239` remains a previously accepted,
 privately archived binary reference. Its canonical manifest digest is
-`a0a38b04be25f2d09009b0677d33c0d34c65b027c0ff1b9463f71cdeec9b274b`.
+`43beaab6860e9eea76fe534c113e8f47b8fd03ffde9b6f3eb1eded863ee83734`.
 It was built from clean source
-`c07fe18769a13a3b1997e2cf1a4900cc55423d5b`; it is verified history rather
+`56ae92d94243f5759b7dee0a7d2d433701815bf7`; it is verified history rather
 than an on-card rollback release.
 
 The historical version narrative remains in
@@ -2143,7 +2143,11 @@ shutdown. Boot `e8129b34` recorded usable frame at 1,182 ms, input readiness at
 as before. Detailed logs survived without a usability change. This physically
 accepts the fixed MBR/FAT read-path boundary without claiming acceleration.
 
-## Stage 11: fixed RAID6 PQ selection
+## Stage 11: fixed RAID6 PQ selection (complete)
+
+Stage 11 was not part of the original numbered roadmap. It was added as an
+opportunistic bounded extension after Stage 10 logs exposed a dominant fixed-
+device kernel cost.
 
 Why before: ROCKNIX's generic kernel benchmarks every available RAID6 PQ
 implementation so one image can select the fastest algorithm on different
@@ -2160,9 +2164,35 @@ the three ASCII bytes changing its exact bound from `0x10c080b` to
 `0x10c06a0`. Its config, SPL and control DTB are byte-identical, and two formal
 links reproduce combined SHA-256
 `5352c2f635b1f741c8d1fcfb647e9ce2ea570311cbd8b476944d71338654f2f0`.
-These are host identities and trace-attributed existing cost, not a device
-timing claim. Next gate: commit, install the one-sector paired U-Boot successor,
-deploy one clean immutable canonical release, and run the broad device screen.
+These were host identities and trace-attributed existing cost before the device
+gate. The paired U-Boot successor and immutable release
+`v6.23-20260830-233244` are now accepted from clean source
+`017a69334936228a52973c9130ddd3e19215174d`, with canonical manifest
+`4e56439f170dd15507bc594ae0a3bf6272dd82738bdff85e0c2efd66d67081d6`.
+Three successful development boots recorded usable/input/storage medians of
+675/664/2,836 ms versus about 1,185/1,174/3,384 ms before the change. The
+returned canonical boot recorded 672/660/2,824 ms, passed the broad functional
+screen and orderly shutdown, and left no watchdog failure. This establishes an
+approximately 510 ms usable/input improvement and 548 ms storage-readiness
+improvement for the returned samples without treating stopwatch reaction time
+as a calibrated distribution.
+
+## Remaining priority backlog
+
+No Stage 12 is defined. Continue through independently bounded candidates in
+the immutable priority order rather than inventing another hidden sequence:
+
+1. Profile the remaining power-to-usable Linux path and pursue only attributed
+   work while preserving the accepted 672 ms canonical result.
+2. Measure and improve button-to-photon navigation plus common content launch,
+   close and interactive menu-return transitions.
+3. Measure calibrated idle energy and unnecessary wakeups; separately diagnose
+   the known intermittent suspend-to-reboot event without blocking unrelated
+   work or guessing at a fix when its retained evidence is absent.
+4. Reduce memory and storage only inside the accepted boot, interaction and
+   energy margins.
+5. Keep the high-risk U-Boot inherited-frame/display-driver project deferred
+   unless new evidence or operator priority justifies it.
 
 ## Candidate report gate
 

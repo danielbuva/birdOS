@@ -2,28 +2,31 @@
 
 This document is the authority for the code that builds, installs and runs the
 current birdOS system. The active implementation path is **stock-root v6.23**.
-The current human promotion record binds clean public source
-`56ae92d94243f5759b7dee0a7d2d433701815bf7`,
-immutable release `v6.23-20260830-201239`, deploy-manifest digest
-`43beaab6860e9eea76fe534c113e8f47b8fd03ffde9b6f3eb1eded863ee83734`,
+The current human promotion record binds clean source
+`017a69334936228a52973c9130ddd3e19215174d`,
+immutable release `v6.23-20260830-233244`, deploy-manifest digest
+`4e56439f170dd15507bc594ae0a3bf6272dd82738bdff85e0c2efd66d67081d6`,
 device-contract digest
 `1664a3778abcd3687865a82fd28bba5b468f6c3c7e9a46bf90f7c3acb1e08162`
 and generated-catalog digest
 `9795aae6baddc292f5d9954a444656e303db305c639284f16eb10288c41f1f93`.
 The complete host gate and broad RG34XX-SP behavior gate passed on 2026-08-30.
-This canonicalizes the accepted Stage 9 IRQ button path and the reviewed
-Stage 10 runtime/tooling boundary. All 17 digital controls, including L3/R3,
-use independent 5 ms GPIO
+This canonicalizes the accepted Stage 9 IRQ button path, completed Stage 10
+U-Boot boundary and opportunistic Stage 11 fixed RAID6 PQ selection. All 17
+digital controls, including L3/R3, use independent 5 ms GPIO
 edge debounce; only four analog axes retain the 10 ms ADC poll. Broad behavior
 passed, and Input Test completed all 29 digital, analog, auxiliary and rumble
-checks. Its kernel SHA-256 is
-`cad7ad8437d0a7de0d819846b12fdf83078f5878313704d0de79274431ec9d64`. This is
-functional acceptance, not a calibrated latency or energy claim. The
-previously accepted immutable release `v6.23-20260811-234132` is verified in
+checks. Its kernel LZ4 SHA-256 is
+`2fb550062d3fbd69b433f0aa79d892b8b3a55ee048cf861874b90289a932d77a`.
+The returned canonical boot recorded usable frame at 672 ms, input readiness at
+660 ms and storage readiness at 2,824 ms; the preceding three development boots
+had 675/664/2,836 ms medians. The broad functional screen and orderly shutdown
+passed with no watchdog failure. The
+previously accepted immutable release `v6.23-20260830-201239` is verified in
 the private archive at manifest digest
-`a0a38b04be25f2d09009b0677d33c0d34c65b027c0ff1b9463f71cdeec9b274b`.
+`43beaab6860e9eea76fe534c113e8f47b8fd03ffde9b6f3eb1eded863ee83734`.
 That release was built from clean source
-`c07fe18769a13a3b1997e2cf1a4900cc55423d5b`; it remains verified external
+`56ae92d94243f5759b7dee0a7d2d433701815bf7`; it remains verified external
 history, not an on-card production rollback requirement. A successor becomes
 the optimization baseline only when its exact clean source, release, manifest,
 contract and catalogue tuple passes the host and physical gates.

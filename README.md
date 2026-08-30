@@ -7,40 +7,23 @@ hardware baseline is **stock-root v6.23**: it retains the exact ROCKNIX
 20260701 DDR4 compatibility base and replaces its frontend and selected generic
 policy with birdOS. Its 2026-07-26 physical gate and host fault-injection suite
 established the historical stock-root baseline. The current accepted binding is
-clean source `5373c644b9c91ac21a17e145375747a8196a3337`, immutable release
-`v6.23-20260814-201218`, and canonical deploy-manifest digest
-`904c8da42a6ec84ccf4b291205999c3b0e25900f4bec7bb3f9e0cfefb29164dd`.
-The complete returned hardware screen passed. Four cold boots recorded an
-about-1176 ms median usable frame and 1170 ms median input readiness; three
-completed asynchronous storage records had a 3514 ms median, a noise-scale
-three-sample result. The latest seven stopwatch samples span 2.64--2.90 seconds
-with a coarse 2.78-second median. They are a human reaction-time check, not a
-calibrated latency distribution, so no measurable speed improvement is claimed.
-This clean canonical gate satisfies the current Stage 10 prerequisite. Stage 10
-is roughly 97 percent complete. Immutable LZ4 release
-`v6.23-20260826-194408` first reached the interactive menu without usable
-storage. The added initramfs-owned 30-second storage watchdog then localized
-the stop to strict release verification: the LZ4 source-kernel provenance was
-valid but absent from the exact optional-input allowlist. Corrected
-`dev-current` source `f22e2b8c7eb2119f7aabfc03f5bc7532f1de4ffe` verified,
-disarmed the watchdog, anchored storage at 3.388 seconds and passed the broad
-RG34XX-SP functional screen after the test device was charged. The remaining
-work has sealed and physically accepted the fixed U-Boot simple-parser
-successor and its bounded LZ4-to-parser transaction. Returned boot `07d80b9c`
-passed the broad application, media, controls, suspend/resume and shutdown
-screen with Input Tester 29/29. The fixed-read-path successor then removed
-unused filesystem commands, EXT support, GPT/EFI parsing and FAT writes while
-retaining the exact MBR/FAT `sysboot` closure. Its exact installation and broad
-hardware gate passed. Returned logs recorded a 1,182 ms usable frame, 1,173 ms
-input readiness and 3,355 ms storage readiness; stopwatch timing remained
-visibly unchanged, so no speed claim is made. Why before: that accepted image
-retained the generic command surface so the read-path hardware gate stayed
-isolated. Why change: the next reproducible fixed-command-closure successor
-keeps only the required `sysboot`/extlinux/`booti` chain and removes 66,056
-further full-U-Boot bytes (358,224 to 292,168; 411,977 combined bytes). Its
-exact authority, corruption, transaction and workflow gates pass; no card write
-has occurred yet, so it carries no hardware timing claim. Its RG34XX-SP gate
-and the inherited-frame experiment follow.
+clean source `017a69334936228a52973c9130ddd3e19215174d`, immutable release
+`v6.23-20260830-233244`, and canonical deploy-manifest digest
+`4e56439f170dd15507bc594ae0a3bf6272dd82738bdff85e0c2efd66d67081d6`.
+Its returned broad hardware screen passed. The canonical boot recorded a
+672 ms usable frame, 660 ms input readiness and 2,824 ms asynchronous storage
+readiness. The preceding three development boots had 675/664/2,836 ms medians,
+about 510/510/548 ms earlier than the accepted pre-change samples. The broad
+application, media, controls, networking, storage and shutdown screen passed,
+and no storage-watchdog or release-verification failure remained.
+
+Stage 10 is complete. Stage 11 was an opportunistic extension created after
+the original numbered roadmap: returned traces exposed a roughly 510 ms generic
+RAID6 PQ benchmark even though this fixed RG34XX-SP always selected `neonx8`.
+The accepted kernel skips only that benchmark while retaining RAID6 PQ, Btrfs,
+the selected NEON implementation and the complete fixed-device behavior. Stage
+11 is complete in the canonical release above. No Stage 12 is currently
+defined; remaining work is the explicit priority backlog in `ROADMAP.md`.
 
 Why before: ROCKNIX's retained fake-suspend provider owns
 the accepted audio, input, governor, core-parking and LED transaction, while
@@ -88,6 +71,17 @@ Use [`ROADMAP.md`](ROADMAP.md) for planned work and
 [`ROCKNIX_AUDIT.md`](ROCKNIX_AUDIT.md) for the retained-userspace audit.
 Historical measurements and the complete version-by-version narrative live in
 [`docs/history/PROJECT_CHRONOLOGY.md`](docs/history/PROJECT_CHRONOLOGY.md).
+
+## Publication model
+
+The public `danielbuva/birdOS` repository contains source history. Local commits
+remain local until an explicit source push; building or deploying a card never
+pushes them. The private `danielbuva/birdOS-release-archive` repository stores
+immutable binary release archives retired from the small BIRD partition. A
+canonical deployment uploads and independently verifies the superseded release
+there before removing its card copy. It does not publish those binary archives
+to the public source repository, and the private archive is not a substitute
+for pushing reviewed source history.
 
 ## Development loop
 
