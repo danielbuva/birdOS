@@ -369,11 +369,11 @@ diagnostics, but does not justify changing the accepted suspend path during
 Stage 10.
 
 In-place handoff plus the reviewed LZ4 bound remains the active physically
-accepted U-Boot/kernel pair. Stage 10 is roughly 92 percent complete: five
+accepted U-Boot/kernel pair. Stage 10 is roughly 94 percent complete: five
 accepted U-Boot transitions, the clean canonical prerequisite, raw-kernel
 bootstage measurement and corrected uninstrumented LZ4 development-device gate
-are complete. The reviewed simple-parser successor and bounded installer are
-host-ready; its hardware gate, deeper subsystem pruning and the inherited-frame
+are complete. The reviewed simple-parser successor and bounded installer also
+passed their hardware gate. Deeper subsystem pruning and the inherited-frame
 experiment remain.
 
 Why the previous measurement boundary existed: source inspection treated
@@ -500,7 +500,13 @@ candidate and predecessor prefixes. Its bounded installer accepts only the
 reviewed LZ4 pair, writes 1,013 complete sectors, preserves the 287-byte final
 sector tail from the verified prefix, verifies the complete 16 MiB result and
 provides exact LZ4 recovery. The full destructive-path simulator passes; no
-card write has occurred at this boundary.
+card write had occurred at that boundary. The exact candidate was then
+installed with complete-prefix verification. Returned boot `07d80b9c` exercised
+games, PSP, native Ports, PortMaster, music, books, video, favorites/return
+state, networking, a complete suspend/resume, orderly shutdown/config save and
+Input Tester 29/29. Its detailed supervisor, content, suspend, shutdown,
+network and input records survived. No comparable initial usable-frame record
+survived, so this gate makes no hardware timing claim.
 
 The corrected source-kernel package reached Bird's early usable menu but not
 application readiness. A temporary early watchdog proved that release-runtime

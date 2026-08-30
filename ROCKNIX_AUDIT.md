@@ -31,9 +31,11 @@ raw-kernel bootstage traces put the median fixed FAT/extlinux interval at
 1,419,998 us and the following booti setup/handoff interval at 224,968 us. The
 corrected uninstrumented LZ4 development-device gate passed; the temporary
 measurement helper is retired from the next canonical runtime. Stage 10 rough
-planning progress is about 92 percent. The fixed simple-parser successor and
-bounded recovery transaction pass their host gates; its RG34XX-SP gate, further
-subsystem subtraction and inherited-frame work remain.
+planning progress is about 94 percent. The fixed simple-parser successor and
+bounded recovery transaction pass their host and broad RG34XX-SP gates; further
+subsystem subtraction and inherited-frame work remain. Returned boot
+`07d80b9c` preserved detailed functional, suspend and shutdown logs but no
+comparable initial usable-frame timestamp, so it adds no device timing claim.
 
 Why before: ROCKNIX's provider owns the proven
 audio, input, governor, core-parking and LED transaction; Bird owns fixed-panel

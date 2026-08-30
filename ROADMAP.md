@@ -1735,14 +1735,14 @@ memory or size benefit.
 
 ## Stage 10 — U-Boot performance and inherited frame
 
-Rough planning progress is about 92 percent. Environment-nowhere,
+Rough planning progress is about 94 percent. Environment-nowhere,
 direct-extlinux, no-heap-clear, fast-init and in-place handoff are physically
 accepted, and canonical release `v6.23-20260814-201218` satisfies the clean
 full-release prerequisite. The raw-kernel bootstage measurement and paired LZ4
 host preparation are complete, and the corrected uninstrumented LZ4 runtime
 has passed its broad development-device gate. The remaining large boundaries
-include the simple-parser hardware gate, further fixed-path subsystem
-subtraction and the inherited-frame experiment.
+include further fixed-path subsystem subtraction and the inherited-frame
+experiment. The simple-parser successor has passed its broad hardware gate.
 
 The first Stage 10 candidate has passed its complete non-deploying host gate.
 The four-pass build produced two byte-identical baselines that each reproduce
@@ -2080,7 +2080,11 @@ reproduce the exact feasibility bytes. The combined artifact shrinks from
 LZ4-to-parser installer now pass the full host transaction gate, including
 predecessor rejection, sector-tail preservation, complete-prefix readback,
 failure rollback and exact LZ4 recovery. This is a host size/load result, not a
-hardware latency claim; the RG34XX-SP gate is still required.
+hardware latency claim. Returned boot `07d80b9c` passed games, PSP, native
+Ports, PortMaster, music, books, video, controls 29/29, networking, one complete
+suspend/resume and orderly shutdown. Its detailed logs survived, but no
+comparable initial usable-frame timestamp did, so no device speed claim is
+made.
 
 ## Candidate report gate
 
