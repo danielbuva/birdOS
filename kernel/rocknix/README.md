@@ -25,7 +25,7 @@ latency result, and show no measurable improvement. The clean full-release
 prerequisite for Stage 10 is satisfied. Three returned raw-kernel bootstage
 traces put the median fixed FAT/extlinux interval at 1,419,998 us and the
 following booti setup/handoff interval at 224,968 us. Rough progress is about
-98 percent. The temporary capture path is retired from the next canonical
+99 percent. The temporary capture path is retired from the next canonical
 runtime, the corrected uninstrumented LZ4 development-device gate passed, the
 simple-parser successor passed its broad hardware gate, and its smaller fixed
 MBR/FAT read-path successor passed its exact installation and broad hardware
@@ -50,6 +50,14 @@ the launcher reads only nine fixed wallpaper regions. Their generated packed
 form removes 529,552 raw payload bytes while preserving the exact fallback,
 render writes and visible output. Hardware timing remains unclaimed until its
 separate RG34XX-SP gate.
+
+Immutable candidate `v6.23-20260830-201239` was built and installed from clean
+commit `56ae92d94243f5759b7dee0a7d2d433701815bf7` with manifest
+`43beaab6860e9eea76fe534c113e8f47b8fd03ffde9b6f3eb1eded863ee83734`.
+It preserves the accepted LZ4 kernel exactly. The raw early overlay is 529,408
+bytes smaller after cpio alignment and the gzip payload is 16,362 bytes
+smaller. Generator, byte reconstruction, launcher, production-builder and
+deployment transaction gates passed; the physical timing/behavior gate remains.
 
 Why before: the retained ROCKNIX fake-suspend
 provider owns its accepted audio, input, governor, core-parking and LED

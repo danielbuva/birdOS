@@ -1735,7 +1735,7 @@ memory or size benefit.
 
 ## Stage 10 — U-Boot performance and inherited frame
 
-Rough planning progress is about 98 percent. Environment-nowhere,
+Rough planning progress is about 99 percent. Environment-nowhere,
 direct-extlinux, no-heap-clear, fast-init and in-place handoff are physically
 accepted, and canonical release `v6.23-20260814-201218` satisfies the clean
 full-release prerequisite. The raw-kernel bootstage measurement and paired LZ4
@@ -1765,7 +1765,13 @@ A producer now means porting the H700 display engine, TCON, fixed RGB panel,
 GPIO/PWM sequencing and Linux handoff. Stage 10 defers that high-risk driver
 project and retains the verified fallback. The bounded successor instead packs
 only the nine fixed wallpaper regions the launcher reads, removing 529,552 raw
-bytes without changing framebuffer traffic or the visual contract.
+bytes without changing framebuffer traffic or the visual contract. Immutable
+candidate `v6.23-20260830-201239` is built and installed from clean commit
+`56ae92d94243f5759b7dee0a7d2d433701815bf7`; its manifest is
+`43beaab6860e9eea76fe534c113e8f47b8fd03ffde9b6f3eb1eded863ee83734`.
+The raw/compressed early overlays fell from 2,039,296/604,882 bytes to
+1,509,888/588,520 bytes. Its final remaining boundary is the broad RG34XX-SP
+gate and returned usable-frame/storage logs.
 
 The first Stage 10 candidate has passed its complete non-deploying host gate.
 The four-pass build produced two byte-identical baselines that each reproduce

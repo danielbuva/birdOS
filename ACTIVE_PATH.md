@@ -369,7 +369,7 @@ diagnostics, but does not justify changing the accepted suspend path during
 Stage 10.
 
 In-place handoff plus the reviewed LZ4 bound remains the active physically
-accepted U-Boot/kernel pair. Stage 10 is roughly 98 percent complete: six
+accepted U-Boot/kernel pair. Stage 10 is roughly 99 percent complete: six
 accepted U-Boot transitions, the clean canonical prerequisite, raw-kernel
 bootstage measurement and corrected uninstrumented LZ4 development-device gate
 are complete. The reviewed simple-parser successor and bounded installer also
@@ -402,6 +402,18 @@ TCON, RGB-panel, GPIO, PWM and handoff driver, not a bounded asset change. That
 risk is deferred. The guarded consumer and full fallback remain, while the
 safe fixed-region asset removes the fallback bytes that the launcher never
 reads.
+
+Canonical candidate `v6.23-20260830-201239` now carries that fixed-region
+asset from clean commit `56ae92d94243f5759b7dee0a7d2d433701815bf7` with
+manifest digest
+`43beaab6860e9eea76fe534c113e8f47b8fd03ffde9b6f3eb1eded863ee83734`.
+The accepted IRQ-button LZ4 kernel remains byte-identical at
+`a7321d2a79b18e81f114aefd9bb7509ba70d5e56b562a345ea5ca66dbf11262a`.
+The raw early overlay fell from 2,039,296 to 1,509,888 bytes and its gzip form
+from 604,882 to 588,520 bytes. Exact generator, reconstruction, launcher,
+static-asset, transaction and canonical deployment host gates passed. These
+are host byte reductions; usable-frame and storage timing await the returned
+RG34XX-SP log gate.
 
 Why the previous measurement boundary existed: source inspection treated
 generic bootm's `bootm_load_os` mark as the kernel-load boundary. The accepted
