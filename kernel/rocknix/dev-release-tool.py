@@ -211,6 +211,8 @@ KNOWN_STANDALONE_HOST_TESTS = {
     "test-uboot-simple-parser-transform.py",
     "test-uboot-fixed-read-path-build.py",
     "test-uboot-fixed-read-path-transform.py",
+    "test-uboot-fixed-command-closure-build.py",
+    "test-uboot-fixed-command-closure-transform.py",
     "test-uboot-lz4-pair-build.py",
     "test-uboot-lz4-kernel-transform.py",
     "test-uboot-no-heap-clear-transform.py",
@@ -248,6 +250,9 @@ HOST_ONLY_SOURCE_TESTS: dict[str, tuple[str, ...]] = {
     "kernel/rocknix/build-uboot-fixed-read-path.sh": (
         "test-uboot-fixed-read-path-build.py",
     ),
+    "kernel/rocknix/build-uboot-fixed-command-closure.sh": (
+        "test-uboot-fixed-command-closure-build.py",
+    ),
     "kernel/rocknix/build-uboot-bootstage-fdt.sh": (
         "test-uboot-bootstage-fdt-build.py",
     ),
@@ -280,6 +285,10 @@ HOST_ONLY_SOURCE_TESTS: dict[str, tuple[str, ...]] = {
     "kernel/rocknix/transform-uboot-fixed-read-path.py": (
         "test-uboot-fixed-read-path-transform.py",
         "test-uboot-fixed-read-path-build.py",
+    ),
+    "kernel/rocknix/transform-uboot-fixed-command-closure.py": (
+        "test-uboot-fixed-command-closure-transform.py",
+        "test-uboot-fixed-command-closure-build.py",
     ),
     "kernel/rocknix/transform-uboot-lz4-kernel.py": (
         "test-uboot-lz4-kernel-transform.py",
@@ -335,6 +344,10 @@ HOST_ONLY_SOURCE_TESTS: dict[str, tuple[str, ...]] = {
     ),
     "kernel/rocknix/verify-uboot-fixed-read-path-build.py": (
         "test-uboot-fixed-read-path-build.py",
+        "test-mac-install-bird-uboot.sh",
+    ),
+    "kernel/rocknix/verify-uboot-fixed-command-closure-build.py": (
+        "test-uboot-fixed-command-closure-build.py",
         "test-mac-install-bird-uboot.sh",
     ),
     "kernel/rocknix/verify-uboot-bootstage-fdt-build.py": (

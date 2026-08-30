@@ -1735,15 +1735,20 @@ memory or size benefit.
 
 ## Stage 10 — U-Boot performance and inherited frame
 
-Rough planning progress is about 96 percent. Environment-nowhere,
+Rough planning progress is about 97 percent. Environment-nowhere,
 direct-extlinux, no-heap-clear, fast-init and in-place handoff are physically
 accepted, and canonical release `v6.23-20260814-201218` satisfies the clean
 full-release prerequisite. The raw-kernel bootstage measurement and paired LZ4
 host preparation are complete, and the corrected uninstrumented LZ4 runtime
 has passed its broad development-device gate. The remaining large boundaries
-include remaining compiled-closure subtraction and the inherited-frame
+include the fixed-command-closure hardware gate and the inherited-frame
 experiment. The simple-parser and fixed-read-path successors have passed their
-broad hardware gates.
+broad hardware gates. Why before: fixed-read-path retained generic U-Boot
+commands so its hardware result attributed only storage closure. Why change:
+the repeat-identical fixed-command-closure candidate retains the complete
+`sysboot`/extlinux/`booti` boot chain and removes 66,056 more combined bytes.
+The exact authority, corruption, installer transaction and workflow gates pass;
+hardware remains unclaimed until its separate RG34XX-SP test.
 
 The first Stage 10 candidate has passed its complete non-deploying host gate.
 The four-pass build produced two byte-identical baselines that each reproduce

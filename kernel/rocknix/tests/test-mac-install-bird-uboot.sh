@@ -17,6 +17,7 @@ BOOTSTAGE_FDT_UBOOT_BUILD=${BOOTSTAGE_FDT_UBOOT_BUILD:-$ROOT/kernel/work/bird-ub
 LZ4_PAIR_UBOOT_BUILD=${LZ4_PAIR_UBOOT_BUILD:-$ROOT/kernel/work/bird-uboot-lz4-pair-20260813}
 SIMPLE_PARSER_UBOOT_BUILD=${SIMPLE_PARSER_UBOOT_BUILD:-$ROOT/kernel/work/bird-uboot-simple-parser-20260829}
 FIXED_READ_PATH_UBOOT_BUILD=${FIXED_READ_PATH_UBOOT_BUILD:-$ROOT/kernel/work/bird-uboot-fixed-read-path-20260829}
+FIXED_COMMAND_CLOSURE_UBOOT_BUILD=${FIXED_COMMAND_CLOSURE_UBOOT_BUILD:-$ROOT/kernel/work/bird-uboot-fixed-command-closure-20260829}
 GDD=${GDD:-/opt/homebrew/bin/gdd}
 GTRUNCATE=${GTRUNCATE:-/opt/homebrew/bin/gtruncate}
 PREFIX_BYTES=16777216
@@ -27,6 +28,7 @@ FAST_INIT_UBOOT_BYTES=556977
 INPLACE_HANDOFF_UBOOT_BYTES=556977
 SIMPLE_PARSER_UBOOT_BYTES=518369
 FIXED_READ_PATH_UBOOT_BYTES=478033
+FIXED_COMMAND_CLOSURE_UBOOT_BYTES=411977
 BOOTSTAGE_FDT_UBOOT_BYTES=561073
 RAW_SECTOR_BYTES=512
 RAW_WRITE_BYTES=621056
@@ -66,6 +68,7 @@ BOOTSTAGE_FDT_ARTIFACTS=$CASE_ROOT/bootstage-fdt-authority
 LZ4_PAIR_ARTIFACTS=$CASE_ROOT/lz4-pair-authority
 SIMPLE_PARSER_ARTIFACTS=$CASE_ROOT/simple-parser-authority
 FIXED_READ_PATH_ARTIFACTS=$CASE_ROOT/fixed-read-path-authority
+FIXED_COMMAND_CLOSURE_ARTIFACTS=$CASE_ROOT/fixed-command-closure-authority
 RAW=$CASE_ROOT/raw-card.img
 DEVICE_INFO=$CASE_ROOT/device.tsv
 WHOLE=disk$$
@@ -89,7 +92,7 @@ for ARG in "$@"; do
 	esac
 done
 if [ "$RAW_WRITE" -eq 1 ] && [ "$FULLBLOCK" -eq 1 ]; then
-	[ "$BS" = 512 ] && { [ "$COUNT" = 934 ] || [ "$COUNT" = 1013 ] || [ "$COUNT" = 1088 ] || [ "$COUNT" = 1096 ] ||
+	[ "$BS" = 512 ] && { [ "$COUNT" = 805 ] || [ "$COUNT" = 934 ] || [ "$COUNT" = 1013 ] || [ "$COUNT" = 1088 ] || [ "$COUNT" = 1096 ] ||
 		[ "$COUNT" = 1213 ] || [ "$COUNT" = 1214 ]; } &&
 		[ "$SEEK" = 16 ] || {
 		printf 'gdd-sector-guard: Invalid argument: unaligned raw write\n' >&2
@@ -344,6 +347,11 @@ COPYFILE_DISABLE=1 cp -R "$SIMPLE_PARSER_UBOOT_BUILD" \
 	fail 'reviewed fixed-read-path U-Boot authority is required'
 COPYFILE_DISABLE=1 cp -R "$FIXED_READ_PATH_UBOOT_BUILD" \
 	"$FIXED_READ_PATH_ARTIFACTS"
+[ -d "$FIXED_COMMAND_CLOSURE_UBOOT_BUILD" ] &&
+	[ ! -L "$FIXED_COMMAND_CLOSURE_UBOOT_BUILD" ] ||
+	fail 'reviewed fixed-command-closure U-Boot authority is required'
+COPYFILE_DISABLE=1 cp -R "$FIXED_COMMAND_CLOSURE_UBOOT_BUILD" \
+	"$FIXED_COMMAND_CLOSURE_ARTIFACTS"
 BASELINE=$ARTIFACTS/rocknix-baseline.bin
 CANDIDATE=$ARTIFACTS/bird-uboot-green.bin
 
@@ -486,6 +494,10 @@ TEST_FIXED_READ_PATH_UBOOT_SHA=$(shasum -a 256 \
 	"$FIXED_READ_PATH_ARTIFACTS/fixed-read-path.bin" | awk '{print $1}')
 TEST_FIXED_READ_PATH_PREFIX_SHA=$(shasum -a 256 \
 	"$FIXED_READ_PATH_ARTIFACTS/fixed-read-path-prefix-16m.bin" | awk '{print $1}')
+TEST_FIXED_COMMAND_CLOSURE_UBOOT_SHA=$(shasum -a 256 \
+	"$FIXED_COMMAND_CLOSURE_ARTIFACTS/fixed-command-closure.bin" | awk '{print $1}')
+TEST_FIXED_COMMAND_CLOSURE_PREFIX_SHA=$(shasum -a 256 \
+	"$FIXED_COMMAND_CLOSURE_ARTIFACTS/fixed-command-closure-prefix-16m.bin" | awk '{print $1}')
 cp "$BOOTSTAGE_FDT_ARTIFACTS/bootstage-fdt-prefix-16m.bin" \
 	"$CASE_ROOT/bootstage-fdt-prefix-oracle"
 TEST_BOOTSTAGE_FDT_UBOOT_SHA=$(shasum -a 256 \
@@ -722,6 +734,36 @@ run_fixed_read_path_restore() {
 		--restore-simple-parser-from-fixed-read-path "$FIXED_READ_PATH_ARTIFACTS"
 }
 
+run_fixed_command_closure_installer() {
+	BIRD_UBOOT_HOST_TEST_MODE=1 BIRD_TEST_ROOT=$CASE_ROOT BIRD=$BIRD DATA=$DATA \
+		BIRD_DEVICE_INFO=$DEVICE_INFO BIRD_TEST_RAW_DISK=$RAW \
+		BIRD_TEST_BASELINE_PREFIX_SHA=$TEST_BASELINE_PREFIX_SHA \
+		BIRD_TEST_GREEN_PREFIX_SHA=$TEST_GREEN_PREFIX_SHA \
+		GDD=$RAW_GDD sh "$INSTALLER" "/dev/$WHOLE" --install-fixed-command-closure \
+		"$FIXED_COMMAND_CLOSURE_ARTIFACTS"
+}
+
+run_fixed_command_closure_failpoint() {
+	FAILPOINT=$1
+	BIRD_UBOOT_HOST_TEST_MODE=1 BIRD_TEST_ROOT=$CASE_ROOT BIRD=$BIRD DATA=$DATA \
+		BIRD_DEVICE_INFO=$DEVICE_INFO BIRD_TEST_RAW_DISK=$RAW \
+		BIRD_TEST_BASELINE_PREFIX_SHA=$TEST_BASELINE_PREFIX_SHA \
+		BIRD_TEST_GREEN_PREFIX_SHA=$TEST_GREEN_PREFIX_SHA \
+		BIRD_TEST_FAILPOINT=$FAILPOINT GDD=$RAW_GDD \
+		sh "$INSTALLER" "/dev/$WHOLE" --install-fixed-command-closure \
+		"$FIXED_COMMAND_CLOSURE_ARTIFACTS"
+}
+
+run_fixed_command_closure_restore() {
+	BIRD_UBOOT_HOST_TEST_MODE=1 BIRD_TEST_ROOT=$CASE_ROOT BIRD=$BIRD DATA=$DATA \
+		BIRD_DEVICE_INFO=$DEVICE_INFO BIRD_TEST_RAW_DISK=$RAW \
+		BIRD_TEST_BASELINE_PREFIX_SHA=$TEST_BASELINE_PREFIX_SHA \
+		BIRD_TEST_GREEN_PREFIX_SHA=$TEST_GREEN_PREFIX_SHA \
+		GDD=$RAW_GDD sh "$INSTALLER" "/dev/$WHOLE" \
+		--restore-fixed-read-path-from-command-closure \
+		"$FIXED_COMMAND_CLOSURE_ARTIFACTS"
+}
+
 run_bootstage_fdt_installer() {
 	BIRD_UBOOT_HOST_TEST_MODE=1 BIRD_TEST_ROOT=$CASE_ROOT BIRD=$BIRD DATA=$DATA \
 		BIRD_DEVICE_INFO=$DEVICE_INFO BIRD_TEST_RAW_DISK=$RAW \
@@ -920,7 +962,20 @@ FIXED_READ_PATH_INSTALLER_PREFIX_SHA=$(sed -n \
 grep -Fq \
 	'FIXED_READ_PATH_AUTHORITY_SHA=4e387e0b326fb84d9cdc04fa34dccec4d79d46b8df8b6cfff0233d0d10632a37' \
 	"$INSTALLER" ||
-	fail 'fixed-read-path installer does not pin the reviewed authority record'
+fail 'fixed-read-path installer does not pin the reviewed authority record'
+FIXED_COMMAND_CLOSURE_INSTALLER_SHA=$(sed -n \
+	's/^FIXED_COMMAND_CLOSURE_UBOOT_SHA=//p' "$INSTALLER")
+FIXED_COMMAND_CLOSURE_INSTALLER_PREFIX_SHA=$(sed -n \
+	's/^FIXED_COMMAND_CLOSURE_PREFIX_SHA=//p' "$INSTALLER")
+[ "$FIXED_COMMAND_CLOSURE_INSTALLER_SHA" = \
+	"$TEST_FIXED_COMMAND_CLOSURE_UBOOT_SHA" ] &&
+	[ "$FIXED_COMMAND_CLOSURE_INSTALLER_PREFIX_SHA" = \
+		"$TEST_FIXED_COMMAND_CLOSURE_PREFIX_SHA" ] ||
+	fail 'fixed-command-closure installer identities differ from reviewed authority'
+grep -Fq \
+	'FIXED_COMMAND_CLOSURE_AUTHORITY_SHA=f03b3ecfea6966284a8aff5fcd7aff42856314047e5a67421b73e141dc514187' \
+	"$INSTALLER" ||
+	fail 'fixed-command-closure installer does not pin the reviewed authority record'
 BOOTSTAGE_FDT_INSTALLER_SHA=$(sed -n \
 	's/^BOOTSTAGE_FDT_UBOOT_SHA=//p' "$INSTALLER")
 BOOTSTAGE_FDT_INSTALLER_PREFIX_SHA=$(sed -n \
@@ -1857,6 +1912,93 @@ cmp "$RAW" "$CASE_ROOT/fixed-read-path-outside-before" >/dev/null ||
 grep -Fq 'outside the fixed-read-path recovery span' \
 	"$CASE_ROOT/fixed-read-path-outside.err" ||
 	fail 'fixed-read-path outside-span rejection was not explicit'
+
+# The command closure advances only from the exact accepted fixed read path.
+# Its smaller full-U-Boot image retains sysboot/extlinux/booti while recovery
+# covers the complete larger predecessor span and sector tail.
+"$GDD" if="$FIXED_COMMAND_CLOSURE_ARTIFACTS/fixed-read-path-base-prefix-16m.bin" \
+	of="$RAW" bs=4M count="$PREFIX_BYTES" iflag=count_bytes,fullblock \
+	conv=notrunc status=none
+cp "$RAW" "$CASE_ROOT/fixed-command-closure.fixed-before"
+cp "$RAW" "$CASE_ROOT/fixed-command-closure.expected"
+"$GDD" if="$FIXED_COMMAND_CLOSURE_ARTIFACTS/fixed-command-closure.bin" \
+	of="$CASE_ROOT/fixed-command-closure.expected" bs=64K seek="$RAW_OFFSET" \
+	count="$FIXED_COMMAND_CLOSURE_UBOOT_BYTES" iflag=count_bytes,fullblock \
+	oflag=seek_bytes conv=notrunc status=none
+run_fixed_command_closure_installer >"$CASE_ROOT/fixed-command-closure-install.out"
+cmp "$RAW" "$CASE_ROOT/fixed-command-closure.expected" >/dev/null ||
+	fail 'fixed-command-closure install changed bytes outside or missed its exact target'
+[ "$("$GDD" if="$RAW" bs=4M count="$PREFIX_BYTES" \
+	iflag=count_bytes,fullblock status=none | shasum -a 256 | awk '{print $1}')" = \
+	"$TEST_FIXED_COMMAND_CLOSURE_PREFIX_SHA" ] ||
+	fail 'fixed-command-closure install did not produce its reviewed complete prefix'
+grep -Fq 'raw bytes [8192,420169)' \
+	"$CASE_ROOT/fixed-command-closure-install.out" ||
+	fail 'fixed-command-closure report omits its exact logical range'
+grep -Fq 'sector-aligned [8192,420352)' \
+	"$CASE_ROOT/fixed-command-closure-install.out" ||
+	fail 'fixed-command-closure report omits its exact physical range'
+grep -Fq 'Fixed command-closure U-Boot installed' \
+	"$CASE_ROOT/fixed-command-closure-install.out" ||
+	fail 'fixed-command-closure completion is not explicit'
+
+cp "$RAW" "$CASE_ROOT/fixed-command-closure.noop-before"
+run_fixed_command_closure_installer >"$CASE_ROOT/fixed-command-closure-noop.out"
+cmp "$RAW" "$CASE_ROOT/fixed-command-closure.noop-before" >/dev/null ||
+	fail 'fixed-command-closure no-op changed raw bytes'
+grep -Fq 'already installed' "$CASE_ROOT/fixed-command-closure-noop.out" ||
+	fail 'fixed-command-closure no-op was not explicit'
+
+cp "$CASE_ROOT/inplace-handoff.expected" "$RAW"
+cp "$RAW" "$CASE_ROOT/fixed-command-closure.wrong-before"
+if run_fixed_command_closure_installer \
+	>"$CASE_ROOT/fixed-command-closure-wrong.out" \
+	2>"$CASE_ROOT/fixed-command-closure-wrong.err"; then
+	fail 'fixed-command-closure install accepted the wrong predecessor'
+fi
+cmp "$RAW" "$CASE_ROOT/fixed-command-closure.wrong-before" >/dev/null ||
+	fail 'fixed-command-closure predecessor rejection changed raw bytes'
+grep -Fq 'not the exact accepted fixed-read-path base' \
+	"$CASE_ROOT/fixed-command-closure-wrong.err" ||
+	fail 'fixed-command-closure predecessor rejection was not explicit'
+
+cp "$CASE_ROOT/fixed-command-closure.fixed-before" "$RAW"
+if run_fixed_command_closure_failpoint after-write \
+	>"$CASE_ROOT/fixed-command-closure-failure.out" \
+	2>"$CASE_ROOT/fixed-command-closure-failure.err"; then
+	fail 'fixed-command-closure after-write failpoint unexpectedly succeeded'
+fi
+cmp "$RAW" "$CASE_ROOT/fixed-command-closure.fixed-before" >/dev/null ||
+	fail 'fixed-command-closure failure did not restore the exact fixed-read-path predecessor'
+
+cp "$CASE_ROOT/fixed-command-closure.expected" "$RAW"
+run_fixed_command_closure_restore >"$CASE_ROOT/fixed-command-closure-restore.out"
+cmp "$RAW" "$CASE_ROOT/fixed-command-closure.fixed-before" >/dev/null ||
+	fail 'fixed-command-closure restore did not reproduce the exact fixed read path'
+grep -Fq 'restored from command closure' \
+	"$CASE_ROOT/fixed-command-closure-restore.out" ||
+	fail 'fixed-command-closure restore completion is not explicit'
+
+cp "$CASE_ROOT/fixed-command-closure.expected" "$RAW"
+flip_raw_byte $((RAW_OFFSET + FIXED_COMMAND_CLOSURE_UBOOT_BYTES + 1024))
+run_fixed_command_closure_restore \
+	>"$CASE_ROOT/fixed-command-closure-tail-restore.out"
+cmp "$RAW" "$CASE_ROOT/fixed-command-closure.fixed-before" >/dev/null ||
+	fail 'fixed-command-closure retired-byte recovery did not converge'
+
+cp "$CASE_ROOT/fixed-command-closure.expected" "$RAW"
+flip_raw_byte 486400
+cp "$RAW" "$CASE_ROOT/fixed-command-closure-outside-before"
+if run_fixed_command_closure_restore \
+	>"$CASE_ROOT/fixed-command-closure-outside.out" \
+	2>"$CASE_ROOT/fixed-command-closure-outside.err"; then
+	fail 'fixed-command-closure restore accepted drift outside its physical span'
+fi
+cmp "$RAW" "$CASE_ROOT/fixed-command-closure-outside-before" >/dev/null ||
+	fail 'fixed-command-closure outside-span rejection changed raw bytes'
+grep -Fq 'outside the fixed-command-closure recovery span' \
+	"$CASE_ROOT/fixed-command-closure-outside.err" ||
+	fail 'fixed-command-closure outside-span rejection was not explicit'
 
 cp "$CASE_ROOT/inplace-handoff.expected" "$RAW"
 cp "$RAW" "$CASE_ROOT/bootstage-fdt.inplace-before"

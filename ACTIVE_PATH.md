@@ -369,13 +369,18 @@ diagnostics, but does not justify changing the accepted suspend path during
 Stage 10.
 
 In-place handoff plus the reviewed LZ4 bound remains the active physically
-accepted U-Boot/kernel pair. Stage 10 is roughly 96 percent complete: five
+accepted U-Boot/kernel pair. Stage 10 is roughly 97 percent complete: five
 accepted U-Boot transitions, the clean canonical prerequisite, raw-kernel
 bootstage measurement and corrected uninstrumented LZ4 development-device gate
 are complete. The reviewed simple-parser successor and bounded installer also
 passed their hardware gate. The fixed-read-path subsystem successor also passed
-its exact installation and broad hardware gate. Remaining compiled-closure
-subtraction and the inherited-frame experiment follow.
+its exact installation and broad hardware gate. Why before: it retained the
+generic command surface to isolate that device test. Why change: the reviewed
+fixed-command-closure successor retains `sysboot`, extlinux/PXE, `booti`, Linux
+boot, FAT/MBR MMC reads, raw initrd and LZ4 while removing 66,056 further
+combined bytes. Its repeat-build, exact-config, transaction and workflow gates
+pass without a card write. Its physical gate and the inherited-frame experiment
+follow.
 
 Why the previous measurement boundary existed: source inspection treated
 generic bootm's `bootm_load_os` mark as the kernel-load boundary. The accepted
