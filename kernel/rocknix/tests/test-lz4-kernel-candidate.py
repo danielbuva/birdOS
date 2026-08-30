@@ -59,7 +59,10 @@ def main() -> None:
         "SOURCE_KERNEL_PAYLOAD=$ROOT/kernel/work/bird-kernel-lz4-irq-candidate-20260813/KERNEL.lz4"
     ) == 1
     assert root_builder.count("source-irq-buttons-lz4)") == 2
-    assert "source-irq-buttons|source-irq-buttons-lz4)" in early_builder
+    assert (
+        "source-irq-buttons|source-irq-buttons-lz4|source-no-raid6-benchmark)"
+        in early_builder
+    )
     assert verifier.CANDIDATE_SHA256 in root_builder
     assert f"kernel-sha256\t{verifier.CANDIDATE_SHA256}\n" in authority
     assert "paired-kernel-comp-size\t0x10c080b\n" in authority

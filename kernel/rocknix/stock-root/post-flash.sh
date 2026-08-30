@@ -141,6 +141,7 @@ verify_release_runtime() {
 			optional_input["source-kernel-fixed-gpio-fastpath.tsv"] = 1
 			optional_input["source-kernel-irq-buttons.tsv"] = 1
 			optional_input["source-kernel-irq-buttons-lz4.tsv"] = 1
+			optional_input["source-kernel-irq-buttons-no-raid6-benchmark-lz4.tsv"] = 1
 		}
 		$1 == "schema" {
 			if (NF != 2 || $2 != "bird-deploy-v1" || schema++) exit 1
