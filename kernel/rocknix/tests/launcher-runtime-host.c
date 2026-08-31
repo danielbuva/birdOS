@@ -817,6 +817,7 @@ static void setup_main_view(void) {
     battery_percent = -1;
     charging_state = -1;
     pending_launch.kind = PENDING_LAUNCH_NONE;
+    pending_replacement = PENDING_REPLACEMENT_NONE;
     pending_render_invalid = 0U;
     reset_selected_text_scroll();
 }
@@ -2239,8 +2240,9 @@ static int run_phase6_background_tests(void) {
                     fake_opened_path("bird-launch-request"),
                 "ready pending launch was starved by a readable power fd");
 
-    /* Cancellation committed by the just-finished input batch remains
-     * authoritative: the same post-input scheduler sees no intent to launch. */
+    /* Browsing is independent of the queued identity. The just-finished
+     * movement retains the exact request, and the same post-input scheduler
+     * dispatches it before the readable power descriptor. */
     setup_test_framebuffer(1U, fake_framebuffer);
     memset(fake_framebuffer, 0x5a, RG34XX_FB_BYTES);
     clear_favorites();
@@ -2274,12 +2276,15 @@ static int run_phase6_background_tests(void) {
     reset_fake_file(FAKE_FD, 0, -EAGAIN);
     set_fake_read_script(read_steps, 2U);
     post_action = ACTION_NONE;
-    ok &= check(pending_launch.kind == PENDING_LAUNCH_NONE &&
+    ok &= check(pending_launch.kind == PENDING_LAUNCH_GAME &&
+                    pending_launch.index == 0U &&
                     service_post_input_work(
                         1, 0, 0, POLLIN, 1, &post_action, -EAGAIN, 0) &&
-                    post_action == ACTION_NONE &&
-                    !fake_opened_path("bird-launch-request"),
-                "completed navigation cancellation was followed by dispatch");
+                    post_action == ACTION_LAUNCH &&
+                    pending_launch.kind == PENDING_LAUNCH_NONE &&
+                    fake_read_count_for_fd(42) == 0U &&
+                    fake_opened_path("bird-launch-request"),
+                "completed navigation did not retain and dispatch its queue");
 
     /* The one-shot storage FIFO consumes no more than one read attempt in a
      * background slot. A positive edge still enters the existing exact
@@ -2416,6 +2421,7 @@ static void setup_full_render_golden(void) {
     battery_percent = -1;
     charging_state = -1;
     pending_launch.kind = PENDING_LAUNCH_NONE;
+    pending_replacement = PENDING_REPLACEMENT_NONE;
     pending_render_invalid = 0U;
     reset_selected_text_scroll();
 }
@@ -3146,6 +3152,7 @@ static void setup_navigation_test(struct navigation_batch *batch, u32 test_view)
     battery_percent = -1;
     charging_state = -1;
     pending_launch.kind = PENDING_LAUNCH_NONE;
+    pending_replacement = PENDING_REPLACEMENT_NONE;
     pending_render_invalid = 0U;
     h700_input = 1;
     reset_input_latches();
@@ -3155,6 +3162,282 @@ static void setup_navigation_test(struct navigation_batch *batch, u32 test_view)
     reset_navigation_batch(batch);
     draw_screen();
     reset_fake_file(FAKE_FD, 0, 0);
+}
+
+static int run_pending_launch_ui_tests(void) {
+    struct navigation_batch batch;
+    struct frame_resume_state frame_state;
+    struct input_event event;
+    u32 queued_catalog_index = catalog_system_first(0U);
+    int post_action;
+    int action;
+    int ok = 1;
+
+    event.sec = 0;
+    event.usec = 0;
+    event.type = EV_KEY;
+    event.value = 1;
+
+    /* The first pre-storage A paints only the status and contextual-help
+     * bands. It does not make the queue eligible for frame publication. */
+    setup_navigation_test(&batch, VIEW_GAMES);
+    storage_ready = 0;
+    memcpy(fake_framebuffer_reference, fake_framebuffer, RG34XX_FB_BYTES);
+    event.code = BTN_EAST;
+    action = handle_event(&event);
+    ok &= check(action == ACTION_NONE &&
+                    pending_launch.kind == PENDING_LAUNCH_GAME &&
+                    pending_launch.index == queued_catalog_index &&
+                    pending_replacement == PENDING_REPLACEMENT_NONE,
+                "pre-storage A did not create one exact visible game queue");
+    ok &= check(
+        framebuffer_regions_equal(fake_framebuffer,
+                                  fake_framebuffer_reference,
+                                  0U, 0U, RG34XX_FB_WIDTH, MENU_STATUS_Y) &&
+            !framebuffer_regions_equal(
+                fake_framebuffer, fake_framebuffer_reference,
+                MENU_FRAME_X, MENU_STATUS_Y,
+                MENU_TOP_BAR_WIDTH, MENU_STATUS_H) &&
+            framebuffer_regions_equal(
+                fake_framebuffer, fake_framebuffer_reference,
+                0U, MENU_STATUS_Y + MENU_STATUS_H, RG34XX_FB_WIDTH,
+                MENU_HELP_Y - MENU_STATUS_Y - MENU_STATUS_H) &&
+            !framebuffer_regions_equal(
+                fake_framebuffer, fake_framebuffer_reference,
+                MENU_FRAME_X, MENU_HELP_Y,
+                MENU_TOP_BAR_WIDTH, MENU_STATUS_H) &&
+            framebuffer_regions_equal(
+                fake_framebuffer, fake_framebuffer_reference,
+                0U, MENU_HELP_Y + MENU_STATUS_H,
+                RG34XX_FB_WIDTH,
+                RG34XX_FB_HEIGHT - MENU_HELP_Y - MENU_STATUS_H),
+        "queue creation wrote outside its status and help bands");
+    ok &= check(capture_frame_resume_state(&frame_state) < 0,
+                "active queue was admitted to a retained-frame descriptor");
+    ok &= dirty_framebuffer_matches_full(
+        1U, "queued footer dirty render differs from a full render");
+
+    /* On the exact queued item the contextual A action is CANCEL. A second A
+     * clears to no intent, and later storage readiness has nothing to send. */
+    setup_navigation_test(&batch, VIEW_GAMES);
+    storage_ready = 0;
+    event.code = BTN_EAST;
+    (void)handle_event(&event);
+    ok &= check(current_selection_matches_pending(),
+                "exact queued game did not expose contextual cancellation");
+    memcpy(fake_framebuffer_reference, fake_framebuffer, RG34XX_FB_BYTES);
+    action = handle_event(&event);
+    ok &= check(action == ACTION_NONE &&
+                    pending_launch.kind == PENDING_LAUNCH_NONE &&
+                    pending_replacement == PENDING_REPLACEMENT_NONE &&
+                    !current_selection_matches_pending() &&
+                    memcmp(fake_framebuffer, fake_framebuffer_reference,
+                           RG34XX_FB_BYTES) != 0,
+                "second A did not visibly cancel the exact queued game");
+    ok &= dirty_framebuffer_matches_full(
+        1U, "cancel-to-none footer differs from a clean full render");
+    storage_ready = 1;
+    reset_fake_file(FAKE_FD, 0, 0);
+    post_action = ACTION_NONE;
+    (void)service_post_input_work(
+        1, 0, 0, 0, 0, &post_action, -EAGAIN, 0);
+    ok &= check(post_action == ACTION_NONE &&
+                    pending_launch.kind == PENDING_LAUNCH_NONE &&
+                    !fake_opened_path("bird-launch-request"),
+                "storage readiness dispatched a cancelled queue");
+
+    /* Ordinary browsing and page movement retain the exact queued identity.
+     * The queue line itself needs no rewrite on each movement. */
+    setup_navigation_test(&batch, VIEW_GAMES);
+    storage_ready = 0;
+    event.code = BTN_EAST;
+    (void)handle_event(&event);
+    event.code = BTN_DPAD_DOWN;
+    (void)handle_event(&event);
+    ok &= check(selection == 1U &&
+                    pending_launch.kind == PENDING_LAUNCH_GAME &&
+                    pending_launch.index == queued_catalog_index &&
+                    pending_replacement == PENDING_REPLACEMENT_NONE,
+                "navigation changed the exact queued game identity");
+    ok &= dirty_framebuffer_matches_full(
+        1U, "queued navigation dirty render differs from a full render");
+
+    /* A different content selection arms one non-persistent confirmation.
+     * Storage readiness cannot dispatch the old intent while that choice is
+     * visible. B restores the ordinary queue without navigating back. */
+    setup_navigation_test(&batch, VIEW_GAMES);
+    storage_ready = 0;
+    event.code = BTN_EAST;
+    (void)handle_event(&event);
+    event.code = BTN_DPAD_DOWN;
+    (void)handle_event(&event);
+    memcpy(fake_framebuffer_reference, fake_framebuffer, RG34XX_FB_BYTES);
+    event.code = BTN_EAST;
+    action = handle_event(&event);
+    ok &= check(action == ACTION_NONE &&
+                    pending_launch.kind == PENDING_LAUNCH_GAME &&
+                    pending_launch.index == queued_catalog_index &&
+                    pending_replacement == PENDING_REPLACEMENT_CONFIRM,
+                "different game did not arm replacement confirmation");
+    ok &= check(
+        framebuffer_regions_equal(fake_framebuffer,
+                                  fake_framebuffer_reference,
+                                  0U, 0U, RG34XX_FB_WIDTH, MENU_STATUS_Y) &&
+            !framebuffer_regions_equal(
+                fake_framebuffer, fake_framebuffer_reference,
+                MENU_FRAME_X, MENU_STATUS_Y,
+                MENU_TOP_BAR_WIDTH, MENU_STATUS_H) &&
+            framebuffer_regions_equal(
+                fake_framebuffer, fake_framebuffer_reference,
+                0U, MENU_STATUS_Y + MENU_STATUS_H,
+                RG34XX_FB_WIDTH,
+                MENU_HELP_Y - MENU_STATUS_Y - MENU_STATUS_H) &&
+            !framebuffer_regions_equal(
+                fake_framebuffer, fake_framebuffer_reference,
+                MENU_FRAME_X, MENU_HELP_Y,
+                MENU_TOP_BAR_WIDTH, MENU_STATUS_H) &&
+            framebuffer_regions_equal(
+                fake_framebuffer, fake_framebuffer_reference,
+                0U, MENU_HELP_Y + MENU_STATUS_H,
+                RG34XX_FB_WIDTH,
+                RG34XX_FB_HEIGHT - MENU_HELP_Y - MENU_STATUS_H),
+        "replacement confirmation wrote outside status and help bands");
+    storage_ready = 1;
+    reset_fake_file(FAKE_FD, 0, 0);
+    post_action = ACTION_NONE;
+    ok &= check(!pending_launch_dispatch_ready(),
+                "confirmation remained eligible for zero-time dispatch polling");
+    ok &= check(!service_post_input_work(
+                    1, 0, 0, 0, 0, &post_action, -EAGAIN, 0) &&
+                    post_action == ACTION_NONE &&
+                    pending_launch.kind == PENDING_LAUNCH_GAME &&
+                    pending_launch.index == queued_catalog_index &&
+                    !fake_opened_path("bird-launch-request"),
+                "confirmation allowed the old queue to dispatch");
+    action = dispatch_pending_launch();
+    ok &= check(action == ACTION_NONE &&
+                    pending_launch.kind == PENDING_LAUNCH_GAME &&
+                    pending_launch.index == queued_catalog_index &&
+                    !fake_opened_path("bird-launch-request"),
+                "direct dispatch crossed replacement confirmation");
+    event.code = BTN_SOUTH;
+    action = handle_event(&event);
+    ok &= check(action == ACTION_NONE && selection == 1U &&
+                    pending_launch.kind == PENDING_LAUNCH_GAME &&
+                    pending_launch.index == queued_catalog_index &&
+                    pending_replacement == PENDING_REPLACEMENT_NONE &&
+                    pending_launch_dispatch_ready(),
+                "B did not keep the exact queued game");
+    ok &= dirty_framebuffer_matches_full(
+        1U, "B-keep footer differs from a full render");
+
+    /* A confirmation replaces in place while storage is unavailable. There
+     * is never a second persistent intent. */
+    setup_navigation_test(&batch, VIEW_GAMES);
+    storage_ready = 0;
+    event.code = BTN_EAST;
+    (void)handle_event(&event);
+    event.code = BTN_DPAD_DOWN;
+    (void)handle_event(&event);
+    event.code = BTN_EAST;
+    (void)handle_event(&event);
+    action = handle_event(&event);
+    ok &= check(action == ACTION_NONE &&
+                    pending_launch.kind == PENDING_LAUNCH_GAME &&
+                    pending_launch.index == queued_catalog_index + 1U &&
+                    pending_replacement == PENDING_REPLACEMENT_NONE,
+                "A did not replace the queued game in place");
+    ok &= dirty_framebuffer_matches_full(
+        1U, "A-replace footer differs from a full render");
+
+    /* A D-pad event dismisses the prompt, keeps the queue and performs the
+     * requested movement in the same dirty commit. */
+    setup_navigation_test(&batch, VIEW_GAMES);
+    storage_ready = 0;
+    event.code = BTN_EAST;
+    (void)handle_event(&event);
+    event.code = BTN_DPAD_DOWN;
+    (void)handle_event(&event);
+    event.code = BTN_EAST;
+    (void)handle_event(&event);
+    event.code = BTN_DPAD_DOWN;
+    (void)handle_event(&event);
+    ok &= check(selection == 2U &&
+                    pending_launch.kind == PENDING_LAUNCH_GAME &&
+                    pending_launch.index == queued_catalog_index &&
+                    pending_replacement == PENDING_REPLACEMENT_NONE,
+                "D-pad dismissal changed or lost the queued game");
+    ok &= dirty_framebuffer_matches_full(
+        1U, "D-pad confirmation dismissal differs from a full render");
+
+    /* Media uses the same one-intent replacement contract. */
+    setup_navigation_test(&batch, VIEW_MEDIA_ENTRIES);
+    storage_ready = 0;
+    active_media_category = 0U;
+    media_section = CATALOG_MEDIA_SECTION_LISTEN;
+    ok &= check(catalog_media_category_entry_count(0U) > 1U,
+                "pending-media fixture lacks a replacement entry");
+    event.code = BTN_EAST;
+    (void)handle_event(&event);
+    event.code = BTN_DPAD_DOWN;
+    (void)handle_event(&event);
+    event.code = BTN_EAST;
+    (void)handle_event(&event);
+    action = handle_event(&event);
+    ok &= check(action == ACTION_NONE &&
+                    pending_launch.kind == PENDING_LAUNCH_MEDIA &&
+                    pending_launch.active_index == 0U &&
+                    pending_launch.index == 1U &&
+                    pending_replacement == PENDING_REPLACEMENT_NONE,
+                "media replacement did not retain one exact intent");
+    ok &= dirty_framebuffer_matches_full(
+        1U, "queued media footer differs from a full render");
+
+    /* Foreground dispatch clears the queue before request publication, so the
+     * frame captured for content return contains no stale queue UI. */
+    setup_navigation_test(&batch, VIEW_GAMES);
+    storage_ready = 0;
+    event.code = BTN_EAST;
+    (void)handle_event(&event);
+    storage_ready = 1;
+    reset_fake_file(FAKE_FD, 0, 0);
+    action = dispatch_pending_launch();
+    ok &= check(action == ACTION_LAUNCH &&
+                    pending_launch.kind == PENDING_LAUNCH_NONE &&
+                    pending_replacement == PENDING_REPLACEMENT_NONE &&
+                    fake_opened_path("bird-launch-request") &&
+                    capture_frame_resume_state(&frame_state) == 0,
+                "pending dispatch left stale queue state in its return frame");
+    ok &= dirty_framebuffer_matches_full(
+        1U, "post-dispatch footer differs from a clean full render");
+
+    /* Launcher apps receive the same explicit replacement guard. A confirmed
+     * app action clears the footer before its resume-state filesystem work. */
+    setup_navigation_test(&batch, VIEW_GAMES);
+    storage_ready = 0;
+    event.code = BTN_EAST;
+    (void)handle_event(&event);
+    view = VIEW_TOOLS;
+    selection = 0U;
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_VIEW_CHANGE);
+    draw_interactive_screen();
+    reset_fake_file(FAKE_FD, 0, 0);
+    event.code = BTN_EAST;
+    action = handle_event(&event);
+    ok &= check(action == ACTION_NONE &&
+                    pending_replacement == PENDING_REPLACEMENT_CONFIRM &&
+                    pending_launch.kind == PENDING_LAUNCH_GAME,
+                "launcher app bypassed replacement confirmation");
+    action = handle_event(&event);
+    ok &= check(action == ACTION_INPUT_TESTER &&
+                    pending_launch.kind == PENDING_LAUNCH_NONE &&
+                    pending_replacement == PENDING_REPLACEMENT_NONE &&
+                    capture_frame_resume_state(&frame_state) == 0,
+                "confirmed launcher app retained stale queue UI");
+    ok &= dirty_framebuffer_matches_full(
+        1U, "confirmed launcher-app footer differs from a full render");
+
+    return ok;
 }
 
 static int run_navigation_batch_tests(void) {
@@ -3312,18 +3595,19 @@ static int run_navigation_batch_tests(void) {
                     !is_favorite(0U) && is_favorite(1U),
                 "favorite action did not use the final batched selection");
 
-    /* Pending content remains cancellable throughout the in-memory batch and
-     * is retired immediately after the visible movement barrier. */
+    /* Pending content is independent of the browsing cursor. It remains exact
+     * both before and after the visible movement barrier. */
     setup_navigation_test(&batch, VIEW_GAMES);
     pending_launch.kind = PENDING_LAUNCH_GAME;
     pending_launch.index = 0U;
     event.code = BTN_DPAD_DOWN;
     (void)handle_batched_input_event(&batch, &event);
     ok &= check(pending_launch.kind == PENDING_LAUNCH_GAME && batch.active,
-                "pending launch was cancelled before the visible batch commit");
+                "pending launch changed before the visible batch commit");
     finish_navigation_batch(&batch);
-    ok &= check(pending_launch.kind == PENDING_LAUNCH_NONE && !batch.active,
-                "visible navigation did not cancel the pending launch");
+    ok &= check(pending_launch.kind == PENDING_LAUNCH_GAME &&
+                    pending_launch.index == 0U && !batch.active,
+                "visible navigation did not retain the pending launch");
 
     /* B flushes the older movement before changing views, so no uncommitted
      * selection survives across the back-navigation ordering boundary. */
@@ -3335,7 +3619,8 @@ static int run_navigation_batch_tests(void) {
     event.code = BTN_SOUTH;
     action = handle_batched_input_event(&batch, &event);
     ok &= check(action == ACTION_NONE && !batch.active &&
-                    pending_launch.kind == PENDING_LAUNCH_NONE &&
+                    pending_launch.kind == PENDING_LAUNCH_GAME &&
+                    pending_launch.index == 0U &&
                     view == VIEW_SYSTEMS && selection == active_system,
                 "back action crossed an uncommitted navigation batch");
 
@@ -3506,7 +3791,8 @@ static int run_user_reload_handoff_tests(void) {
 #endif
     ok &= check(action == ACTION_NONE && view == VIEW_MAIN &&
                     selection == 0U &&
-                    pending_launch.kind == PENDING_LAUNCH_NONE &&
+                    pending_launch.kind == PENDING_LAUNCH_GAME &&
+                    pending_launch.index == 4U &&
                     fake_create_calls == 1U && fake_rename_calls == 1U &&
                     strcmp(selected_status, "DIRECT EVDEV INPUT READY") == 0,
                 "main-page B did not return to the top selection");
@@ -3692,6 +3978,7 @@ static int run_profile_tests(void) {
     u64 prior_input_samples;
     u64 maximum_physical;
     u64 first_storage_report_bytes;
+    u64 pending_selection_ns;
     u64 unbatched_physical;
     u64 unbatched_syscalls;
     long open_script[4];
@@ -4536,7 +4823,8 @@ static int run_profile_tests(void) {
                 "direct selection-to-exit interval was not retained");
     fake_now_sub_ms_ns = 0;
 
-    /* Navigation cancels a queued selection timestamp. */
+    /* Navigation retains both the queued identity and its originating
+     * selection timestamp. */
     bird_profile_reset();
     setup_test_framebuffer(1U, fake_framebuffer);
     setup_profile_path_anchors();
@@ -4554,10 +4842,13 @@ static int run_profile_tests(void) {
                     pending_launch.kind == PENDING_LAUNCH_GAME &&
                     bird_profile.selection_pending,
                 "queued game selection did not retain its timestamp");
+    pending_selection_ns = bird_profile.selection_ns;
     move_selection(1, 1U);
-    ok &= check(pending_launch.kind == PENDING_LAUNCH_NONE &&
-                    !bird_profile.selection_pending,
-                "navigation did not cancel the queued selection timestamp");
+    ok &= check(pending_launch.kind == PENDING_LAUNCH_GAME &&
+                    pending_launch.index == 0U &&
+                    bird_profile.selection_pending &&
+                    bird_profile.selection_ns == pending_selection_ns,
+                "navigation changed the queued selection timestamp");
 
     /* A queued selection remains attributable when storage later dispatches
      * the one pending intent. */
@@ -4584,8 +4875,24 @@ static int run_profile_tests(void) {
                 "pending dispatch setup lost its selection timestamp");
     ok &= check(
         bird_profile.render[PROFILE_RENDER_STATUS].commits == 1U &&
-            bird_profile.render[PROFILE_RENDER_STATUS].physical_bytes == 0U,
-        "queued selection performed a same-view framebuffer rewrite");
+            bird_profile.render[PROFILE_RENDER_STATUS].pages_written == 1U &&
+            bird_profile.render[PROFILE_RENDER_STATUS].physical_bytes > 0U &&
+            bird_profile.render[PROFILE_RENDER_STATUS].physical_bytes <
+                100000U &&
+            bird_profile.event_pre_barrier_filesystem_ops == 0U &&
+            bird_profile.event_pre_barrier_diagnostic_writes == 0U,
+        "queued selection exceeded its footer-only response contract");
+    printf("launcher profile benchmark scenario=pending-queue "
+           "logical_pixels=%lu visible_bytes=%lu pages=%lu "
+           "physical_bytes=%lu\n",
+           (unsigned long)bird_profile.render[
+               PROFILE_RENDER_STATUS].logical_pixels,
+           (unsigned long)bird_profile.render[
+               PROFILE_RENDER_STATUS].visible_bytes,
+           (unsigned long)bird_profile.render[
+               PROFILE_RENDER_STATUS].pages_written,
+           (unsigned long)bird_profile.render[
+               PROFILE_RENDER_STATUS].physical_bytes);
     storage_ready = 1;
     fake_now_ms = 5001;
     reset_fake_file(FAKE_FD, 0, 0);
@@ -4597,6 +4904,114 @@ static int run_profile_tests(void) {
                     !profile_log_contains(
                         "selection_to_launcher_exit_ns=unavailable"),
                 "queued selection-to-exit interval was unavailable");
+
+    /* Contextual cancellation restores both footer bands before its
+     * diagnostic and leaves no dispatchable intent. */
+    setup_navigation_test(&batch, VIEW_GAMES);
+    storage_ready = 0;
+    pending_launch.kind = PENDING_LAUNCH_GAME;
+    pending_launch.index = catalog_system_first(0U);
+    pending_launch.active_index = 0U;
+    pending_replacement = PENDING_REPLACEMENT_NONE;
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_STARTUP_FULL);
+    draw_screen();
+    bird_profile_reset();
+    reset_fake_file(FAKE_FD, 0, 0);
+    BIRD_PROFILE_BEGIN_EVENT();
+    action = handle_event(&event);
+    BIRD_PROFILE_FINISH_EVENT();
+    render = &bird_profile.render[PROFILE_RENDER_STATUS];
+    ok &= check(action == ACTION_NONE &&
+                    pending_launch.kind == PENDING_LAUNCH_NONE &&
+                    !pending_launch_dispatch_ready() &&
+                    render->commits == 1U && render->pages_written == 1U &&
+                    render->physical_bytes < 100000U &&
+                    bird_profile.event_pre_barrier_filesystem_ops == 0U &&
+                    bird_profile.event_pre_barrier_diagnostic_writes == 0U,
+                "contextual cancellation crossed its visible barrier");
+    printf("launcher profile benchmark scenario=pending-cancel "
+           "logical_pixels=%lu visible_bytes=%lu pages=%lu "
+           "physical_bytes=%lu\n",
+           (unsigned long)render->logical_pixels,
+           (unsigned long)render->visible_bytes,
+           (unsigned long)render->pages_written,
+           (unsigned long)render->physical_bytes);
+
+    /* Both confirmation and confirmed replacement remain footer-only. Their
+     * visible barriers precede every resume write and queue diagnostic. */
+    setup_navigation_test(&batch, VIEW_GAMES);
+    storage_ready = 0;
+    pending_launch.kind = PENDING_LAUNCH_GAME;
+    pending_launch.index = catalog_system_first(0U);
+    pending_launch.active_index = 0U;
+    pending_replacement = PENDING_REPLACEMENT_NONE;
+    selection = 1U;
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_STARTUP_FULL);
+    draw_screen();
+    bird_profile_reset();
+    reset_fake_file(FAKE_FD, 0, 0);
+    BIRD_PROFILE_BEGIN_EVENT();
+    action = handle_event(&event);
+    BIRD_PROFILE_FINISH_EVENT();
+    render = &bird_profile.render[PROFILE_RENDER_STATUS];
+    ok &= check(action == ACTION_NONE &&
+                    pending_replacement == PENDING_REPLACEMENT_CONFIRM &&
+                    pending_launch.index == catalog_system_first(0U) &&
+                    render->commits == 1U && render->pages_written == 1U &&
+                    render->physical_bytes < 100000U &&
+                    bird_profile.event_pre_barrier_filesystem_ops == 0U &&
+                    bird_profile.event_pre_barrier_diagnostic_writes == 0U,
+                "replacement confirmation crossed its visible barrier");
+
+    bird_profile_reset();
+    reset_fake_file(FAKE_FD, 0, 0);
+    BIRD_PROFILE_BEGIN_EVENT();
+    action = handle_event(&event);
+    BIRD_PROFILE_FINISH_EVENT();
+    render = &bird_profile.render[PROFILE_RENDER_STATUS];
+    ok &= check(action == ACTION_NONE &&
+                    pending_replacement == PENDING_REPLACEMENT_NONE &&
+                    pending_launch.kind == PENDING_LAUNCH_GAME &&
+                    pending_launch.index == catalog_system_first(0U) + 1U &&
+                    render->commits == 1U && render->pages_written == 1U &&
+                    render->physical_bytes < 100000U &&
+                    bird_profile.event_pre_barrier_filesystem_ops == 0U &&
+                    bird_profile.event_pre_barrier_diagnostic_writes == 0U,
+                "confirmed replacement crossed its visible barrier");
+    printf("launcher profile benchmark scenario=pending-replacement "
+           "logical_pixels=%lu visible_bytes=%lu pages=%lu "
+           "physical_bytes=%lu\n",
+           (unsigned long)render->logical_pixels,
+           (unsigned long)render->visible_bytes,
+           (unsigned long)render->pages_written,
+           (unsigned long)render->physical_bytes);
+
+    /* The app path performs a real atomic resume write. It too must happen
+     * only after the confirmation footer has visibly cleared. */
+    setup_navigation_test(&batch, VIEW_TOOLS);
+    storage_ready = 0;
+    pending_launch.kind = PENDING_LAUNCH_GAME;
+    pending_launch.index = catalog_system_first(0U);
+    pending_launch.active_index = 0U;
+    pending_replacement = PENDING_REPLACEMENT_NONE;
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_STARTUP_FULL);
+    draw_screen();
+    reset_fake_file(FAKE_FD, 0, 0);
+    (void)handle_event(&event);
+    bird_profile_reset();
+    reset_fake_file(FAKE_FD, 0, 0);
+    BIRD_PROFILE_BEGIN_EVENT();
+    action = handle_event(&event);
+    BIRD_PROFILE_FINISH_EVENT();
+    render = &bird_profile.render[PROFILE_RENDER_STATUS];
+    ok &= check(action == ACTION_INPUT_TESTER &&
+                    pending_launch.kind == PENDING_LAUNCH_NONE &&
+                    pending_replacement == PENDING_REPLACEMENT_NONE &&
+                    render->commits == 1U && render->pages_written == 1U &&
+                    render->physical_bytes < 100000U &&
+                    bird_profile.event_pre_barrier_filesystem_ops == 0U &&
+                    bird_profile.event_pre_barrier_diagnostic_writes == 0U,
+                "confirmed app performed work before clearing its footer");
 
     bird_profile_reset();
     setup_profile_path_anchors();
@@ -4770,6 +5185,7 @@ int main(void) {
     ok &= run_full_render_golden_tests();
     ok &= run_selected_text_scroll_tests();
     ok &= run_dirty_region_render_tests();
+    ok &= run_pending_launch_ui_tests();
     ok &= run_navigation_batch_tests();
     ok &= run_phase9_menu_hierarchy_tests();
     ok &= run_user_reload_handoff_tests();

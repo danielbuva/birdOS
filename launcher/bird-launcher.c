@@ -185,6 +185,8 @@ typedef signed long s64;
 #define PENDING_LAUNCH_NONE 0U
 #define PENDING_LAUNCH_GAME 1U
 #define PENDING_LAUNCH_MEDIA 2U
+#define PENDING_REPLACEMENT_NONE 0U
+#define PENDING_REPLACEMENT_CONFIRM 1U
 #define INPUT_EVENT_SCAN_COUNT ((int)BIRD_DEVICE_INPUT_SCAN_COUNT)
 #define PREFERRED_INPUT_EVENT ((int)BIRD_DEVICE_INPUT_PREFERRED_EVENT)
 #define NAVIGATION_BATCH_MAX_EVENTS 16U
@@ -269,6 +271,8 @@ typedef signed long s64;
 #define FB_MISMATCH_SMEM_LEN (1UL << 19)
 #define RENDER_INVALID_CONTENT 1U
 #define RENDER_INVALID_STATUS 2U
+#define RENDER_INVALID_PENDING_STATUS 4U
+#define RENDER_INVALID_HELP 8U
 
 struct fb_bitfield {
     u32 offset;
@@ -348,6 +352,8 @@ struct fb_var_screeninfo {
 #define MENU_FOOTER_Y 404
 #define MENU_FOOTER_H 60
 #define MENU_STATUS_Y 407
+#define MENU_STATUS_H (7 * MENU_LABEL_SCALE + 2)
+#define MENU_STATUS_TEXT_LIMIT 30U
 #define MENU_HELP_X_OFFSET 2
 #define MENU_HELP_Y 429
 #define MENU_CONTROL_TEXT_GAP 6
@@ -538,6 +544,7 @@ static u64 next_favorites_retry;
 static u64 favorites_retry_ms = FAVORITES_RETRY_INITIAL_MS;
 static u32 favorites_retry_count;
 static struct pending_launch_state pending_launch;
+static u32 pending_replacement;
 static u32 pending_render_invalid;
 static u64 footer_background[(MENU_TOP_BAR_WIDTH * MENU_FOOTER_H) / 2U];
 static int footer_background_captured;
@@ -2826,7 +2833,11 @@ static int capture_frame_resume_state(struct frame_resume_state *state) {
     u64 offset;
     if (framebuffer_path != FRAMEBUFFER_PATH_RG34XX_XRGB8888 ||
         fb_fix.smem_len != RG34XX_FB_BYTES ||
-        (pending_render_invalid & RENDER_INVALID_CONTENT))
+        pending_launch.kind != PENDING_LAUNCH_NONE ||
+        pending_replacement != PENDING_REPLACEMENT_NONE ||
+        (pending_render_invalid &
+         (RENDER_INVALID_CONTENT | RENDER_INVALID_PENDING_STATUS |
+          RENDER_INVALID_HELP)))
         return -1;
     for (offset = 0; offset < sizeof(*state); offset++)
         ((u8 *)state)[offset] = 0U;
@@ -4002,6 +4013,59 @@ static int draw_page_control(int x,
     return x + 4 * 6 * MENU_LABEL_SCALE;
 }
 
+static int pending_launch_matches_game(u32 catalog_index) {
+    return pending_launch.kind == PENDING_LAUNCH_GAME &&
+           pending_launch.index == catalog_index;
+}
+
+static int pending_launch_matches_media(u32 category_index, u32 item_index) {
+    return pending_launch.kind == PENDING_LAUNCH_MEDIA &&
+           pending_launch.active_index == category_index &&
+           pending_launch.index == item_index;
+}
+
+static __attribute__((noinline)) int current_selection_matches_pending(void) {
+    if (view == VIEW_GAMES || view == VIEW_FAVORITES)
+        return pending_launch_matches_game(current_catalog_index());
+    if (view == VIEW_MEDIA_ENTRIES)
+        return pending_launch_matches_media(active_media_category, selection);
+    return 0;
+}
+
+static const char *pending_launch_name(
+    const struct pending_launch_state *pending) {
+    if (pending->kind == PENDING_LAUNCH_GAME)
+        return catalog_entry_name(pending->index);
+    return catalog_media_entry_name(
+        catalog_media_category_first(pending->active_index) + pending->index);
+}
+
+static void draw_pending_status(const struct launcher_palette *palette) {
+    const char *prefix;
+    const char *name;
+    u32 prefix_length;
+    u32 value;
+    int x;
+
+    if (pending_launch.kind == PENDING_LAUNCH_NONE) return;
+    if (pending_replacement == PENDING_REPLACEMENT_CONFIRM) {
+        prefix = "REPLACE // ";
+        prefix_length = 11U;
+        value = palette->primary;
+    } else {
+        prefix = "QUEUED // ";
+        prefix_length = 10U;
+        value = palette->muted;
+    }
+    name = pending_launch_name(&pending_launch);
+    x = MENU_TOP_BAR_X + 20;
+    draw_text(x, MENU_STATUS_Y, prefix, MENU_LABEL_SCALE, value);
+    draw_text_limited(
+        x + (int)prefix_length * 6 * MENU_LABEL_SCALE,
+        MENU_STATUS_Y, name, MENU_LABEL_SCALE, value,
+        MENU_STATUS_TEXT_LIMIT - prefix_length);
+}
+
 static void draw_help(const struct launcher_palette *palette) {
     const int gap = 10;
     const char *action = (view == VIEW_SYSTEMS ||
@@ -4017,8 +4081,20 @@ static void draw_help(const struct launcher_palette *palette) {
     int favorite_action = view == VIEW_GAMES || view == VIEW_FAVORITES;
     const char *favorite_label = view == VIEW_FAVORITES ? "DEL" : "FAV";
     int show_back = view != VIEW_MAIN;
-    int width = control_group_width(action);
+    int width;
     int x;
+
+    if (pending_replacement == PENDING_REPLACEMENT_CONFIRM) {
+        width = control_group_width("REPLACE") + gap +
+                control_group_width("KEEP");
+        x = MENU_FRAME_X + (MENU_TOP_BAR_WIDTH - width) / 2 +
+            MENU_HELP_X_OFFSET;
+        x = draw_control_group(x, 'A', "REPLACE", palette) + gap;
+        (void)draw_control_group(x, 'B', "KEEP", palette);
+        return;
+    }
+    if (current_selection_matches_pending()) action = "CANCEL";
+    width = control_group_width(action);
     if (paged) width += page_control_width() + gap;
     if (favorite_action)
         width += control_group_width(favorite_label) + gap;
@@ -4032,6 +4108,25 @@ static void draw_help(const struct launcher_palette *palette) {
     if (favorite_action)
         x = draw_control_group(x, 'Y', favorite_label, palette) + gap;
     if (show_back) (void)draw_control_group(x, 'B', "BACK", palette);
+}
+
+static void redraw_pending_status_region(
+    const struct launcher_palette *palette) {
+    restore_footer_background(MENU_STATUS_Y, MENU_STATUS_H);
+    draw_pending_status(palette);
+}
+
+static void redraw_help_region(const struct launcher_palette *palette) {
+    restore_footer_background(MENU_HELP_Y, MENU_STATUS_H);
+    draw_help(palette);
+}
+
+static __attribute__((noinline)) void redraw_invalid_footer(
+    const struct launcher_palette *palette) {
+    if (pending_render_invalid & RENDER_INVALID_PENDING_STATUS)
+        redraw_pending_status_region(palette);
+    if (pending_render_invalid & RENDER_INVALID_HELP)
+        redraw_help_region(palette);
 }
 
 static void framebuffer_store_barrier(void) {
@@ -4074,6 +4169,7 @@ static void draw_screen(void) {
     draw_header(&palette);
     draw_content(&palette);
     draw_battery_status(palette.charging, palette.ink, palette.panel);
+    draw_pending_status(&palette);
     draw_help(&palette);
     pending_render_invalid = 0U;
     framebuffer_barrier();
@@ -4090,11 +4186,14 @@ static void draw_interactive_screen(void) {
      * wallpaper without losing it on the first view change. */
     draw_static_chrome(&palette);
     capture_footer_background();
-    restore_footer_background(MENU_HELP_Y,
-                              7 * MENU_LABEL_SCALE + 2);
+    if (pending_launch.kind != PENDING_LAUNCH_NONE ||
+        (pending_render_invalid & RENDER_INVALID_PENDING_STATUS))
+        restore_footer_background(MENU_STATUS_Y, MENU_STATUS_H);
+    restore_footer_background(MENU_HELP_Y, MENU_STATUS_H);
     draw_header(&palette);
     draw_content(&palette);
     draw_battery_status(palette.charging, palette.ink, palette.panel);
+    draw_pending_status(&palette);
     draw_help(&palette);
     pending_render_invalid = 0U;
     framebuffer_barrier();
@@ -4120,6 +4219,7 @@ static void draw_startup_menu_overlay(void) {
     draw_header(&palette);
     draw_content(&palette);
     draw_battery_status(palette.charging, palette.ink, palette.panel);
+    draw_pending_status(&palette);
     draw_help(&palette);
     pending_render_invalid = 0U;
     framebuffer_barrier();
@@ -4137,6 +4237,7 @@ static void draw_status_update(void) {
     load_launcher_palette(&palette);
     if (pending_render_invalid & RENDER_INVALID_CONTENT)
         redraw_content_region(&palette);
+    redraw_invalid_footer(&palette);
     pending_render_invalid = 0U;
     framebuffer_barrier();
 }
@@ -4146,6 +4247,7 @@ static void draw_battery_update(void) {
     load_launcher_palette(&palette);
     if (pending_render_invalid & RENDER_INVALID_CONTENT)
         redraw_content_region(&palette);
+    redraw_invalid_footer(&palette);
     redraw_battery_region(&palette);
     pending_render_invalid = 0U;
     framebuffer_barrier();
@@ -4157,6 +4259,7 @@ static void draw_content_and_status_update(void) {
     struct launcher_palette palette;
     load_launcher_palette(&palette);
     redraw_content_region(&palette);
+    redraw_invalid_footer(&palette);
     pending_render_invalid = 0U;
     framebuffer_barrier();
 }
@@ -4188,6 +4291,7 @@ static void draw_selection_update(u32 old_selection, u32 old_first) {
         if (selection != old_selection)
             draw_list_row(selection, new_row, &palette);
     }
+    redraw_invalid_footer(&palette);
     pending_render_invalid = 0U;
     framebuffer_barrier();
 }
@@ -4404,51 +4508,72 @@ static void log_pending_identity(const struct pending_launch_state *pending) {
     }
 }
 
-static void queue_game_launch(u32 catalog_index) {
-    pending_launch.kind = PENDING_LAUNCH_GAME;
-    pending_launch.index = catalog_index;
-    pending_launch.active_index = 0U;
-    selected_status = "GAME QUEUED // STORAGE MOUNTING";
+/* Queue diagnostics run only after the visible barrier. Keep their repeated
+ * formatting calls out of line so profiling does not duplicate them into the
+ * early launcher's fixed binary budget. */
+static __attribute__((noinline, minsize)) void log_pending_queued(
+    const struct pending_launch_state *pending) {
     log_text("pending_launch boot_ms=");
     log_number(boot_ms());
     log_text(" event=queued");
-    log_pending_identity(&pending_launch);
+    log_pending_identity(pending);
     log_text("\n");
 }
 
-static void queue_media_launch(u32 category_index, u32 item_index) {
-    pending_launch.kind = PENDING_LAUNCH_MEDIA;
-    pending_launch.index = item_index;
-    pending_launch.active_index = category_index;
-    selected_status = "MEDIA QUEUED // STORAGE MOUNTING";
-    log_text("pending_launch boot_ms=");
-    log_number(boot_ms());
-    log_text(" event=queued");
-    log_pending_identity(&pending_launch);
-    log_text("\n");
-}
-
-static void cancel_pending_launch(const char *reason) {
-    if (pending_launch.kind == PENDING_LAUNCH_NONE) return;
+static __attribute__((noinline, minsize)) void log_pending_cancelled(
+    const struct pending_launch_state *pending, const char *reason) {
+    if (pending->kind == PENDING_LAUNCH_NONE) return;
     log_text("pending_launch boot_ms=");
     log_number(boot_ms());
     log_text(" event=cancelled reason=");
     log_text(reason);
-    log_pending_identity(&pending_launch);
+    log_pending_identity(pending);
     log_text("\n");
+}
+
+static __attribute__((noinline)) struct pending_launch_state
+take_pending_launch(void) {
+    struct pending_launch_state request = pending_launch;
+    int cancel_help_visible = current_selection_matches_pending();
     pending_launch.kind = PENDING_LAUNCH_NONE;
     pending_launch.index = 0U;
     pending_launch.active_index = 0U;
+    pending_render_invalid |= RENDER_INVALID_PENDING_STATUS;
+    if (pending_replacement != PENDING_REPLACEMENT_NONE ||
+        cancel_help_visible)
+        pending_render_invalid |= RENDER_INVALID_HELP;
+    pending_replacement = PENDING_REPLACEMENT_NONE;
+    return request;
+}
+
+static __attribute__((noinline)) void queue_pending_launch(
+    u32 kind, u32 index, u32 active_index) {
+    pending_launch.kind = kind;
+    pending_launch.index = index;
+    pending_launch.active_index = active_index;
+    pending_render_invalid |= RENDER_INVALID_PENDING_STATUS |
+                              RENDER_INVALID_HELP;
+    pending_replacement = PENDING_REPLACEMENT_NONE;
+}
+
+static int pending_launch_dispatch_ready(void) {
+    return storage_ready &&
+           pending_launch.kind != PENDING_LAUNCH_NONE &&
+           pending_replacement == PENDING_REPLACEMENT_NONE;
 }
 
 static int dispatch_pending_launch(void) {
     struct pending_launch_state request;
     int action;
-    if (pending_launch.kind == PENDING_LAUNCH_NONE) return ACTION_NONE;
-    request = pending_launch;
-    pending_launch.kind = PENDING_LAUNCH_NONE;
-    pending_launch.index = 0U;
-    pending_launch.active_index = 0U;
+    if (pending_launch.kind == PENDING_LAUNCH_NONE ||
+        pending_replacement != PENDING_REPLACEMENT_NONE)
+        return ACTION_NONE;
+    request = take_pending_launch();
+    /* Once the queue is visible, retire it before diagnostics, path probes or
+     * request publication. A successful exit can therefore publish only a
+     * clean retained frame, and a failed dispatch never leaves a false queue. */
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_STATUS);
+    draw_status_update();
     log_text("pending_launch boot_ms=");
     log_number(boot_ms());
     log_text(" event=dispatch");
@@ -4472,8 +4597,51 @@ static int dispatch_pending_launch(void) {
     return action;
 }
 
+static int current_selection_would_replace_pending(void) {
+    u32 catalog_index;
+    if (pending_launch.kind == PENDING_LAUNCH_NONE) return 0;
+    if (view == VIEW_GAMES || view == VIEW_FAVORITES) {
+        catalog_index = current_catalog_index();
+        return catalog_index < CATALOG_ENTRY_COUNT &&
+               !pending_launch_matches_game(catalog_index);
+    }
+    if (view == VIEW_MEDIA_ENTRIES)
+        return active_media_category < CATALOG_MEDIA_CATEGORY_COUNT &&
+               selection < catalog_media_category_entry_count(
+                               active_media_category) &&
+               !pending_launch_matches_media(active_media_category,
+                                             selection);
+    return view == VIEW_TOOLS && selection < 2U;
+}
+
+static void begin_pending_replacement(void) {
+    if (pending_replacement == PENDING_REPLACEMENT_CONFIRM) return;
+    pending_replacement = PENDING_REPLACEMENT_CONFIRM;
+    pending_render_invalid |= RENDER_INVALID_PENDING_STATUS |
+                              RENDER_INVALID_HELP;
+}
+
+static __attribute__((noinline)) void dismiss_pending_replacement(void) {
+    if (pending_replacement == PENDING_REPLACEMENT_NONE) return;
+    pending_replacement = PENDING_REPLACEMENT_NONE;
+    pending_render_invalid |= RENDER_INVALID_PENDING_STATUS |
+                              RENDER_INVALID_HELP;
+}
+
+static void visibly_cancel_pending_launch(const char *reason) {
+    struct pending_launch_state request;
+    if (pending_launch.kind == PENDING_LAUNCH_NONE) return;
+    request = take_pending_launch();
+    BIRD_PROFILE_RENDER(PROFILE_RENDER_STATUS);
+    draw_status_update();
+    log_pending_cancelled(&request, reason);
+}
+
 static void toggle_current_favorite(void) {
     u32 catalog_index = current_catalog_index();
+    int cancel_help_was_visible =
+        pending_launch.kind != PENDING_LAUNCH_NONE &&
+        current_selection_matches_pending();
     int favorite_changed = 0;
     int was_favorite;
     if (catalog_index >= CATALOG_ENTRY_COUNT) {
@@ -4513,6 +4681,9 @@ static void toggle_current_favorite(void) {
     }
     log_text(catalog_entry_path(catalog_index));
     log_text("\n");
+    if (pending_launch.kind != PENDING_LAUNCH_NONE &&
+        cancel_help_was_visible != current_selection_matches_pending())
+        pending_render_invalid |= RENDER_INVALID_HELP;
     BIRD_PROFILE_RENDER(PROFILE_RENDER_STATUS);
     if (!favorite_changed)
         draw_status_update();
@@ -4525,7 +4696,26 @@ static void toggle_current_favorite(void) {
 
 static int select_current(void) {
     int action = ACTION_NONE;
+    int rendered = 0;
+    int queued = 0;
+    int replacement_confirmed =
+        pending_replacement == PENDING_REPLACEMENT_CONFIRM;
+    struct pending_launch_state replaced;
     u32 original_view = view;
+
+    replaced.kind = PENDING_LAUNCH_NONE;
+    replaced.index = 0U;
+    replaced.active_index = 0U;
+    if (!replacement_confirmed &&
+        current_selection_would_replace_pending()) {
+        begin_pending_replacement();
+        BIRD_PROFILE_RENDER(PROFILE_RENDER_STATUS);
+        draw_status_update();
+        preserve_early_handoff_state();
+        return ACTION_NONE;
+    }
+    if (replacement_confirmed) dismiss_pending_replacement();
+
     if (view == VIEW_MAIN) {
         if (selection == 0U) {
             view = VIEW_PLAY;
@@ -4566,6 +4756,10 @@ static int select_current(void) {
             selected_status = favorites_loaded ? "FAVORITES READY" : "FAVORITES LOAD WITH STORAGE";
         }
     } else if (view == VIEW_TOOLS) {
+        if (pending_launch.kind != PENDING_LAUNCH_NONE) {
+            visibly_cancel_pending_launch("replacement-confirmed");
+            rendered = 1;
+        }
         if (save_ui_resume() != 0) {
             selected_status = "RETURN STATE SAVE FAILED";
         } else if (selection == 0U) {
@@ -4576,6 +4770,11 @@ static int select_current(void) {
             action = ACTION_PORTMASTER;
         }
     } else if (view == VIEW_QUIT) {
+        if (pending_launch.kind != PENDING_LAUNCH_NONE) {
+            visibly_cancel_pending_launch("terminal-action");
+            BIRD_PROFILE_CANCEL_SELECTION();
+            rendered = 1;
+        }
         if (selection == 0U) {
             selected_status = "RELOADING LAUNCHER";
             action = ACTION_RELOAD;
@@ -4594,11 +4793,23 @@ static int select_current(void) {
     } else if (view == VIEW_GAMES || view == VIEW_FAVORITES) {
         u32 catalog_index = current_catalog_index();
         if (catalog_index < CATALOG_ENTRY_COUNT) {
-            if (storage_ready) {
-                cancel_pending_launch("direct-selection");
+            if (pending_launch_matches_game(catalog_index)) {
+                visibly_cancel_pending_launch("user-cancel");
+                BIRD_PROFILE_CANCEL_SELECTION();
+                rendered = 1;
+            } else if (storage_ready) {
+                if (pending_launch.kind != PENDING_LAUNCH_NONE) {
+                    visibly_cancel_pending_launch(
+                        replacement_confirmed ? "replacement-confirmed"
+                                              : "direct-selection");
+                    rendered = 1;
+                }
                 action = launch_catalog_entry(catalog_index);
             } else {
-                queue_game_launch(catalog_index);
+                if (replacement_confirmed) replaced = pending_launch;
+                queue_pending_launch(PENDING_LAUNCH_GAME, catalog_index, 0U);
+                selected_status = "GAME QUEUED // STORAGE MOUNTING";
+                queued = 1;
             }
         } else {
             selected_status = "NO GAME SELECTED";
@@ -4616,21 +4827,40 @@ static int select_current(void) {
         if (active_media_category < CATALOG_MEDIA_CATEGORY_COUNT &&
             selection <
                 catalog_media_category_entry_count(active_media_category)) {
-            if (storage_ready) {
-                cancel_pending_launch("direct-selection");
+            if (pending_launch_matches_media(active_media_category,
+                                             selection)) {
+                visibly_cancel_pending_launch("user-cancel");
+                BIRD_PROFILE_CANCEL_SELECTION();
+                rendered = 1;
+            } else if (storage_ready) {
+                if (pending_launch.kind != PENDING_LAUNCH_NONE) {
+                    visibly_cancel_pending_launch(
+                        replacement_confirmed ? "replacement-confirmed"
+                                              : "direct-selection");
+                    rendered = 1;
+                }
                 action = launch_media_entry(active_media_category, selection);
             } else {
-                queue_media_launch(active_media_category, selection);
+                if (replacement_confirmed) replaced = pending_launch;
+                queue_pending_launch(PENDING_LAUNCH_MEDIA, selection,
+                                     active_media_category);
+                selected_status = "MEDIA QUEUED // STORAGE MOUNTING";
+                queued = 1;
             }
         }
     }
-    BIRD_PROFILE_RENDER(view != original_view
-                            ? PROFILE_RENDER_VIEW_CHANGE
-                            : PROFILE_RENDER_STATUS);
-    if (view != original_view)
-        draw_interactive_screen();
-    else
-        draw_status_update();
+    if (!rendered) {
+        BIRD_PROFILE_RENDER(view != original_view
+                                ? PROFILE_RENDER_VIEW_CHANGE
+                                : PROFILE_RENDER_STATUS);
+        if (view != original_view)
+            draw_interactive_screen();
+        else
+            draw_status_update();
+    }
+    if (replaced.kind != PENDING_LAUNCH_NONE)
+        log_pending_cancelled(&replaced, "replacement-confirmed");
+    if (queued) log_pending_queued(&pending_launch);
     if (action == ACTION_NONE) preserve_early_handoff_state();
     return action;
 }
@@ -4646,11 +4876,12 @@ static void reset_navigation_batch(struct navigation_batch *batch) {
 static void stage_selection_move(struct navigation_batch *batch,
                                  int direction, u32 steps) {
     u32 count = current_count();
-    BIRD_PROFILE_CANCEL_SELECTION();
-    if (!count) {
-        cancel_pending_launch("navigation");
-        return;
-    }
+    int cancel_help_was_visible = 0;
+    if (pending_launch.kind == PENDING_LAUNCH_NONE)
+        BIRD_PROFILE_CANCEL_SELECTION();
+    else
+        cancel_help_was_visible = current_selection_matches_pending();
+    if (!count) return;
     if (!batch->active) {
         batch->old_selection = selection;
         batch->old_first = viewport_first(view, selection);
@@ -4662,6 +4893,9 @@ static void stage_selection_move(struct navigation_batch *batch,
         if (direction < 0) selection = selection > 0U ? selection - 1U : count - 1U;
         if (direction > 0) selection = selection + 1U < count ? selection + 1U : 0U;
     }
+    if (pending_launch.kind != PENDING_LAUNCH_NONE &&
+        cancel_help_was_visible != current_selection_matches_pending())
+        pending_render_invalid |= RENDER_INVALID_HELP;
     batch->event_count++;
     BIRD_PROFILE_NAVIGATION_EVENT();
     selected_status = "DIRECT EVDEV INPUT READY";
@@ -4675,10 +4909,8 @@ static void commit_navigation_batch(struct navigation_batch *batch) {
                             : PROFILE_RENDER_SELECTION_MOVEMENT);
     draw_selection_update(batch->old_selection, batch->old_first);
 
-    /* The visible selection wins the race. Cancellation diagnostics and the
-     * atomic resume replacement follow the framebuffer barrier. Until that
-     * rename, crash recovery intentionally reflects the preceding batch. */
-    cancel_pending_launch("navigation");
+    /* The queued identity is independent of the browsing selection. Publish
+     * the movement first, then persist only that visible navigation state. */
     preserve_early_handoff_state();
     BIRD_PROFILE_NAVIGATION_BATCH();
     reset_navigation_batch(batch);
@@ -4692,14 +4924,14 @@ static void move_selection(int direction, u32 steps) {
 }
 
 static int handle_back(void) {
-    BIRD_PROFILE_CANCEL_SELECTION();
+    if (pending_launch.kind == PENDING_LAUNCH_NONE)
+        BIRD_PROFILE_CANCEL_SELECTION();
     if (view == VIEW_FAVORITES) {
         view = VIEW_PLAY;
         selection = 1U;
         selected_status = "PLAY SYSTEMS READY";
         BIRD_PROFILE_RENDER(PROFILE_RENDER_VIEW_CHANGE);
         draw_interactive_screen();
-        cancel_pending_launch("back");
         preserve_early_handoff_state();
         return 0;
     }
@@ -4709,7 +4941,6 @@ static int handle_back(void) {
         selected_status = "CATALOG READY FROM FIRMWARE";
         BIRD_PROFILE_RENDER(PROFILE_RENDER_VIEW_CHANGE);
         draw_interactive_screen();
-        cancel_pending_launch("back");
         preserve_early_handoff_state();
         return 0;
     }
@@ -4719,7 +4950,6 @@ static int handle_back(void) {
         selected_status = "PLAY SYSTEMS READY";
         BIRD_PROFILE_RENDER(PROFILE_RENDER_VIEW_CHANGE);
         draw_interactive_screen();
-        cancel_pending_launch("back");
         preserve_early_handoff_state();
         return 0;
     }
@@ -4729,7 +4959,6 @@ static int handle_back(void) {
         selected_status = "DIRECT FRAMEBUFFER READY";
         BIRD_PROFILE_RENDER(PROFILE_RENDER_VIEW_CHANGE);
         draw_interactive_screen();
-        cancel_pending_launch("back");
         preserve_early_handoff_state();
         return 0;
     }
@@ -4739,7 +4968,6 @@ static int handle_back(void) {
         selected_status = "DIRECT FRAMEBUFFER READY";
         BIRD_PROFILE_RENDER(PROFILE_RENDER_VIEW_CHANGE);
         draw_interactive_screen();
-        cancel_pending_launch("back");
         preserve_early_handoff_state();
         return 0;
     }
@@ -4749,7 +4977,6 @@ static int handle_back(void) {
         selected_status = "DIRECT FRAMEBUFFER READY";
         BIRD_PROFILE_RENDER(PROFILE_RENDER_VIEW_CHANGE);
         draw_interactive_screen();
-        cancel_pending_launch("back");
         preserve_early_handoff_state();
         return 0;
     }
@@ -4759,7 +4986,6 @@ static int handle_back(void) {
         selected_status = "MEDIA CATALOG READY FROM FIRMWARE";
         BIRD_PROFILE_RENDER(PROFILE_RENDER_VIEW_CHANGE);
         draw_interactive_screen();
-        cancel_pending_launch("back");
         preserve_early_handoff_state();
         return 0;
     }
@@ -4771,7 +4997,6 @@ static int handle_back(void) {
         selected_status = "DIRECT FRAMEBUFFER READY";
         BIRD_PROFILE_RENDER(PROFILE_RENDER_VIEW_CHANGE);
         draw_interactive_screen();
-        cancel_pending_launch("back");
         preserve_early_handoff_state();
         return 0;
     }
@@ -4784,7 +5009,6 @@ static int handle_back(void) {
         BIRD_PROFILE_RENDER(PROFILE_RENDER_SELECTION_MOVEMENT);
         draw_selection_update(old_selection, 0U);
     }
-    cancel_pending_launch("back");
     preserve_early_handoff_state();
     return ACTION_NONE;
 }
@@ -4889,6 +5113,8 @@ static int handle_event(const struct input_event *event) {
     u32 steps;
     int navigation = decode_navigation_event(event, &direction, &steps);
     if (navigation == NAVIGATION_EVENT_MOVEMENT) {
+        if (pending_replacement == PENDING_REPLACEMENT_CONFIRM)
+            dismiss_pending_replacement();
         move_selection(direction, steps);
         return 0;
     }
@@ -4902,7 +5128,9 @@ static int handle_event(const struct input_event *event) {
         if (event->code == select_button) {
 #ifdef BIRD_PROFILE
             int action;
-            BIRD_PROFILE_MARK_SELECTION();
+            if (pending_launch.kind == PENDING_LAUNCH_NONE ||
+                pending_replacement == PENDING_REPLACEMENT_CONFIRM)
+                BIRD_PROFILE_MARK_SELECTION();
             action = select_current();
             if (action == ACTION_NONE &&
                 pending_launch.kind == PENDING_LAUNCH_NONE)
@@ -4912,7 +5140,18 @@ static int handle_event(const struct input_event *event) {
             return select_current();
 #endif
         }
-        if (event->code == back_button) return handle_back();
+        if (event->code == back_button) {
+            if (pending_replacement == PENDING_REPLACEMENT_CONFIRM) {
+                dismiss_pending_replacement();
+                BIRD_PROFILE_RENDER(PROFILE_RENDER_STATUS);
+                draw_status_update();
+                preserve_early_handoff_state();
+                return ACTION_NONE;
+            }
+            return handle_back();
+        }
+        if (pending_replacement == PENDING_REPLACEMENT_CONFIRM)
+            return ACTION_NONE;
         if ((view == VIEW_GAMES || view == VIEW_FAVORITES) &&
             event->code == favorite_button) {
             toggle_current_favorite();
@@ -4950,6 +5189,8 @@ static int handle_batched_input_event(struct navigation_batch *batch,
     navigation = decode_navigation_event(event, &direction, &steps);
 
     if (navigation == NAVIGATION_EVENT_MOVEMENT) {
+        if (pending_replacement == PENDING_REPLACEMENT_CONFIRM)
+            dismiss_pending_replacement();
         if (!batch->active) {
 #ifdef BIRD_PROFILE
             if (input_start_captured)
@@ -5807,8 +6048,7 @@ static int service_post_input_work(
      * continuously readable auxiliary descriptor can consume another slot.
      * When storage is not ready, its readiness edge still runs below as the
      * one background unit for this input sample. */
-    if (startup_ready && storage_ready &&
-        pending_launch.kind != PENDING_LAUNCH_NONE) {
+    if (startup_ready && pending_launch_dispatch_ready()) {
         *exit_action = dispatch_pending_launch();
         return 1;
     }
@@ -5973,7 +6213,7 @@ service_events:
             polls[poll_count].revents = 0;
             poll_count++;
         }
-        if (storage_ready && pending_launch.kind != PENDING_LAUNCH_NONE) {
+        if (pending_launch_dispatch_ready()) {
             /* Sample already-buffered B/navigation before automatic dispatch. */
             timeout_ms = 0;
         } else if (startup_ready && !storage_ready) {
