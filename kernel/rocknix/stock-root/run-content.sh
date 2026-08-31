@@ -178,14 +178,17 @@ SCOPE_EXPECTED=0
 SWAY_OWNED=0
 PORTMASTER_NETWORK=0
 CLEANUP_STATE=not-started
+CLEANUP_MODE=foreground
 RUNNER_STATE=
 RUNNER_START_TICKS=
 GUARD_UNIT=
 GUARD_STARTED=0
 SESSION_TOKEN=
 SESSION_RECORD=
-RESOURCE_LOCK=/run/bird/content-resources.lock
+SWAY_LOCK=/run/bird/sway-resource.lock
+NETWORK_LOCK=/run/bird/network-resource.lock
 RESOURCE_LOCK_HELD=0
+RESOURCE_LOCK_PATH=
 SESSION_LOCK=/run/bird/content-session.lock
 SESSION_LOCK_HELD=0
 SWAY_OWNER=/run/bird/sway-owner
@@ -316,10 +319,23 @@ session_unlock() {
 }
 
 resource_lock() {
-	[ "$RESOURCE_LOCK_HELD" -eq 0 ] || return 0
-	exec 9>"$RESOURCE_LOCK" || return 1
+	RESOURCE_LOCK_REQUEST=$1
+	if [ "$RESOURCE_LOCK_HELD" -eq 1 ]; then
+		[ "$RESOURCE_LOCK_PATH" = "$RESOURCE_LOCK_REQUEST" ]
+		return $?
+	fi
+	RESOURCE_LOCK_PATH=$RESOURCE_LOCK_REQUEST
+	exec 9>"$RESOURCE_LOCK_PATH" || return 1
 	flock -x 9 || { exec 9>&-; return 1; }
 	RESOURCE_LOCK_HELD=1
+}
+
+sway_lock() {
+	resource_lock "$SWAY_LOCK"
+}
+
+network_lock() {
+	resource_lock "$NETWORK_LOCK"
 }
 
 resource_unlock() {
@@ -327,6 +343,7 @@ resource_unlock() {
 	flock -u 9 2>/dev/null || :
 	exec 9>&-
 	RESOURCE_LOCK_HELD=0
+	RESOURCE_LOCK_PATH=
 }
 
 owner_matches() {
@@ -383,7 +400,7 @@ start_sway() {
 		return 1
 	fi
 	content_stage sway-owner-claim
-	resource_lock || return 1
+	sway_lock || return 1
 	if ! claim_owner "$SWAY_OWNER"; then
 		resource_unlock
 		return 1
@@ -436,7 +453,7 @@ ensure_content_services() {
 
 stop_sway() {
 	[ "$SWAY_OWNED" -eq 1 ] || return 0
-	resource_lock || return 1
+	sway_lock || return 1
 	owner_relation "$SWAY_OWNER"
 	if [ "$OWNER_RELATION" = transferred ]; then
 		# Ownership was deliberately transferred to a newer session.
@@ -891,6 +908,7 @@ terminate_scope() {
 			SCOPE_INVOCATION=
 			SCOPE_CONTROL_GROUP=
 			SCOPE_RUNNER_PID=
+			SCOPE_RUNNER_START_TICKS=
 		else
 			TERMINATE_STATUS=1
 		fi
@@ -1071,11 +1089,7 @@ reconcile_registration_failure() {
 	return 1
 }
 
-release_owned_resources_until_done() {
-	# Keep the returning application's surface visible while variable network
-	# teardown finishes. Stopping Sway first exposes the retained Bird frame
-	# before the launcher has reclaimed input, which makes PortMaster returns
-	# look unresponsive throughout a retrying network cleanup.
+release_network_until_done() {
 	NETWORK_RELEASE_WARNING=0
 	while [ "$PORTMASTER_NETWORK" -eq 1 ]; do
 		if ! stop_portmaster_network; then
@@ -1086,6 +1100,9 @@ release_owned_resources_until_done() {
 			usleep 250000
 		fi
 	done
+}
+
+release_sway_until_done() {
 	SWAY_RELEASE_WARNING=0
 	while [ "$SWAY_OWNED" -eq 1 ]; do
 		if ! stop_sway; then
@@ -1096,6 +1113,14 @@ release_owned_resources_until_done() {
 			usleep 250000
 		fi
 	done
+}
+
+release_owned_resources_until_done() {
+	# The synchronous fallback keeps Sway scanout present until variable network
+	# teardown has converged. Normal PortMaster return uses the explicit
+	# background-network handoff after releasing Sway below.
+	release_network_until_done
+	release_sway_until_done
 	return 0
 }
 
@@ -1265,6 +1290,7 @@ run_managed() {
 				SCOPE_INVOCATION=
 				SCOPE_CONTROL_GROUP=
 				SCOPE_RUNNER_PID=
+				SCOPE_RUNNER_START_TICKS=
 				return "$STATUS"
 				;;
 			2)
@@ -1322,6 +1348,7 @@ run_managed() {
 	SCOPE_INVOCATION=
 	SCOPE_CONTROL_GROUP=
 	SCOPE_RUNNER_PID=
+	SCOPE_RUNNER_START_TICKS=
 	return "$STATUS"
 }
 
@@ -1371,8 +1398,10 @@ run_network_helper() {
 			;;
 		*) return 2 ;;
 	esac
+	# The helper subtree inherits fd9 so a killed owner cannot release the
+	# network lock while its bounded destructive transaction is still running.
 	"$TIMEOUT_PROGRAM" --signal=TERM --kill-after=1s \
-		"$NETWORK_HELPER_BOUND" "$NETWORK" "$NETWORK_HELPER_MODE" 8>&- 9>&-
+		"$NETWORK_HELPER_BOUND" "$NETWORK" "$NETWORK_HELPER_MODE" 8>&-
 }
 
 start_portmaster_network() {
@@ -1391,7 +1420,34 @@ start_portmaster_network() {
 	else
 		printf '%s\n' 'Bird portmaster network owner relation=none token=none'
 	fi
-	resource_lock || return 1
+	NETWORK_OWNER_WAIT=0
+	while :; do
+		network_lock || return 1
+		if [ -e "$NETWORK_OWNER" ] || [ -L "$NETWORK_OWNER" ]; then
+			owner_relation "$NETWORK_OWNER"
+			case "$OWNER_RELATION" in
+				ours) break ;;
+				transferred)
+					resource_unlock
+					NETWORK_OWNER_WAIT=$((NETWORK_OWNER_WAIT + 1))
+					if [ "$NETWORK_OWNER_WAIT" -ge 60 ]; then
+						printf '%s\n' \
+							'Bird portmaster network start aborted: prior cleanup unresolved'
+						return 1
+					fi
+					usleep 250000
+					continue
+					;;
+				*)
+					printf '%s\n' \
+						'Bird portmaster network start aborted: malformed owner'
+					resource_unlock
+					return 1
+					;;
+			esac
+		fi
+		break
+	done
 	if ! claim_owner "$NETWORK_OWNER"; then
 		printf '%s\n' 'Bird portmaster network start aborted: no owner token'
 		resource_unlock
@@ -1442,7 +1498,7 @@ stop_portmaster_network() {
 		printf '%s\n' 'Bird portmaster network owner relation=none token=none'
 	fi
 	[ "$PORTMASTER_NETWORK" -eq 1 ] || return 0
-	resource_lock || return 1
+	network_lock || return 1
 	owner_relation "$NETWORK_OWNER"
 	if [ "$OWNER_RELATION" = transferred ]; then
 		printf '%s\n' 'Bird portmaster network stop transfer: already owned by replacement'
@@ -1811,8 +1867,10 @@ publish_runner_state() {
 	TMP=$RUNNER_STATE.tmp.$$
 	(
 		umask 077
+		RUNNER_SCOPE_INVOCATION=${SCOPE_INVOCATION:-pending}
+		[ "$SCOPE_EXPECTED" -eq 1 ] || RUNNER_SCOPE_INVOCATION=none
 		{
-			printf '%s\n' 'version=1'
+			printf '%s\n' 'version=2'
 			printf 'armed=%s\n' "$ARMED"
 			printf 'session_token=%s\n' "$SESSION_TOKEN"
 			printf 'boot_id=%s\n' "$BOOT_ID_FULL"
@@ -1820,12 +1878,15 @@ publish_runner_state() {
 			printf 'runner_start_ticks=%s\n' "$RUNNER_START_TICKS"
 			printf 'scope_expected=%s\n' "$SCOPE_EXPECTED"
 			printf 'scope_unit=%s\n' "$SCOPE_UNIT"
-			printf 'scope_invocation=%s\n' "${SCOPE_INVOCATION:-pending}"
+			printf 'scope_invocation=%s\n' "$RUNNER_SCOPE_INVOCATION"
 			printf 'scope_runner_pid=%s\n' "$SCOPE_RUNNER_PID"
 			printf 'scope_runner_start_ticks=%s\n' \
 				"$SCOPE_RUNNER_START_TICKS"
 			printf 'sway_owned=%s\n' "$SWAY_OWNED"
 			printf 'network_owned=%s\n' "$PORTMASTER_NETWORK"
+			printf 'cleanup_mode=%s\n' "$CLEANUP_MODE"
+			printf 'guard_unit=%s\n' "$GUARD_UNIT"
+			printf 'session_log=%s\n' "$SESSION_LOG"
 		} >"$TMP" && mv -f "$TMP" "$RUNNER_STATE"
 	) || {
 		rm -f "$TMP"
@@ -1839,15 +1900,21 @@ start_cleanup_guard() {
 	# runner death wakes the exact pidfd (not a reused numeric PID) to reconcile
 	# the validated scope, network and compositor. Start it before publishing the
 	# foreground lease: a crash before the service exec owns no resources and
-	# needs no lease; after publication, the live guard owns recovery. Normal EXIT
-	# disarms first.
+	# needs no lease; after publication, the live guard owns recovery. Ordinary
+	# EXIT disarms it; the typed PortMaster network handoff deliberately does not.
+	case "$RUNNER_START_TICKS" in
+		*[!0-9]*|'') return 1 ;;
+	esac
 	GUARD_UNIT=bird-content-guard-${BOOT_ID}-$$-${RUNNER_START_TICKS}.service
 	if ! /usr/bin/timeout --signal=TERM --kill-after=1s 3s \
 		/usr/bin/systemd-run --quiet --collect --service-type=exec \
 		--expand-environment=no \
 		--unit="$GUARD_UNIT" --description='birdOS content cleanup guard' \
+		--property=StartLimitIntervalSec=0 \
+		--property=Restart=on-failure --property=RestartSec=250ms \
 		-- /bin/sh -c '
 		trap "" HUP
+		umask 077
 		PIDWAIT=$1
 		PARENT=$2
 		STATE_FILE=$3
@@ -1859,29 +1926,25 @@ start_cleanup_guard() {
 		SESSION_RECORD=$9
 		GLOBAL_SESSION=${10}
 		SESSION_TOKEN=${11}
-		RESOURCE_LOCK=${12}
-		SWAY_OWNER=${13}
-		NETWORK_OWNER=${14}
-		SWAY_SOCKET=${15}
-		SCOPE_START_GATE=${16}
-		SCOPE_START_READY=${17}
-		SCOPE_START_CANCEL=${18}
-		PROC_ROOT=${19}
-		KOREADER_PORT_SCRIPT=${20:-}
-		if ! "$PIDWAIT" "$PARENT"; then
-			while [ -r "$PROC_ROOT/$PARENT/stat" ]; do
-				PARENT_STAT_RECORD=$(cat "$PROC_ROOT/$PARENT/stat" 2>/dev/null || :)
-				case "$PARENT_STAT_RECORD" in
-					*") "*) PARENT_STAT_TAIL=${PARENT_STAT_RECORD##*) } ;;
-					*) break ;;
-				esac
-				NOW_START=$(printf "%s\n" "$PARENT_STAT_TAIL" | awk "{print \$20}")
-				[ "$NOW_START" = "$PARENT_START" ] || break
-				usleep 50000
-			done
-		fi
+		SWAY_LOCK=${12}
+		NETWORK_LOCK=${13}
+		SWAY_OWNER=${14}
+		NETWORK_OWNER=${15}
+		SWAY_SOCKET=${16}
+		SCOPE_START_GATE=${17}
+		SCOPE_START_READY=${18}
+		SCOPE_START_CANCEL=${19}
+		PROC_ROOT=${20}
+		KOREADER_PORT_SCRIPT=${21:-}
+		"$PIDWAIT" --wait-exact "$PARENT" "$PARENT_START"
+		PIDWAIT_STATUS=$?
+		case "$PIDWAIT_STATUS" in
+			0|5) ;;
+			*) exit 1 ;;
+		esac
 		[ -s "$STATE_FILE" ] || exit 0
 		value() { sed -n "s/^$1=//p" "$STATE_FILE" | head -n 1; }
+		[ "$(value version)" = 2 ] || exit 0
 		if [ "$(value armed)" != 1 ]; then
 			while ! rm -f "$STATE_FILE"; do usleep 250000; done
 			exit 0
@@ -1896,8 +1959,13 @@ start_cleanup_guard() {
 		SCOPE_RUNNER_START_GUARD=$(value scope_runner_start_ticks)
 		SWAY_OWNED_GUARD=$(value sway_owned)
 		NETWORK_OWNED_GUARD=$(value network_owned)
+		CLEANUP_MODE_GUARD=$(value cleanup_mode)
 		case "$SCOPE_EXPECTED_GUARD:$SWAY_OWNED_GUARD:$NETWORK_OWNED_GUARD" in
 			[01]:[01]:[01]) ;;
+			*) exit 0 ;;
+		esac
+		case "$CLEANUP_MODE_GUARD" in
+			foreground|background-network-pending|background-network-active) ;;
 			*) exit 0 ;;
 		esac
 		case "$SCOPE_RUNNER_PID_GUARD:$SCOPE_RUNNER_START_GUARD" in
@@ -1955,6 +2023,10 @@ start_cleanup_guard() {
 
 			owner_relation() {
 				OWNER_RELATION=unknown
+				if [ ! -e "$1" ] && [ ! -L "$1" ]; then
+					OWNER_RELATION=none
+					return 0
+				fi
 				[ -s "$1" ] || return 0
 				IFS= read -r OWNER_TOKEN <"$1" || return 0
 				[ -n "$OWNER_TOKEN" ] || return 0
@@ -1963,6 +2035,29 @@ start_cleanup_guard() {
 				else
 					OWNER_RELATION=transferred
 				fi
+			}
+			activate_background_network() {
+				[ "$CLEANUP_MODE_GUARD" = background-network-pending ] || return 0
+				[ "$SCOPE_EXPECTED_GUARD" = 0 ] && \
+					[ "$SWAY_OWNED_GUARD" = 0 ] && \
+					[ "$NETWORK_OWNED_GUARD" = 1 ] && \
+					[ "$OWNER_RELATION" = ours ] || return 1
+				ACTIVE_TMP=$STATE_FILE.active.$$
+				[ "$(grep -c "^cleanup_mode=background-network-pending$" \
+					"$STATE_FILE")" = 1 ] || return 1
+				if ! sed \
+					"s/^cleanup_mode=background-network-pending$/cleanup_mode=background-network-active/" \
+					"$STATE_FILE" >"$ACTIVE_TMP" || \
+					[ "$(grep -c "^cleanup_mode=background-network-active$" \
+						"$ACTIVE_TMP")" != 1 ] || \
+					! mv -f "$ACTIVE_TMP" "$STATE_FILE"; then
+					rm -f "$ACTIVE_TMP" 2>/dev/null || :
+					return 1
+				fi
+				CLEANUP_MODE_GUARD=background-network-active
+				printf "Bird runner guard network cleanup active token=%s state=%s\n" \
+					"$SESSION_TOKEN" "$STATE_FILE"
+				return 0
 			}
 			sway_stopped() {
 				[ ! -S "$SWAY_SOCKET" ] || return 1
@@ -1974,65 +2069,80 @@ start_cleanup_guard() {
 					8>&- 9>&- 2>/dev/null) || return 1
 				[ "$LOAD" = not-found ]
 			}
-			while :; do
+			while [ "$NETWORK_OWNED_GUARD" = 1 ]; do
 				RESOURCE_STATUS=0
-				if ! exec 9>"$RESOURCE_LOCK" || ! flock -x 9; then
+				if ! exec 9>"$NETWORK_LOCK" || ! flock -x 9; then
 					RESOURCE_STATUS=1
 				else
-					if [ "$NETWORK_OWNED_GUARD" = 1 ]; then
-						owner_relation "$NETWORK_OWNER"
-						case "$OWNER_RELATION" in
-							transferred) NETWORK_OWNED_GUARD=0 ;;
-							ours)
-								if ! timeout --signal=TERM --kill-after=1s 12s \
-									"$NETWORK_HELPER" stop 8>&- 9>&- || \
-									! rm -f "$NETWORK_OWNER"; then
-									RESOURCE_STATUS=1
-								else
-									NETWORK_OWNED_GUARD=0
-								fi
-								;;
-							*) RESOURCE_STATUS=1 ;;
-						esac
+					owner_relation "$NETWORK_OWNER"
+					if ! activate_background_network; then
+						RESOURCE_STATUS=1
 					fi
-					if [ "$SWAY_OWNED_GUARD" = 1 ]; then
-						owner_relation "$SWAY_OWNER"
-						case "$OWNER_RELATION" in
-							transferred) SWAY_OWNED_GUARD=0 ;;
-							ours)
-								timeout 3s systemctl stop --no-block sway.service 8>&- 9>&- || :
-								COUNT=0
-								while ! sway_stopped && [ "$COUNT" -lt 100 ]; do
-									COUNT=$((COUNT + 1))
-									usleep 20000
-								done
-								if ! sway_stopped; then
-									timeout 3s systemctl kill --kill-whom=all --signal=KILL \
-										sway.service 8>&- 9>&- 2>/dev/null || :
-									timeout 3s systemctl stop --no-block sway.service 8>&- 9>&- 2>/dev/null || :
-								fi
-								if ! sway_stopped || ! rm -f "$SWAY_OWNER"; then
-									RESOURCE_STATUS=1
-								else
-									SWAY_OWNED_GUARD=0
-								fi
-								;;
-							*) RESOURCE_STATUS=1 ;;
-						esac
-					fi
+					case "$RESOURCE_STATUS:$OWNER_RELATION" in
+						0:transferred) NETWORK_OWNED_GUARD=0 ;;
+						0:ours|0:none)
+							while ! timeout --signal=TERM --kill-after=1s 12s \
+								"$NETWORK_HELPER" stop 8>&-; do
+								usleep 250000
+							done
+							if [ "$OWNER_RELATION" = ours ] && \
+								! rm -f "$NETWORK_OWNER"; then
+								RESOURCE_STATUS=1
+							else
+								NETWORK_OWNED_GUARD=0
+							fi
+							;;
+						*) RESOURCE_STATUS=1 ;;
+					esac
 					flock -u 9 || RESOURCE_STATUS=1
 				fi
 				exec 9>&-
-				[ "$RESOURCE_STATUS" -eq 0 ] && break
-				usleep 250000
+				[ "$RESOURCE_STATUS" -eq 0 ] || usleep 250000
+			done
+			while [ "$SWAY_OWNED_GUARD" = 1 ]; do
+				RESOURCE_STATUS=0
+				if ! exec 9>"$SWAY_LOCK" || ! flock -x 9; then
+					RESOURCE_STATUS=1
+				else
+					owner_relation "$SWAY_OWNER"
+					case "$OWNER_RELATION" in
+						transferred) SWAY_OWNED_GUARD=0 ;;
+						ours|none)
+							timeout 3s systemctl stop --no-block sway.service 8>&- 9>&- || :
+							COUNT=0
+							while ! sway_stopped && [ "$COUNT" -lt 100 ]; do
+								COUNT=$((COUNT + 1))
+								usleep 20000
+							done
+							if ! sway_stopped; then
+								timeout 3s systemctl kill --kill-whom=all --signal=KILL \
+									sway.service 8>&- 9>&- 2>/dev/null || :
+								timeout 3s systemctl stop --no-block sway.service 8>&- 9>&- 2>/dev/null || :
+							fi
+							if ! sway_stopped || { \
+								[ "$OWNER_RELATION" = ours ] && \
+									! rm -f "$SWAY_OWNER"; }; then
+								RESOURCE_STATUS=1
+							else
+								SWAY_OWNED_GUARD=0
+							fi
+							;;
+						*) RESOURCE_STATUS=1 ;;
+					esac
+					flock -u 9 || RESOURCE_STATUS=1
+				fi
+				exec 9>&-
+				[ "$RESOURCE_STATUS" -eq 0 ] || usleep 250000
 			done
 		} >>"$GUARD_LOG" 2>&1
+		rm -f "$STATE_FILE".active.* 2>/dev/null || :
 		while ! rm -f "$STATE_FILE"; do usleep 250000; done
 	' bird-content-guard /flash/bird/bird-pidwait "$$" \
 		"$RUNNER_STATE" "$RUNNER_START_TICKS" "$BOOT_ID_FULL" \
 		/flash/bird/bird-fixed-control-exit.sh "$NETWORK" \
 		"$SESSION_LOG" "$SESSION_RECORD" "$SESSION_PID" "$SESSION_TOKEN" \
-		"$RESOURCE_LOCK" "$SWAY_OWNER" "$NETWORK_OWNER" "$SWAY_SOCKET" \
+		"$SWAY_LOCK" "$NETWORK_LOCK" "$SWAY_OWNER" "$NETWORK_OWNER" \
+		"$SWAY_SOCKET" \
 		"$SCOPE_START_GATE" "$SCOPE_START_READY" "$SCOPE_START_CANCEL" /proc \
 		"$KOREADER_PORT_SCRIPT" \
 		8>&- 9>&- </dev/null >/dev/null 2>&1; then
@@ -2046,9 +2156,42 @@ start_cleanup_guard() {
 	return 0
 }
 
+handoff_portmaster_network_cleanup() {
+	[ "$SESSION_MODE" = portmaster ] && [ "$GUARD_STARTED" -eq 1 ] &&
+		[ "$SCOPE_EXPECTED" -eq 0 ] && [ "$SWAY_OWNED" -eq 0 ] &&
+		[ "$PORTMASTER_NETWORK" -eq 1 ] && [ -n "$GUARD_UNIT" ] || return 1
+	case "$$:$RUNNER_START_TICKS" in
+		*[!0-9:]*|*:|:*) return 1 ;;
+	esac
+	[ "$SESSION_TOKEN" = "$BOOT_ID-$$-$RUNNER_START_TICKS" ] &&
+		[ "$GUARD_UNIT" = \
+		"bird-content-guard-$BOOT_ID-$$-$RUNNER_START_TICKS.service" ] || return 1
+	# The guard is already an independently managed service waiting on this
+	# exact runner pidfd. Publish the only state the supervisor may treat as
+	# non-foreground: no scope, no Sway, and this token's network still owned.
+	network_lock || return 1
+	owner_relation "$NETWORK_OWNER"
+	if [ "$OWNER_RELATION" != ours ]; then
+		resource_unlock
+		return 1
+	fi
+	CLEANUP_MODE=background-network-pending
+	if ! publish_runner_state 1; then
+		CLEANUP_MODE=foreground
+		resource_unlock
+		return 1
+	fi
+	resource_unlock
+	CLEANUP_STATE=background-network
+	printf 'Bird content stage=network-cleanup-background token=%s state=%s log=%s uptime=' \
+		"$SESSION_TOKEN" "$RUNNER_STATE" "$SESSION_LOG"
+	uptime_now
+	return 0
+}
+
 cleanup_runtime() {
 	case "$CLEANUP_STATE" in
-		succeeded) return 0 ;;
+		succeeded|background-network) return 0 ;;
 		running|failed) return 1 ;;
 	esac
 	CLEANUP_STATE=running
@@ -2060,6 +2203,15 @@ cleanup_runtime() {
 			"$SCOPE_RUNNER_START_TICKS"
 	fi
 	terminate_scope_until_gone cleanup
+	if [ "$SESSION_MODE" = portmaster ] && [ "$GUARD_STARTED" -eq 1 ] &&
+		[ "$PORTMASTER_NETWORK" -eq 1 ]; then
+		# Display and input ownership remain a foreground boundary. Once Sway is
+		# proven gone, only token-checked network teardown may outlive this runner.
+		release_sway_until_done
+		if handoff_portmaster_network_cleanup; then
+			return 0
+		fi
+	fi
 	release_owned_resources_until_done
 	if ! remove_koreader_port_script; then
 		CLEANUP_STATE=failed
@@ -2076,6 +2228,10 @@ cleanup_on_exit() {
 	if [ "$GUARD_STARTED" -eq 0 ]; then
 		cleanup_runtime || :
 		rm -f "$RUNNER_STATE" 2>/dev/null || :
+	elif [ "$CLEANUP_STATE" = background-network ]; then
+		# The still-armed guard wakes on this exact exit and owns the remaining
+		# network teardown. Its state is a non-foreground supervisor lease.
+		:
 	elif cleanup_runtime; then
 		# Publish disarm before removing the foreground lease. If either operation
 		# fails, leave the state for the guard; if SIGKILL lands between them, the

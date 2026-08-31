@@ -21,7 +21,15 @@ LOG_BOOT_ID=$LOG_DIR/stock-root-supervisor.boot-id
 EARLY_LATEST=$LOG_DIR/early-initramfs-latest.log
 SHUTDOWN_LOG=$LOG_DIR/shutdown-latest.log
 CONTENT_STATE_DIR=/run/bird
+NETWORK_OWNER=/run/bird/network-owner
+PROCESS_PROC_ROOT=${BIRD_PROCESS_PROC_ROOT:-/proc}
+CONTENT_SYSTEMCTL_PROGRAM=${BIRD_SYSTEMCTL_PROGRAM:-/usr/bin/systemctl}
+CONTENT_TIMEOUT_PROGRAM=${BIRD_TIMEOUT_PROGRAM:-/usr/bin/timeout}
 HEALTH_REASON=
+BACKGROUND_NETWORK_CLEANUP_STATE=
+BACKGROUND_NETWORK_CLEANUP_TOKEN=
+BACKGROUND_NETWORK_CLEANUP_GUARD=
+BACKGROUND_NETWORK_CLEANUP_LOG=
 LAUNCHER_RESULT=0
 EARLY_LAUNCHER_PID=
 EARLY_ACCEPT_REASON=
@@ -155,12 +163,129 @@ request_poweroff() {
 	return "$result"
 }
 
+content_process_identity_status() {
+	local pid=$1 expected_start=$2 record tail state
+	if [ ! -e "$PROCESS_PROC_ROOT/$pid/stat" ]; then
+		return 1
+	fi
+	[ -r "$PROCESS_PROC_ROOT/$pid/stat" ] || return 2
+	if ! IFS= read -r record <"$PROCESS_PROC_ROOT/$pid/stat"; then
+		[ ! -e "$PROCESS_PROC_ROOT/$pid/stat" ] && return 1
+		return 2
+	fi
+	case "$record" in
+		*") "*) tail=${record##*) } ;;
+		*) return 2 ;;
+	esac
+	state=${tail%% *}
+	set -- $tail
+	[ "$#" -ge 20 ] || return 2
+	[ "${20}" = "$expected_start" ] || return 1
+	[ -n "$state" ] || return 2
+	[ "$state" != Z ] || return 1
+	return 0
+}
+
+content_cleanup_guard_active() {
+	local unit=$1 active
+	active=$("$CONTENT_TIMEOUT_PROGRAM" --signal=TERM --kill-after=0.5s 1s \
+		"$CONTENT_SYSTEMCTL_PROGRAM" show --property=ActiveState --value \
+		"$unit" 2>/dev/null) || return 1
+	case "$active" in
+		active|activating) return 0 ;;
+	esac
+	return 1
+}
+
+content_network_owner_matches() {
+	local expected=$1 owner= trailing=
+	[ -f "$NETWORK_OWNER" ] && [ ! -L "$NETWORK_OWNER" ] || return 1
+	{
+		IFS= read -r owner || return 1
+		if IFS= read -r trailing || [ -n "$trailing" ]; then
+			return 1
+		fi
+	} <"$NETWORK_OWNER"
+	[ "$owner" = "$expected" ]
+}
+
+content_cleanup_is_background_network() {
+	local state=$1 line runner_pid runner_start token guard_unit session_log
+	local identity_status=0
+	local -a fields=()
+	[ -f "$state" ] && [ ! -L "$state" ] || return 1
+	while :; do
+		line=
+		if IFS= read -r line; then
+			fields+=("$line")
+		elif [ -n "$line" ]; then
+			return 1
+		else
+			break
+		fi
+	done <"$state"
+	[ "${#fields[@]}" -eq 16 ] || return 1
+	runner_pid=${fields[4]#runner_pid=}
+	runner_start=${fields[5]#runner_start_ticks=}
+	token=$BOOT_ID-$runner_pid-$runner_start
+	guard_unit=bird-content-guard-$BOOT_ID-$runner_pid-$runner_start.service
+	session_log=${fields[15]#session_log=}
+	case "$runner_pid:$runner_start" in
+		*[!0-9:]*|*:|:*) return 1 ;;
+	esac
+	[ "${fields[0]}" = version=2 ] &&
+		[ "${fields[1]}" = armed=1 ] &&
+		[ "${fields[2]}" = "session_token=$token" ] &&
+		[ "${fields[3]}" = "boot_id=$BOOT_ID_FULL" ] &&
+		[ "${fields[4]}" = "runner_pid=$runner_pid" ] &&
+		[ "${fields[5]}" = "runner_start_ticks=$runner_start" ] &&
+		[ "${fields[6]}" = scope_expected=0 ] &&
+		[ "${fields[7]}" = scope_unit= ] &&
+		[ "${fields[8]}" = scope_invocation=none ] &&
+		[ "${fields[9]}" = scope_runner_pid= ] &&
+		[ "${fields[10]}" = scope_runner_start_ticks= ] &&
+		[ "${fields[11]}" = sway_owned=0 ] &&
+		[ "${fields[12]}" = network_owned=1 ] &&
+		[ "${fields[13]}" = cleanup_mode=background-network-active ] &&
+		[ "${fields[14]}" = "guard_unit=$guard_unit" ] &&
+		[ "${fields[15]}" = "session_log=$session_log" ] &&
+		[ "$state" = "$CONTENT_STATE_DIR/content-runner-$token.state" ] &&
+		content_network_owner_matches "$token" || return 1
+	case "$session_log" in
+		/storage/bird-data/Bird/log/stock-root-content-"$BOOT_ID"-*-portmaster.log) ;;
+		*) return 1 ;;
+	esac
+	case "$session_log" in
+		*..*|*[[:cntrl:]]*) return 1 ;;
+	esac
+	content_process_identity_status "$runner_pid" "$runner_start" ||
+		identity_status=$?
+	[ "$identity_status" -eq 1 ] || return 1
+	content_cleanup_guard_active "$guard_unit" || return 1
+	BACKGROUND_NETWORK_CLEANUP_TOKEN=$token
+	BACKGROUND_NETWORK_CLEANUP_GUARD=$guard_unit
+	BACKGROUND_NETWORK_CLEANUP_LOG=$session_log
+	return 0
+}
+
 content_cleanup_pending() {
 	local state
+	BACKGROUND_NETWORK_CLEANUP_STATE=
+	BACKGROUND_NETWORK_CLEANUP_TOKEN=
+	BACKGROUND_NETWORK_CLEANUP_GUARD=
+	BACKGROUND_NETWORK_CLEANUP_LOG=
 	for state in "$CONTENT_STATE_DIR"/content-runner-*.state; do
 		# A malformed dangling symlink is still an unresolved lease. Only absence
-		# of every matching directory entry permits foreground handoff.
-		{ [ -e "$state" ] || [ -L "$state" ]; } && return 0
+		# of every matching directory entry permits foreground handoff. The sole
+		# exception is a strictly validated network-only lease: its exact scope and
+		# Sway are already gone, so it cannot overlap launcher display or input.
+		if [ -e "$state" ] || [ -L "$state" ]; then
+			if content_cleanup_is_background_network "$state"; then
+				BACKGROUND_NETWORK_CLEANUP_STATE=$state
+				continue
+			fi
+			return 0
+		fi
 	done
 	return 1
 }
@@ -179,6 +304,14 @@ wait_content_cleanup() {
 		printf 'bird foreground content cleanup complete uptime='
 		uptime_now
 	}
+	if [ -n "$BACKGROUND_NETWORK_CLEANUP_STATE" ]; then
+		printf 'bird background network cleanup accepted token=%s state=%s guard=%s log=%s uptime=' \
+			"$BACKGROUND_NETWORK_CLEANUP_TOKEN" \
+			"$BACKGROUND_NETWORK_CLEANUP_STATE" \
+			"$BACKGROUND_NETWORK_CLEANUP_GUARD" \
+			"$BACKGROUND_NETWORK_CLEANUP_LOG"
+		uptime_now
+	fi
 }
 
 run_content() {

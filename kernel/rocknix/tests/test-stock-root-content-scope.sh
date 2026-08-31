@@ -15,6 +15,11 @@ grep -Fq 'PORT_PREP=/flash/bird/prepare-ports.sh' "$RUNNER"
 grep -Fq 'NETWORK=/flash/bird/bird-network.sh' "$RUNNER"
 grep -Fq '/flash/bird/bird-volume.sh restore' "$RUNNER"
 grep -Fq 'bird-content-guard /flash/bird/bird-pidwait' "$RUNNER"
+grep -Fq '"$PIDWAIT" --wait-exact "$PARENT" "$PARENT_START"' "$RUNNER"
+grep -Fq '"--wait-exact"' "$ROOT/launcher/bird-pidwait.c"
+grep -Fq 'sys_exit(result > 0 ? 0 : 7);' "$ROOT/launcher/bird-pidwait.c"
+grep -Fq '0|5) ;;' "$RUNNER"
+grep -Fq -- '--property=StartLimitIntervalSec=0' "$RUNNER"
 grep -Fq '/flash/bird/bird-fixed-control-exit.sh "$NETWORK"' "$RUNNER"
 
 wait_pid_bounded() {
@@ -50,7 +55,11 @@ EOF
 
 cat >"$TMP/bin/flock" <<'EOF'
 #!/bin/sh
-exit 0
+case "$1" in
+	-x) exec python3 "$BIRD_TEST_FLOCK_PROBE" acquire-fd "$2" ;;
+	-u) exec python3 "$BIRD_TEST_FLOCK_PROBE" unlock-fd "$2" ;;
+	*) exit 2 ;;
+esac
 EOF
 
 cat >"$TMP/bin/systemd-run" <<'EOF'
@@ -65,6 +74,8 @@ import sys
 
 if sys.argv[1] == "acquire-fd":
     fcntl.flock(int(sys.argv[2]), fcntl.LOCK_EX)
+elif sys.argv[1] == "unlock-fd":
+    fcntl.flock(int(sys.argv[2]), fcntl.LOCK_UN)
 else:
     with open(sys.argv[2], "a+") as lock_file:
         try:
@@ -72,6 +83,7 @@ else:
         except BlockingIOError:
             raise SystemExit(1)
 PY
+export BIRD_TEST_FLOCK_PROBE=$TMP/flock-probe.py
 
 cat >"$TMP/bin/systemctl" <<'EOF'
 #!/bin/sh
@@ -212,6 +224,46 @@ assert_survivor_does_not_hold_fd9() {
 assert_survivor_does_not_hold_fd8
 assert_survivor_does_not_hold_fd9
 
+# Sway and network use independent lock files, and an accidental nested request
+# for the other resource must fail rather than silently run under the wrong fd9.
+LOCK_BODY=$TMP/resource-lock-functions.sh
+python3 - "$RUNNER" "$LOCK_BODY" <<'PY'
+from pathlib import Path
+import sys
+
+source = Path(sys.argv[1]).read_text()
+start = source.index("resource_lock() {")
+end = source.index("\n\nowner_matches() {", start)
+Path(sys.argv[2]).write_text(source[start:end] + "\n")
+PY
+sh -n "$LOCK_BODY"
+cat >"$TMP/resource-lock-harness.sh" <<'EOF'
+#!/bin/sh
+set -eu
+. "$1"
+CASE_DIR=$2
+SWAY_LOCK=$CASE_DIR/sway.lock
+NETWORK_LOCK=$CASE_DIR/network.lock
+RESOURCE_LOCK_HELD=0
+RESOURCE_LOCK_PATH=
+sway_lock
+if network_lock; then
+	printf '%s\n' 'network lock nested under Sway lock' >&2
+	exit 1
+fi
+resource_unlock
+network_lock
+if sway_lock; then
+	printf '%s\n' 'Sway lock nested under network lock' >&2
+	exit 1
+fi
+resource_unlock
+EOF
+chmod 0755 "$TMP/resource-lock-harness.sh"
+LOCK_CASE=$TMP/resource-lock-case
+mkdir -p "$LOCK_CASE"
+PATH="$TMP/bin:$PATH" "$TMP/resource-lock-harness.sh" "$LOCK_BODY" "$LOCK_CASE"
+
 # The cleanup guard is a single-quoted program passed to `sh -c`, so parsing the
 # outer runner cannot detect syntax errors inside it. Extract the exact payload,
 # parse it independently, and execute its no-state early-exit path.
@@ -236,8 +288,9 @@ printf '%s\n' host-test-boot >"$GUARD_PROC/sys/kernel/random/boot_id"
 /bin/sh -c "$GUARD_SOURCE" bird-content-guard \
 	/usr/bin/true "$$" "$TMP/missing-guard-state" 0 fake-boot \
 	/usr/bin/true /usr/bin/true "$TMP/guard.log" "$TMP/exact.session" \
-	"$TMP/global.session" token "$TMP/resource.lock" "$TMP/sway.owner" \
-	"$TMP/network.owner" "$TMP/sway.sock" "$TMP/no-scope.start" \
+	"$TMP/global.session" token "$TMP/sway.lock" "$TMP/network.lock" \
+	"$TMP/sway.owner" "$TMP/network.owner" \
+	"$TMP/sway.sock" "$TMP/no-scope.start" \
 	"$TMP/no-scope.ready" "$TMP/no-scope.cancel" "$GUARD_PROC"
 
 # Model the SIGKILL edge with the real embedded guard body. The pid waiter is
@@ -264,7 +317,7 @@ done
 EOF
 chmod 0755 "$TMP/pidwait-gate"
 cat >"$CRASH_STATE" <<EOF
-version=1
+version=2
 armed=1
 session_token=$CRASH_TOKEN
 boot_id=host-test-boot
@@ -272,9 +325,13 @@ runner_pid=$$
 runner_start_ticks=0
 scope_expected=0
 scope_unit=
-scope_invocation=pending
+scope_invocation=none
+scope_runner_pid=
+scope_runner_start_ticks=
 sway_owned=0
 network_owned=0
+cleanup_mode=foreground
+guard_unit=bird-content-guard-host-test.service
 EOF
 GUARD_TEST_SOURCE=$(cat "$GUARD_TEST_BODY")
 PATH="$TMP/bin:$PATH" BIRD_TEST_GUARD_RELEASE="$GUARD_RELEASE" \
@@ -282,8 +339,8 @@ PATH="$TMP/bin:$PATH" BIRD_TEST_GUARD_RELEASE="$GUARD_RELEASE" \
 	"$TMP/pidwait-gate" "$$" "$CRASH_STATE" 0 host-test-boot \
 	/usr/bin/true /usr/bin/true "$TMP/crash-guard.log" \
 	"$TMP/crash-exact.session" "$TMP/crash-global.session" \
-	"$CRASH_TOKEN" "$TMP/crash-resource.lock" "$TMP/crash-sway.owner" \
-	"$TMP/crash-network.owner" "$TMP/crash-sway.sock" \
+	"$CRASH_TOKEN" "$TMP/crash-sway.lock" "$TMP/crash-network.lock" \
+	"$TMP/crash-sway.owner" "$TMP/crash-network.owner" "$TMP/crash-sway.sock" \
 	"$TMP/crash-scope.start" "$TMP/crash-scope.ready" \
 	"$TMP/crash-scope.cancel" "$GUARD_PROC" \
 	"$CRASH_KOREADER_WRAPPER" &
@@ -298,6 +355,282 @@ wait_pid_bounded "$CRASH_GUARD_PID" 10 crash-guard
 [ ! -e "$CRASH_STATE" ]
 [ ! -e "$CRASH_KOREADER_WRAPPER" ]
 [ ! -e "$CRASH_KOREADER_WRAPPER.tmp" ]
+
+# A normal PortMaster return publishes a pending network-only lease. The
+# detached guard must acquire the dedicated network lock, atomically activate
+# that lease before its first destructive helper call, retain exclusion across
+# a failed attempt, and remove the owner/state only after a confirmed retry.
+BG_CASE=$TMP/background-network-guard
+BG_TOKEN=hosttest-9001-777
+BG_STATE=$BG_CASE/content-runner-$BG_TOKEN.state
+BG_NETWORK_OWNER=$BG_CASE/network.owner
+BG_NETWORK_LOCK=$BG_CASE/network.lock
+mkdir -p "$BG_CASE"
+printf '%s\n' 0 >"$BG_CASE/count"
+printf '%s\n' "$BG_TOKEN" >"$BG_NETWORK_OWNER"
+cat >"$BG_STATE" <<EOF
+version=2
+armed=1
+session_token=$BG_TOKEN
+boot_id=host-test-boot
+runner_pid=$$
+runner_start_ticks=0
+scope_expected=0
+scope_unit=
+scope_invocation=none
+scope_runner_pid=
+scope_runner_start_ticks=
+sway_owned=0
+network_owned=1
+cleanup_mode=background-network-pending
+guard_unit=bird-content-guard-host-test.service
+session_log=$BG_CASE/stock-root-content-hosttest-portmaster.log
+EOF
+cat >"$BG_CASE/network-helper" <<'EOF'
+#!/bin/sh
+set -eu
+COUNT=$(cat "$BIRD_TEST_BG_CASE/count")
+COUNT=$((COUNT + 1))
+printf '%s\n' "$COUNT" >"$BIRD_TEST_BG_CASE/count"
+grep -Fxq cleanup_mode=background-network-active "$BIRD_TEST_BG_STATE"
+: >"$BIRD_TEST_BG_CASE/entered-$COUNT"
+WAIT=0
+while [ ! -e "$BIRD_TEST_BG_CASE/release-$COUNT" ] && [ "$WAIT" -lt 500 ]; do
+	WAIT=$((WAIT + 1))
+	sleep 0.01
+done
+[ -e "$BIRD_TEST_BG_CASE/release-$COUNT" ]
+[ "$COUNT" -ge 2 ]
+EOF
+chmod 0755 "$BG_CASE/network-helper"
+BIRD_TEST_BG_CASE=$BG_CASE BIRD_TEST_BG_STATE=$BG_STATE \
+	PATH="$TMP/bin:$PATH" /bin/sh -c "$GUARD_TEST_SOURCE" \
+	bird-content-guard /usr/bin/true "$$" "$BG_STATE" 0 host-test-boot \
+	/usr/bin/true "$BG_CASE/network-helper" "$BG_CASE/guard.log" \
+	"$BG_CASE/exact.session" "$BG_CASE/global.session" "$BG_TOKEN" \
+	"$BG_CASE/sway.lock" "$BG_NETWORK_LOCK" "$BG_CASE/sway.owner" \
+	"$BG_NETWORK_OWNER" "$BG_CASE/sway.sock" "$BG_CASE/scope.start" \
+	"$BG_CASE/scope.ready" "$BG_CASE/scope.cancel" "$GUARD_PROC" &
+BG_GUARD_PID=$!
+BG_WAIT=0
+while [ ! -e "$BG_CASE/entered-1" ] && [ "$BG_WAIT" -lt 500 ]; do
+	BG_WAIT=$((BG_WAIT + 1))
+	sleep 0.01
+done
+[ -e "$BG_CASE/entered-1" ]
+grep -Fxq cleanup_mode=background-network-active "$BG_STATE"
+if python3 "$TMP/flock-probe.py" try-path "$BG_NETWORK_LOCK"; then
+	printf '%s\n' 'background helper did not retain the network lock' >&2
+	exit 1
+fi
+: >"$BG_CASE/release-1"
+BG_WAIT=0
+while [ ! -e "$BG_CASE/entered-2" ] && [ "$BG_WAIT" -lt 500 ]; do
+	BG_WAIT=$((BG_WAIT + 1))
+	sleep 0.01
+done
+[ -e "$BG_CASE/entered-2" ]
+if python3 "$TMP/flock-probe.py" try-path "$BG_NETWORK_LOCK"; then
+	printf '%s\n' 'network lock was released between cleanup retries' >&2
+	exit 1
+fi
+: >"$BG_CASE/release-2"
+wait_pid_bounded "$BG_GUARD_PID" 10 background-network-guard
+[ "$(cat "$BG_CASE/count")" -eq 2 ]
+[ ! -e "$BG_STATE" ]
+[ ! -e "$BG_NETWORK_OWNER" ]
+python3 "$TMP/flock-probe.py" try-path "$BG_NETWORK_LOCK"
+
+# If the guard shell is killed while its bounded network helper is running, the
+# helper must retain fd9. A restarted guard cannot enter the old transaction,
+# and then finishes the still-active lease after the orphaned helper releases.
+BG_KILL_CASE=$TMP/background-network-guard-kill
+BG_KILL_TOKEN=hosttest-9002-778
+BG_KILL_STATE=$BG_KILL_CASE/content-runner-$BG_KILL_TOKEN.state
+BG_KILL_OWNER=$BG_KILL_CASE/network.owner
+BG_KILL_LOCK=$BG_KILL_CASE/network.lock
+mkdir -p "$BG_KILL_CASE"
+printf '%s\n' 0 >"$BG_KILL_CASE/count"
+printf '%s\n' "$BG_KILL_TOKEN" >"$BG_KILL_OWNER"
+cat >"$BG_KILL_STATE" <<EOF
+version=2
+armed=1
+session_token=$BG_KILL_TOKEN
+boot_id=host-test-boot
+runner_pid=$$
+runner_start_ticks=0
+scope_expected=0
+scope_unit=
+scope_invocation=none
+scope_runner_pid=
+scope_runner_start_ticks=
+sway_owned=0
+network_owned=1
+cleanup_mode=background-network-pending
+guard_unit=bird-content-guard-host-test.service
+session_log=$BG_KILL_CASE/stock-root-content-hosttest-portmaster.log
+EOF
+cat >"$BG_KILL_CASE/network-helper" <<'EOF'
+#!/bin/sh
+set -eu
+COUNT=$(cat "$BIRD_TEST_BG_KILL_CASE/count")
+COUNT=$((COUNT + 1))
+printf '%s\n' "$COUNT" >"$BIRD_TEST_BG_KILL_CASE/count"
+grep -Fxq cleanup_mode=background-network-active "$BIRD_TEST_BG_KILL_STATE"
+: >"$BIRD_TEST_BG_KILL_CASE/entered-$COUNT"
+if [ "$COUNT" -eq 1 ]; then
+	WAIT=0
+	while [ ! -e "$BIRD_TEST_BG_KILL_CASE/release-1" ] && \
+		[ "$WAIT" -lt 500 ]; do
+		WAIT=$((WAIT + 1))
+		sleep 0.01
+	done
+	[ -e "$BIRD_TEST_BG_KILL_CASE/release-1" ]
+fi
+EOF
+chmod 0755 "$BG_KILL_CASE/network-helper"
+BIRD_TEST_BG_KILL_CASE=$BG_KILL_CASE \
+BIRD_TEST_BG_KILL_STATE=$BG_KILL_STATE PATH="$TMP/bin:$PATH" \
+	/bin/sh -c "$GUARD_TEST_SOURCE" bird-content-guard /usr/bin/true "$$" \
+	"$BG_KILL_STATE" 0 host-test-boot /usr/bin/true \
+	"$BG_KILL_CASE/network-helper" "$BG_KILL_CASE/guard.log" \
+	"$BG_KILL_CASE/exact.session" "$BG_KILL_CASE/global.session" \
+	"$BG_KILL_TOKEN" "$BG_KILL_CASE/sway.lock" "$BG_KILL_LOCK" \
+	"$BG_KILL_CASE/sway.owner" "$BG_KILL_OWNER" \
+	"$BG_KILL_CASE/sway.sock" "$BG_KILL_CASE/scope.start" \
+	"$BG_KILL_CASE/scope.ready" "$BG_KILL_CASE/scope.cancel" \
+	"$GUARD_PROC" &
+BG_KILL_GUARD_PID=$!
+BG_KILL_WAIT=0
+while [ ! -e "$BG_KILL_CASE/entered-1" ] && [ "$BG_KILL_WAIT" -lt 500 ]; do
+	BG_KILL_WAIT=$((BG_KILL_WAIT + 1))
+	sleep 0.01
+done
+[ -e "$BG_KILL_CASE/entered-1" ]
+kill -KILL "$BG_KILL_GUARD_PID"
+wait "$BG_KILL_GUARD_PID" 2>/dev/null || :
+if python3 "$TMP/flock-probe.py" try-path "$BG_KILL_LOCK"; then
+	printf '%s\n' 'killed guard released the live helper network lock' >&2
+	exit 1
+fi
+BIRD_TEST_BG_KILL_CASE=$BG_KILL_CASE \
+BIRD_TEST_BG_KILL_STATE=$BG_KILL_STATE PATH="$TMP/bin:$PATH" \
+	/bin/sh -c "$GUARD_TEST_SOURCE" bird-content-guard /usr/bin/true "$$" \
+	"$BG_KILL_STATE" 0 host-test-boot /usr/bin/true \
+	"$BG_KILL_CASE/network-helper" "$BG_KILL_CASE/restart.log" \
+	"$BG_KILL_CASE/exact.session" "$BG_KILL_CASE/global.session" \
+	"$BG_KILL_TOKEN" "$BG_KILL_CASE/sway.lock" "$BG_KILL_LOCK" \
+	"$BG_KILL_CASE/sway.owner" "$BG_KILL_OWNER" \
+	"$BG_KILL_CASE/sway.sock" "$BG_KILL_CASE/scope.start" \
+	"$BG_KILL_CASE/scope.ready" "$BG_KILL_CASE/scope.cancel" \
+	"$GUARD_PROC" &
+BG_KILL_RESTART_PID=$!
+: >"$BG_KILL_CASE/release-1"
+wait_pid_bounded "$BG_KILL_RESTART_PID" 10 background-network-guard-restart
+[ "$(cat "$BG_KILL_CASE/count")" -eq 2 ]
+[ ! -e "$BG_KILL_STATE" ]
+[ ! -e "$BG_KILL_OWNER" ]
+python3 "$TMP/flock-probe.py" try-path "$BG_KILL_LOCK"
+
+# Generate the pending lease with the real publisher, then drive the exact-wait
+# result matrix through the real embedded guard. Only confirmed exit (0) or PID
+# replacement (5) may activate cleanup; identity/read/poll errors must leave the
+# pending lease and owner untouched so systemd can restart the worker.
+PUBLISH_STATE_BODY=$TMP/publish-runner-state.sh
+python3 - "$RUNNER" "$PUBLISH_STATE_BODY" <<'PY'
+from pathlib import Path
+import sys
+
+source = Path(sys.argv[1]).read_text()
+start = source.index("publish_runner_state() {")
+end = source.index("\n\nstart_cleanup_guard() {", start)
+Path(sys.argv[2]).write_text(source[start:end] + "\n")
+PY
+sh -n "$PUBLISH_STATE_BODY"
+cat >"$TMP/publish-background-state-harness.sh" <<'EOF'
+#!/bin/sh
+set -eu
+. "$1"
+CASE_DIR=$2
+BOOT_ID=hosttest
+BOOT_ID_FULL=host-test-boot
+RUNNER_START_TICKS=777
+SESSION_TOKEN=$BOOT_ID-$$-$RUNNER_START_TICKS
+RUNNER_STATE=$CASE_DIR/content-runner-$SESSION_TOKEN.state
+SCOPE_EXPECTED=0
+SCOPE_UNIT=
+SCOPE_INVOCATION=
+SCOPE_RUNNER_PID=
+SCOPE_RUNNER_START_TICKS=
+SWAY_OWNED=0
+PORTMASTER_NETWORK=1
+CLEANUP_MODE=background-network-pending
+GUARD_UNIT=bird-content-guard-$SESSION_TOKEN.service
+SESSION_LOG=$CASE_DIR/stock-root-content-hosttest-portmaster.log
+publish_runner_state 1
+printf '%s\n' "$$" >"$CASE_DIR/runner-pid"
+printf '%s\n' "$SESSION_TOKEN" >"$CASE_DIR/token"
+printf '%s\n' "$RUNNER_STATE" >"$CASE_DIR/state-path"
+EOF
+cat >"$TMP/pidwait-status" <<'EOF'
+#!/bin/sh
+[ "$1" = --wait-exact ]
+exit "$BIRD_TEST_PIDWAIT_STATUS"
+EOF
+cat >"$TMP/network-status-helper" <<'EOF'
+#!/bin/sh
+set -eu
+[ "$1" = stop ]
+grep -Fxq cleanup_mode=background-network-active \
+	"$BIRD_TEST_STATUS_STATE"
+: >"$BIRD_TEST_STATUS_HELPER_CALLED"
+EOF
+chmod 0755 "$TMP/publish-background-state-harness.sh" \
+	"$TMP/pidwait-status" "$TMP/network-status-helper"
+for PIDWAIT_RESULT in 0 5 3 4 7; do
+	STATUS_CASE=$TMP/pidwait-status-$PIDWAIT_RESULT
+	mkdir -p "$STATUS_CASE"
+	"$TMP/publish-background-state-harness.sh" "$PUBLISH_STATE_BODY" \
+		"$STATUS_CASE"
+	STATUS_PARENT=$(cat "$STATUS_CASE/runner-pid")
+	STATUS_TOKEN=$(cat "$STATUS_CASE/token")
+	STATUS_STATE=$(cat "$STATUS_CASE/state-path")
+	STATUS_OWNER=$STATUS_CASE/network.owner
+	STATUS_CALLED=$STATUS_CASE/helper-called
+	[ "$(wc -l <"$STATUS_STATE" | tr -d ' ')" -eq 16 ]
+	grep -Fxq session_log="$STATUS_CASE/stock-root-content-hosttest-portmaster.log" \
+		"$STATUS_STATE"
+	printf '%s\n' "$STATUS_TOKEN" >"$STATUS_OWNER"
+	STATUS_GUARD_RESULT=0
+	BIRD_TEST_PIDWAIT_STATUS=$PIDWAIT_RESULT \
+	BIRD_TEST_STATUS_STATE=$STATUS_STATE \
+	BIRD_TEST_STATUS_HELPER_CALLED=$STATUS_CALLED PATH="$TMP/bin:$PATH" \
+		/bin/sh -c "$GUARD_TEST_SOURCE" bird-content-guard \
+		"$TMP/pidwait-status" "$STATUS_PARENT" "$STATUS_STATE" 777 \
+		host-test-boot /usr/bin/true "$TMP/network-status-helper" \
+		"$STATUS_CASE/guard.log" "$STATUS_CASE/exact.session" \
+		"$STATUS_CASE/global.session" "$STATUS_TOKEN" \
+		"$STATUS_CASE/sway.lock" "$STATUS_CASE/network.lock" \
+		"$STATUS_CASE/sway.owner" "$STATUS_OWNER" \
+		"$STATUS_CASE/sway.sock" "$STATUS_CASE/scope.start" \
+		"$STATUS_CASE/scope.ready" "$STATUS_CASE/scope.cancel" \
+		"$GUARD_PROC" || STATUS_GUARD_RESULT=$?
+	case "$PIDWAIT_RESULT" in
+		0|5)
+			[ "$STATUS_GUARD_RESULT" -eq 0 ]
+			[ -e "$STATUS_CALLED" ]
+			[ ! -e "$STATUS_STATE" ]
+			[ ! -e "$STATUS_OWNER" ]
+			;;
+		*)
+			[ "$STATUS_GUARD_RESULT" -eq 1 ]
+			[ ! -e "$STATUS_CALLED" ]
+			[ -e "$STATUS_STATE" ]
+			[ -e "$STATUS_OWNER" ]
+			grep -Fxq cleanup_mode=background-network-pending "$STATUS_STATE"
+			;;
+	esac
+done
 
 # Kill the real gated-bootstrap control flow after its exact child identity is
 # atomically published but before the gate is released. The detached guard must
@@ -412,12 +745,19 @@ if [ "${1:-}" = --terminate ]; then
 	printf '%s\n' wrapper-stopped >>"$BIRD_TEST_GUARD_EVENTS"
 	exit 0
 fi
+if [ "${1:-}" = --wait-exact ]; then
+	[ "$3" = 555 ] || exit 9
+	WAIT_PID=$2
+else
+	WAIT_PID=$1
+fi
 COUNT=0
-while process_alive "$1" && [ "$COUNT" -lt 1000 ]; do
+while process_alive "$WAIT_PID" && [ "$COUNT" -lt 1000 ]; do
 	COUNT=$((COUNT + 1))
 	sleep 0.01
 done
-process_alive "$1" && exit 1
+process_alive "$WAIT_PID" && exit 1
+exit 0
 EOF
 cat >"$SPAWN_CASE/fake-exit" <<'EOF'
 #!/bin/sh
@@ -467,7 +807,7 @@ usleep() { sleep 0.01; }
 publish_runner_state() {
 	TMP=$RUNNER_STATE.tmp.$$
 	{
-		printf '%s\n' version=1 armed=1 session_token=spawn-kill \
+		printf '%s\n' version=2 armed=1 session_token=spawn-kill \
 			boot_id=host-test-boot
 		printf 'runner_pid=%s\n' "$$"
 		printf '%s\n' runner_start_ticks=555 scope_expected=1 \
@@ -476,7 +816,8 @@ publish_runner_state() {
 		printf 'scope_runner_pid=%s\n' "$SCOPE_RUNNER_PID"
 		printf 'scope_runner_start_ticks=%s\n' \
 			"$SCOPE_RUNNER_START_TICKS"
-		printf '%s\n' sway_owned=0 network_owned=0
+		printf '%s\n' sway_owned=0 network_owned=0 \
+			cleanup_mode=foreground guard_unit=bird-content-guard-host-test.service
 	} >"$TMP" && mv -f "$TMP" "$RUNNER_STATE"
 	: >"$PUBLISHED"
 	while :; do sleep 1; done
@@ -516,8 +857,9 @@ BIRD_TEST_SPAWN_STATE=$SPAWN_CASE/runner.state \
 	"$SPAWN_CASE/runner.state" 555 host-test-boot \
 	"$SPAWN_CASE/fake-exit" /usr/bin/true "$SPAWN_CASE/guard.log" \
 	"$SPAWN_CASE/exact.session" "$SPAWN_CASE/global.session" spawn-kill \
-	"$SPAWN_CASE/resource.lock" "$SPAWN_CASE/sway.owner" \
-	"$SPAWN_CASE/network.owner" "$SPAWN_CASE/sway.sock" \
+	"$SPAWN_CASE/sway.lock" "$SPAWN_CASE/network.lock" \
+	"$SPAWN_CASE/sway.owner" "$SPAWN_CASE/network.owner" \
+	"$SPAWN_CASE/sway.sock" \
 	"$SPAWN_CASE/scope.start" "$SPAWN_CASE/scope.ready" \
 	"$SPAWN_CASE/scope.cancel" "$GUARD_PROC" &
 SPAWN_GUARD=$!
@@ -714,6 +1056,7 @@ trap 'rm -f "$SWAY_SOCKET"' EXIT INT TERM HUP
 : >"$EVENTS"
 resource_lock() { printf '%s\n' lock >>"$EVENTS"; }
 resource_unlock() { printf '%s\n' unlock >>"$EVENTS"; }
+sway_lock() { resource_lock; }
 claim_owner() {
 	printf '%s\n' claim >>"$EVENTS"
 	printf '%s\n' "$SESSION_TOKEN" >"$1"
@@ -939,6 +1282,97 @@ mkdir -p "$RESOURCE_CASE"
 "$TMP/resource-release-harness.sh" "$RECONCILE_BODY" "$RESOURCE_CASE" \
 	>"$RESOURCE_CASE/harness.log" 2>&1
 
+# Normal PortMaster cleanup keeps exact scope and Sway teardown in the
+# foreground, then publishes only the network token as a pending guard lease.
+# If that atomic publication fails, cleanup must remain fully synchronous.
+BACKGROUND_HANDOFF_BODY=$TMP/background-handoff-functions.sh
+python3 - "$RUNNER" "$BACKGROUND_HANDOFF_BODY" <<'PY'
+from pathlib import Path
+import sys
+
+source = Path(sys.argv[1]).read_text()
+start = source.index("handoff_portmaster_network_cleanup() {")
+end = source.index("\n\ncleanup_on_exit() {", start)
+Path(sys.argv[2]).write_text(source[start:end] + "\n")
+PY
+bash -n "$BACKGROUND_HANDOFF_BODY"
+cat >"$TMP/background-handoff-harness.sh" <<'EOF'
+#!/bin/bash
+set -eu
+. "$1"
+MODE=$2
+CASE_DIR=$3
+EVENTS=$CASE_DIR/events
+: >"$EVENTS"
+CLEANUP_STATE=not-started
+CLEANUP_MODE=foreground
+SESSION_MODE=portmaster
+GUARD_STARTED=1
+PORTMASTER_NETWORK=1
+SWAY_OWNED=1
+SCOPE_EXPECTED=1
+SCOPE_RUNNER_PID=
+SCOPE_RUNNER_START_TICKS=
+BOOT_ID=hosttest
+RUNNER_START_TICKS=777
+SESSION_TOKEN=$BOOT_ID-$$-$RUNNER_START_TICKS
+GUARD_UNIT=bird-content-guard-hosttest-$$-777.service
+RUNNER_STATE=$CASE_DIR/content-runner-$SESSION_TOKEN.state
+SESSION_LOG=$CASE_DIR/stock-root-content-hosttest-portmaster.log
+NETWORK_OWNER=$CASE_DIR/network.owner
+printf '%s\n' "$SESSION_TOKEN" >"$NETWORK_OWNER"
+stop_and_reap_scope_runner() { return 99; }
+terminate_scope_until_gone() {
+	printf '%s\n' scope-gone >>"$EVENTS"
+	SCOPE_EXPECTED=0
+	SCOPE_RUNNER_PID=
+	SCOPE_RUNNER_START_TICKS=
+}
+release_sway_until_done() {
+	printf '%s\n' sway-gone >>"$EVENTS"
+	SWAY_OWNED=0
+}
+release_owned_resources_until_done() {
+	printf '%s\n' synchronous-resources >>"$EVENTS"
+	PORTMASTER_NETWORK=0
+}
+remove_koreader_port_script() { :; }
+network_lock() { printf '%s\n' network-lock >>"$EVENTS"; }
+resource_unlock() { printf '%s\n' network-unlock >>"$EVENTS"; }
+owner_relation() {
+	OWNER_RELATION=ours
+}
+publish_runner_state() {
+	printf 'publish-%s-%s-%s-%s-%s\n' "$1" "$CLEANUP_MODE" \
+		"$SCOPE_EXPECTED" "$SWAY_OWNED" "$PORTMASTER_NETWORK" >>"$EVENTS"
+	[ "$MODE" != publish-fail ]
+}
+uptime_now() { printf '%s\n' host; }
+cleanup_runtime >"$CASE_DIR/harness.log"
+case "$MODE" in
+	success)
+		[ "$CLEANUP_STATE" = background-network ]
+		[ "$CLEANUP_MODE" = background-network-pending ]
+		[ "$PORTMASTER_NETWORK" -eq 1 ]
+		[ "$(tr '\n' ' ' <"$EVENTS")" = \
+			'scope-gone sway-gone network-lock publish-1-background-network-pending-0-0-1 network-unlock ' ]
+		;;
+	publish-fail)
+		[ "$CLEANUP_STATE" = succeeded ]
+		[ "$CLEANUP_MODE" = foreground ]
+		[ "$PORTMASTER_NETWORK" -eq 0 ]
+		grep -Fxq synchronous-resources "$EVENTS"
+		;;
+esac
+EOF
+chmod 0755 "$TMP/background-handoff-harness.sh"
+for MODE in success publish-fail; do
+	CASE_DIR=$TMP/background-handoff-$MODE
+	mkdir -p "$CASE_DIR"
+	"$TMP/background-handoff-harness.sh" "$BACKGROUND_HANDOFF_BODY" \
+		"$MODE" "$CASE_DIR"
+done
+
 # Exercise the real owner-token transfer branches. An older cleanup retries its
 # own failures, but must immediately release local ownership without stopping a
 # newer session's Sway or network resources.
@@ -977,6 +1411,8 @@ printf '%s\n' newer-session >"$SWAY_OWNER"
 printf '%s\n' newer-session >"$NETWORK_OWNER"
 resource_lock() { printf '%s\n' lock >>"$EVENTS"; }
 resource_unlock() { printf '%s\n' unlock >>"$EVENTS"; }
+sway_lock() { resource_lock; }
+network_lock() { resource_lock; }
 publish_runner_state() { printf '%s\n' publish >>"$EVENTS"; }
 systemctl() { printf '%s\n' forbidden-systemctl >>"$EVENTS"; return 1; }
 NETWORK=/forbidden-network-helper
@@ -1030,6 +1466,7 @@ printf '%s\n' "$SESSION_TOKEN" >"$NETWORK_OWNER"
 printf '%s\n' 0 >"$CASE_DIR/count"
 resource_lock() { :; }
 resource_unlock() { :; }
+network_lock() { resource_lock; }
 owner_relation() {
 	OWNER_RELATION=unknown
 	[ -s "$1" ] || return 0
@@ -1076,6 +1513,103 @@ if ! "$TMP/network-stop-retry-harness.sh" "$NETWORK_STOP_BODY" \
 	done
 	exit 1
 fi
+
+# A new PortMaster session may observe the old owner during the guard-restart
+# gap. Exercise the real start function: it must wait without overwriting the
+# token, begin only after release, and fail closed on timeout or unsafe files.
+NETWORK_START_BODY=$TMP/network-start-functions.sh
+python3 - "$RUNNER" "$NETWORK_START_BODY" <<'PY'
+from pathlib import Path
+import sys
+
+source = Path(sys.argv[1]).read_text()
+parts = []
+for start_marker, end_marker in (
+    ("owner_relation() {", "\nrollback_sway_start() {"),
+    ("start_portmaster_network() {", "\n\nstop_portmaster_network() {"),
+):
+    start = source.index(start_marker)
+    end = source.index(end_marker, start)
+    parts.append(source[start:end])
+Path(sys.argv[2]).write_text("\n\n".join(parts) + "\n")
+PY
+sh -n "$NETWORK_START_BODY"
+cat >"$TMP/network-start-reentry-harness.sh" <<'EOF'
+#!/bin/sh
+set -eu
+. "$1"
+MODE=$2
+CASE_DIR=$3
+NETWORK_OWNER=$CASE_DIR/network.owner
+SESSION_TOKEN=new-session
+PORTMASTER_NETWORK=0
+WAIT_COUNT=0
+HELPER_COUNT=0
+PUBLISH_COUNT=0
+NETWORK_HELPER_HARD_BOUND=host-test
+network_lock() { :; }
+resource_unlock() { :; }
+uptime_now() { printf '%s\n' host; }
+publish_runner_state() {
+	PUBLISH_COUNT=$((PUBLISH_COUNT + 1))
+}
+run_network_helper() {
+	HELPER_COUNT=$((HELPER_COUNT + 1))
+	[ "$(cat "$NETWORK_OWNER")" = "$SESSION_TOKEN" ]
+	NETWORK_HELPER_HARD_BOUND=host-test
+}
+usleep() {
+	WAIT_COUNT=$((WAIT_COUNT + 1))
+	[ ! -L "$NETWORK_OWNER" ] || return 0
+	if [ "$MODE" = release ] && [ "$WAIT_COUNT" -eq 3 ]; then
+		[ "$(cat "$NETWORK_OWNER")" = old-session ]
+		rm -f "$NETWORK_OWNER"
+	fi
+}
+case "$MODE" in
+	release|timeout) printf '%s\n' old-session >"$NETWORK_OWNER" ;;
+	empty) : >"$NETWORK_OWNER" ;;
+	symlink)
+		printf '%s\n' old-session >"$CASE_DIR/symlink-target"
+		ln -s "$CASE_DIR/symlink-target" "$NETWORK_OWNER"
+		;;
+esac
+START_STATUS=0
+start_portmaster_network start >"$CASE_DIR/start.log" 2>&1 || START_STATUS=$?
+case "$MODE" in
+	release)
+		[ "$START_STATUS" -eq 0 ]
+		[ "$WAIT_COUNT" -eq 3 ]
+		[ "$HELPER_COUNT" -eq 1 ]
+		[ "$PUBLISH_COUNT" -eq 1 ]
+		[ "$PORTMASTER_NETWORK" -eq 1 ]
+		[ "$(cat "$NETWORK_OWNER")" = "$SESSION_TOKEN" ]
+		;;
+	timeout|symlink)
+		[ "$START_STATUS" -eq 1 ]
+		[ "$WAIT_COUNT" -eq 59 ]
+		[ "$HELPER_COUNT" -eq 0 ]
+		[ "$PUBLISH_COUNT" -eq 0 ]
+		[ "$PORTMASTER_NETWORK" -eq 0 ]
+		[ "$(cat "$NETWORK_OWNER")" = old-session ]
+		;;
+	empty)
+		[ "$START_STATUS" -eq 1 ]
+		[ "$WAIT_COUNT" -eq 0 ]
+		[ "$HELPER_COUNT" -eq 0 ]
+		[ "$PUBLISH_COUNT" -eq 0 ]
+		[ "$PORTMASTER_NETWORK" -eq 0 ]
+		[ ! -s "$NETWORK_OWNER" ]
+		;;
+esac
+EOF
+chmod 0755 "$TMP/network-start-reentry-harness.sh"
+for REENTRY_MODE in release timeout empty symlink; do
+	REENTRY_CASE=$TMP/network-start-reentry-$REENTRY_MODE
+	mkdir -p "$REENTRY_CASE"
+	"$TMP/network-start-reentry-harness.sh" "$NETWORK_START_BODY" \
+		"$REENTRY_MODE" "$REENTRY_CASE"
+done
 
 BOOT_ID=11111111-2222-3333-4444-555555555555
 INVOCATION=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -1497,7 +2031,11 @@ grep -Fq 'scope_runner_start_ticks=%s' "$RUNNER"
 grep -Fq 'if ! : >"$SCOPE_START_GATE"; then' "$RUNNER"
 grep -Fq 'BIRD_STABLE_NOT_FOUND_COUNT=' "$RUNNER"
 grep -Fq 'run_network_helper "$NETWORK_START_MODE"' "$RUNNER"
-grep -Fq '"$NETWORK_HELPER" stop 8>&- 9>&-' "$RUNNER"
+grep -Fq '"$NETWORK_HELPER" stop 8>&-' "$RUNNER"
+if grep -Fq '"$NETWORK_HELPER" stop 8>&- 9>&-' "$RUNNER"; then
+	printf '%s\n' 'network guard still drops its inherited transaction lock' >&2
+	exit 1
+fi
 grep -Fq 'Bird portmaster prepare start' "$RUNNER"
 grep -Fq 'Bird portmaster prepare status=' "$RUNNER"
 grep -Fq 'Bird portmaster network-start status=' "$RUNNER"
@@ -1713,6 +2251,64 @@ EOF
 chmod 0755 "$NETWORK_BOUND_CASE/harness.sh"
 "$TIMEOUT_PROGRAM" 3s "$NETWORK_BOUND_CASE/harness.sh" \
 	"$NETWORK_BOUND_BODY" "$TIMEOUT_PROGRAM" "$NETWORK_BOUND_CASE/hung-helper"
+
+# The foreground network transaction uses the same inheritance rule. Killing
+# its owning shell must not release fd9 while the timeout/helper subtree is
+# still changing network state.
+NETWORK_FD_CASE=$TMP/network-foreground-fd9
+mkdir -p "$NETWORK_FD_CASE"
+cat >"$NETWORK_FD_CASE/helper" <<'EOF'
+#!/bin/sh
+set -eu
+: >"$BIRD_TEST_NETWORK_FD_ENTERED"
+WAIT=0
+while [ ! -e "$BIRD_TEST_NETWORK_FD_RELEASE" ] && [ "$WAIT" -lt 500 ]; do
+	WAIT=$((WAIT + 1))
+	sleep 0.01
+done
+[ -e "$BIRD_TEST_NETWORK_FD_RELEASE" ]
+EOF
+cat >"$NETWORK_FD_CASE/harness.sh" <<'EOF'
+#!/bin/sh
+set -eu
+. "$1"
+TIMEOUT_PROGRAM=$2
+NETWORK=$3
+NETWORK_DIRECT_BOUND=10s
+NETWORK_DIRECT_HARD_BOUND=11s
+NETWORK_STOP_BOUND=10s
+NETWORK_STOP_HARD_BOUND=11s
+exec 9>"$4"
+flock -x 9
+run_network_helper stop
+EOF
+chmod 0755 "$NETWORK_FD_CASE/helper" "$NETWORK_FD_CASE/harness.sh"
+BIRD_TEST_NETWORK_FD_ENTERED=$NETWORK_FD_CASE/entered \
+BIRD_TEST_NETWORK_FD_RELEASE=$NETWORK_FD_CASE/release \
+	PATH="$TMP/bin:$PATH" "$NETWORK_FD_CASE/harness.sh" \
+	"$NETWORK_BOUND_BODY" "$TIMEOUT_PROGRAM" \
+	"$NETWORK_FD_CASE/helper" "$NETWORK_FD_CASE/network.lock" &
+NETWORK_FD_PARENT=$!
+NETWORK_FD_WAIT=0
+while [ ! -e "$NETWORK_FD_CASE/entered" ] && [ "$NETWORK_FD_WAIT" -lt 500 ]; do
+	NETWORK_FD_WAIT=$((NETWORK_FD_WAIT + 1))
+	sleep 0.01
+done
+[ -e "$NETWORK_FD_CASE/entered" ]
+kill -KILL "$NETWORK_FD_PARENT"
+wait "$NETWORK_FD_PARENT" 2>/dev/null || :
+if python3 "$TMP/flock-probe.py" try-path "$NETWORK_FD_CASE/network.lock"; then
+	printf '%s\n' 'killed foreground owner released live helper network lock' >&2
+	exit 1
+fi
+: >"$NETWORK_FD_CASE/release"
+NETWORK_FD_WAIT=0
+while ! python3 "$TMP/flock-probe.py" try-path \
+	"$NETWORK_FD_CASE/network.lock" && [ "$NETWORK_FD_WAIT" -lt 500 ]; do
+	NETWORK_FD_WAIT=$((NETWORK_FD_WAIT + 1))
+	sleep 0.01
+done
+[ "$NETWORK_FD_WAIT" -lt 500 ]
 
 RUN_SELECTED_BODY=$TMP/run-selected-function.sh
 python3 - "$RUNNER" "$RUN_SELECTED_BODY" <<'PY'
@@ -2101,6 +2697,9 @@ set -eu
 . "$2"
 CASE_DIR=$3
 CLEANUP_STATE=not-started
+SESSION_MODE=content
+GUARD_STARTED=1
+PORTMASTER_NETWORK=0
 SCOPE_RUNNER_PID=
 SCOPE_RUNNER_START_TICKS=
 KOREADER_PORT_SCRIPT=$CASE_DIR/KOReader-cleanup.sh
@@ -2122,6 +2721,17 @@ mkdir -p "$KOREADER_CLEANUP_CASE"
 
 grep -Fq '8>&- 9>&- </dev/null >/dev/null 2>&1' "$RUNNER"
 grep -Fq '"$UNIT_NAME" 8>&- 9>&- 2>/dev/null' "$EXIT_HELPER"
+python3 - "$RUNNER" <<'PY'
+from pathlib import Path
+import sys
+
+lines = Path(sys.argv[1]).read_text().splitlines()
+for index, line in enumerate(lines):
+    if line.strip() != "SCOPE_RUNNER_PID=":
+        continue
+    assert index + 1 < len(lines)
+    assert lines[index + 1].strip() == "SCOPE_RUNNER_START_TICKS="
+PY
 if grep -Fq 'systemctl start --wait "$SCOPE_UNIT"' "$RUNNER"; then
 	printf '%s\n' 'scope still joins the completed start job' >&2
 	exit 1

@@ -1,6 +1,6 @@
 /*
  * Efficiently wait for one known Bird process without polling /proc, or
- * terminate one exact PID/start-time identity without a numeric-PID signal
+ * wait for or terminate one exact PID/start-time identity without a numeric-PID
  * race. Freestanding AArch64 Linux: pidfd_open + pidfd_send_signal + ppoll.
  */
 
@@ -80,6 +80,14 @@ static const char *text_end(const char *text) {
     return cursor;
 }
 
+static int text_is(const char *text, const char *expected) {
+    while (*text && *text == *expected) {
+        text++;
+        expected++;
+    }
+    return *text == 0 && *expected == 0;
+}
+
 static int append_pid(char *path, long pid) {
     char reverse[16];
     int length = 0;
@@ -151,15 +159,15 @@ static void start_c(u64 *stack) {
     struct pollfd event;
 
     if (argc == 4U) {
+        int terminate_mode;
         unsigned long expected_start;
         unsigned long actual_start;
         struct timespec grace;
-        if (argv[1][0] != '-' || argv[1][1] != '-' ||
-            argv[1][2] != 't' || argv[1][3] != 'e' ||
-            argv[1][4] != 'r' || argv[1][5] != 'm' ||
-            argv[1][6] != 'i' || argv[1][7] != 'n' ||
-            argv[1][8] != 'a' || argv[1][9] != 't' ||
-            argv[1][10] != 'e' || argv[1][11] != 0)
+        if (text_is(argv[1], "--terminate"))
+            terminate_mode = 1;
+        else if (text_is(argv[1], "--wait-exact"))
+            terminate_mode = 0;
+        else
             sys_exit(2);
         pid = parse_pid(argv[2]);
         if (pid < 0 || parse_unsigned(argv[3], text_end(argv[3]),
@@ -169,12 +177,22 @@ static void start_c(u64 *stack) {
         if (fd == -ESRCH) sys_exit(0);
         if (fd < 0) sys_exit(3);
         if (read_start_ticks(pid, &actual_start) < 0) {
+            struct timespec now;
+            now.sec = 0;
+            now.nsec = 0;
+            result = wait_pidfd(fd, &now);
             syscall6(57, fd, 0, 0, 0, 0, 0);
-            sys_exit(0); /* exited after pidfd_open */
+            /* Only a readable pidfd exit edge proves the task disappeared. */
+            sys_exit(result > 0 ? 0 : 7);
         }
         if (actual_start != expected_start) {
             syscall6(57, fd, 0, 0, 0, 0, 0);
             sys_exit(5); /* PID was already replaced; never signal it */
+        }
+        if (!terminate_mode) {
+            result = wait_pidfd(fd, 0);
+            syscall6(57, fd, 0, 0, 0, 0, 0);
+            sys_exit(result > 0 ? 0 : 4);
         }
         result = syscall6(424, fd, SIGTERM, 0, 0, 0, 0); /* pidfd_send_signal */
         if (result < 0 && result != -ESRCH) {
