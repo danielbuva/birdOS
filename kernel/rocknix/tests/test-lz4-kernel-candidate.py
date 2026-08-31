@@ -60,7 +60,7 @@ def main() -> None:
     ) == 1
     assert root_builder.count("source-irq-buttons-lz4)") == 2
     assert (
-        "source-irq-buttons|source-irq-buttons-lz4|source-no-raid6-benchmark)"
+        "source-irq-buttons|source-irq-buttons-lz4|source-no-raid6-benchmark|source-deferred-wifi)"
         in early_builder
     )
     assert verifier.CANDIDATE_SHA256 in root_builder
