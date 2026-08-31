@@ -6,9 +6,35 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 ROCKNIX_SOURCE=${ROCKNIX_SOURCE:-$HOME/rocknix-distribution-20260701}
-OUTPUT=${OUTPUT:-$ROOT/kernel/work/bird-no-raid6-benchmark-pair-20260830}
-KERNEL_A=${KERNEL_A:-$ROOT/kernel/work/rocknix-source-irq-buttons-no-raid6-benchmark-a/build/Image}
-KERNEL_B=${KERNEL_B:-$ROOT/kernel/work/rocknix-source-irq-buttons-no-raid6-benchmark-b/build/Image}
+PAIR_PROFILE=${BIRD_BOOT_PAIR_PROFILE:-no-raid6-benchmark}
+case "$PAIR_PROFILE" in
+	no-raid6-benchmark)
+		DEFAULT_OUTPUT=$ROOT/kernel/work/bird-no-raid6-benchmark-pair-20260830
+		DEFAULT_KERNEL_A=$ROOT/kernel/work/rocknix-source-irq-buttons-no-raid6-benchmark-a/build/Image
+		DEFAULT_KERNEL_B=$ROOT/kernel/work/rocknix-source-irq-buttons-no-raid6-benchmark-b/build/Image
+		KERNEL_SHA=b1d5eba80c2a9b07d4c99057fa9817403bd5de4e8f1dfc4cfcc5064443b6386e
+		BOUND_TRANSFORM=$ROOT/kernel/rocknix/transform-uboot-no-raid6-benchmark-kernel.py
+		BOUND_TRANSFORM_SHA=61a0b4bd9df23f33ad8be1f8bfa880e2193666f6c9879f6934784514da2f7bcb
+		VERIFIER=$ROOT/kernel/rocknix/verify-no-raid6-benchmark-pair-build.py
+		VERIFIER_SHA=20216c5047503134b3952fe181b2adf0c095fdb04f913304adbb6fd9f4062f16
+		PAIR_LABEL=no-RAID6-benchmark
+		;;
+	deferred-wifi)
+		DEFAULT_OUTPUT=$ROOT/kernel/work/bird-deferred-wifi-pair-20260830-v3
+		DEFAULT_KERNEL_A=$ROOT/kernel/work/rocknix-source-deferred-wifi-a/build/Image
+		DEFAULT_KERNEL_B=$ROOT/kernel/work/rocknix-source-deferred-wifi-b/build/Image
+		KERNEL_SHA=efc9de3ca0ee03191f2df48ed87467f2a295537dd5ef09cf2932500b0a46f8e4
+		BOUND_TRANSFORM=$ROOT/kernel/rocknix/transform-uboot-deferred-wifi-kernel.py
+		BOUND_TRANSFORM_SHA=1cb17a248dbd6e1722b399c0682a6f2172e14bda33f4c504e089046fa1acc581
+		VERIFIER=$ROOT/kernel/rocknix/verify-deferred-wifi-pair-build.py
+		VERIFIER_SHA=09e786c6994ea31bae139307fe3608131e0ae4a0a3e9a466fa04db96e0ebdce9
+		PAIR_LABEL=deferred-Wi-Fi
+		;;
+	*) printf 'error: unknown BIRD_BOOT_PAIR_PROFILE: %s\n' "$PAIR_PROFILE" >&2; exit 1 ;;
+esac
+OUTPUT=${OUTPUT:-$DEFAULT_OUTPUT}
+KERNEL_A=${KERNEL_A:-$DEFAULT_KERNEL_A}
+KERNEL_B=${KERNEL_B:-$DEFAULT_KERNEL_B}
 BASE=$ROOT/kernel/work/bird-uboot-inplace-handoff-20260701
 DOCKER=${DOCKER:-docker}
 PYTHON=${PYTHON:-python3}
@@ -40,8 +66,8 @@ require_hash "$SOURCE" 03bb43c58d2343ee48dd191e0f181f0108425b179d84519add3a97707
 require_hash "$PATCH" 596674be315fbb74f670cf04639f10ea2b5629fd9eb72d944084a04cd0e5fab5
 require_hash "$DEFCONFIG" 24013855fefbe911cf664301940e8b6b514e4961ed414f324dae491f56d6bfe4
 require_hash "$BL31" 431009313966f9a6579ae5741976c15082071b387a3da82a8dee985383e97673
-require_hash "$KERNEL_A" b1d5eba80c2a9b07d4c99057fa9817403bd5de4e8f1dfc4cfcc5064443b6386e
-require_hash "$KERNEL_B" b1d5eba80c2a9b07d4c99057fa9817403bd5de4e8f1dfc4cfcc5064443b6386e
+require_hash "$KERNEL_A" "$KERNEL_SHA"
+require_hash "$KERNEL_B" "$KERNEL_SHA"
 require_hash "$LZ4" 4fef8dd687478d1a8dcf4e2db25defd2daf76f7e0bb3478f023b738f9501f48c
 [ "$("$LZ4" --version 2>&1)" = '*** lz4 v1.10.0 64-bit multithread, by Yann Collet ***' ] || fail 'LZ4 version authority changed'
 
@@ -53,12 +79,10 @@ INPLACE_TRANSFORM=$ROOT/kernel/rocknix/transform-uboot-inplace-handoff.py
 SIMPLE_TRANSFORM=$ROOT/kernel/rocknix/transform-uboot-simple-parser.py
 FIXED_TRANSFORM=$ROOT/kernel/rocknix/transform-uboot-fixed-read-path.py
 COMMAND_TRANSFORM=$ROOT/kernel/rocknix/transform-uboot-fixed-command-closure.py
-BOUND_TRANSFORM=$ROOT/kernel/rocknix/transform-uboot-no-raid6-benchmark-kernel.py
 TIMESTAMP_PATCHER=$ROOT/kernel/rocknix/patch-fit-root-timestamp.py
-VERIFIER=$ROOT/kernel/rocknix/verify-no-raid6-benchmark-pair-build.py
-require_hash "$BOUND_TRANSFORM" 61a0b4bd9df23f33ad8be1f8bfa880e2193666f6c9879f6934784514da2f7bcb
+require_hash "$BOUND_TRANSFORM" "$BOUND_TRANSFORM_SHA"
 require_hash "$TIMESTAMP_PATCHER" 8a4aad7d7dcee9b5d058b1f25587bd1d3998049c5425c1a3c4813ddadfe6e79e
-require_hash "$VERIFIER" 20216c5047503134b3952fe181b2adf0c095fdb04f913304adbb6fd9f4062f16
+require_hash "$VERIFIER" "$VERIFIER_SHA"
 
 IMAGE_ID=$($DOCKER image inspect "$IMAGE" --format '{{.Id}}' 2>/dev/null) || fail 'pinned Docker image unavailable'
 [ "$IMAGE_ID" = sha256:a360f7280ff4b87f2614dd6085336df287c3bc6f2fccd87c7f5673f5cef1daed ] || fail 'Docker image identity changed'
@@ -127,7 +151,7 @@ cp /tmp/spl.bin "/result/$name/spl/sunxi-spl.bin"
 cp .config "/result/$name/build.config"'
 
 for PASS in a b; do
-	printf 'Building isolated no-RAID6-benchmark U-Boot pass: %s\n' "$PASS"
+	printf 'Building isolated %s U-Boot pass: %s\n' "$PAIR_LABEL" "$PASS"
 	"$DOCKER" run --rm --init --network none --user "$(id -u):$(id -g)" \
 		--read-only --tmpfs /tmp:rw,exec,nosuid,size=2g \
 		-v "$TOOLCHAIN_VOLUME:/work:ro" -v "$WORK/input:/input:ro" \
@@ -142,4 +166,4 @@ done
 mv "$WORK/publish" "$OUTPUT"
 trap - EXIT HUP INT TERM
 cleanup
-printf 'Verified non-deploying no-RAID6-benchmark boot pair: %s\n' "$OUTPUT"
+printf 'Verified non-deploying %s boot pair: %s\n' "$PAIR_LABEL" "$OUTPUT"

@@ -583,6 +583,11 @@ if "$COMMAND" --profile --no-raid6-benchmark-kernel \
 	fail 'no-RAID6-benchmark kernel unexpectedly accepted profile mode'
 fi
 grep -q -- 'source-kernel authorities require --release' "$TMP/no-raid6-profile.err"
+if "$COMMAND" --profile --deferred-wifi-kernel \
+	>"$TMP/deferred-wifi-profile.out" 2>"$TMP/deferred-wifi-profile.err"; then
+	fail 'deferred-Wi-Fi kernel unexpectedly accepted profile mode'
+fi
+grep -q -- 'source-kernel authorities require --release' "$TMP/deferred-wifi-profile.err"
 if "$COMMAND" --release --fixed-input-kernel \
 	>"$TMP/fixed-input.out" 2>"$TMP/fixed-input.err"; then
 	fail 'rejected fixed-input kernel option remains accepted'
@@ -629,6 +634,11 @@ if "$COMMAND" --release --irq-buttons-lz4-kernel --no-raid6-benchmark-kernel \
 	fail 'accepted IRQ and no-RAID6-benchmark authorities were accepted together'
 fi
 grep -q -- 'choose only one source-kernel authority' "$TMP/no-raid6-authority.err"
+if "$COMMAND" --release --no-raid6-benchmark-kernel --deferred-wifi-kernel \
+	>"$TMP/deferred-wifi-authority.out" 2>"$TMP/deferred-wifi-authority.err"; then
+	fail 'accepted Stage 11 and deferred-Wi-Fi authorities were accepted together'
+fi
+grep -q -- 'choose only one source-kernel authority' "$TMP/deferred-wifi-authority.err"
 if "$COMMAND" --release --release-id '../unsafe' >"$TMP/id.out" 2>"$TMP/id.err"; then
 	fail 'unsafe release ID was accepted'
 fi

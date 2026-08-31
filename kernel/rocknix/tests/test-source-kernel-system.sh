@@ -7,6 +7,8 @@ BUILDER=$ROOT/kernel/rocknix/build-source-kernel-system.sh
 SOURCE_BUILDER=$ROOT/kernel/rocknix/build-source-reference.sh
 IRQ_TRANSFORM=$ROOT/kernel/rocknix/transform-joypad-irq.py
 IRQ_TRANSFORM_TEST=$ROOT/kernel/rocknix/tests/test-joypad-irq-transform.py
+WIFI_TRANSFORM=$ROOT/kernel/rocknix/transform-sunxi-mmc-deferred-wifi.py
+WIFI_TRANSFORM_TEST=$ROOT/kernel/rocknix/tests/test-sunxi-mmc-deferred-wifi-transform.py
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/bird-source-system-test.XXXXXX")
 trap 'rm -rf -- "$TMP"' EXIT HUP INT TERM
 
@@ -46,9 +48,11 @@ grep -Fq 'installed source module inventory mismatch' "$TMP/missing.out" || \
 
 sh -n "$BUILDER" || fail 'source SYSTEM builder shell syntax failed'
 sh -n "$SOURCE_BUILDER" || fail 'source kernel builder shell syntax failed'
-python3 -m py_compile "$IRQ_TRANSFORM" "$IRQ_TRANSFORM_TEST" || \
+python3 -m py_compile "$IRQ_TRANSFORM" "$IRQ_TRANSFORM_TEST" \
+	"$WIFI_TRANSFORM" "$WIFI_TRANSFORM_TEST" || \
 	fail 'IRQ button transform Python syntax failed'
 python3 "$IRQ_TRANSFORM_TEST" || fail 'IRQ button transform contract failed'
+python3 "$WIFI_TRANSFORM_TEST" || fail 'deferred Wi-Fi transform contract failed'
 grep -Fq 'rocknix-official-initramfs-20260701/rocknix-initramfs.cpio' \
 	"$SOURCE_BUILDER" || fail 'source kernel no longer requires the official embedded initramfs'
 grep -Fq '5d2b7b247bfa78db7b1fad490e0c5cdc70ec31af18cac743aee4dc1027d66045' \
@@ -111,6 +115,12 @@ grep -Fq 'raid6: skipped pq benchmark and selected %s' "$SOURCE_BUILDER" || \
 	fail 'deterministic RAID6 selection-path gate missing'
 grep -Fq 'raid6-pq-selected' "$SOURCE_BUILDER" || \
 	fail 'fixed RAID6 selection authority record missing'
+grep -Fq 'DEFER_WIFI_PRESCAN_POWERUP requires SKIP_RAID6_BENCHMARK=1' \
+	"$SOURCE_BUILDER" || fail 'deferred Wi-Fi candidate sequencing gate missing'
+grep -Fq '/bird-transform-sunxi-mmc-deferred-wifi.py' "$SOURCE_BUILDER" || \
+	fail 'deferred Wi-Fi transform invocation missing'
+grep -Fq 'wifi-sdio-power-policy' "$SOURCE_BUILDER" || \
+	fail 'deferred Wi-Fi authority record missing'
 grep -Fq 'source module archive digest changed' "$BUILDER" || \
 	fail 'module archive digest gate missing'
 grep -Fq 'isolated source SYSTEM $FILE differs' "$BUILDER" || \

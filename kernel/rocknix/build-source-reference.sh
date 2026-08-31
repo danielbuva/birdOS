@@ -23,7 +23,9 @@ CHANGED_INPUT_SYNC=${CHANGED_INPUT_SYNC:-0}
 FIXED_GPIO_FASTPATH=${FIXED_GPIO_FASTPATH:-0}
 IRQ_GPIO_BUTTONS=${IRQ_GPIO_BUTTONS:-0}
 SKIP_RAID6_BENCHMARK=${SKIP_RAID6_BENCHMARK:-0}
+DEFER_WIFI_PRESCAN_POWERUP=${DEFER_WIFI_PRESCAN_POWERUP:-0}
 IRQ_GPIO_TRANSFORM=$ROOT/kernel/rocknix/transform-joypad-irq.py
+DEFER_WIFI_TRANSFORM=$ROOT/kernel/rocknix/transform-sunxi-mmc-deferred-wifi.py
 JOBS=${JOBS:-4}
 
 ROCKNIX_COMMIT=3e4ee5852e6ca5ea73a38369d2639fad2262648b
@@ -88,7 +90,15 @@ case "$SKIP_RAID6_BENCHMARK" in
 esac
 [ "$SKIP_RAID6_BENCHMARK" -eq 0 ] || [ "$IRQ_GPIO_BUTTONS" -eq 1 ] || \
 	fail 'SKIP_RAID6_BENCHMARK requires IRQ_GPIO_BUTTONS=1'
+case "$DEFER_WIFI_PRESCAN_POWERUP" in
+	0 | 1) ;;
+	*) fail 'DEFER_WIFI_PRESCAN_POWERUP must be 0 or 1' ;;
+esac
+[ "$DEFER_WIFI_PRESCAN_POWERUP" -eq 0 ] || \
+	[ "$SKIP_RAID6_BENCHMARK" -eq 1 ] || \
+	fail 'DEFER_WIFI_PRESCAN_POWERUP requires SKIP_RAID6_BENCHMARK=1'
 [ -f "$IRQ_GPIO_TRANSFORM" ] || fail 'joypad IRQ transform helper is missing'
+[ -f "$DEFER_WIFI_TRANSFORM" ] || fail 'sunxi MMC transform helper is missing'
 [ -d "$ROCKNIX_SOURCE/.git" ] || fail "ROCKNIX source missing: $ROCKNIX_SOURCE"
 [ "$(git -C "$ROCKNIX_SOURCE" rev-parse HEAD)" = "$ROCKNIX_COMMIT" ] || \
 	fail 'ROCKNIX source commit mismatch'
@@ -156,12 +166,14 @@ set -- docker run --rm --platform linux/arm64 \
 	-e FIXED_GPIO_FASTPATH="$FIXED_GPIO_FASTPATH" \
 	-e IRQ_GPIO_BUTTONS="$IRQ_GPIO_BUTTONS" \
 	-e SKIP_RAID6_BENCHMARK="$SKIP_RAID6_BENCHMARK" \
+	-e DEFER_WIFI_PRESCAN_POWERUP="$DEFER_WIFI_PRESCAN_POWERUP" \
 	-e LOCALVERSION= \
 	-v "$ROCKNIX_SOURCE:/rocknix:ro" \
 	-v "$JOYPAD_SOURCE:/rocknix-joypad:ro" \
 	-v "$FIRMWARE_SOURCE:/shipping-firmware:ro" \
 	-v "$SHIPPING_KERNEL:/shipping-KERNEL:ro" \
 	-v "$IRQ_GPIO_TRANSFORM:/bird-transform-joypad-irq.py:ro" \
+	-v "$DEFER_WIFI_TRANSFORM:/bird-transform-sunxi-mmc-deferred-wifi.py:ro" \
 	-v "$BUILD_OUTPUT:/out"
 if [ -n "$INITRAMFS_ARCHIVE" ]; then
 	set -- "$@" -v "$INITRAMFS_ARCHIVE:/bird-initramfs.cpio:ro"
@@ -195,6 +207,15 @@ set -- "$@" "$IMAGE" sh -eu -c '
 		rsync -a \
 			/rocknix/projects/ROCKNIX/devices/H700/linux/dts/ \
 			arch/arm64/boot/dts/
+
+		if [ "$DEFER_WIFI_PRESCAN_POWERUP" = 1 ]; then
+			python3 /bird-transform-sunxi-mmc-deferred-wifi.py \
+				drivers/mmc/host/sunxi-mmc.c
+			[ "$(grep -Fc "MMC_CAP2_NO_PRESCAN_POWERUP" \
+				drivers/mmc/host/sunxi-mmc.c)" -eq 1 ]
+			[ "$(grep -Fc "MMC_CAP_NONREMOVABLE) && mmc->pwrseq" \
+				drivers/mmc/host/sunxi-mmc.c)" -eq 1 ]
+		fi
 
 		# RG34XX-SP is the only target. In the Stage 9 candidate, link the
 		# already pinned H700 input driver into the kernel so device-init can
@@ -771,6 +792,10 @@ fi
 	if [ "$SKIP_RAID6_BENCHMARK" = 1 ]; then
 		printf 'raid6-pq-policy\tfixed-priority-no-benchmark\n'
 		printf 'raid6-pq-selected\tneonx8-first-valid\n'
+	fi
+	if [ "$DEFER_WIFI_PRESCAN_POWERUP" = 1 ]; then
+		printf 'wifi-sdio-power-policy\tdeferred-mmc-rescan\n'
+		printf 'wifi-sdio-fixed-signature\tnon-removable+pwrseq\n'
 	fi
 	printf 'shipping-kernel-sha256\t%s\n' "$SHIPPING_KERNEL_SHA"
 	printf 'shipping-dtb-sha256\t%s\n' "$SHIPPING_DTB_SHA"

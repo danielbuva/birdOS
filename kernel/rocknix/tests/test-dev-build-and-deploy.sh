@@ -151,6 +151,7 @@ for SOURCE_PATH in \
 	kernel/rocknix/build-uboot-bootstage-fdt.sh \
 	kernel/rocknix/build-lz4-kernel-candidate.sh \
 	kernel/rocknix/build-no-raid6-benchmark-pair.sh \
+	kernel/rocknix/build-source-reference.sh \
 	kernel/rocknix/build-stock-root-compat.sh \
 	kernel/rocknix/build-stock-root-early-initramfs.sh \
 	kernel/rocknix/inventory-bird-boot-volume.py \
@@ -163,12 +164,15 @@ for SOURCE_PATH in \
 	kernel/rocknix/transform-uboot-fixed-command-closure.py \
 	kernel/rocknix/transform-uboot-lz4-kernel.py \
 	kernel/rocknix/transform-uboot-no-raid6-benchmark-kernel.py \
+	kernel/rocknix/transform-uboot-deferred-wifi-kernel.py \
+	kernel/rocknix/transform-sunxi-mmc-deferred-wifi.py \
 	kernel/rocknix/transform-uboot-no-heap-clear.py \
 	kernel/rocknix/transform-uboot-bootstage-fdt.py \
 	kernel/rocknix/transform-uboot-environment-nowhere.py \
 	kernel/rocknix/transform-uboot-early-led.py \
 	kernel/rocknix/transform-uboot-status-led.py \
 	kernel/rocknix/verify-selected-bird-release.py \
+	kernel/rocknix/verify-deferred-wifi-pair-build.py \
 	kernel/rocknix/verify-uboot-direct-extlinux-build.py \
 	kernel/rocknix/verify-uboot-early-led-build.py \
 	kernel/rocknix/verify-uboot-environment-nowhere-build.py \
@@ -211,6 +215,10 @@ cp -p "$SOURCE_ROOT/kernel/rocknix/tests/test-bird-local-binary.sh" \
 	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-bootstage-fdt-build.py" \
 	"$SOURCE_ROOT/kernel/rocknix/tests/test-lz4-kernel-candidate.py" \
 	"$SOURCE_ROOT/kernel/rocknix/tests/test-no-raid6-benchmark-pair-build.py" \
+	"$SOURCE_ROOT/kernel/rocknix/tests/test-deferred-wifi-pair-build.py" \
+	"$SOURCE_ROOT/kernel/rocknix/tests/test-sunxi-mmc-deferred-wifi-transform.py" \
+	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-deferred-wifi-kernel-transform.py" \
+	"$SOURCE_ROOT/kernel/rocknix/tests/test-source-kernel-system.sh" \
 	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-environment-nowhere-transform.py" \
 	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-early-led-transform.py" \
 	"$SOURCE_ROOT/kernel/rocknix/tests/test-uboot-status-led-build.py" \
@@ -638,7 +646,7 @@ sys.modules[spec.name] = module
 assert spec.loader is not None
 spec.loader.exec_module(module)
 assert module.all_component_groups() == set(module.COMPONENT_HOST_TESTS)
-assert len(module.BROAD_PRODUCT_HOST_TESTS) == 67
+assert len(module.BROAD_PRODUCT_HOST_TESTS) == 70
 assert "test-dev-build-and-deploy.sh" in module.BROAD_PRODUCT_HOST_TESTS
 assert module.COMPONENT_HOST_TESTS["runtime:capture-boot-state.sh"] == (
     "test-stock-root-unit-ordering.sh",
@@ -647,6 +655,7 @@ expected_host_only = {
     "firmware/mac-install-bird-uboot.sh": ("test-mac-install-bird-uboot.sh",),
     "firmware/mac-install-no-raid6-benchmark-pair.sh": (
         "test-no-raid6-benchmark-pair-build.py",
+        "test-deferred-wifi-pair-build.py",
     ),
     "kernel/rocknix/stock-root/capture-uboot-bootstage.sh": (
         "test-mac-install-bird-uboot.sh",
@@ -678,6 +687,7 @@ expected_host_only = {
     ),
     "kernel/rocknix/build-no-raid6-benchmark-pair.sh": (
         "test-no-raid6-benchmark-pair-build.py",
+        "test-deferred-wifi-pair-build.py",
     ),
     "kernel/rocknix/inventory-bird-boot-volume.py": (
         "test-bird-boot-volume-inventory.py",
@@ -712,6 +722,14 @@ expected_host_only = {
     ),
     "kernel/rocknix/transform-uboot-no-raid6-benchmark-kernel.py": (
         "test-no-raid6-benchmark-pair-build.py",
+    ),
+    "kernel/rocknix/transform-uboot-deferred-wifi-kernel.py": (
+        "test-uboot-deferred-wifi-kernel-transform.py",
+        "test-deferred-wifi-pair-build.py",
+    ),
+    "kernel/rocknix/transform-sunxi-mmc-deferred-wifi.py": (
+        "test-sunxi-mmc-deferred-wifi-transform.py",
+        "test-source-kernel-system.sh",
     ),
     "kernel/rocknix/transform-uboot-no-heap-clear.py": (
         "test-uboot-no-heap-clear-transform.py",
@@ -777,6 +795,9 @@ expected_host_only = {
     ),
     "kernel/rocknix/verify-no-raid6-benchmark-pair-build.py": (
         "test-no-raid6-benchmark-pair-build.py",
+    ),
+    "kernel/rocknix/verify-deferred-wifi-pair-build.py": (
+        "test-deferred-wifi-pair-build.py",
     ),
     "kernel/rocknix/verify-uboot-lz4-pair-build.py": (
         "test-uboot-lz4-pair-build.py",

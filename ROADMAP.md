@@ -2184,6 +2184,10 @@ the immutable priority order rather than inventing another hidden sequence:
 
 1. Profile the remaining power-to-usable Linux path and pursue only attributed
    work while preserving the accepted 672 ms canonical result.
+   The current host-gated candidate moves the fixed Wi-Fi SDIO controller's
+   retained 200 ms power sequence from synchronous MMC prescan to its queued
+   rescan. Two kernels, LZ4 frames and paired U-Boot builds reproduce exactly;
+   RG34XX-SP timing and Wi-Fi availability remain pending.
 2. Measure and improve button-to-photon navigation plus common content launch,
    close and interactive menu-return transitions.
 3. Measure calibrated idle energy and unnecessary wakeups; separately diagnose

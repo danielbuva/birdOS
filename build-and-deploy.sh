@@ -31,7 +31,7 @@ ROTATION_SELECTOR_TEMP=
 usage() {
 	cat <<'EOF'
 Usage:
-  ./build-and-deploy.sh --release [--source-kernel-parity|--builtin-input-kernel|--single-gpio-read-kernel|--single-input-sync-kernel|--changed-input-sync-kernel|--fixed-gpio-fastpath-kernel|--irq-buttons-kernel|--irq-buttons-lz4-kernel|--no-raid6-benchmark-kernel] [--release-id ID] [--dry-run]
+  ./build-and-deploy.sh --release [--source-kernel-parity|--builtin-input-kernel|--single-gpio-read-kernel|--single-input-sync-kernel|--changed-input-sync-kernel|--fixed-gpio-fastpath-kernel|--irq-buttons-kernel|--irq-buttons-lz4-kernel|--no-raid6-benchmark-kernel|--deferred-wifi-kernel] [--release-id ID] [--dry-run]
   ./build-and-deploy.sh --profile [--release-id ID] [--dry-run]
   ./build-and-deploy.sh --help
 
@@ -72,6 +72,10 @@ Options:
   --no-raid6-benchmark-kernel
                   Build the Stage 11 fixed-priority RAID6 PQ kernel and its
                   exact paired LZ4 frame. Valid only with --release.
+  --deferred-wifi-kernel
+                  Build the fixed RG34XX-SP kernel that moves the retained
+                  Wi-Fi SDIO power sequence off the /init critical path. Valid
+                  only with --release.
   --dry-run       Perform read-only preflight and print the selected commands.
   --help          Show this help text.
 
@@ -169,6 +173,11 @@ while [ "$#" -gt 0 ]; do
 			[ "$KERNEL_AUTHORITY" = stock ] || \
 				fail 'choose only one source-kernel authority'
 			KERNEL_AUTHORITY=source-no-raid6-benchmark
+			;;
+		--deferred-wifi-kernel)
+			[ "$KERNEL_AUTHORITY" = stock ] || \
+				fail 'choose only one source-kernel authority'
+			KERNEL_AUTHORITY=source-deferred-wifi
 			;;
 		--release-id)
 			[ "$#" -ge 2 ] || fail '--release-id requires a value'
@@ -336,12 +345,20 @@ if [ "$KERNEL_AUTHORITY" = source-no-raid6-benchmark ]; then
 	SOURCE_KERNEL_SYSTEM=$ROOT/kernel/work/rocknix-source-builtin-joypad-system/SYSTEM
 	SOURCE_KERNEL_AUTHORITY_RECORD=$ROOT/kernel/rocknix/source-kernel-irq-buttons-no-raid6-benchmark-lz4.tsv
 fi
+if [ "$KERNEL_AUTHORITY" = source-deferred-wifi ]; then
+	SOURCE_KERNEL_BUILD=$ROOT/kernel/work/rocknix-source-deferred-wifi-a/build
+	SOURCE_KERNEL_SYSTEM=$ROOT/kernel/work/rocknix-source-builtin-joypad-system/SYSTEM
+	SOURCE_KERNEL_AUTHORITY_RECORD=$ROOT/kernel/rocknix/source-kernel-irq-buttons-no-raid6-deferred-wifi-lz4.tsv
+fi
 SOURCE_KERNEL_PAYLOAD=$SOURCE_KERNEL_BUILD/Image
 if [ "$KERNEL_AUTHORITY" = source-irq-buttons-lz4 ]; then
 	SOURCE_KERNEL_PAYLOAD=$ROOT/kernel/work/bird-kernel-lz4-irq-candidate-20260813/KERNEL.lz4
 fi
 if [ "$KERNEL_AUTHORITY" = source-no-raid6-benchmark ]; then
 	SOURCE_KERNEL_PAYLOAD=$ROOT/kernel/work/bird-no-raid6-benchmark-pair-20260830/KERNEL.lz4
+fi
+if [ "$KERNEL_AUTHORITY" = source-deferred-wifi ]; then
+	SOURCE_KERNEL_PAYLOAD=$ROOT/kernel/work/bird-deferred-wifi-pair-20260830-v3/KERNEL.lz4
 fi
 INIT_BUSYBOX=${INIT_BUSYBOX:-$ROOT/kernel/work/rocknix-official-initramfs-20260701/ramdisk/usr/bin/busybox}
 PORTMASTER_ARCHIVE=${PORTMASTER_ARCHIVE:-$SYSTEM_TREE/usr/config/PortMaster/release/PortMaster.zip}
@@ -805,6 +822,13 @@ if [ "$KERNEL_AUTHORITY" != stock ]; then
 		EXPECTED_SOURCE_SYSTEM_SHA=57210b5cb6072bf1e2b81dea31df76f9b5d4aab5534d7d3b668fdfdc51a1c527
 		EXPECTED_SOURCE_AUTHORITY_SHA=837f9237ed33393b3fd70af12ed8e989b1c20c56653721b9b849509698658a0a
 		;;
+	source-deferred-wifi)
+		EXPECTED_SOURCE_KERNEL_SHA=efc9de3ca0ee03191f2df48ed87467f2a295537dd5ef09cf2932500b0a46f8e4
+		EXPECTED_SOURCE_MODULES_SHA=56bd291210ef47a020c3c6dfcac6f6987135ef4bf20f22435138acafb6107211
+		EXPECTED_SOURCE_PARITY_SHA=e141b7ba1b6fbdf21ee084198f63c116b5f154e8ccb2edd31e9b8e1426c63ed4
+		EXPECTED_SOURCE_SYSTEM_SHA=57210b5cb6072bf1e2b81dea31df76f9b5d4aab5534d7d3b668fdfdc51a1c527
+		EXPECTED_SOURCE_AUTHORITY_SHA=9469c0832d135340ff7839244dbe9ef42add6edb7f66b034a4a11e434fd14041
+		;;
 	esac
 	EXPECTED_SOURCE_PAYLOAD_SHA=$EXPECTED_SOURCE_KERNEL_SHA
 	if [ "$KERNEL_AUTHORITY" = source-irq-buttons-lz4 ]; then
@@ -812,6 +836,9 @@ if [ "$KERNEL_AUTHORITY" != stock ]; then
 	fi
 	if [ "$KERNEL_AUTHORITY" = source-no-raid6-benchmark ]; then
 		EXPECTED_SOURCE_PAYLOAD_SHA=2fb550062d3fbd69b433f0aa79d892b8b3a55ee048cf861874b90289a932d77a
+	fi
+	if [ "$KERNEL_AUTHORITY" = source-deferred-wifi ]; then
+		EXPECTED_SOURCE_PAYLOAD_SHA=05f3b40c4d1c2b4255745b9814052b9e1d091f22f9bd1499a5841b41b24771bc
 	fi
 	[ "$(sha256 "$SOURCE_KERNEL_BUILD/Image")" = "$EXPECTED_SOURCE_KERNEL_SHA" ] && \
 	[ "$(sha256 "$SOURCE_KERNEL_PAYLOAD")" = "$EXPECTED_SOURCE_PAYLOAD_SHA" ] && \

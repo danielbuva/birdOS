@@ -299,6 +299,24 @@ Direct restoration to the accepted fixed-command-closure prefix is:
   kernel/work/bird-no-raid6-benchmark-pair-20260830
 ```
 
+Why the Stage 11 Wi-Fi startup existed: generic MMC prescan powers a
+non-removable SDIO device before its queued card detection, and the fixed
+RTL8821CS sequence deliberately waits 200 ms after power-on. Why change: the
+menu does not require networking, so the deferred-Wi-Fi candidate lets the
+existing MMC rescan perform that unchanged sequence after `/init` starts. Its
+paired U-Boot differs from accepted Stage 11 only in the three ASCII bytes of
+the exact compressed-frame bound. Install or restore that one-sector pair with:
+
+```sh
+BIRD_BOOT_PAIR_PROFILE=deferred-wifi \
+  ./firmware/mac-install-no-raid6-benchmark-pair.sh \
+  /dev/diskN --install kernel/work/bird-deferred-wifi-pair-20260830-v3
+
+BIRD_BOOT_PAIR_PROFILE=deferred-wifi \
+  ./firmware/mac-install-no-raid6-benchmark-pair.sh \
+  /dev/diskN --restore-stage11 kernel/work/bird-deferred-wifi-pair-20260830-v3
+```
+
 If a bounded raw write is externally interrupted, return the card to the same
 host and use the successor authority to restore the shipping baseline:
 

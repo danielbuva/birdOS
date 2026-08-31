@@ -8,7 +8,43 @@ umask 077
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 DEVICE=${1:-}
 ACTION=${2:---install}
-AUTHORITY=${3:-$ROOT/kernel/work/bird-no-raid6-benchmark-pair-20260830}
+PAIR_PROFILE=${BIRD_BOOT_PAIR_PROFILE:-no-raid6-benchmark}
+case "$PAIR_PROFILE" in
+	no-raid6-benchmark)
+		DEFAULT_AUTHORITY=$ROOT/kernel/work/bird-no-raid6-benchmark-pair-20260830
+		RESTORE_ACTION=--restore-fixed-command-closure
+		BASE_PREFIX_SHA=c156973946fd1f1fcb581eeb669abb638ce554cf16356db60428ba1ebb3a9c1b
+		TARGET_PREFIX_SHA=c1a390a9c674029a21caf12eaec8d7b788dbe700b20cd7729276c9cf03214d32
+		BASE_UBOOT_SHA=918d9b8a0dd89ffb291a866eefa630c796ea7e3199ba92ce9664e6a72500161f
+		TARGET_UBOOT_SHA=5352c2f635b1f741c8d1fcfb647e9ce2ea570311cbd8b476944d71338654f2f0
+		VERIFIER=$ROOT/kernel/rocknix/verify-no-raid6-benchmark-pair-build.py
+		VERIFIER_SHA=20216c5047503134b3952fe181b2adf0c095fdb04f913304adbb6fd9f4062f16
+		BASE_PREFIX_FILE=fixed-command-closure-base-prefix-16m.bin
+		TARGET_PREFIX_FILE=no-raid6-benchmark-pair-prefix-16m.bin
+		BASE_UBOOT_FILE=fixed-command-closure-base.bin
+		TARGET_UBOOT_FILE=no-raid6-benchmark-pair.bin
+		TARGET_DESCRIPTION='no-RAID6-benchmark paired U-Boot'
+		BASE_DESCRIPTION='accepted fixed-command-closure U-Boot'
+		;;
+	deferred-wifi)
+		DEFAULT_AUTHORITY=$ROOT/kernel/work/bird-deferred-wifi-pair-20260830-v3
+		RESTORE_ACTION=--restore-stage11
+		BASE_PREFIX_SHA=c1a390a9c674029a21caf12eaec8d7b788dbe700b20cd7729276c9cf03214d32
+		TARGET_PREFIX_SHA=b1a27dda2742c8982be848aef35db1f8e340c0feb24aaeeca94028d10b02ae2d
+		BASE_UBOOT_SHA=5352c2f635b1f741c8d1fcfb647e9ce2ea570311cbd8b476944d71338654f2f0
+		TARGET_UBOOT_SHA=d0a9fcab2c7908c44febe1d387d99dc1916ff0d6b6dcb4a398c7df77a9a7a3e8
+		VERIFIER=$ROOT/kernel/rocknix/verify-deferred-wifi-pair-build.py
+		VERIFIER_SHA=09e786c6994ea31bae139307fe3608131e0ae4a0a3e9a466fa04db96e0ebdce9
+		BASE_PREFIX_FILE=stage11-no-raid6-benchmark-prefix-16m.bin
+		TARGET_PREFIX_FILE=deferred-wifi-pair-prefix-16m.bin
+		BASE_UBOOT_FILE=stage11-no-raid6-benchmark.bin
+		TARGET_UBOOT_FILE=deferred-wifi-pair.bin
+		TARGET_DESCRIPTION='deferred-Wi-Fi paired U-Boot'
+		BASE_DESCRIPTION='accepted Stage 11 U-Boot'
+		;;
+	*) printf 'error: unknown BIRD_BOOT_PAIR_PROFILE: %s\n' "$PAIR_PROFILE" >&2; exit 1 ;;
+esac
+AUTHORITY=${3:-$DEFAULT_AUTHORITY}
 BIRD=${BIRD:-/Volumes/BIRD}
 DATA=${DATA:-/Volumes/BIRD-DATA}
 GDD=${GDD:-/opt/homebrew/bin/gdd}
@@ -17,12 +53,6 @@ PREFIX_BYTES=16777216
 SECTOR_BYTES=512
 SECTOR_INDEX=571
 SECTOR_OFFSET=292352
-BASE_PREFIX_SHA=c156973946fd1f1fcb581eeb669abb638ce554cf16356db60428ba1ebb3a9c1b
-TARGET_PREFIX_SHA=c1a390a9c674029a21caf12eaec8d7b788dbe700b20cd7729276c9cf03214d32
-BASE_UBOOT_SHA=918d9b8a0dd89ffb291a866eefa630c796ea7e3199ba92ce9664e6a72500161f
-TARGET_UBOOT_SHA=5352c2f635b1f741c8d1fcfb647e9ce2ea570311cbd8b476944d71338654f2f0
-VERIFIER=$ROOT/kernel/rocknix/verify-no-raid6-benchmark-pair-build.py
-VERIFIER_SHA=20216c5047503134b3952fe181b2adf0c095fdb04f913304adbb6fd9f4062f16
 INVENTORY=$ROOT/kernel/rocknix/inventory-bird-boot-volume.py
 VERIFY_WORK=
 MOUNTED=1
@@ -35,7 +65,7 @@ regular() { [ -f "$1" ] && [ ! -L "$1" ]; }
 
 case "$DEVICE" in /dev/disk[0-9]*) ;; *) fail 'first argument must be a whole /dev/diskN device' ;; esac
 case "${DEVICE#/dev/disk}" in *[!0-9]*|'') fail 'partition devices and unsafe disk names are refused' ;; esac
-case "$ACTION" in --install|--restore-fixed-command-closure) ;; *) fail 'action must be --install or --restore-fixed-command-closure' ;; esac
+case "$ACTION" in --install|"$RESTORE_ACTION") ;; *) fail "action must be --install or $RESTORE_ACTION" ;; esac
 [ "$(uname -s)" = Darwin ] || fail 'this installer is supported only on macOS'
 command -v "$GDD" >/dev/null 2>&1 || fail 'GNU dd is required'
 regular "$VERIFIER" && [ "$(sha256 "$VERIFIER")" = "$VERIFIER_SHA" ] || fail 'boot-pair verifier identity changed'
@@ -43,10 +73,10 @@ regular "$INVENTORY" || fail 'BIRD inventory tool is missing or unsafe'
 [ -d "$AUTHORITY" ] && [ ! -L "$AUTHORITY" ] || fail 'boot-pair authority is missing or unsafe'
 python3 "$VERIFIER" --verify-output "$AUTHORITY" >/dev/null || fail 'boot-pair authority verification failed'
 
-BASE_PREFIX=$AUTHORITY/fixed-command-closure-base-prefix-16m.bin
-TARGET_PREFIX=$AUTHORITY/no-raid6-benchmark-pair-prefix-16m.bin
-BASE_UBOOT=$AUTHORITY/fixed-command-closure-base.bin
-TARGET_UBOOT=$AUTHORITY/no-raid6-benchmark-pair.bin
+BASE_PREFIX=$AUTHORITY/$BASE_PREFIX_FILE
+TARGET_PREFIX=$AUTHORITY/$TARGET_PREFIX_FILE
+BASE_UBOOT=$AUTHORITY/$BASE_UBOOT_FILE
+TARGET_UBOOT=$AUTHORITY/$TARGET_UBOOT_FILE
 regular "$BASE_PREFIX" && [ "$(stat -f %z "$BASE_PREFIX")" -eq "$PREFIX_BYTES" ] && [ "$(sha256 "$BASE_PREFIX")" = "$BASE_PREFIX_SHA" ] || fail 'accepted base prefix changed'
 regular "$TARGET_PREFIX" && [ "$(stat -f %z "$TARGET_PREFIX")" -eq "$PREFIX_BYTES" ] && [ "$(sha256 "$TARGET_PREFIX")" = "$TARGET_PREFIX_SHA" ] || fail 'target prefix changed'
 regular "$BASE_UBOOT" && [ "$(sha256 "$BASE_UBOOT")" = "$BASE_UBOOT_SHA" ] || fail 'accepted base U-Boot changed'
@@ -133,13 +163,13 @@ LOCKED=1
 validate_card
 [ "$WHOLE" = "$LOCKED_WHOLE" ] || fail 'card identity changed after acquiring its transaction lock'
 
-VERIFY_WORK=$(mktemp -d "${TMPDIR:-/tmp}/bird-no-raid6-pair-install.XXXXXX") || fail 'could not create private verification directory'
+VERIFY_WORK=$(mktemp -d "${TMPDIR:-/tmp}/bird-boot-pair-install.XXXXXX") || fail 'could not create private verification directory'
 COPYFILE_DISABLE=1 cp -R "$AUTHORITY" "$VERIFY_WORK/authority" || fail 'could not snapshot the complete boot-pair authority under lock'
 python3 "$VERIFIER" --verify-output "$VERIFY_WORK/authority" >/dev/null || fail 'snapshotted boot-pair authority verification failed'
-BASE_PREFIX=$VERIFY_WORK/authority/fixed-command-closure-base-prefix-16m.bin
-TARGET_PREFIX=$VERIFY_WORK/authority/no-raid6-benchmark-pair-prefix-16m.bin
-BASE_UBOOT=$VERIFY_WORK/authority/fixed-command-closure-base.bin
-TARGET_UBOOT=$VERIFY_WORK/authority/no-raid6-benchmark-pair.bin
+BASE_PREFIX=$VERIFY_WORK/authority/$BASE_PREFIX_FILE
+TARGET_PREFIX=$VERIFY_WORK/authority/$TARGET_PREFIX_FILE
+BASE_UBOOT=$VERIFY_WORK/authority/$BASE_UBOOT_FILE
+TARGET_UBOOT=$VERIFY_WORK/authority/$TARGET_UBOOT_FILE
 python3 "$INVENTORY" "$BIRD" >"$VERIFY_WORK/bird-before.tsv" || fail 'could not inventory BIRD before raw write'
 read_prefix "$VERIFY_WORK/before-prefix.bin" || fail 'could not snapshot the current raw prefix'
 CURRENT_SHA=$(sha256 "$VERIFY_WORK/before-prefix.bin")
@@ -148,12 +178,12 @@ if [ "$ACTION" = --install ]; then
 	EXPECTED_CURRENT_SHA=$BASE_PREFIX_SHA
 	EXPECTED_TARGET_SHA=$TARGET_PREFIX_SHA
 	SECTOR_SOURCE=$TARGET_PREFIX
-	DESCRIPTION='no-RAID6-benchmark paired U-Boot'
+	DESCRIPTION=$TARGET_DESCRIPTION
 else
 	EXPECTED_CURRENT_SHA=$TARGET_PREFIX_SHA
 	EXPECTED_TARGET_SHA=$BASE_PREFIX_SHA
 	SECTOR_SOURCE=$BASE_PREFIX
-	DESCRIPTION='accepted fixed-command-closure U-Boot'
+	DESCRIPTION=$BASE_DESCRIPTION
 fi
 if [ "$CURRENT_SHA" = "$EXPECTED_TARGET_SHA" ]; then
 	printf 'Verified %s is already installed.\n' "$DESCRIPTION"

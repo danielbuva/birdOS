@@ -71,6 +71,7 @@ OPTIONAL_SOURCE_KERNEL_INPUTS = {
     "source-kernel-irq-buttons.tsv",
     "source-kernel-irq-buttons-lz4.tsv",
     "source-kernel-irq-buttons-no-raid6-benchmark-lz4.tsv",
+    "source-kernel-irq-buttons-no-raid6-deferred-wifi-lz4.tsv",
 }
 STOCK_JOYPAD_SHA256 = "a8ac6cacfa89672fa08dec7fa02179bb108a4a2303fd5c1eb5834f916089b79b"
 SOURCE_PARITY_JOYPAD_SHA256 = "fd2ceb95f0b3bdc1d68e7182a8ac5239b5286cc277a04980e53f65e0f73d3a05"
@@ -83,6 +84,7 @@ SOURCE_FIXED_GPIO_FASTPATH_AUTHORITY_SHA256 = "c727c365941c0957d9d56994d1cc9a5c0
 SOURCE_IRQ_BUTTONS_AUTHORITY_SHA256 = "0020d161b5a2be0d8393267c3eb96794a0c2d9f82e8df5e097932216fad9e45d"
 SOURCE_IRQ_BUTTONS_LZ4_AUTHORITY_SHA256 = "250be0f922339e423cc7e100d785747b16686873a5bea357b69825dc29434b3c"
 SOURCE_NO_RAID6_BENCHMARK_AUTHORITY_SHA256 = "837f9237ed33393b3fd70af12ed8e989b1c20c56653721b9b849509698658a0a"
+SOURCE_DEFERRED_WIFI_AUTHORITY_SHA256 = "9469c0832d135340ff7839244dbe9ef42add6edb7f66b034a4a11e434fd14041"
 STATIC_BASE_BYTES = 852_848
 STATIC_BASE_SHA256 = "e6f9ca8ef4100cdf384bc2f8f3f7b902bc83cee6c4bc36e82fbc666328b382de"
 EARLY_INPUT_DIGESTS = {
@@ -180,6 +182,9 @@ KNOWN_STANDALONE_HOST_TESTS = {
     "test-mac-install-bird-uboot.sh",
     "test-mpv-controls-c.sh",
     "test-no-raid6-benchmark-pair-build.py",
+    "test-deferred-wifi-pair-build.py",
+    "test-sunxi-mmc-deferred-wifi-transform.py",
+    "test-uboot-deferred-wifi-kernel-transform.py",
     "test-portmaster-provider-manifest.py",
     "test-post-flash-transactions.sh",
     "test-stage-zero-contract.py",
@@ -238,6 +243,7 @@ HOST_ONLY_SOURCE_TESTS: dict[str, tuple[str, ...]] = {
     "firmware/mac-install-bird-uboot.sh": ("test-mac-install-bird-uboot.sh",),
     "firmware/mac-install-no-raid6-benchmark-pair.sh": (
         "test-no-raid6-benchmark-pair-build.py",
+        "test-deferred-wifi-pair-build.py",
     ),
     "kernel/rocknix/stock-root/capture-uboot-bootstage.sh": (
         "test-mac-install-bird-uboot.sh",
@@ -269,6 +275,7 @@ HOST_ONLY_SOURCE_TESTS: dict[str, tuple[str, ...]] = {
     ),
     "kernel/rocknix/build-no-raid6-benchmark-pair.sh": (
         "test-no-raid6-benchmark-pair-build.py",
+        "test-deferred-wifi-pair-build.py",
     ),
     "kernel/rocknix/inventory-bird-boot-volume.py": (
         "test-bird-boot-volume-inventory.py",
@@ -306,6 +313,14 @@ HOST_ONLY_SOURCE_TESTS: dict[str, tuple[str, ...]] = {
     ),
     "kernel/rocknix/transform-uboot-no-raid6-benchmark-kernel.py": (
         "test-no-raid6-benchmark-pair-build.py",
+    ),
+    "kernel/rocknix/transform-uboot-deferred-wifi-kernel.py": (
+        "test-uboot-deferred-wifi-kernel-transform.py",
+        "test-deferred-wifi-pair-build.py",
+    ),
+    "kernel/rocknix/transform-sunxi-mmc-deferred-wifi.py": (
+        "test-sunxi-mmc-deferred-wifi-transform.py",
+        "test-source-kernel-system.sh",
     ),
     "kernel/rocknix/transform-uboot-no-heap-clear.py": (
         "test-uboot-no-heap-clear-transform.py",
@@ -372,6 +387,9 @@ HOST_ONLY_SOURCE_TESTS: dict[str, tuple[str, ...]] = {
     ),
     "kernel/rocknix/verify-no-raid6-benchmark-pair-build.py": (
         "test-no-raid6-benchmark-pair-build.py",
+    ),
+    "kernel/rocknix/verify-deferred-wifi-pair-build.py": (
+        "test-deferred-wifi-pair-build.py",
     ),
     "kernel/rocknix/verify-uboot-lz4-pair-build.py": (
         "test-uboot-lz4-pair-build.py",
@@ -1164,6 +1182,14 @@ def early_kernel_authority(manifest: Manifest) -> str:
         == SOURCE_NO_RAID6_BENCHMARK_AUTHORITY_SHA256
     ):
         return "source-no-raid6-benchmark"
+    if (
+        joypad_digest == SOURCE_PARITY_JOYPAD_SHA256
+        and source_authorities.get(
+            "source-kernel-irq-buttons-no-raid6-deferred-wifi-lz4.tsv"
+        )
+        == SOURCE_DEFERRED_WIFI_AUTHORITY_SHA256
+    ):
+        return "source-deferred-wifi"
     fail("base release kernel authority and early joypad input do not agree")
 
 

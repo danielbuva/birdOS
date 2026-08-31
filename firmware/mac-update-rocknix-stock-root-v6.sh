@@ -383,6 +383,10 @@ elif grep -Fqx source-kernel-irq-buttons-no-raid6-benchmark-lz4.tsv "$MANIFEST_I
 	printf '%s\n' source-kernel-irq-buttons-no-raid6-benchmark-lz4.tsv >>"$VERIFY_WORK/expected-inputs"
 	LC_ALL=C sort -o "$VERIFY_WORK/expected-inputs" \
 		"$VERIFY_WORK/expected-inputs"
+elif grep -Fqx source-kernel-irq-buttons-no-raid6-deferred-wifi-lz4.tsv "$MANIFEST_INPUTS"; then
+	printf '%s\n' source-kernel-irq-buttons-no-raid6-deferred-wifi-lz4.tsv >>"$VERIFY_WORK/expected-inputs"
+	LC_ALL=C sort -o "$VERIFY_WORK/expected-inputs" \
+		"$VERIFY_WORK/expected-inputs"
 fi
 cmp "$VERIFY_WORK/expected-inputs" "$MANIFEST_INPUTS" >/dev/null || \
 	fail 'canonical deploy manifest input set is incomplete or duplicated'

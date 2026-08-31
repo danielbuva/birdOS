@@ -131,6 +131,16 @@ case "$KERNEL_AUTHORITY" in
 		SYSTEM_PROVIDER='bird-source-irq-buttons:accepted-builtin-input-SYSTEM'
 		JOYPAD_PROVIDER='bird-source-irq-buttons:build-oracle:rocknix-singleadc-joypad.ko'
 		;;
+	source-deferred-wifi)
+		KERNEL_SHA=05f3b40c4d1c2b4255745b9814052b9e1d091f22f9bd1499a5841b41b24771bc
+		DTB_SHA=f3a4273986d6e4f431b110cead8aa19e8da52ff08c64c4b204ef9664d28b5c31
+		SYSTEM_SHA=57210b5cb6072bf1e2b81dea31df76f9b5d4aab5534d7d3b668fdfdc51a1c527
+		JOYPAD_SHA=fd2ceb95f0b3bdc1d68e7182a8ac5239b5286cc277a04980e53f65e0f73d3a05
+		KERNEL_PROVIDER='bird-source-irq-buttons:no-raid6-pq-benchmark:deferred-wifi-sdio-power:linux-7.0.11:Image:lz4-v1.10.0--9-T1'
+		DTB_PROVIDER='bird-source-irq-buttons:ROCKNIX-H700:dtb.img'
+		SYSTEM_PROVIDER='bird-source-irq-buttons:accepted-builtin-input-SYSTEM'
+		JOYPAD_PROVIDER='bird-source-irq-buttons:build-oracle:rocknix-singleadc-joypad.ko'
+		;;
 	*) printf 'error: unknown kernel authority: %s\n' "$KERNEL_AUTHORITY" >&2; exit 1 ;;
 esac
 STORAGE_SHA=12affdad7bc2042cb590fea60fc015a7ee8d4374ebcc3b1c11098a64b9ffa3be
@@ -160,6 +170,7 @@ case "$KERNEL_AUTHORITY" in
 	source-irq-buttons) SOURCE_KERNEL_AUTHORITY_SHA=0020d161b5a2be0d8393267c3eb96794a0c2d9f82e8df5e097932216fad9e45d ;;
 	source-irq-buttons-lz4) SOURCE_KERNEL_AUTHORITY_SHA=250be0f922339e423cc7e100d785747b16686873a5bea357b69825dc29434b3c ;;
 	source-no-raid6-benchmark) SOURCE_KERNEL_AUTHORITY_SHA=837f9237ed33393b3fd70af12ed8e989b1c20c56653721b9b849509698658a0a ;;
+	source-deferred-wifi) SOURCE_KERNEL_AUTHORITY_SHA=9469c0832d135340ff7839244dbe9ef42add6edb7f66b034a4a11e434fd14041 ;;
 	*) SOURCE_KERNEL_AUTHORITY_SHA= ;;
 esac
 
