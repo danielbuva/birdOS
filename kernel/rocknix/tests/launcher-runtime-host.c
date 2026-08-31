@@ -3086,8 +3086,9 @@ static int run_dirty_region_render_tests(void) {
     ok &= dirty_framebuffer_matches_full(
         1U, "battery commit left failed-dispatch status stale");
 
-    /* A marquee tick redraws the selected row exactly once and must still
-     * produce the same pixels as the full-render recovery path. */
+    /* A marquee tick repaints only its opaque text window and must still
+     * converge from an unknown retained-frame offset to the same pixels as
+     * the full-render recovery path. */
     setup_test_framebuffer(1U, fake_framebuffer);
     memset(fake_framebuffer, 0x5a, RG34XX_FB_BYTES);
     view = VIEW_GAMES;
@@ -3097,7 +3098,13 @@ static int run_dirty_region_render_tests(void) {
     reset_selected_text_scroll();
     fake_now_ms = 1000;
     draw_screen();
-    fake_now_ms = 3500;
+    selected_text_scroll.offset = 5U;
+    draw_screen();
+    reset_selected_text_scroll();
+    fake_now_ms = 2000;
+    ok &= check(selected_text_scroll_poll_timeout((u64)-1) == 2500U,
+                "retained marquee fixture did not rebind its deadline");
+    fake_now_ms = 4500;
     ok &= check(service_selected_text_scroll(),
                 "marquee dirty-render fixture did not advance");
     ok &= dirty_framebuffer_matches_full(
@@ -4406,10 +4413,19 @@ static int run_profile_tests(void) {
     BIRD_PROFILE_FINISH_EVENT();
     render = &bird_profile.render[PROFILE_RENDER_TEXT_SCROLL];
     ok &= check(render->commits == 1U && render->pages_written == 1U &&
-                    render->physical_bytes < 60000U &&
+                    render->logical_pixels >=
+                        (u64)MENU_TEXT_WINDOW_WIDTH * MENU_TEXT_WINDOW_H &&
+                    render->logical_pixels <
+                        (u64)MENU_ROW_WIDTH * MENU_ROW_H &&
+                    render->physical_bytes <
+                        (u64)MENU_ROW_WIDTH * MENU_ROW_H *
+                            RG34XX_FB_BYTES_PER_PIXEL &&
+                    render->physical_bytes == render->visible_bytes &&
+                    render->physical_bytes ==
+                        render->logical_pixels * RG34XX_FB_BYTES_PER_PIXEL &&
                     bird_profile.event_pre_barrier_filesystem_ops == 0U &&
                     bird_profile.event_pre_barrier_diagnostic_writes == 0U,
-                "text scroll exceeded its row-only render contract");
+                "text scroll exceeded its text-window render contract");
     printf("launcher profile benchmark scenario=text-scroll "
            "logical_pixels=%lu visible_bytes=%lu pages=%lu physical_bytes=%lu\n",
            (unsigned long)render->logical_pixels,

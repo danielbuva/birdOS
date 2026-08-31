@@ -342,6 +342,9 @@ struct fb_var_screeninfo {
 #define MENU_SIDEBAR_LETTER_ADVANCE 20
 #define MENU_ITEM_SCALE_X 3
 #define MENU_ITEM_SCALE_Y 3
+#define MENU_TEXT_WINDOW_WIDTH \
+    (MENU_LIST_TEXT_LIMIT * 6U * MENU_ITEM_SCALE_X)
+#define MENU_TEXT_WINDOW_H (7 * MENU_ITEM_SCALE_Y)
 #define MENU_FOOTER_Y 404
 #define MENU_FOOTER_H 60
 #define MENU_STATUS_Y 407
@@ -4201,11 +4204,30 @@ static u64 selected_text_scroll_poll_timeout(u64 timeout_ms) {
     return wait < timeout_ms ? wait : timeout_ms;
 }
 
+static void draw_selected_text_scroll(const char *text,
+                                      const struct launcher_palette *palette) {
+    int y;
+    if (view == VIEW_MAIN || view == VIEW_PLAY ||
+        view == VIEW_TOOLS || view == VIEW_QUIT) {
+        y = MENU_MAIN_ROW_START_Y +
+            (int)selection * MENU_MAIN_ROW_SPACING +
+            MENU_MAIN_TEXT_Y_OFFSET;
+    } else {
+        u32 first = viewport_first(view, selection);
+        y = MENU_CONTENT_Y +
+            (int)(selection - first) * MENU_ROW_SPACING + 5;
+    }
+    rectangle(MENU_TEXT_X, y, MENU_TEXT_WINDOW_WIDTH,
+              MENU_TEXT_WINDOW_H, palette->selected);
+    draw_item_text_window(MENU_TEXT_X, y, text,
+                          selected_text_scroll.length,
+                          selected_text_scroll.offset, palette->ink);
+}
+
 static int service_selected_text_scroll(void) {
     struct launcher_palette palette;
     const char *text;
     u64 now;
-    u32 first;
     if (!selected_text_scroll.deadline_ms) return 0;
     text = current_selected_text();
     if (
@@ -4228,13 +4250,7 @@ static int service_selected_text_scroll(void) {
 
     BIRD_PROFILE_RENDER(PROFILE_RENDER_TEXT_SCROLL);
     load_launcher_palette(&palette);
-    if (view == VIEW_MAIN || view == VIEW_PLAY ||
-        view == VIEW_TOOLS || view == VIEW_QUIT) {
-        draw_main_row(selection, &palette);
-    } else {
-        first = viewport_first(view, selection);
-        draw_list_row(selection, selection - first, &palette);
-    }
+    draw_selected_text_scroll(text, &palette);
     framebuffer_barrier();
     return 1;
 }
