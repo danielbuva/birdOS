@@ -3,30 +3,31 @@
 This document is the authority for the code that builds, installs and runs the
 current birdOS system. The active implementation path is **stock-root v6.23**.
 The current human promotion record binds clean source
-`017a69334936228a52973c9130ddd3e19215174d`,
-immutable release `v6.23-20260830-233244`, deploy-manifest digest
-`4e56439f170dd15507bc594ae0a3bf6272dd82738bdff85e0c2efd66d67081d6`,
+`557eb377fdc3b881fb8bf6221879875d834eac6c`,
+immutable release `v6.23-20260831-011812`, deploy-manifest digest
+`0083e85cfb803d72a79cb94e51265a38cf7d8fdc29c780303f47baf849de3fcb`,
 device-contract digest
 `1664a3778abcd3687865a82fd28bba5b468f6c3c7e9a46bf90f7c3acb1e08162`
 and generated-catalog digest
 `9795aae6baddc292f5d9954a444656e303db305c639284f16eb10288c41f1f93`.
 The complete host gate and broad RG34XX-SP behavior gate passed on 2026-08-30.
 This canonicalizes the accepted Stage 9 IRQ button path, completed Stage 10
-U-Boot boundary and opportunistic Stage 11 fixed RAID6 PQ selection. All 17
+U-Boot boundary, opportunistic Stage 11 fixed RAID6 PQ selection and the first
+remaining-priority fixed-Wi-Fi deferral. All 17
 digital controls, including L3/R3, use independent 5 ms GPIO
 edge debounce; only four analog axes retain the 10 ms ADC poll. Broad behavior
 passed, and Input Test completed all 29 digital, analog, auxiliary and rumble
 checks. Its kernel LZ4 SHA-256 is
-`2fb550062d3fbd69b433f0aa79d892b8b3a55ee048cf861874b90289a932d77a`.
-The returned canonical boot recorded usable frame at 672 ms, input readiness at
-660 ms and storage readiness at 2,824 ms; the preceding three development boots
-had 675/664/2,836 ms medians. The broad functional screen and orderly shutdown
-passed with no watchdog failure. The
-previously accepted immutable release `v6.23-20260830-201239` is verified in
+`05f3b40c4d1c2b4255745b9814052b9e1d091f22f9bd1499a5841b41b24771bc`.
+The returned canonical boot recorded usable frame at 522 ms, input readiness at
+518 ms and storage readiness at 2,653 ms. Its directly preceding Stage 11 boot
+recorded 672/660/2,824 ms. The broad functional screen, PortMaster Wi-Fi,
+suspend/resume and orderly shutdown passed with no watchdog failure. The
+previously accepted immutable release `v6.23-20260830-233244` is verified in
 the private archive at manifest digest
-`43beaab6860e9eea76fe534c113e8f47b8fd03ffde9b6f3eb1eded863ee83734`.
+`4e56439f170dd15507bc594ae0a3bf6272dd82738bdff85e0c2efd66d67081d6`.
 That release was built from clean source
-`56ae92d94243f5759b7dee0a7d2d433701815bf7`; it remains verified external
+`017a69334936228a52973c9130ddd3e19215174d`; it remains verified external
 history, not an on-card production rollback requirement. A successor becomes
 the optimization baseline only when its exact clean source, release, manifest,
 contract and catalogue tuple passes the host and physical gates.

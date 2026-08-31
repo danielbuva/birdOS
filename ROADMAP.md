@@ -2183,11 +2183,16 @@ No Stage 12 is defined. Continue through independently bounded candidates in
 the immutable priority order rather than inventing another hidden sequence:
 
 1. Profile the remaining power-to-usable Linux path and pursue only attributed
-   work while preserving the accepted 672 ms canonical result.
-   The current host-gated candidate moves the fixed Wi-Fi SDIO controller's
+   work while preserving the accepted 522 ms canonical result.
+   The accepted first extension moves the fixed Wi-Fi SDIO controller's
    retained 200 ms power sequence from synchronous MMC prescan to its queued
-   rescan. Two kernels, LZ4 frames and paired U-Boot builds reproduce exactly;
-   RG34XX-SP timing and Wi-Fi availability remain pending.
+   rescan. Two kernels, LZ4 frames and paired U-Boot builds reproduce exactly.
+   Release `v6.23-20260831-011812`, built from clean source
+   `557eb377fdc3b881fb8bf6221879875d834eac6c`, passed the broad RG34XX-SP
+   screen and connected PortMaster through Wi-Fi. Against its directly
+   preceding Stage 11 boot, launcher start/input improved by 142 ms, usable
+   frame by 150 ms and storage readiness by 171 ms. This paired sample is the
+   accepted baseline, not a wider timing distribution.
 2. Measure and improve button-to-photon navigation plus common content launch,
    close and interactive menu-return transitions.
 3. Measure calibrated idle energy and unnecessary wakeups; separately diagnose

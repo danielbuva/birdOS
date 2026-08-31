@@ -302,10 +302,12 @@ Direct restoration to the accepted fixed-command-closure prefix is:
 Why the Stage 11 Wi-Fi startup existed: generic MMC prescan powers a
 non-removable SDIO device before its queued card detection, and the fixed
 RTL8821CS sequence deliberately waits 200 ms after power-on. Why change: the
-menu does not require networking, so the deferred-Wi-Fi candidate lets the
-existing MMC rescan perform that unchanged sequence after `/init` starts. Its
+menu does not require networking, so the accepted deferred-Wi-Fi successor
+lets the existing MMC rescan perform that unchanged sequence after `/init` starts. Its
 paired U-Boot differs from accepted Stage 11 only in the three ASCII bytes of
-the exact compressed-frame bound. Install or restore that one-sector pair with:
+the exact compressed-frame bound. Canonical release
+`v6.23-20260831-011812` passed the broad device and PortMaster Wi-Fi gate.
+Install or restore that one-sector pair with:
 
 ```sh
 BIRD_BOOT_PAIR_PROFILE=deferred-wifi \

@@ -7,15 +7,16 @@ hardware baseline is **stock-root v6.23**: it retains the exact ROCKNIX
 20260701 DDR4 compatibility base and replaces its frontend and selected generic
 policy with birdOS. Its 2026-07-26 physical gate and host fault-injection suite
 established the historical stock-root baseline. The current accepted binding is
-clean source `017a69334936228a52973c9130ddd3e19215174d`, immutable release
-`v6.23-20260830-233244`, and canonical deploy-manifest digest
-`4e56439f170dd15507bc594ae0a3bf6272dd82738bdff85e0c2efd66d67081d6`.
+clean source `557eb377fdc3b881fb8bf6221879875d834eac6c`, immutable release
+`v6.23-20260831-011812`, and canonical deploy-manifest digest
+`0083e85cfb803d72a79cb94e51265a38cf7d8fdc29c780303f47baf849de3fcb`.
 Its returned broad hardware screen passed. The canonical boot recorded a
-672 ms usable frame, 660 ms input readiness and 2,824 ms asynchronous storage
-readiness. The preceding three development boots had 675/664/2,836 ms medians,
-about 510/510/548 ms earlier than the accepted pre-change samples. The broad
-application, media, controls, networking, storage and shutdown screen passed,
-and no storage-watchdog or release-verification failure remained.
+522 ms usable frame, 518 ms input readiness and 2,653 ms asynchronous storage
+readiness. The directly preceding Stage 11 canonical boot recorded
+672/660/2,824 ms. The broad application, media, controls, networking, storage,
+suspend/resume and shutdown screen passed, PortMaster established a working
+Wi-Fi connection, and no storage-watchdog or release-verification failure
+remained.
 
 Stage 10 is complete. Stage 11 was an opportunistic extension created after
 the original numbered roadmap: returned traces exposed a roughly 510 ms generic
@@ -23,7 +24,11 @@ RAID6 PQ benchmark even though this fixed RG34XX-SP always selected `neonx8`.
 The accepted kernel skips only that benchmark while retaining RAID6 PQ, Btrfs,
 the selected NEON implementation and the complete fixed-device behavior. Stage
 11 is complete in the canonical release above. No Stage 12 is currently
-defined; remaining work is the explicit priority backlog in `ROADMAP.md`.
+defined. The first remaining-priority extension defers the fixed Wi-Fi SDIO
+power sequence from blocking MMC prescan to its queued rescan. Its exact kernel
+and paired U-Boot are accepted in the canonical release above; the returned
+sample improved usable frame by 150 ms while preserving functional Wi-Fi.
+Remaining work is the explicit priority backlog in `ROADMAP.md`.
 
 Why before: ROCKNIX's retained fake-suspend provider owns
 the accepted audio, input, governor, core-parking and LED transaction, while
@@ -74,9 +79,10 @@ Historical measurements and the complete version-by-version narrative live in
 
 ## Publication model
 
-The public `danielbuva/birdOS` repository contains source history. Local commits
-remain local until an explicit source push; building or deploying a card never
-pushes them. The private `danielbuva/birdOS-release-archive` repository stores
+The public `danielbuva/birdOS` repository contains reviewed source history and
+is the normal destination after scoped commits pass their host gate. Building
+or deploying a card does not itself push source. The private
+`danielbuva/birdOS-release-archive` repository stores
 immutable binary release archives retired from the small BIRD partition. A
 canonical deployment uploads and independently verifies the superseded release
 there before removing its card copy. It does not publish those binary archives
