@@ -37,6 +37,8 @@ trap 'exit 1' HUP INT TERM
 	systemctl --failed --no-pager 2>&1 || :
 	printf '%s\n' '--- remaining jobs ---'
 	systemctl list-jobs --no-pager 2>&1 || :
+	printf '%s\n' '--- early kernel timeline (first 512 lines) ---'
+	dmesg | head -n 512 || :
 	printf '%s\n' '--- retained manager audit ---'
 	for UNIT in systemd-udevd.service systemd-logind.service seatd.service \
 		systemd-journald.service pipewire.service wireplumber.service \

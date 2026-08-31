@@ -93,6 +93,9 @@ grep -Fqx 'ExecStart=/flash/bird/capture-requested-diagnostics.sh' "$REPORT"
 grep -Fqx 'RuntimeMaxSec=120s' "$REPORT"
 grep -Fq 'stock-root-boot-state-$BOOT_ID.log' "$CAPTURE"
 grep -Fq 'cp -f "$LOG" "$LATEST"' "$CAPTURE"
+grep -Fq "printf '%s\\n' '--- early kernel timeline (first 512 lines) ---'" \
+	"$CAPTURE"
+grep -Fq 'dmesg | head -n 512 || :' "$CAPTURE"
 grep -Fq 'bird_stage5_snapshot_version=1' "$STAGE5_CAPTURE"
 grep -Fq 'BIRD_STAGE5_LABEL' "$STAGE5_CAPTURE"
 if grep -Fq 'stage5-idle-window.request' "$CAPTURE"; then
