@@ -36,21 +36,28 @@ interrupted() {
  fail signal 79 interrupted
 }
 
-mkdir -p "$LOG_DIR" || exit 70
+log_uptime() {
+ UPTIME_PREFIX=$1
+ UPTIME_VALUE=
+ IFS=' ' read -r UPTIME_VALUE _ </proc/uptime || return 1
+ printf '%s%s\n' "$UPTIME_PREFIX" "$UPTIME_VALUE"
+}
+
+[ -d "$LOG_DIR" ] || mkdir -p "$LOG_DIR" || exit 70
 exec >>"$LOG" 2>&1 || exit 71
 trap cleanup EXIT
 trap interrupted HUP INT TERM
 
-printf 'Bird fixed shutdown save start uptime='
-cut -d ' ' -f 1 /proc/uptime || fail start 72 uptime-read
+log_uptime 'Bird fixed shutdown save start uptime=' || \
+ fail start 72 uptime-read
 
 [ -d "$BACKUP_DIR" ] || fail preflight 73 backup-directory-missing
 [ -s "$SOURCE" ] || fail source-check 74 source-missing-or-empty
 
 if cmp -s "$SOURCE" "$BACKUP" 2>/dev/null; then
  printf 'config stage=compare result=unchanged\n'
- printf 'Bird fixed shutdown save ready uptime='
- cut -d ' ' -f 1 /proc/uptime || fail ready 75 uptime-read
+ log_uptime 'Bird fixed shutdown save ready uptime=' || \
+  fail ready 75 uptime-read
  exit 0
 fi
 printf 'config stage=compare result=changed\n'
@@ -109,5 +116,5 @@ else
  fail directory-flush 82 sync-failed
 fi
 
-printf 'Bird fixed shutdown save ready uptime='
-cut -d ' ' -f 1 /proc/uptime || fail ready 83 uptime-read
+log_uptime 'Bird fixed shutdown save ready uptime=' || \
+ fail ready 83 uptime-read

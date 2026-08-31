@@ -3,8 +3,17 @@
 # checkpoint.  The production script is path-substituted into a private
 # fixture; command shims affect only the copied script's PATH.
 
-# This file doubles as the cp/mv/sync shim through private symlinks.  Keeping
-# the dispatcher here avoids generating executable helper scripts at runtime.
+# This file doubles as the checkpoint command shim through private symlinks.
+# Keeping the dispatcher here avoids generating executable helper scripts at
+# runtime.
+case ${0##*/} in
+	cp|mv|sync|mkdir|cut)
+		if [ -n "${BIRD_TEST_CHILD_LOG:-}" ]; then
+			printf '%s\n' "${0##*/}" >>"$BIRD_TEST_CHILD_LOG"
+		fi
+		;;
+esac
+
 case ${0##*/} in
 	cp)
 		case ${BIRD_TEST_COPY_MODE:-success} in
@@ -41,6 +50,18 @@ case ${0##*/} in
 		fi
 		exit 0
 		;;
+	mkdir)
+		if [ "${BIRD_TEST_MKDIR_MODE:-success}" = fail ]; then
+			exit 26
+		fi
+		"$BIRD_TEST_REAL_MKDIR" "$@"
+		exit $?
+		;;
+	cut)
+		# The checkpoint must obtain uptime through the shell builtin. Any cut
+		# launch is an immediate regression, independent of its arguments.
+		exit 27
+		;;
 esac
 
 set -eu
@@ -56,10 +77,13 @@ mkdir -p "$MOCK_BIN"
 ln -s "$SELF" "$MOCK_BIN/cp"
 ln -s "$SELF" "$MOCK_BIN/mv"
 ln -s "$SELF" "$MOCK_BIN/sync"
+ln -s "$SELF" "$MOCK_BIN/mkdir"
+ln -s "$SELF" "$MOCK_BIN/cut"
 
 BIRD_TEST_REAL_CP=$(command -v cp)
 BIRD_TEST_REAL_MV=$(command -v mv)
-export BIRD_TEST_REAL_CP BIRD_TEST_REAL_MV
+BIRD_TEST_REAL_MKDIR=$(command -v mkdir)
+export BIRD_TEST_REAL_CP BIRD_TEST_REAL_MV BIRD_TEST_REAL_MKDIR
 
 fail_test() {
 	printf 'save-config test failure: %s\n' "$*" >&2
@@ -79,6 +103,15 @@ assert_no_temporary() {
 	[ ! -e "$1" ] || fail_test "temporary checkpoint survived: $1"
 }
 
+assert_child_count() {
+	CHILD_NAME=$1
+	EXPECTED_COUNT=$2
+	ACTUAL_COUNT=$(awk -v child="$CHILD_NAME" \
+		'$0 == child { count++ } END { print count + 0 }' "$CHILD_LOG")
+	[ "$ACTUAL_COUNT" -eq "$EXPECTED_COUNT" ] ||
+		fail_test "expected $EXPECTED_COUNT $CHILD_NAME child calls, got $ACTUAL_COUNT"
+}
+
 prepare_case() {
 	CASE_NAME=$1
 	CASE_DIR=$TMP/$CASE_NAME
@@ -90,6 +123,7 @@ prepare_case() {
 	EXPECTED_NEW=$CASE_DIR/expected-new
 	UPTIME_FILE=$CASE_DIR/proc/uptime
 	UNDER_TEST=$CASE_DIR/bird-save-config.sh
+	CHILD_LOG=$CASE_DIR/checkpoint-children.log
 
 	mkdir -p "$CONFIG_DIR" "${LOG_FILE%/*}" "${UPTIME_FILE%/*}"
 	printf '%s\n' 'known-good checkpoint: complete' >"$EXPECTED_OLD"
@@ -97,6 +131,7 @@ prepare_case() {
 	cp "$EXPECTED_OLD" "$BACKUP_FILE"
 	cp "$EXPECTED_NEW" "$SOURCE_FILE"
 	printf '%s\n' '12.50 4.25' >"$UPTIME_FILE"
+	: >"$CHILD_LOG"
 
 	sed \
 		-e "s#^SOURCE=.*#SOURCE=$SOURCE_FILE#" \
@@ -112,10 +147,13 @@ run_checkpoint() {
 	COPY_MODE=$1
 	MOVE_MODE=$2
 	SYNC_MODE=$3
+	MKDIR_MODE=${4:-success}
 	set +e
 	BIRD_TEST_COPY_MODE=$COPY_MODE \
 	BIRD_TEST_MOVE_MODE=$MOVE_MODE \
 	BIRD_TEST_SYNC_MODE=$SYNC_MODE \
+	BIRD_TEST_MKDIR_MODE=$MKDIR_MODE \
+	BIRD_TEST_CHILD_LOG=$CHILD_LOG \
 	PATH=$MOCK_BIN:$PATH \
 		"$UNDER_TEST"
 	CHECKPOINT_STATUS=$?
@@ -143,6 +181,10 @@ cmp -s "$EXPECTED_NEW" "$BACKUP_FILE" ||
 assert_log_has "$LOG_FILE" 'config stage=verify result=identical'
 assert_log_has "$LOG_FILE" 'config stage=commit result=complete'
 assert_log_has "$LOG_FILE" 'config stage=directory-flush result=complete'
+assert_log_has "$LOG_FILE" 'Bird fixed shutdown save start uptime=12.50'
+assert_log_has "$LOG_FILE" 'Bird fixed shutdown save ready uptime=12.50'
+assert_child_count mkdir 0
+assert_child_count cut 0
 assert_no_temporary "$BACKUP_FILE"
 
 # Leftovers from an uncatchable failure or a reused PID must never be opened
@@ -188,11 +230,12 @@ while [ "$STALE_SUFFIX" -lt 32 ]; do
 	STALE_SUFFIX=$((STALE_SUFFIX + 1))
 done
 
-# An unchanged source must bypass copy, sync, and rename.  All three shims are
-# armed to fail so an accidental call turns this case red.
+# An unchanged source with its normal existing log directory must bypass
+# mkdir, cut, copy, sync, and rename. All five shims are armed or counted so
+# the test measures the three common child launches removed from this path.
 prepare_case unchanged
 cp "$EXPECTED_OLD" "$SOURCE_FILE"
-run_checkpoint fail fail fail
+run_checkpoint fail fail fail fail
 [ "$CHECKPOINT_STATUS" -eq 0 ] || fail_test "unchanged exited $CHECKPOINT_STATUS"
 cmp -s "$EXPECTED_OLD" "$BACKUP_FILE" ||
 	fail_test 'unchanged checkpoint modified the backup'
@@ -200,6 +243,91 @@ assert_log_has "$LOG_FILE" 'config stage=compare result=unchanged'
 if grep -Fq 'config stage=temp-create' "$LOG_FILE"; then
 	fail_test 'unchanged checkpoint created a temporary file'
 fi
+assert_log_has "$LOG_FILE" 'Bird fixed shutdown save start uptime=12.50'
+assert_log_has "$LOG_FILE" 'Bird fixed shutdown save ready uptime=12.50'
+assert_child_count mkdir 0
+assert_child_count cut 0
+assert_child_count cp 0
+assert_child_count mv 0
+assert_child_count sync 0
+assert_no_temporary "$BACKUP_FILE"
+
+# A missing log directory remains a supported recovery path. It must invoke
+# mkdir exactly once, then continue through the same builtin-uptime fast path.
+prepare_case missing-log-directory
+cp "$EXPECTED_OLD" "$SOURCE_FILE"
+rmdir "${LOG_FILE%/*}"
+run_checkpoint fail fail fail success
+[ "$CHECKPOINT_STATUS" -eq 0 ] ||
+	fail_test "missing log directory recovery exited $CHECKPOINT_STATUS"
+assert_log_has "$LOG_FILE" 'Bird fixed shutdown save start uptime=12.50'
+assert_log_has "$LOG_FILE" 'Bird fixed shutdown save ready uptime=12.50'
+assert_child_count mkdir 1
+assert_child_count cut 0
+assert_child_count cp 0
+assert_child_count mv 0
+assert_child_count sync 0
+assert_no_temporary "$BACKUP_FILE"
+
+# A truncated uptime record must retain the start-phase exit and diagnostic
+# instead of proceeding into any temporary-copy or durability operation.
+prepare_case malformed-start-uptime
+printf '%s' '12.50 4.25' >"$UPTIME_FILE"
+run_checkpoint fail fail fail fail
+assert_failed_checkpoint 72 \
+	'config stage=start result=failed reason=uptime-read exit=72'
+assert_child_count mkdir 0
+assert_child_count cut 0
+assert_child_count cp 0
+assert_child_count mv 0
+assert_child_count sync 0
+
+# Feed one valid record followed by a truncated record through a FIFO so the
+# unchanged ready phase retains its distinct exit 75 diagnostic.
+prepare_case malformed-unchanged-ready-uptime
+cp "$EXPECTED_OLD" "$SOURCE_FILE"
+rm -f "$UPTIME_FILE"
+mkfifo "$UPTIME_FILE"
+(
+	printf '%s\n' '12.50 4.25' >"$UPTIME_FILE"
+	printf '%s' 'broken' >"$UPTIME_FILE"
+) &
+UPTIME_WRITER=$!
+run_checkpoint fail fail fail fail
+kill "$UPTIME_WRITER" 2>/dev/null || :
+wait "$UPTIME_WRITER" 2>/dev/null || :
+assert_failed_checkpoint 75 \
+	'config stage=ready result=failed reason=uptime-read exit=75'
+assert_child_count mkdir 0
+assert_child_count cut 0
+assert_child_count cp 0
+assert_child_count mv 0
+assert_child_count sync 0
+
+# The changed path has already durably committed when its final uptime read
+# fails. Preserve that snapshot and its distinct exit 83 diagnostic.
+prepare_case malformed-changed-ready-uptime
+rm -f "$UPTIME_FILE"
+mkfifo "$UPTIME_FILE"
+(
+	printf '%s\n' '12.50 4.25' >"$UPTIME_FILE"
+	printf '%s' 'broken' >"$UPTIME_FILE"
+) &
+UPTIME_WRITER=$!
+run_checkpoint success success success fail
+kill "$UPTIME_WRITER" 2>/dev/null || :
+wait "$UPTIME_WRITER" 2>/dev/null || :
+[ "$CHECKPOINT_STATUS" -eq 83 ] ||
+	fail_test "expected changed ready exit 83, got $CHECKPOINT_STATUS"
+assert_log_has "$LOG_FILE" \
+	'config stage=ready result=failed reason=uptime-read exit=83'
+cmp -s "$EXPECTED_NEW" "$BACKUP_FILE" ||
+	fail_test 'ready uptime failure lost the durably committed checkpoint'
+assert_child_count mkdir 0
+assert_child_count cut 0
+assert_child_count cp 1
+assert_child_count mv 1
+assert_child_count sync 2
 assert_no_temporary "$BACKUP_FILE"
 
 prepare_case copy-failure
