@@ -930,8 +930,8 @@ printf '%s\n' resources-released >>"$EVENTS"
 [ "$SWAY_OWNED" -eq 0 ]
 [ "$PORTMASTER_NETWORK" -eq 0 ]
 [ "$(tail -n 1 "$EVENTS")" = resources-released ]
-[ "$(grep -n '^network-attempt-1$' "$EVENTS" | cut -d: -f1)" -gt \
-	"$(grep -n '^sway-attempt-3$' "$EVENTS" | cut -d: -f1)" ]
+[ "$(grep -n '^sway-attempt-1$' "$EVENTS" | cut -d: -f1)" -gt \
+	"$(grep -n '^network-attempt-2$' "$EVENTS" | cut -d: -f1)" ]
 EOF
 chmod 0755 "$TMP/resource-release-harness.sh"
 RESOURCE_CASE=$TMP/resource-release

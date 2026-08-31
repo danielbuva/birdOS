@@ -1072,22 +1072,26 @@ reconcile_registration_failure() {
 }
 
 release_owned_resources_until_done() {
-	SWAY_RELEASE_WARNING=0
-	while [ "$SWAY_OWNED" -eq 1 ]; do
-		if ! stop_sway; then
-			if [ "$SWAY_RELEASE_WARNING" -eq 0 ]; then
-				printf '%s\n' 'Bird Sway ownership unresolved; waiting'
-				SWAY_RELEASE_WARNING=1
-			fi
-			usleep 250000
-		fi
-	done
+	# Keep the returning application's surface visible while variable network
+	# teardown finishes. Stopping Sway first exposes the retained Bird frame
+	# before the launcher has reclaimed input, which makes PortMaster returns
+	# look unresponsive throughout a retrying network cleanup.
 	NETWORK_RELEASE_WARNING=0
 	while [ "$PORTMASTER_NETWORK" -eq 1 ]; do
 		if ! stop_portmaster_network; then
 			if [ "$NETWORK_RELEASE_WARNING" -eq 0 ]; then
 				printf '%s\n' 'Bird network ownership unresolved; waiting'
 				NETWORK_RELEASE_WARNING=1
+			fi
+			usleep 250000
+		fi
+	done
+	SWAY_RELEASE_WARNING=0
+	while [ "$SWAY_OWNED" -eq 1 ]; do
+		if ! stop_sway; then
+			if [ "$SWAY_RELEASE_WARNING" -eq 0 ]; then
+				printf '%s\n' 'Bird Sway ownership unresolved; waiting'
+				SWAY_RELEASE_WARNING=1
 			fi
 			usleep 250000
 		fi
