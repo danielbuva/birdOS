@@ -69,8 +69,10 @@ budget. The full contract is documented in
 
 Tools includes a direct Input Tester for all 17 gamepad buttons, both sticks,
 L3/R3, volume, power and rumble without an idle render loop. Menu triggers a
-short rumble test; hold B to return to Bird. Its 29/29 RG34XX-SP input and
-rumble gate passed.
+short rumble test; hold B to return to Bird. It drains but does not count the
+first 400 ms of input so the A used to open it is not pre-tested; hold L1+R1
+for one second to clear the test and start the same guard again. Its 29/29
+RG34XX-SP input and rumble gate passed.
 
 Use [`ROADMAP.md`](ROADMAP.md) for planned work and
 [`ROCKNIX_AUDIT.md`](ROCKNIX_AUDIT.md) for the retained-userspace audit.

@@ -118,6 +118,7 @@ static void initialize_state(struct tester_state *state) {
         state->axis_maximum[index] = 32767;
     }
     state->effect_id = -1;
+    state->input_armed = 1;
 }
 
 int main(void) {
@@ -180,6 +181,59 @@ int main(void) {
     (void)handle_event(&state, &event, 600U);
     ok &= check(!exit_hold_complete(&state, 500U + EXIT_HOLD_NS + 1U),
                 "B release cancels exit hold");
+
+    initialize_state(&state);
+    begin_input_guard(&state, 1000U);
+    ok &= check(!state.input_armed &&
+                    state.input_accept_after_ns ==
+                        1000U + INPUT_ACCEPT_DELAY_NS &&
+                    INPUT_ACCEPT_DELAY_NS == 400000000UL,
+                "startup guard defers accepted input for exactly 400 ms");
+    event.type = EV_KEY;
+    event.code = BIRD_BUTTON_A;
+    event.value = 1;
+    ok &= check(handle_event(&state, &event,
+                             state.input_accept_after_ns - 1U) == HANDLE_NONE &&
+                    state.seen_buttons == 0U,
+                "activation A press is drained without entering test history");
+    ok &= check(!arm_input_if_ready(&state,
+                                    state.input_accept_after_ns - 1U) &&
+                    arm_input_if_ready(&state,
+                                       state.input_accept_after_ns) &&
+                    state.input_armed,
+                "input becomes armed at the exact acceptance deadline");
+    ok &= check(handle_event(&state, &event,
+                             state.input_accept_after_ns) == HANDLE_CHANGED &&
+                    (state.seen_buttons & (1U << BUTTON_A)),
+                "a fresh A press after the guard is accepted");
+
+    state.seen_auxiliary = 0x7U;
+    state.seen_axis_directions = 0xffU;
+    state.rumble_sent = 1;
+    event.code = BTN_TL;
+    (void)handle_event(&state, &event, 500000000U);
+    event.code = BTN_TR;
+    (void)handle_event(&state, &event, 600000000U);
+    ok &= check(state.reset_deadline_ns == 600000000U + RESET_HOLD_NS &&
+                    !reset_hold_complete(&state,
+                                         state.reset_deadline_ns - 1U) &&
+                    reset_hold_complete(&state, state.reset_deadline_ns),
+                "one-second L1 and R1 hold requests a reset");
+    begin_input_guard(&state, state.reset_deadline_ns);
+    ok &= check(state.seen_buttons == 0U && state.seen_auxiliary == 0U &&
+                    state.seen_axis_directions == 0U && !state.rumble_sent &&
+                    !state.input_armed,
+                "manual reset clears test history and starts a fresh guard");
+    state.input_armed = 1;
+    event.code = BTN_TL;
+    event.value = 1;
+    (void)handle_event(&state, &event, 3000000000U);
+    event.code = BTN_TR;
+    (void)handle_event(&state, &event, 3000000100U);
+    event.value = 0;
+    (void)handle_event(&state, &event, 3000000200U);
+    ok &= check(!state.reset_deadline_ns,
+                "releasing either reset shoulder cancels the hold");
 
     initialize_state(&state);
     for (index = 0; index < 4; index++) {

@@ -248,8 +248,10 @@ The launcher uses the same narrow exit-code handoff for its remaining system
 actions. Shutdown calls muOS's proven poweroff path directly, without entering
 the stock frontend. Input Tester action 15 directly runs the static
 framebuffer/evdev tester, then restores the saved launcher frame and exact Tools
-selection by contract. Its 29/29 RG34XX-SP gate passed. It starts no compositor,
-audio graph or network service. PortMaster
+selection by contract. It drains but does not count its first 400 ms of input,
+so the A activation cannot pre-complete its own test; a one-second L1+R1 hold
+clears the session and repeats that guard. Its 29/29 RG34XX-SP gate passed. It
+starts no compositor, audio graph or network service. PortMaster
 waits for the normal audio/controller runtime,
 loads and connects the RG34XX-SP network only when selected, runs PortMaster,
 then disconnects services, unloads the Wi-Fi device, restores launcher ownership
@@ -433,8 +435,9 @@ The Home screen is the product structure rather than a diagnostic menu:
 and Favorites. Tools contains the direct Input Tester before on-demand
 PortMaster. The tester displays all 17 gamepad controls, both analog sticks,
 volume, power and rumble; Menu triggers a short vibration and holding B exits.
-It blocks in `ppoll` when idle and redraws only changed controls. Its 29/29
-device gate passed. Quit contains
+It drains but does not count the first 400 ms, and holding L1+R1 for one second
+clears the session and repeats that guard. It blocks in `ppoll` when idle and
+redraws only changed controls. Its 29/29 device gate passed. Quit contains
 Reload, Reboot and Shutdown. Listen, Read and Watch contain
 the first directory below their media root as a category, followed by exact
 cached files. Read accepts EPUB and PDF and routes the exact selected file to

@@ -96,7 +96,9 @@ typedef signed long s64;
 
 #define INPUT_SCAN_COUNT ((int)BIRD_DEVICE_INPUT_SCAN_COUNT)
 #define RECONNECT_NS 250000000L
+#define INPUT_ACCEPT_DELAY_NS 400000000UL
 #define EXIT_HOLD_NS 1000000000UL
+#define RESET_HOLD_NS 1000000000UL
 #define RUMBLE_LENGTH_MS 300U
 #define LOG_PATH "/storage/bird-data/Bird/log/input-tester-latest.log"
 #define TEST_TOTAL (BUTTON_COUNT + AUXILIARY_COUNT + 8 + 1)
@@ -237,10 +239,13 @@ struct tester_state {
     s32 axis_observed_minimum[4];
     s32 axis_observed_maximum[4];
     u32 axis_observed_valid;
+    u64 input_accept_after_ns;
     u64 b_exit_deadline_ns;
+    u64 reset_deadline_ns;
     u32 connections;
     char last_event[40];
     int connected;
+    int input_armed;
     int discard_until_report;
     int rumble_enabled;
     int rumble_attempted;
@@ -300,7 +305,8 @@ static const struct button_layout auxiliary_layouts[AUXILIARY_COUNT] = {
 
 /* Five-wide uppercase font; the tester uses no runtime font service. */
 static const struct glyph font[] = {
-    {' ', {0, 0, 0, 0, 0, 0, 0}},       {'-', {0, 0, 0, 31, 0, 0, 0}},
+    {' ', {0, 0, 0, 0, 0, 0, 0}},       {'+', {0, 4, 4, 31, 4, 4, 0}},
+    {'-', {0, 0, 0, 31, 0, 0, 0}},
     {'/', {1, 2, 4, 8, 16, 0, 0}},      {':', {0, 4, 0, 0, 4, 0, 0}},
     {'0', {14, 17, 19, 21, 25, 17, 14}}, {'1', {4, 12, 4, 4, 4, 4, 14}},
     {'2', {14, 17, 1, 2, 4, 8, 31}},    {'3', {30, 1, 1, 14, 1, 1, 30}},
@@ -636,6 +642,7 @@ static int update_axis(struct tester_state *state, int axis, s32 value) {
 
 static int update_button(struct tester_state *state, int index, int pressed,
                          u64 now_ns) {
+    const u32 reset_mask = (1U << BUTTON_L1) | (1U << BUTTON_R1);
     u32 bit = 1U << index;
     u32 old_held = state->held_buttons;
     u32 old_seen = state->seen_buttons;
@@ -650,6 +657,12 @@ static int update_button(struct tester_state *state, int index, int pressed,
             state->b_exit_deadline_ns = now_ns + EXIT_HOLD_NS;
         else if (!pressed)
             state->b_exit_deadline_ns = 0U;
+    }
+    if ((state->held_buttons & reset_mask) == reset_mask) {
+        if ((old_held & reset_mask) != reset_mask)
+            state->reset_deadline_ns = now_ns + RESET_HOLD_NS;
+    } else {
+        state->reset_deadline_ns = 0U;
     }
     if (state->held_buttons != old_held || state->seen_buttons != old_seen) {
         live_event_parts(state, "KEY ", button_log_names[index],
@@ -696,6 +709,7 @@ static int handle_event(struct tester_state *state,
         state->discard_until_report = 1;
         return HANDLE_NONE;
     }
+    if (!state->input_armed) return HANDLE_NONE;
     if (event->type == EV_KEY) {
         index = button_index_for_code(event->code);
         if (index >= 0 && update_button(state, index, event->value != 0, now_ns))
@@ -723,15 +737,20 @@ static int resync_input(int fd, struct tester_state *state, u64 now_ns) {
     u64 keys[12] = {0U};
     int index;
     if (sys_ioctl(fd, EVIOCGKEY_768, keys) < 0) return 0;
-    for (index = 0; index < BUTTON_COUNT; index++)
-        (void)update_button(state, index,
-                            key_bit_set(keys, button_codes[index]), now_ns);
+    if (state->input_armed) {
+        for (index = 0; index < BUTTON_COUNT; index++)
+            (void)update_button(state, index,
+                                key_bit_set(keys, button_codes[index]), now_ns);
+    }
     for (index = 0; index < 4; index++) {
         struct input_absinfo info;
         if (sys_ioctl(fd, abs_request_for_axis(index), &info) < 0) return 0;
         state->axis_minimum[index] = info.minimum;
         state->axis_maximum[index] = info.maximum;
-        (void)update_axis(state, index, info.value);
+        if (state->input_armed)
+            (void)update_axis(state, index, info.value);
+        else
+            state->axes[index] = info.value;
     }
     return 1;
 }
@@ -741,9 +760,42 @@ static int resync_auxiliary(int fd, struct tester_state *state, int first,
     u64 keys[12] = {0U};
     int index;
     if (sys_ioctl(fd, EVIOCGKEY_768, keys) < 0) return 0;
-    for (index = first; index < first + count; index++)
-        (void)update_auxiliary(state, index,
-                               key_bit_set(keys, auxiliary_codes[index]));
+    if (state->input_armed) {
+        for (index = first; index < first + count; index++)
+            (void)update_auxiliary(state, index,
+                                   key_bit_set(keys, auxiliary_codes[index]));
+    }
+    return 1;
+}
+
+static void begin_input_guard(struct tester_state *state, u64 now_ns) {
+    int index;
+    state->held_buttons = 0U;
+    state->seen_buttons = 0U;
+    state->held_auxiliary = 0U;
+    state->seen_auxiliary = 0U;
+    state->seen_axis_directions = 0U;
+    state->axis_observed_valid = 0U;
+    for (index = 0; index < 4; index++) {
+        state->axis_observed_minimum[index] = 0;
+        state->axis_observed_maximum[index] = 0;
+    }
+    state->input_accept_after_ns = now_ns + INPUT_ACCEPT_DELAY_NS;
+    state->b_exit_deadline_ns = 0U;
+    state->reset_deadline_ns = 0U;
+    state->last_event[0] = '\0';
+    state->input_armed = 0;
+    state->discard_until_report = 0;
+    state->rumble_attempted = 0;
+    state->rumble_failed = 0;
+    state->rumble_sent = 0;
+    state->dirty |= DIRTY_ALL;
+}
+
+static int arm_input_if_ready(struct tester_state *state, u64 now_ns) {
+    if (state->input_armed || now_ns < state->input_accept_after_ns) return 0;
+    state->input_armed = 1;
+    state->dirty |= DIRTY_STATUS | DIRTY_EVENT;
     return 1;
 }
 
@@ -759,6 +811,11 @@ static void clear_live_state(struct tester_state *state) {
 static int exit_hold_complete(const struct tester_state *state, u64 now_ns) {
     return state->b_exit_deadline_ns != 0U &&
            now_ns >= state->b_exit_deadline_ns;
+}
+
+static int reset_hold_complete(const struct tester_state *state, u64 now_ns) {
+    return state->reset_deadline_ns != 0U &&
+           now_ns >= state->reset_deadline_ns;
 }
 
 static void erase_rumble(int fd, struct tester_state *state);
@@ -1120,8 +1177,11 @@ static void render_status(const struct tester_state *state) {
     int count = tested_count(state);
     rectangle(0, 0, (int)BIRD_DEVICE_FB_WIDTH, 66, COLOR_BACKGROUND);
     draw_text(20, 12, "INPUT TEST", 2, COLOR_TEXT);
-    draw_text(160, 12, state->connected ? "CONNECTED" : "DISCONNECTED",
-              2, state->connected ? COLOR_TESTED : COLOR_DANGER);
+    draw_text(160, 12,
+              !state->connected ? "DISCONNECTED" :
+              (state->input_armed ? "CONNECTED" : "GET READY"),
+              2, !state->connected ? COLOR_DANGER :
+                 (state->input_armed ? COLOR_TESTED : COLOR_ACTIVE));
     draw_text(320, 12, "TESTED", 2, COLOR_MUTED);
     (void)decimal_text(count_text, count);
     draw_text(400, 12, count_text, 2,
@@ -1140,15 +1200,18 @@ static void render_event(const struct tester_state *state) {
     rectangle(0, 38, (int)BIRD_DEVICE_FB_WIDTH, 27, COLOR_BACKGROUND);
     draw_text(20, 42, "EVENT", 2, COLOR_MUTED);
     draw_text(92, 42,
-              state->last_event[0] ? state->last_event : "WAITING",
-              2, state->last_event[0] ? COLOR_TEXT : COLOR_MUTED);
+              !state->input_armed ? "INPUT PAUSED" :
+              (state->last_event[0] ? state->last_event : "WAITING"),
+              2, !state->input_armed ? COLOR_ACTIVE :
+                 (state->last_event[0] ? COLOR_TEXT : COLOR_MUTED));
 }
 
 static void render_static(void) {
     rectangle(0, 0, (int)BIRD_DEVICE_FB_WIDTH,
               (int)BIRD_DEVICE_FB_HEIGHT, COLOR_BACKGROUND);
     rectangle(12, 65, 696, 53, COLOR_PANEL);
-    draw_text(276, 177, "HOLD B TO EXIT", 2, COLOR_TEXT);
+    draw_text(60, 177, "HOLD B TO EXIT", 2, COLOR_TEXT);
+    draw_text(380, 177, "HOLD L1 + R1 TO RESET", 2, COLOR_TEXT);
 }
 
 static void render_all(struct tester_state *state) {
@@ -1200,7 +1263,7 @@ static int process_input(int fd, struct tester_state *state) {
                 render_dirty(state);
                 continue;
             }
-            if (events[index].type == EV_KEY &&
+            if (state->input_armed && events[index].type == EV_KEY &&
                 events[index].code == BTN_MODE && events[index].value == 1)
                 (void)upload_rumble(fd, state);
             if (events[index].type == EV_SYN &&
@@ -1223,7 +1286,7 @@ static int process_auxiliary(int fd, struct tester_state *state, int first,
         event_count = (u64)bytes / sizeof(events[0]);
         for (event_index = 0U; event_index < event_count; event_index++) {
             int index;
-            if (events[event_index].type == EV_KEY) {
+            if (state->input_armed && events[event_index].type == EV_KEY) {
                 for (index = first; index < first + count; index++) {
                     if (events[event_index].code == auxiliary_codes[index]) {
                         (void)update_auxiliary(state, index,
@@ -1331,6 +1394,7 @@ static void application(void) {
         return;
     }
     framebuffer = (volatile u32 *)mapped;
+    begin_input_guard(&state, monotonic_ns());
     render_all(&state);
     input_fd = connect_input(&state);
     volume_fd = connect_auxiliary(&state, 0);
@@ -1340,18 +1404,35 @@ static void application(void) {
         struct timespec timeout;
         const struct timespec *timeout_pointer = 0;
         u64 now = monotonic_ns();
+        u64 next_deadline = 0U;
         long ready;
 
+        if (reset_hold_complete(&state, now)) {
+            begin_input_guard(&state, now);
+            render_dirty(&state);
+        }
+        (void)arm_input_if_ready(&state, now);
+        render_dirty(&state);
         if (exit_hold_complete(&state, now)) break;
         if (input_fd < 0 || volume_fd < 0 || power_fd < 0) {
             timeout.sec = 0;
             timeout.nsec = RECONNECT_NS;
             timeout_pointer = &timeout;
         }
-        if (state.b_exit_deadline_ns) {
-            u64 remaining = state.b_exit_deadline_ns > now
-                                ? state.b_exit_deadline_ns - now : 0U;
-            if (!timeout_pointer || remaining < RECONNECT_NS) {
+        if (!state.input_armed) next_deadline = state.input_accept_after_ns;
+        if (state.b_exit_deadline_ns &&
+            (!next_deadline || state.b_exit_deadline_ns < next_deadline))
+            next_deadline = state.b_exit_deadline_ns;
+        if (state.reset_deadline_ns &&
+            (!next_deadline || state.reset_deadline_ns < next_deadline))
+            next_deadline = state.reset_deadline_ns;
+        if (next_deadline) {
+            u64 remaining = next_deadline > now ? next_deadline - now : 0U;
+            u64 current = timeout_pointer
+                              ? (u64)timeout.sec * 1000000000UL +
+                                    (u64)timeout.nsec
+                              : 0U;
+            if (!timeout_pointer || remaining < current) {
                 timeout.sec = (s64)(remaining / 1000000000UL);
                 timeout.nsec = (s64)(remaining % 1000000000UL);
             }

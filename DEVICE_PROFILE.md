@@ -122,7 +122,9 @@ separate.
 **Input Tester** appears before PortMaster under Tools. It is a direct,
 event-driven visual check of all 17 gamepad controls, both analog sticks,
 L3/R3, volume, power and vibration. It remains idle without a frame loop; Menu
-gives a short rumble test and holding B exits. Its 29/29 RG34XX-SP gate passed.
+gives a short rumble test and holding B exits. The first 400 ms are drained but
+not counted, and holding L1+R1 for one second clears the session and repeats
+that guard. Its 29/29 RG34XX-SP gate passed.
 Quit contains Reload, Reboot and
 Shutdown. These remain explicit launcher handoffs rather than direct power or
 process-management syscalls from the UI.
