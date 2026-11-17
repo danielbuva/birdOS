@@ -22,13 +22,13 @@ saved_volume() {
 		return
 	}
 	awk -F= '
-		$1 == "system.audio.volume" { system = $2 }
-		$1 == "audio.volume" { local = $2 }
-		$1 == "global.audio.volume" { global = $2 }
+		$1 == "system.audio.volume" { system_volume = $2 }
+		$1 == "audio.volume" { local_volume = $2 }
+		$1 == "global.audio.volume" { global_volume = $2 }
 		END {
-			if (system != "") print system
-			else if (local != "") print local
-			else if (global != "") print global
+			if (system_volume != "") print system_volume
+			else if (local_volume != "") print local_volume
+			else if (global_volume != "") print global_volume
 			else print 50
 		}
 	' "$CONFIG"

@@ -61,7 +61,7 @@ if grep -Eq 'KERNEL\.fallback|extlinux\.fallback|reboot -f|write_attempts|fallba
 	exit 1
 fi
 grep -Fq 'bird_loader_record_failure "$1"' "$LOADER"
-grep -Fq 'stop_boot bird-release "Release verification failed: $BIRD_RELEASE"' \
+grep -Fq 'stop_boot bird-release "Release verification failed: $BIRD_RELEASE; $BIRD_VERIFY_FAILURE"' \
 	"$POST_FLASH"
 grep -Fq 'BIRD_SYSTEM_RELEASE=$BIRD_RELEASE' "$POST_FLASH"
 grep -Fq 'BIRD_SYSTEM_REL=Bird/runtime/$BIRD_SYSTEM_RELEASE/ROCKNIX-SYSTEM' \
@@ -147,6 +147,10 @@ write_runtime_manifest() {
 				printf 'input\tsource-kernel-irq-buttons-no-raid6-benchmark-lz4.tsv\t644\t1\t%s\tfixture\n' \
 					'0000000000000000000000000000000000000000000000000000000000000000'
 				;;
+			deferredwifi)
+				printf 'input\tsource-kernel-irq-buttons-no-raid6-deferred-wifi-lz4.tsv\t644\t1\t%s\tfixture\n' \
+					'0000000000000000000000000000000000000000000000000000000000000000'
+				;;
 			unknown)
 				printf 'input\tunknown-authority.tsv\t644\t1\t%s\tfixture\n' \
 					'0000000000000000000000000000000000000000000000000000000000000000'
@@ -183,18 +187,18 @@ run_runtime_verifier() (
 	BIRD_LOADER_SELECTED=dev-current
 	export BIRD_HOST_TEST_MODE BIRD_FLASH_ROOT BIRD_DATA_DEVICE \
 		BIRD_DATA_MOUNT BIRD_SYSTEM_REL BIRD_STORAGE_REL BIRD_LOADER_SELECTED
-	mount() { return 0; }
-	umount() { return 0; }
+	mount() { printf 'mount %s\n' "$*" >>"$TMP/mount.log"; }
+	umount() { printf 'umount %s\n' "$*" >>"$TMP/mount.log"; }
 	sync() { return 0; }
 	ln -s "$TMP/data/Bird" "$BIRD_DATA_MOUNT/Bird"
 	ln -s "$TMP/data/MUOS" "$BIRD_DATA_MOUNT/MUOS"
 	bird_loader_sha256() { host_sha256 "$1"; }
 	bird_loader_bytes() { host_bytes "$1"; }
-	bird_loader_fail() { return 1; }
+	bird_loader_fail() { printf '%s\n' "$1" >"$TMP/runtime-failure.log"; return 1; }
 	. "$FLASH/bird-releases/dev-current/post-flash.sh"
 )
 
-for MODE in stock source builtin single sync changed fixed irq irqlz4 noraid6; do
+for MODE in stock source builtin single sync changed fixed irq irqlz4 noraid6 deferredwifi; do
 	write_runtime_manifest "$MODE"
 	run_runtime_verifier || {
 		printf 'valid %s manifest failed initramfs runtime verification\n' "$MODE" >&2
@@ -205,6 +209,30 @@ for MODE in unknown duplicate mixed missing; do
 	write_runtime_manifest "$MODE"
 	if run_runtime_verifier; then
 		printf 'invalid %s input manifest passed runtime verification\n' "$MODE" >&2
+		exit 1
+	fi
+done
+
+# A sealed manifest can outlive a lost or damaged card file. Preserve the
+# exact failing path in the persistent loader reason, and unwind storage
+# before exposing any release binds. Exercise all three file checks.
+for DAMAGE in missing size checksum; do
+	write_runtime_manifest deferredwifi
+	TARGET=$RELEASE_ROOT/bird/bird-device-contract.tsv
+	case "$DAMAGE" in
+		missing) rm "$TARGET"; EXPECTED='missing runtime file: bird/bird-device-contract.tsv' ;;
+		size) printf 'extra\n' >>"$TARGET"; EXPECTED='runtime size mismatch: bird/bird-device-contract.tsv expected=' ;;
+		checksum) printf '%s\n' 'contract-fixturE' >"$TARGET"; EXPECTED='runtime checksum mismatch: bird/bird-device-contract.tsv' ;;
+	esac
+	: >"$TMP/mount.log"
+	if run_runtime_verifier; then
+		printf '%s runtime file unexpectedly passed verification\n' "$DAMAGE" >&2
+		exit 1
+	fi
+	grep -Fq "Release verification failed: dev-current; $EXPECTED" "$TMP/runtime-failure.log"
+	grep -Fqx "umount $TMP/mounted-data" "$TMP/mount.log"
+	if grep -Fq 'mount --bind' "$TMP/mount.log"; then
+		printf '%s runtime file was exposed through a release bind\n' "$DAMAGE" >&2
 		exit 1
 	fi
 done

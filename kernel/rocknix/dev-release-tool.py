@@ -2561,6 +2561,26 @@ def snapshot_files(paths: Iterable[pathlib.Path]) -> dict[pathlib.Path, tuple[bo
     return result
 
 
+def validate_bird_fat_mount(listing: str, bird: pathlib.Path, whole: str) -> None:
+    """Require the kernel FAT writer before any development-card mutation."""
+    if not re.fullmatch(r"disk[0-9]+", whole):
+        fail("cannot verify BIRD FAT writer: missing verified whole-card identity")
+    prefix = f"/dev/{whole}s1 on {bird} ("
+    rows = [line for line in listing.splitlines() if line.startswith(prefix)]
+    if len(rows) != 1 or not rows[0].endswith(")"):
+        fail("cannot verify BIRD FAT writer: expected exactly one matching mount")
+    options = [item.strip() for item in rows[0][len(prefix):-1].split(",")]
+    if not options or options[0] != "msdos" or "read-only" in options:
+        fail("BIRD requires a writable kernel msdos mount")
+    if "fskit" in options:
+        fail(
+            "BIRD uses the macOS FSKit FAT writer, which reproduced duplicate "
+            "short filenames during atomic updates. No card changes were made. "
+            "Unmount BIRD and mount it through /sbin/mount_msdos before retrying; "
+            "see DEV_WORKFLOW.md (FAT writer requirement)."
+        )
+
+
 class Workflow:
     def __init__(self, args: argparse.Namespace) -> None:
         self.root = args.root.resolve()
@@ -2591,6 +2611,16 @@ class Workflow:
     def inject(self, name: str) -> None:
         if self.host_test and self.failure_point == name:
             fail(f"host-only injected failure: {name}")
+
+    def require_safe_fat_writer(self) -> None:
+        # macOS namespace/readback checks missed a real duplicate-SFN collision:
+        # target fsck renamed the intact media helper, preventing storage boot.
+        # Keep atomic publication; use the proven kernel writer instead. This
+        # host-only gate adds no device boot or application-start work.
+        if self.host_test or self.mode == "status" or self.dry_run:
+            return
+        listing = run(["/sbin/mount"], capture=True).stdout.decode("utf-8", "strict")
+        validate_bird_fat_mount(listing, self.bird, os.environ.get("BIRD_DEV_WHOLE", ""))
 
     def read_selector(self) -> bytes:
         require_regular(self.selector_path, "active extlinux selector")
@@ -3801,6 +3831,7 @@ class Workflow:
         print(f"Safe eject: diskutil eject /dev/{whole}")
 
     def execute(self) -> None:
+        self.require_safe_fat_writer()
         require_directory(self.root, "repository root")
         require_directory(self.bird, "BIRD volume")
         require_directory(self.data, "BIRD-DATA volume")

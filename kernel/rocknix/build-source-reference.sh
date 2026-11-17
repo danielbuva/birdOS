@@ -8,8 +8,8 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 ROCKNIX_SOURCE=${ROCKNIX_SOURCE:-$HOME/rocknix-distribution-20260701}
-JOYPAD_SOURCE=${JOYPAD_SOURCE:-$HOME/muos-kernel-source/rocknix-joypad}
-FIRMWARE_SOURCE=${FIRMWARE_SOURCE:-$HOME/muos-kernel-source/linux-firmware-20260309}
+JOYPAD_SOURCE=${JOYPAD_SOURCE:-$ROOT/kernel/source-inputs/rocknix-joypad}
+FIRMWARE_SOURCE=${FIRMWARE_SOURCE:-$ROOT/kernel/source-inputs/linux-firmware-20260309}
 IMAGE=${BIRD_MAINLINE_BUILD_IMAGE:-sha256:aac053f343e057c6bb412cf4d6bab3090b6d050b94c80d60e86a6d794185f460}
 OUTPUT=${OUTPUT:-$ROOT/kernel/work/rocknix-source-reference}
 BUILD_OUTPUT="$OUTPUT/build"

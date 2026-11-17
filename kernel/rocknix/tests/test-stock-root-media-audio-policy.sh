@@ -71,6 +71,37 @@ fi
 grep -Fq 'route=unchanged' "$TMP/audio-result"
 grep -Fq 'volume=unchanged' "$TMP/audio-result"
 
+# Non-default saved values must be parsed, not silently replaced by 50. Exercise
+# the accepted precedence and ensure matching live audio never invokes restore.
+for VOLUME_KEY in global.audio.volume audio.volume system.audio.volume; do
+	printf '%s\n' "$VOLUME_KEY=60" \
+		>"$TMP/storage/.config/system/configs/system.cfg"
+	BIRD_TEST_VOLUME=60
+	run_restore
+	grep -Fq 'desired_volume=60 current_volume=60 volume=unchanged' \
+		"$TMP/audio-result"
+	! grep -q '^volume ' "$BIRD_TEST_EVENTS"
+done
+printf '%s\n' 'global.audio.volume=20' 'audio.volume=30' \
+	'system.audio.volume=60' >"$TMP/storage/.config/system/configs/system.cfg"
+run_restore
+grep -Fq 'desired_volume=60 current_volume=60 volume=unchanged' "$TMP/audio-result"
+! grep -q '^volume ' "$BIRD_TEST_EVENTS"
+printf '%s\n' 'global.audio.volume=20' 'audio.volume=60' \
+	>"$TMP/storage/.config/system/configs/system.cfg"
+run_restore
+grep -Fq 'desired_volume=60 current_volume=60 volume=unchanged' "$TMP/audio-result"
+
+# A live default of 50 must not conceal a needed restore to saved 60 either.
+BIRD_TEST_VOLUME=50
+run_restore
+grep -Fq 'desired_volume=60 current_volume=50 volume=changed' "$TMP/audio-result"
+[ "$(grep -c '^volume restore$' "$BIRD_TEST_EVENTS")" -eq 1 ]
+
+printf '%s\n' 'system.audio.volume=50' \
+	>"$TMP/storage/.config/system/configs/system.cfg"
+BIRD_TEST_VOLUME=50
+
 # A boot-time headphone mismatch changes only the speaker amplifier. It must
 # not wake the suspended PCM sink with a pre-route PulseAudio write.
 BIRD_TEST_JACK=on; BIRD_TEST_SPEAKER=on

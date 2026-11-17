@@ -19,6 +19,7 @@ LS_PROGRAM=${BIRD_LS_PROGRAM:-/bin/ls}
 HEAD_PROGRAM=${BIRD_HEAD_PROGRAM:-/usr/bin/head}
 USLEEP_PROGRAM=${BIRD_USLEEP_PROGRAM:-/usr/bin/usleep}
 UPTIME_PATH=${BIRD_UPTIME_PATH:-/proc/uptime}
+NM_POLICY_DIR=${BIRD_NM_POLICY_DIR:-/run/NetworkManager/conf.d}
 
 # Fixed production audit anchors; host fixtures override only the executable:
 # /usr/bin/nmcli -w 30 connection up
@@ -151,6 +152,65 @@ network_stopped_confirmed() {
 	[ "$UNITS_STOPPED" -eq 1 ] && [ "$RADIO_STOPPED" -eq 1 ]
 }
 
+wait_for_wifi() {
+	NM_ONLINE_STATUS=0
+	if bounded_command "$ONLINE_BOUND" "$NM_ONLINE_PROGRAM" \
+		-q "--timeout=$ONLINE_TIMEOUT"; then
+		LINK=ready
+	else
+		NM_ONLINE_STATUS=$?
+		LINK=timeout
+	fi
+	printf 'Bird network step=nm-online status=%s\n' "$NM_ONLINE_STATUS"
+	# Global nm-online success can describe another interface. Confirm
+	# wlan0 after either automatic or explicit activation. This also
+	# retains recovery when an explicit command fails but Wi-Fi connects.
+	if [ "$LINK" = ready ] && [ -n "$WIFI_DEV" ]; then
+		WIFI_STATE_STATUS=0
+		WIFI_STATE=$(bounded_command 0.5s "$NMCLI_PROGRAM" \
+			-g GENERAL.STATE device show "$WIFI_DEV" 2>/dev/null) || \
+			WIFI_STATE_STATUS=$?
+		if [ "$WIFI_STATE_STATUS" -eq 0 ] && \
+			[ "${WIFI_STATE%% *}" = 100 ]; then
+			[ "$ACTIVATION" = ready ] || printf '%s\n' \
+				'Bird network step=nmcli-activation-reconciled device_state=100'
+			ACTIVATION=ready
+		else
+			ACTIVATION=failed
+		fi
+	fi
+}
+
+recover_automatic_wifi() {
+	# IWD association timeout is reported as no-secrets by NM, which blocks
+	# further automatic attempts (boot de2f75bd). Restart NM once after the
+	# automatic deadline. Its exit clears both the block and any pending
+	# activation callbacks; a state snapshot cannot prove those are absent.
+	# Keep IWD and the radio running, and let only the new NM schedule a
+	# connection. Never race its automatic attempt with an explicit "up".
+	RECOVERY_STOP_STATUS=0
+	# The unit allows five seconds for shutdown; let systemd enforce that
+	# deadline before the outer client bound expires.
+	bounded_command 7s "$SYSTEMCTL_PROGRAM" stop \
+		NetworkManager.service || RECOVERY_STOP_STATUS=$?
+	printf 'Bird network step=recovery-stop-networkmanager status=%s\n' "$RECOVERY_STOP_STATUS"
+	[ "$RECOVERY_STOP_STATUS" -eq 0 ] || return 1
+	RECOVERY_QUERY_STATUS=0
+	RECOVERY_STATE=$(bounded_command 0.5s "$SYSTEMCTL_PROGRAM" is-active \
+		NetworkManager.service 2>/dev/null) || RECOVERY_QUERY_STATUS=$?
+	printf 'Bird network step=recovery-networkmanager-stopped state=%s status=%s\n' \
+		"${RECOVERY_STATE:-unknown}" "$RECOVERY_QUERY_STATUS"
+	case "$RECOVERY_QUERY_STATUS:$RECOVERY_STATE" in
+		3:inactive|3:failed) ;;
+		*) return 1 ;;
+	esac
+	RECOVERY_START_STATUS=0
+	bounded_command "$COMMAND_BOUND" "$SYSTEMCTL_PROGRAM" start \
+		NetworkManager.service || RECOVERY_START_STATUS=$?
+	printf 'Bird network step=recovery-start-networkmanager status=%s attempt=1\n' "$RECOVERY_START_STATUS"
+	[ "$RECOVERY_START_STATUS" -eq 0 ]
+}
+
 case "${1:-}" in
 	start|start-interactive)
 		START_MODE=$1
@@ -165,6 +225,17 @@ case "${1:-}" in
 		cut -d ' ' -f 1 "$UPTIME_PATH"
 		if ! touch "$FLAG"; then
 			printf '%s\n' 'Bird network request failed stage=request-flag'
+			exit 1
+		fi
+		# The stock IWD backend delegates autoconnect to IWD. After a full
+		# shutdown that races our explicit NetworkManager activation (boot
+		# 8bcaa046), which fails before the later DHCP transaction completes.
+		# Give NetworkManager sole activation ownership before it starts.
+		# /run keeps this request-only policy off both the boot path and SD.
+		if ! mkdir -p "$NM_POLICY_DIR" || ! printf '%s\n' \
+			'[device-bird-wifi]' 'match-device=interface-name:wlan0' \
+			'wifi.iwd.autoconnect=false' >"$NM_POLICY_DIR/90-bird-wifi.conf"; then
+			printf '%s\n' 'Bird network request failed stage=activation-policy'
 			exit 1
 		fi
 		network_unit_summary
@@ -231,6 +302,7 @@ case "${1:-}" in
 		NM_RELOAD_STATUS=not-requested
 		NM_CONNECT_STATUS=not-requested
 		NM_ONLINE_STATUS=not-requested
+		NETWORK_RECOVERY_STATUS=0
 		if [ "$START_MODE" = start ]; then
 			IWCTL_FOUND=0
 			if [ -n "$WIFI_DEV" ]; then
@@ -265,31 +337,56 @@ case "${1:-}" in
 				"$NM_RELOAD_STATUS"
 			PROFILE_STATUS=0
 			PROFILE_OUTPUT=$(bounded_command 2s "$NMCLI_PROGRAM" -t -f \
-				NAME,TYPE connection show 2>/dev/null) || PROFILE_STATUS=$?
+				UUID,TYPE,AUTOCONNECT connection show 2>/dev/null) || PROFILE_STATUS=$?
 			PROFILE=
-			while IFS=: read -r PROFILE_NAME PROFILE_TYPE _; do
+			PROFILE_AUTO=no
+			while IFS=: read -r PROFILE_UUID PROFILE_TYPE PROFILE_AUTOCONNECT; do
 				case "$PROFILE_TYPE" in
-					wifi|802-11-wireless) PROFILE=$PROFILE_NAME; break ;;
+					wifi|802-11-wireless)
+						[ -n "$PROFILE" ] || PROFILE=$PROFILE_UUID
+						if [ "$PROFILE_AUTOCONNECT" = yes ]; then
+							PROFILE=$PROFILE_UUID
+							PROFILE_AUTO=yes
+							break
+						fi
+						;;
 				esac
 			done <<<"$PROFILE_OUTPUT"
 			NM_CONNECT_STATUS=1
 			ACTIVATION=failed
+			ONLINE_TIMEOUT=10
+			ONLINE_BOUND=11s
 			if [ "$PROFILE_STATUS" -eq 0 ] && [ -n "$PROFILE" ] && \
-				[ -n "$WIFI_DEV" ] && bounded_command 31s "$NMCLI_PROGRAM" \
-				-w 30 connection up id "$PROFILE" ifname "$WIFI_DEV"; then
-				NM_CONNECT_STATUS=0
-				ACTIVATION=ready
+				[ -n "$WIFI_DEV" ]; then
+				if [ "$PROFILE_AUTO" = yes ]; then
+					# NM already schedules automatic profiles after discovery.
+					# A second "up" aborted that transaction on boot eef8a811.
+					# Observe it using the existing 30s activation budget. Prefer
+					# any automatic Wi-Fi profile over an explicit fallback so
+					# that the fallback cannot interrupt another saved profile.
+					NM_CONNECT_STATUS=not-requested
+					ACTIVATION=pending
+					ONLINE_TIMEOUT=30
+					ONLINE_BOUND=31s
+				elif bounded_command 31s "$NMCLI_PROGRAM" \
+					-w 30 connection up uuid "$PROFILE" ifname "$WIFI_DEV"; then
+					NM_CONNECT_STATUS=0
+					ACTIVATION=ready
+				fi
 			fi
-			printf 'Bird network step=nmcli-connection-up status=%s profile=%s\n' \
-				"$NM_CONNECT_STATUS" "${PROFILE:-missing}"
-			NM_ONLINE_STATUS=0
-			if bounded_command 11s "$NM_ONLINE_PROGRAM" -q --timeout=10; then
-				LINK=ready
-			else
-				NM_ONLINE_STATUS=$?
-				LINK=timeout
+			printf 'Bird network step=nmcli-connection-up status=%s profile=%s autoconnect=%s\n' \
+				"$NM_CONNECT_STATUS" "${PROFILE:-missing}" "$PROFILE_AUTO"
+			wait_for_wifi
+			if { [ "$ACTIVATION" != ready ] || [ "$LINK" != ready ]; } && \
+				[ "$PROFILE_AUTO" = yes ] && [ "$PROFILE_STATUS" -eq 0 ] && \
+				[ -n "$PROFILE" ] && [ -n "$WIFI_DEV" ]; then
+				recover_automatic_wifi || NETWORK_RECOVERY_STATUS=$?
+				if [ "$NETWORK_RECOVERY_STATUS" -eq 0 ]; then
+					ONLINE_TIMEOUT=30
+					ONLINE_BOUND=31s
+					wait_for_wifi
+				fi
 			fi
-			printf 'Bird network step=nm-online status=%s\n' "$NM_ONLINE_STATUS"
 		else
 			ACTIVATION=interactive
 			LINK=awaiting-user
@@ -313,7 +410,7 @@ case "${1:-}" in
 			START_STATUS=1
 		fi
 		if [ "$START_MODE" = start ] && { [ "$ACTIVATION" != ready ] || \
-			[ "$LINK" != ready ]; }; then
+			[ "$LINK" != ready ] || [ "$NETWORK_RECOVERY_STATUS" -ne 0 ]; }; then
 			START_STATUS=1
 		fi
 		[ "$START_STATUS" -eq 0 ] || READINESS=degraded
@@ -339,10 +436,13 @@ case "${1:-}" in
 			fi
 			printf '%s\n' '--- routes (private raw, bounded) ---'
 			raw_diagnostic_probe ip-route "$IP_PROGRAM" route || :
-			if [ "$ACTIVATION" != ready ]; then
+			if [ "$START_STATUS" -ne 0 ]; then
 				printf '%s\n' '--- failed activation journal (private raw, bounded) ---'
 				raw_diagnostic_probe journal "$JOURNALCTL_PROGRAM" -b \
 					-u iwd.service -u NetworkManager.service --no-pager -n 120 || :
+				printf '%s\n' '--- failed activation kernel journal (private raw, bounded) ---'
+				raw_diagnostic_probe kernel-journal "$JOURNALCTL_PROGRAM" -b \
+					-k --no-pager -n 80 || :
 			fi
 		fi
 		exit "$START_STATUS"

@@ -2077,8 +2077,46 @@ set -eu
 MODE=$BIRD_NETWORK_TEST_MODE
 STATE=$BIRD_NETWORK_TEST_STATE
 case "$1" in
-	start|stop) exit 0 ;;
+	start)
+		# Publish sole activation ownership before either cold or warm start.
+		: >"$STATE/start-requested"
+		grep -Fqx '[device-bird-wifi]' "$BIRD_NM_POLICY_DIR/90-bird-wifi.conf"
+		grep -Fqx 'match-device=interface-name:wlan0' "$BIRD_NM_POLICY_DIR/90-bird-wifi.conf"
+		grep -Fqx 'wifi.iwd.autoconnect=false' "$BIRD_NM_POLICY_DIR/90-bird-wifi.conf"
+		if [ -e "$STATE/recovery-stop" ]; then
+			# Recovery owns NetworkManager only. IWD/radio remain untouched.
+			[ "$*" = 'start NetworkManager.service' ]
+			printf '%s\n' start >>"$STATE/recovery-events"
+			[ -e "$STATE/stopped-confirmed" ]
+			[ "$MODE" != auto-restart-start-failed ] || exit 1
+			: >"$STATE/restarted"
+		fi
+		exit 0 ;;
+	stop)
+		case "$MODE" in
+			auto-*)
+				[ "$*" = 'stop NetworkManager.service' ]
+				printf '%s\n' stop >>"$STATE/recovery-events"
+				: >"$STATE/recovery-stop"
+				[ "$MODE" != auto-restart-stop-failed ] || exit 124
+				;;
+		esac
+		exit 0 ;;
 	is-active)
+		if [ "$*" = 'is-active NetworkManager.service' ] &&
+			[ -e "$STATE/recovery-stop" ] && [ ! -e "$STATE/restarted" ]; then
+			printf '%s\n' confirm >>"$STATE/recovery-events"
+			case "$MODE" in
+				auto-restart-query-running) printf '%s\n' active; exit 0 ;;
+				auto-restart-query-unknown) printf '%s\n' unknown; exit 4 ;;
+				auto-restart-query-timeout) printf '%s\n' inactive; exit 124 ;;
+				auto-restart-query-wrong-status) printf '%s\n' inactive; exit 0 ;;
+				auto-restart-query-failed-unit) printf '%s\n' failed ;;
+				*) printf '%s\n' inactive ;;
+			esac
+			: >"$STATE/stopped-confirmed"
+			exit 3
+		fi
 		shift
 		STATUS=0
 		for UNIT in "$@"; do
@@ -2087,16 +2125,13 @@ case "$1" in
 				manager-down:NetworkManager.service) UNIT_STATE=inactive ;;
 				stop-partial:*)
 					ATTEMPT=$(cat "$STATE/attempt" 2>/dev/null || printf 0)
-					if [ "$ATTEMPT" -ge 2 ]; then
-						UNIT_STATE=inactive
-					fi
+					if [ "$ATTEMPT" -ge 2 ]; then UNIT_STATE=inactive; fi
 					;;
 			esac
 			printf '%s\n' "$UNIT_STATE"
 			[ "$UNIT_STATE" = active ] || STATUS=3
 		done
-		exit "$STATUS"
-		;;
+		exit "$STATUS" ;;
 	*) exit 1 ;;
 esac
 EOF
@@ -2104,19 +2139,80 @@ cat >"$NETWORK_FIXTURE/bin/nmcli" <<'EOF'
 #!/bin/sh
 set -eu
 trap 'exit 143' TERM
-[ "$BIRD_NETWORK_TEST_MODE" != hung-nmcli ] || sleep 20
+MODE=$BIRD_NETWORK_TEST_MODE
+STATE=$BIRD_NETWORK_TEST_STATE
+[ "$MODE" != hung-nmcli ] || sleep 20
 case " $* " in
-	*" connection show "*) printf '%s\n' 'saved-profile:wifi' ;;
+	*" device set wlan0 autoconnect "*)
+		: >"$STATE/forbidden-fence"
+		exit 1 ;;
+	*" -g GENERAL.STATE device show wlan0 "*)
+		case "$MODE" in
+			auto-restart-*)
+				if [ -e "$STATE/restarted" ] && [ "$MODE" != auto-restart-wifi-pending ]; then
+					printf '%s\n' '100 (connected)'
+				else
+					printf '%s\n' '70 (connecting (getting IP configuration))'
+				fi ;;
+			auto-inflight)
+				[ -e "$STATE/online-observed" ]
+				printf '%s\n' '100 (connected)' ;;
+			reentry-query-failed|auto-query-failed) exit 1 ;;
+			reentry-malformed|auto-malformed) printf '%s\n' '1000 (invalid)' ;;
+			reentry-connecting|auto-connecting|explicit-connecting|direct-activation-fail)
+				printf '%s\n' '70 (connecting (getting IP configuration))' ;;
+			*) printf '%s\n' '100 (connected)' ;;
+		esac ;;
+	*" connection show "*)
+		case "$MODE" in
+			auto-profile-query-failed) exit 1 ;;
+			auto-no-profile) : ;;
+			auto-second)
+				printf '%s\n' '11111111-1111-1111-1111-111111111111:wifi:no' \
+					'22222222-2222-2222-2222-222222222222:wifi:yes' ;;
+			auto-*) printf '%s\n' '11111111-1111-1111-1111-111111111111:wifi:yes' ;;
+			*) printf '%s\n' '11111111-1111-1111-1111-111111111111:wifi:no' ;;
+		esac ;;
 	*" connection up "*)
-		[ "$BIRD_NETWORK_TEST_MODE" != direct-activation-fail ]
-		;;
+		: >"$STATE/explicit-activation"
+		case " $* " in
+			*" connection up uuid 11111111-1111-1111-1111-111111111111 ifname wlan0 "*) : ;;
+			*) exit 2 ;;
+		esac
+		case "$MODE" in
+			# NM's automatic scheduling owns every initial and recovery attempt.
+			# An explicit replacement reproduced the eef8a811 collision.
+			auto-*) : >"$STATE/auto-aborted"; exit 1 ;;
+			direct-activation-fail|reentry-*) exit 1 ;;
+		esac ;;
 	*) : ;;
 esac
 EOF
 cat >"$NETWORK_FIXTURE/bin/nm-online" <<'EOF'
 #!/bin/sh
 set -eu
-[ "$BIRD_NETWORK_TEST_MODE" != direct-offline ]
+MODE=$BIRD_NETWORK_TEST_MODE
+STATE=$BIRD_NETWORK_TEST_STATE
+[ ! -e "$STATE/auto-aborted" ]
+case "$MODE" in
+	auto-profile-query-failed|auto-no-profile) [ "$*" = '-q --timeout=10' ] ;;
+	auto-*) [ "$*" = '-q --timeout=30' ] ;;
+	*) [ "$*" = '-q --timeout=10' ] ;;
+esac
+case "$MODE" in
+	auto-*)
+		if [ -e "$STATE/online-observed" ]; then
+			[ -e "$STATE/restarted" ]
+			printf '%s\n' online >>"$STATE/recovery-events"
+		fi ;;
+esac
+: >"$STATE/online-observed"
+case "$MODE" in
+	auto-restart-global-ready|auto-restart-wifi-pending) : ;;
+	auto-restart-timeout) exit 1 ;;
+	auto-restart-*) [ -e "$STATE/restarted" ] || exit 1 ;;
+	direct-offline|auto-offline|auto-profile-query-failed|auto-no-profile) exit 1 ;;
+esac
 EOF
 cat >"$NETWORK_FIXTURE/bin/iwctl" <<'EOF'
 #!/bin/sh
@@ -2169,6 +2265,7 @@ run_network_fixture() {
 		BIRD_NETWORK_TEST_STATE="$NETWORK_CASE/state" \
 		BIRD_NETWORK_FLAG="$NETWORK_CASE/network-request" \
 		BIRD_NETWORK_LOG="$NETWORK_CASE/network.log" \
+		BIRD_NM_POLICY_DIR="$NETWORK_CASE/nm-conf.d" \
 		BIRD_UPTIME_PATH="$NETWORK_CASE/uptime" \
 		BIRD_SYS_CLASS_NET="$NETWORK_CASE/sys-net" \
 		BIRD_TIMEOUT_PROGRAM="$TIMEOUT_PROGRAM" \
@@ -2192,6 +2289,80 @@ run_network_fixture() {
 }
 
 run_network_fixture ready start 0
+[ -e "$NETWORK_FIXTURE/ready-start/state/explicit-activation" ]
+# Automatic activation may be racing, already ready, or still pending after
+# another interface makes nm-online succeed. Never interrupt it with "up".
+run_network_fixture auto-inflight start 0
+run_network_fixture auto-connected start 0
+run_network_fixture auto-second start 0
+run_network_fixture auto-connecting start 1
+run_network_fixture auto-query-failed start 1
+run_network_fixture auto-malformed start 1
+run_network_fixture auto-offline start 1
+run_network_fixture auto-profile-query-failed start 1
+run_network_fixture auto-no-profile start 1
+for AUTO_CASE in "$NETWORK_FIXTURE"/auto-*-start; do
+	[ ! -e "$AUTO_CASE/state/explicit-activation" ]
+done
+# Ordinary success and missing/invalid profile metadata must not restart NM.
+for AUTO_MODE in auto-inflight auto-connected auto-second auto-profile-query-failed auto-no-profile; do
+	[ ! -e "$NETWORK_FIXTURE/$AUTO_MODE-start/state/recovery-events" ]
+done
+# de2f75bd: an association timeout leaves automatic activation blocked. A
+# verified NM-only restart clears that daemon state without racing its scheduler.
+for RESTART_MODE in success query-failed-unit global-ready; do
+	run_network_fixture "auto-restart-$RESTART_MODE" start 0
+done
+run_network_fixture auto-restart-timeout start 1
+run_network_fixture auto-restart-wifi-pending start 1
+for RESTART_MODE in success query-failed-unit global-ready timeout wifi-pending; do
+	RESTART_STATE=$NETWORK_FIXTURE/auto-restart-$RESTART_MODE-start/state
+	printf '%s\n' stop confirm start online >"$RESTART_STATE/expected-events"
+	cmp "$RESTART_STATE/expected-events" "$RESTART_STATE/recovery-events"
+	[ "$(grep -c '^start$' "$RESTART_STATE/recovery-events")" -eq 1 ]
+done
+for RESTART_MODE in query-running query-unknown query-timeout query-wrong-status; do
+	run_network_fixture "auto-restart-$RESTART_MODE" start 1
+	RESTART_STATE=$NETWORK_FIXTURE/auto-restart-$RESTART_MODE-start/state
+	printf '%s\n' stop confirm >"$RESTART_STATE/expected-events"
+	cmp "$RESTART_STATE/expected-events" "$RESTART_STATE/recovery-events"
+	[ ! -e "$RESTART_STATE/restarted" ]
+done
+run_network_fixture auto-restart-stop-failed start 1
+RESTART_STATE=$NETWORK_FIXTURE/auto-restart-stop-failed-start/state
+printf '%s\n' stop >"$RESTART_STATE/expected-events"
+cmp "$RESTART_STATE/expected-events" "$RESTART_STATE/recovery-events"
+[ ! -e "$RESTART_STATE/restarted" ]
+run_network_fixture auto-restart-start-failed start 1
+RESTART_STATE=$NETWORK_FIXTURE/auto-restart-start-failed-start/state
+printf '%s\n' stop confirm start >"$RESTART_STATE/expected-events"
+cmp "$RESTART_STATE/expected-events" "$RESTART_STATE/recovery-events"
+[ ! -e "$RESTART_STATE/restarted" ]
+for AUTO_CASE in "$NETWORK_FIXTURE"/auto-*-start; do
+	[ ! -e "$AUTO_CASE/state/explicit-activation" ]
+	[ ! -e "$AUTO_CASE/state/forbidden-fence" ]
+done
+run_network_fixture explicit-connecting start 1
+# Simulate a completed shutdown and a later cold reopen. Both must install
+# the same policy before starting NetworkManager, without editing profiles.
+rm -rf "$NETWORK_FIXTURE/ready-start/nm-conf.d"
+run_network_fixture ready start 0
+run_network_fixture ready start 0
+mkdir -p "$NETWORK_FIXTURE/policy-unwritable-start"
+: >"$NETWORK_FIXTURE/policy-unwritable-start/nm-conf.d"
+run_network_fixture policy-unwritable start 1
+[ ! -e "$NETWORK_FIXTURE/policy-unwritable-start/state/start-requested" ]
+grep -Fq 'failed stage=activation-policy' \
+	"$NETWORK_FIXTURE/policy-unwritable-start/network.log"
+# Returned boot 99a503e7: explicit activation failed while IWD autoconnect
+# succeeded. Global nm-online alone is insufficient: verify wlan0 itself.
+run_network_fixture reentry-connected start 0
+grep -Fq 'step=nmcli-activation-reconciled device_state=100' \
+	"$NETWORK_FIXTURE/reentry-connected-start/network.log"
+run_network_fixture reentry-connecting start 1
+run_network_fixture reentry-query-failed start 1
+run_network_fixture reentry-malformed start 1
+run_network_fixture direct-activation-fail start 1
 run_network_fixture direct-offline start 1
 grep -Fq 'request readiness=degraded mode=start' \
 	"$NETWORK_FIXTURE/direct-offline-start/network.log"

@@ -97,6 +97,7 @@ stop_boot() {
 }
 
 verify_release_runtime() {
+	BIRD_VERIFY_FAILURE='manifest or required release structure invalid'
 	RELEASE_ROOT=$BIRD_RELEASES_ROOT/$BIRD_RELEASE
 	RELEASE_MANIFEST=$RELEASE_ROOT/deploy-manifest.tsv
 	RELEASE_COMPLETE=$RELEASE_ROOT/.complete
@@ -232,13 +233,19 @@ verify_release_runtime() {
 
 	while IFS="$TAB" read -r RELATIVE MODE BYTES HASH; do
 		TARGET=$RELEASE_ROOT/$RELATIVE
-		[ -f "$TARGET" ] || { rm -f "$RUNTIME_RECORDS"; return 1; }
+		[ -f "$TARGET" ] || {
+			BIRD_VERIFY_FAILURE="missing runtime file: $RELATIVE"
+			rm -f "$RUNTIME_RECORDS"
+			return 1
+		}
 		ACTUAL_BYTES=$(bytes_file "$TARGET" 2>/dev/null || printf invalid)
 		[ "$ACTUAL_BYTES" = "$BYTES" ] || {
+			BIRD_VERIFY_FAILURE="runtime size mismatch: $RELATIVE expected=$BYTES actual=$ACTUAL_BYTES"
 			rm -f "$RUNTIME_RECORDS"
 			return 1
 		}
 		[ "$(sha256_file "$TARGET")" = "$HASH" ] || {
+			BIRD_VERIFY_FAILURE="runtime checksum mismatch: $RELATIVE"
 			rm -f "$RUNTIME_RECORDS"
 			return 1
 		}
@@ -281,7 +288,7 @@ STORAGE_SOURCE=$BIRD_DATA_MOUNT/$BIRD_STORAGE_REL
 }
 
 verify_release_runtime || {
-	stop_boot bird-release "Release verification failed: $BIRD_RELEASE"
+	stop_boot bird-release "Release verification failed: $BIRD_RELEASE; $BIRD_VERIFY_FAILURE"
 	return 1
 }
 [ -d "$BIRD_FLASH_ROOT/bird" ] &&

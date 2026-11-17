@@ -61,6 +61,9 @@ static unsigned fake_ioctl_calls;
 static int fake_input_contract_valid;
 static int fake_input_contract_mismatch;
 static long fake_write_result;
+static char fake_stdout_capture[256];
+static unsigned fake_stdout_bytes;
+static unsigned fake_stdout_calls;
 #define FAKE_WRITE_CAPTURE_BYTES 16384U
 static char fake_write_capture[FAKE_WRITE_CAPTURE_BYTES];
 static u64 fake_write_capture_bytes;
@@ -237,6 +240,16 @@ long bird_test_syscall6(long number, long a0, long a1, long a2, long a3,
         return (long)bytes;
     }
     if (number == 64) {
+        if (a0 == 1) {
+            unsigned available = sizeof(fake_stdout_capture) - 1U -
+                                 fake_stdout_bytes;
+            unsigned bytes = (u64)a2 < available ? (unsigned)a2 : available;
+            memcpy(fake_stdout_capture + fake_stdout_bytes, (const void *)a1,
+                   bytes);
+            fake_stdout_bytes += bytes;
+            fake_stdout_capture[fake_stdout_bytes] = 0;
+            fake_stdout_calls++;
+        }
 #ifdef BIRD_PROFILE
         if ((bird_profile.emitting || fake_capture_diagnostics) &&
             fake_profile_log_bytes < PROFILE_LOG_BYTES) {
@@ -298,6 +311,9 @@ static void reset_fake_file(long open_result, const char *payload,
     fake_input_contract_valid = 1;
     fake_input_contract_mismatch = 0;
     fake_write_result = 0;
+    fake_stdout_bytes = 0;
+    fake_stdout_calls = 0;
+    fake_stdout_capture[0] = 0;
     fake_payload = payload ? payload : "";
     fake_payload_bytes = payload ? (u64)strlen(payload) : 0;
     fake_payload_offset = 0;
@@ -5169,6 +5185,42 @@ static int run_battery_cache_tests(void) {
     return ok;
 }
 
+static int run_resume_diagnostic_tests(void) {
+    int ok = 1;
+    reset_fake_file(FAKE_FD, 0, 0);
+    log_ui_resume_saved(0, 0, 0, 0);
+    ok &= check(fake_stdout_calls == 1U &&
+                    strcmp(fake_stdout_capture,
+                           "ui_resume_save boot_ms=0 view=0 active_index=0 "
+                           "selection=0 result=ready\n") == 0,
+                "zero-valued resume diagnostic changed or used multiple writes");
+    reset_fake_file(FAKE_FD, 0, 0);
+    log_ui_resume_saved((u64)-1, (u32)-1, (u32)-1, (u32)-1);
+    ok &= check(fake_stdout_calls == 1U &&
+                    strcmp(fake_stdout_capture,
+                           "ui_resume_save boot_ms=18446744073709551615 "
+                           "view=4294967295 active_index=4294967295 "
+                           "selection=4294967295 result=ready\n") == 0,
+                "maximum-width resume diagnostic overflowed or changed");
+    reset_fake_file(FAKE_FD, 0, 0);
+    fake_now_ms = 1234;
+    setup_main_view();
+    view = VIEW_MEDIA_ENTRIES;
+    active_media_category = 7U;
+    selection = 42U;
+    ok &= check(save_ui_resume() == 0 && fake_stdout_calls == 1U &&
+                    fake_rename_calls == 1U &&
+                    strcmp(fake_stdout_capture,
+                           "ui_resume_save boot_ms=1234 view=6 active_index=7 "
+                           "selection=42 result=ready\n") == 0,
+                "committed resume diagnostic lost its captured view or index");
+    reset_fake_file(FAKE_FD, 0, 0);
+    fake_rename_result = -EIO_LINUX;
+    ok &= check(save_ui_resume() < 0 && fake_stdout_calls == 0U,
+                "failed resume publication reported success");
+    return ok;
+}
+
 int main(void) {
     char partial[CATALOG_PATH_MAX_BYTES + 8U];
     char complete[CATALOG_PATH_MAX_BYTES * 2U + 8U];
@@ -5187,6 +5239,7 @@ int main(void) {
     ok &= run_dirty_region_render_tests();
     ok &= run_pending_launch_ui_tests();
     ok &= run_navigation_batch_tests();
+    ok &= run_resume_diagnostic_tests();
     ok &= run_phase9_menu_hierarchy_tests();
     ok &= run_user_reload_handoff_tests();
     ok &= run_storage_handoff_tests();

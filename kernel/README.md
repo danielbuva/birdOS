@@ -115,3 +115,8 @@ the exact kernel ABI and inserts it from early init before launcher dispatch.
 That module is a compatibility baseline, not the final design: after the broad
 gate passes, remove its unrelated board paths or replace it with standard
 fixed-device input bindings.
+
+Local pinned source inputs for `rocknix/build-source-reference.sh` live in
+`kernel/source-inputs/rocknix-joypad` and
+`kernel/source-inputs/linux-firmware-20260309` (ignored by Git). The builder
+verifies the joypad commit and firmware hashes before using them.

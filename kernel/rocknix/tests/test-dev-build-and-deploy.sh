@@ -2123,4 +2123,115 @@ awk -F '\t' '$1 == "input" && $2 == "source-kernel-irq-buttons.tsv" && \
 assert_base_and_fallback_unchanged
 pass 'a verified IRQ-buttons production base initializes dev-current'
 
+# Exercise the real writer gate with only an in-memory mount listing. Unlike
+# ordinary host fixtures, these Workflow objects deliberately do not enable
+# host-test bypass. Their complete fake card tree remains below this test TMP.
+python3 - "$SOURCE_ROOT" "$TMP/fat-writer-guard" <<'PY_FAT_WRITER'
+import argparse
+import importlib.util
+import os
+import pathlib
+import subprocess
+import sys
+
+source = pathlib.Path(sys.argv[1])
+fixture = pathlib.Path(sys.argv[2])
+spec = importlib.util.spec_from_file_location("bird_fat_writer_test", source / "kernel/rocknix/dev-release-tool.py")
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+root, bird, data = (fixture / name for name in ("repo", "BIRD", "BIRD-DATA"))
+for path in (root, bird / "extlinux", bird / "bird-releases", data):
+    path.mkdir(parents=True)
+(bird / "extlinux/extlinux.conf").write_bytes(b"selector must remain untouched\n")
+(bird / "bird-releases/retained-runtime").write_bytes(b"immutable evidence\n")
+(data / "retained-user-data").write_bytes(b"user data\n")
+whole = "disk987"
+prefix = f"/dev/{whole}s1 on {bird} "
+legacy = prefix + "(msdos, local, nodev, nosuid, noowners, noatime, nobrowse)\n"
+fskit = prefix + "(msdos, local, nodev, nosuid, noowners, fskit)\n"
+module.validate_bird_fat_mount(legacy, bird, whole)
+module.validate_bird_fat_mount("/dev/disk1s1 on / (apfs, local)\n" + legacy, bird, whole)
+invalid = {
+    "fskit": fskit,
+    "wrong-filesystem": prefix + "(exfat, local)\n",
+    "read-only": prefix + "(msdos, local, read-only)\n",
+    "missing": "",
+    "wrong-device": legacy.replace("disk987s1", "disk988s1"),
+    "wrong-partition": legacy.replace("disk987s1", "disk987s2"),
+    "wrong-mountpoint": legacy.replace(str(bird), str(bird) + "-other"),
+    "duplicate-row": legacy + legacy,
+    "malformed-row": prefix + "(msdos, local\n",
+}
+for label, listing in invalid.items():
+    try:
+        module.validate_bird_fat_mount(listing, bird, whole)
+    except module.DevError:
+        pass
+    else:
+        raise AssertionError(f"accepted unsafe mount: {label}")
+for identity in ("", "CARD", "disk987s1", "../disk987"):
+    try:
+        module.validate_bird_fat_mount(legacy, bird, identity)
+    except module.DevError:
+        pass
+    else:
+        raise AssertionError(f"accepted unverified whole-card identity: {identity!r}")
+
+def snapshot():
+    return [(str(path.relative_to(fixture)), path.read_bytes() if path.is_file() else None)
+            for path in sorted(fixture.rglob("*"))]
+
+class GuardPassed(Exception):
+    pass
+
+def after_guard():
+    # Stop the fake workflow immediately after the safety gate. No real build,
+    # release metadata, storage image or system utility is involved.
+    raise GuardPassed
+
+calls = []
+def mount_listing(command, **kwargs):
+    assert command == ["/sbin/mount"] and kwargs == {"capture": True}
+    calls.append(command)
+    return subprocess.CompletedProcess(command, 0, fskit.encode(), b"")
+module.run = mount_listing
+os.environ["BIRD_DEV_HOST_TEST_MODE"] = "0"
+os.environ["BIRD_DEV_WHOLE"] = whole
+mutating_modes = ("changed", "all-local", "rebase", "rollback", "clean", "recover-production", "clean-recovered")
+for mode in mutating_modes:
+    args = argparse.Namespace(root=root, bird=bird, data=data, mode=mode, profile=0, dry_run=0)
+    workflow = module.Workflow(args)
+    workflow.cleanup_authority = after_guard
+    before = snapshot()
+    calls.clear()
+    try:
+        workflow.execute()
+    except module.DevError as error:
+        assert "FSKit" in str(error), (mode, str(error))
+    else:
+        raise AssertionError(f"unsafe writer did not block {mode}")
+    assert calls == [["/sbin/mount"]], (mode, calls)
+    assert snapshot() == before, f"blocked {mode} mutated fake card data"
+    assert not workflow.mutation_started
+
+for mode, dry_run, host_test in [("status", 0, False), *[(mode, 1, False) for mode in mutating_modes], ("changed", 0, True)]:
+    args = argparse.Namespace(root=root, bird=bird, data=data, mode=mode, profile=0, dry_run=dry_run)
+    workflow = module.Workflow(args)
+    workflow.host_test = host_test
+    workflow.cleanup_authority = after_guard
+    calls.clear()
+    before = snapshot()
+    try:
+        workflow.execute()
+    except GuardPassed:
+        pass
+    else:
+        raise AssertionError(f"read-only/host fixture unexpectedly blocked: {mode}")
+    assert not calls, (mode, "unnecessary live mount query")
+    assert snapshot() == before
+print("FAT writer guard: validator and all workflow mode cases PASS")
+PY_FAT_WRITER
+pass 'unsafe FSKit writers block every mutating mode before card changes'
+
 printf 'PASS: %s dev-current host transaction cases\n' "$PASS_COUNT"

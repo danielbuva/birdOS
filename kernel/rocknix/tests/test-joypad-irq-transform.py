@@ -215,7 +215,7 @@ def main() -> None:
     # prerequisite transforms and this transform against the complete driver.
     joypad_root = pathlib.Path(
         os.environ.get(
-            "JOYPAD_SOURCE", str(pathlib.Path.home() / "muos-kernel-source/rocknix-joypad")
+            "JOYPAD_SOURCE", str(ROOT / "kernel/source-inputs/rocknix-joypad")
         )
     )
     pristine = joypad_root / "rocknix-singleadc-joypad.c"

@@ -44,6 +44,38 @@ source inventory. It does not record or imply RG34XX-SP acceptance.
 Before removing the card, use the exact safe-eject command printed by a
 successful deployment.
 
+### FAT writer requirement
+
+Mutating development commands require the kernel MS-DOS driver, selected by
+`/sbin/mount_msdos`. They reject a BIRD mount whose options include `fskit`.
+Status and dry runs remain read-only and do not require changing drivers.
+
+On macOS 26.6.2, repeated atomic updates through FSKit reproduced duplicate
+8.3 short names while macOS still read and verified both long names correctly.
+The device's filesystem checker then renamed the intact media helper to
+`FSCK0000.000`, preventing release verification and storage readiness. The
+same update sequence and 248-update stress test passed through the kernel
+driver. Keep atomic publication and all manifest verification; do not weaken
+the device checks or just rename the recovered file back.
+
+After identifying the card with `diskutil info /Volumes/BIRD`, unmount only
+BIRD, then explicitly mount its verified partition through the kernel helper.
+For example, **only when the verified BIRD partition is disk10s1**:
+
+```sh
+diskutil unmount /Volumes/BIRD
+sudo mkdir -p /Volumes/BIRD
+sudo /sbin/mount_msdos -u "$(id -u)" -g "$(id -g)" \
+  -o noowners,noatime,nobrowse /dev/disk10s1 /Volumes/BIRD
+```
+
+Do not reuse that device number without checking it after reinsertion. A
+normal automatic mount can select FSKit again; the workflow checks the actual
+mount on every mutating invocation. The remount does not format the volume or
+change device-side boot behavior. Preserve failure evidence before repairing
+an already damaged development release through `--recover-production`,
+`--clean-recovered`, and a fresh verified development build.
+
 ## Commands
 
 Exactly one primary mode is required:
@@ -474,3 +506,27 @@ archives and verifies every superseded canonical release, makes the previous
 selector self-reference the accepted canonical release, and only then removes
 the old card copy. A failed boot is handled by returning the card to the host,
 not by retaining another production release on p1.
+
+## Host workspace consolidation — 2026-10-08
+
+Use `/Users/dani/birdOS` as the single local checkout. Useful work from the
+retired sibling directories is preserved in the private
+[host-work archive](https://github.com/danielbuva/birdOS-release-archive/releases/tag/host-work-20261008).
+Its downloaded archive and all 48 retained files were independently verified.
+`ARCHIVE-INDEX.json` records the source base, checksums and recovery guidance.
+
+Main retains the uncommitted runtime and development-FAT fixes. The archive
+also preserves the separate canonical FAT writer patch, fixed-XOR candidate,
+remaining interaction changes and BDF reproduction sources. Candidate patches
+overlap; review them against current main before integration. Fixed-XOR and BDF
+remain separate offline proposals without production or physical acceptance.
+
+Next device gate: verify storage readiness beyond the former 30-second watchdog
+boundary, Input Tester and a game, exact menu return, repeated PortMaster
+close/reopen at 1/2/3/5/10/15/30 seconds, weak/unavailable Wi-Fi, saved volume,
+suspend/resume and orderly shutdown. Preserve the canonical promotion boundary.
+
+The discarded original SYSTEM copy is recoverable from the pinned ROCKNIX
+20260701 DDR4 image on GitHub. The retained download matches the upstream asset
+digest and its SYSTEM payload matches the original input. Exact recovery
+identities are in `baseline-recovery.json` in the private archive.

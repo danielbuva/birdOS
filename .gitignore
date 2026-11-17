@@ -5,3 +5,6 @@ firmware/work/
 firmware/*.img
 firmware/*.ext4
 kernel/work/
+
+# Local pinned kernel build dependencies.
+/kernel/source-inputs/

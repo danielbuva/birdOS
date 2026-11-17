@@ -2548,6 +2548,38 @@ static void capture_ui_resume_state(struct ui_resume_state *state) {
     state->selection = selection;
 }
 
+/* One fixed diagnostic record per successful checkpoint. All fields retain
+ * their original decimal spelling; the bounded buffer holds four full u64s.
+ * Keep this after the visible response and atomic resume publication. */
+static void log_ui_resume_saved(u64 timestamp, u32 saved_view,
+                                u32 active_index, u32 saved_selection) {
+    static const char *const labels[] = {
+        "ui_resume_save boot_ms=", " view=", " active_index=", " selection="
+    };
+    const u64 values[] = { timestamp, saved_view, active_index, saved_selection };
+    char record[sizeof("ui_resume_save boot_ms= view= active_index= selection="
+                       " result=ready\n") + 4U * 20U];
+    char *output = record;
+    const char *text;
+    u32 field;
+    for (field = 0; field < 4U; field++) {
+        char digits[20];
+        u32 count = 0;
+        u64 value = values[field];
+        text = labels[field];
+        while (*text) *output++ = *text++;
+        do {
+            digits[count++] = (char)('0' + value % 10U);
+            value /= 10U;
+        } while (value);
+        while (count) *output++ = digits[--count];
+    }
+    text = " result=ready\n";
+    while (*text) *output++ = *text++;
+    BIRD_PROFILE_DIAGNOSTIC((u64)(output - record));
+    (void)sys_write(1, record, (u64)(output - record));
+}
+
 static int save_ui_resume(void) {
     struct ui_resume_state state;
     long fd;
@@ -2569,15 +2601,7 @@ static int save_ui_resume(void) {
         return -1;
     }
     BIRD_PROFILE_RESUME_COMMITTED();
-    log_text("ui_resume_save boot_ms=");
-    log_number(boot_ms());
-    log_text(" view=");
-    log_number(view);
-    log_text(" active_index=");
-    log_number(state.active_index);
-    log_text(" selection=");
-    log_number(selection);
-    log_text(" result=ready\n");
+    log_ui_resume_saved(boot_ms(), view, state.active_index, selection);
     return 0;
 }
 
