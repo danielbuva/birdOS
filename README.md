@@ -227,3 +227,9 @@ profiling boot, collect
 An untouched image or spare card can remain external insurance. The card itself
 has no fallback kernel, alternate selector, or old UI. A failed boot persists a
 diagnostic and returns the card to the host for verified repair or redeployment.
+
+## License
+
+birdOS's own code is released under the [MIT License](LICENSE). Upstream
+components it builds on, including the Linux kernel, ROCKNIX and PortMaster,
+keep their own licenses.
